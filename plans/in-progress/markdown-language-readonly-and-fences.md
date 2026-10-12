@@ -1698,3 +1698,320 @@ No position in ordinary Markdown text differs, and none outside every container 
     as text follows: a paragraph continues on an unindented line. The second is harmless for the same
     reason. The third is rare: the caret has to sit between a code line's indentation and its first
     character, on the block's first line.
+
+---
+
+## Implementation Notes
+
+Implemented on `feature/markdown-language-readonly-and-fences`, branched from `feature/markdown-editor-raw-block-edge-cases` at `fef32344b`. That base is the tip of a stack of 26 unmerged branches and several of them changed the files this plan edits, so every path, line number, snippet and expected row of the plan was checked against the code before a test was written. The two functions the plan gives in full (the read-only extension and the Enter command) went in as written, with two additions to the first: the filter's precedence (difference 4) and the key bindings for the deletion keys (difference 6). The differences are around them, and are listed here.
+
+### Which of the plan's defects still existed at the base
+
+| Defect, as the plan and the run's briefing record it | At `fef32344b` | How it was seen |
+|---|---|---|
+| Enter on a Markdown list or blockquote line edits a read-only editor | yes | rows RO1, RO3 and G1 failed before the filter |
+| Backspace after a Markdown list marker edits a read-only editor | yes | rows RO2 and G2 failed |
+| A URL pasted over selected Markdown text edits a read-only editor | yes | row G3 failed |
+| A clicked completion edits a read-only editor, in every language | yes | row G4 failed |
+| `cut()` and `paste()` called from code edit a read-only editor | **no**: both were guarded on the stack already (`markdown-editor-context-menu-caret`, round 2), and `format()` in its round 3 | the existing tests in `describe('CodeEditor clipboard commands', …)` and `describe('CodeEditor format() dispatch', …)` |
+| Enter in a fenced code block in a blockquote drops the `>` | yes | row C35 pinned it as a known limit |
+| Enter turns a tab into `tabSize` spaces, or drops it | yes, in the cases the plan's table lists as "after this plan" | rows F16–F18, F32 and F34 failed |
+
+The red phase at step 2 was the plan's 51 tests and one more, row C42 (difference 3): 52 failing, 12 of them read-only tests. After the filter exactly the 40 Enter tests failed, and none after the command.
+
+### Differences from the plan
+
+1. **Line numbers.** Each edit was placed by the text the plan quotes. The numbers have moved:
+
+   | Place | Plan (`63a81117d`) | At the base | After this branch |
+   |---|---|---|---|
+   | `buildReadOnlyExtension` and its JSDoc in `CodeEditor.ts` | 372–385 | 372–385 | 372–461 (the two marks at 376 and 384, `refuseDocumentChange` at 401, `refuseDeletionKey` at 419, the function at 451) |
+   | `codeEditorKeymap`; `refusedDeletionKeymap` | — | 412; — | 488; 513 |
+   | `setValue` | 769 | 803 | 901 |
+   | the re-check in `format()` | — | — | 1718 |
+   | `mount()`, the update listener, the DOM event hooks | 2177, 2255, 2289 | 2211, 2282, 2316 | 2331, 2402, 2438 |
+   | `onEditIntent`, `signalRefusedEdit`, `signalReadOnlyEdit` | 2824, —, 2837 | 2851, —, 2864 | 2980, 2997, 3010 |
+   | `indentInsideMarkdownHtml` in `languages.ts` | 169 | 178 | 178 |
+   | the command's block, JSDoc included | — | 210–372 (the four functions it replaces) | 210–467 |
+   | the `"markdown"` loader; its last statement | 201 | 374; 401–406 | 469; 498–502 |
+   | `describe('CodeEditor replaceRange', …)` in `code-editor.test.ts` | 1902 | 1904 | 1905 |
+   | `describe('CodeEditor read-only extension', …)`, with `mountOffline` above it | — | — | 2007; 1995 |
+   | `describe('built-in markdown language typing', …)` | 3139 | 3223 | 3385 |
+   | rows C24 / C35 / C42 | — | 3700 / 3754 / 3800 | 3862 / 3916 / 3961 |
+   | rows F1–F42, S1–S9, RO1–RO6 | — | — | 4124–4306, 4339–4383, 4400–4425 |
+   | `## Read-only` in `CodeEditor.md` | — | — | 221 |
+
+2. **Row ids.** No id of the plan was taken, so none was renumbered: the file held M1–M37, C1–C42, H1, H2, B1–B24 and K1–K4. Rows added beyond the plan carry the next free number of their series:
+
+   | Row | Where | What it pins | Why it was added |
+   |---|---|---|---|
+   | F42 (two tests) | typing harness | Enter on a blank tab-indented line inside a top-level `<pre>` writes `tabSize` spaces | with the "Markdown is active" test of place 4 removed, no plan row failed: F33's text is the same from either command |
+   | S7 | typing harness | Enter over a selection that starts between `()` adds one line | no plan row failed with `range.empty &&` removed from the pair test |
+   | S8 | typing harness | Enter over the text between two inline tags in a blockquote keeps the `>` | no plan row told "Markdown after the range" from "Markdown after its start" |
+   | S9 | typing harness | Enter over a selection that starts in front of the `>` of a quoted code line is passed on, and the new line has no `>` | the third review round: the plan's non-goal for a caret in front of a marker (row F8) also covers a whole line selected from the margin, and no row or docs sentence said so |
+   | RO14 | the state `mount()` builds | a filter of a higher precedence, loaded where a language is loaded, cannot put a change back | difference 4 |
+   | RO15 | the state `mount()` builds | a language load, a fold, a search query and a tab size change pass a read-only editor's filter | the run's briefing: what still works from code |
+   | G8 (eight tests) | mounted | `setValue` loads into a read-only editor, fires `"change"` and signals nothing, in each of the seven built-in languages and with none | the briefing: the host filling a read-only editor is the common case |
+   | G9 | mounted | the undo and redo keys do not take a loaded document back | the briefing |
+   | G10 | mounted | a plain paste and a drop change nothing and signal once each | the plan's addendum states it; no test did |
+   | G11 | mounted | select all, find next and fold work; Replace and Replace all change nothing | the briefing |
+   | G12 | mounted | Enter and Tab on an open completion list insert nothing | the briefing |
+   | G13 | mounted | `paste()` whose clipboard read ends after the editor became read-only inserts nothing and signals once | the filter as the floor under `paste()`'s own check |
+   | G14 | mounted | `setTabSize`, `setLineWrap` and `setLanguage` still apply | the briefing |
+   | G15 | mounted | `setReadOnly(true)` on a mounted editor refuses a key, `replaceRange()` and `cut()` from then on | the plan's G6 goes the other way only |
+   | G16 | mounted | a read-only `MarkdownEditor` in source mode refuses a key and `toggleBold()`, with one flash each, and takes `setValue` | the briefing: consistency with `markdown-editor-context-menu-caret` |
+   | RO16; G17 (three tests), G18, G19, G20, G21 | the extension's key bindings; mounted | difference 6 | difference 6 |
+   | one unnamed test in `describe('CodeEditor format() dispatch', …)` | offline | difference 5 | difference 5 |
+
+   RO11 reads the state off a spy as the plan has it, through `mountOffline`, the helper of `describe('CodeEditor keymap order', …)`, which now stands at module level, takes the document and the read-only flag, and serves RO14 and RO15 too. The `describe` restores the spy with `afterEach(() => vi.restoreAllMocks())`, as that one does, in place of the plan's hand-written `mockRestore()`. The mounted file's `mountReadOnly` is split in two (`mountInto` mounts any editor), takes `null` for no language, and `pressKey` takes the modifier keys; G1–G7 are the plan's.
+
+3. **Row C42 is a third row this plan changes**, beside C24 and C35. `markdown-language-enter-inside-html` added it after this plan was written, to pin that Enter between a bracket pair inside `<script>` or `<style>` in a container adds one line. This plan's "Between an empty pair, both new lines get the prefix" (row F27) splits the pair there, so C42's three contained results changed and its title with them; its fourth, at the top level, did not. The earlier plan's notes name this.
+
+4. **The filter has the highest precedence.** The plan installs it as `EditorState.transactionFilter.of(refuseDocumentChange)`. CodeMirror runs transaction filters from the lowest precedence to the highest and each may replace the transaction, so only the last one to run decides. At the default precedence a filter that a language installs at `Prec.high` or `Prec.highest` runs after the editor's and can add a document change to a transaction the editor's filter has passed. The filter is therefore wrapped in `Prec.highest`; the read-only compartment stands before the language's in `mount()`'s extension list, which puts it after a language's own filter of the same precedence. Row RO14 fails for `Prec.high` and `Prec.highest` without it. The plan's check, `grep -c 'EditorState.transactionFilter.of(refuseDocumentChange)'`, still prints `1`.
+
+5. **`format()` re-checks read-only after its awaits.** `format()` tests `getReadOnly()` on entry, then awaits the formatter. A host that made the editor read-only in between got the result applied: on a mounted editor the filter now refuses the transaction, but `applyFormatted` had already written the formatted text into the cached value, and before the view is mounted nothing stood in the way at all. `format()` now tests again before it applies, and signals the refusal. `paste()` has the same gap and needs no code: its dispatch is refused by the filter and signalled by the update listener, and it writes no cache (row G13). Its JSDoc says so.
+
+6. **Backspace and Delete are signalled by key bindings of the read-only extension.** This is its own code commit and its own documentation commit, because it is a decision the user has not seen (see "Decisions that await the user's sign-off").
+
+   The plan's table "Every refused edit is signalled exactly once" says that Backspace no command takes "goes to the browser, which fires `beforeinput`", and its manual row V5 expects a flash for Backspace at the end of `- item`. That does not happen, at the base or with the plan's code: CodeMirror's bindings for Backspace and Delete carry `preventDefault: true` (`@codemirror/commands` index.js:1747–1752), so the key's default is stopped even when the command declines, as each of them does in a read-only state. No `beforeinput` follows, and the key was ignored with no event and no flash, in every language. With the filter alone the result was uneven: Backspace right after a Markdown list marker flashed (Markdown's own command dispatches, and the filter refuses it), and Backspace anywhere else did not. Seen in Chromium with real keys.
+
+   `buildReadOnlyExtension(true)` now has a third part, `Prec.lowest(keymap.of(refusedDeletionKeymap))`. `refusedDeletionKeymap` is derived from `codeEditorKeymap`: one binding for each of its bindings on Backspace or Delete that sets `preventDefault`, on the same keys, whose command, `refuseDeletionKey`, dispatches a transaction that carries only the refusal mark. The update listener signals it. At the lowest precedence every other command bound to the key is tried first. A key map derived from another has no precedent in the library. The nearest one, the editor's `beforeinput`, `paste` and `drop` hooks in `mount()`, cannot carry this: a deletion key fires no `beforeinput` to hook, and a `keydown` hook sees the key but not whether a command took it. A binding behind every other one for the key runs exactly when none did. On this CodeMirror version that is six bindings: Backspace (and Shift-Backspace), Delete, the word deletions (Ctrl with either key; Alt on macOS) and macOS's line deletions (Cmd with either key). Row RO16 lists them.
+
+   One rule covers the area: *a deletion key is signalled exactly where the editor's own binding swallows it; every other combination with the two keys is left to the browser, as in an editor that is not read-only.* The rows are built from its shapes:
+
+   | Shape | Result | Row |
+   |---|---|---|
+   | a deletion key no command takes (three languages; plain, Shift-Backspace, Ctrl with either key) | one signal each, the default stopped | G17 |
+   | a deletion key a language's command takes and the filter refuses | one signal, not two | G2 |
+   | a deletion key a language binds to a command that edits nothing | that command runs; no signal | G20 |
+   | Backspace or Delete with modifiers nothing is bound to (Alt-Backspace, Shift-Delete, Ctrl-Shift-Delete) | not handled, default not stopped, no signal | G21 |
+   | a key whose command declines without stopping the default (Tab, Shift-Tab, comment, indent, move, copy and delete a line, Ctrl-Enter) or with it (undo, redo), and a key that edits nothing | no signal | G18 |
+   | an editor that is not read-only, and one made read-only and writable again | the bindings are absent, present, absent | G19, RO16 |
+
+   The first form of this fix, which the first review round read, took the two keys through an `any` handler whatever the modifiers. That also took Alt-Backspace, Shift-Delete and Ctrl-Shift-Delete, which the editor binds nothing to, and stopped their default: Shift-Delete no longer cut-copied, and a browser's own Ctrl-Shift-Delete would have been swallowed. The derived list replaces it.
+
+   The comment in `mount()` that said "typing / IME / delete fire `beforeinput`" is corrected.
+
+7. **`CodeEditor.md`: the Enter text is the plan's with seven changes**, each checked on the harness.
+
+   | Plan's text | Written | Why |
+   |---|---|---|
+   | "On an empty item or an empty quoted line it removes the marker" | "it takes the marker away again, at once or on the next press" | Markdown's own command keeps an empty quoted line for one more Enter, and makes a tight list loose first |
+   | "Enter never removes the prefix in a fenced code block, or in HTML that continues after the caret" | the same, with the two cases that look like exceptions | the earlier plan's review added the list-item case (row C26: a blank indented line ends a `<div>` block, and a second Enter is then Markdown's own); it still holds and the plan's text dropped it. "An indented code block ends at a blank line" holds in a blockquote only when no code follows (rows F19 and F22) |
+   | the "At the end of an HTML block" bullet | the same, with the two carets that stay Markdown's own, and the sentence for `-→<div>` (row M37) | the plan names only the marker line; row C25 is the second, and M37's sentence was in the page already |
+   | the "Between an empty pair" bullet | the same, with "in HTML" in front of the tag pair, and a sentence for the Markdown text of a quote or item, where the pair is not split | inside a code block a tag is plain text and is not split; row F28: without the sentence the bullet reads as if every pair were split |
+   | "With text selected in a code block, or in HTML …" | "where the selection starts in a code block, or in HTML …", and a sentence for a selection that starts in front of its line's marker | the command reads the start of the range; row S9 |
+   | "A line that holds only spaces and tabs is emptied" | the same, scoped to where the new line gets the prefix and to the editor's plain Enter, with what Markdown's own command does on such a line in a list item | on a blank indented line inside a list item Markdown's own command removes the indentation and adds no line |
+   | "A tab-indented line of ordinary text in a list item is the one place a tab is not kept" | "loses its indentation", and the plain-Enter bullet gained an example | the plain-Enter bullet above it names a second place (HTML outside every container), so "the one place" contradicted it |
+
+   The Keyboard row, the paragraph under the table and the two Common methods rows are the plan's.
+
+8. **`CodeEditor.md`: the Read-only section says more than the plan's, and corrects it.** The plan's text reads as if every refused edit were signalled but two ("Two things stay quiet": Replace, and the opening of the completion list). That is not so, at the base or after this branch, and the same claim stood in the JSDoc the plan gives for `on("readonlyedit")` ("a key that edits"). A refused edit is signalled when it reaches the editor: as input (typed text, IME input, Enter no command takes, a paste, a drop), as a change to the document that something tried (a language's own command or handler, a picked completion), or as a call to `replaceRange`, `cut`, `paste` or `format`; and, with difference 6, for a deletion key. Every other key that edits is refused with no event and no flash, because its command reads the read-only flag, declines, and nothing follows: undo and redo, toggling a comment, moving, copying or deleting a line, a blank line with Ctrl-Enter, and indenting. Tab and Shift-Tab then move focus on, since their command passed the key to the browser. Replace and Replace all are quiet too, and the cut key copies the selection and removes nothing. Each was pressed in Chromium (see "Manual checks"), and row G18 pins the keys. The section and the JSDoc say this. The section also says that a `paste()` or `format()` begun before the editor became read-only is refused, that the completion list stays open after a refused pick, that the option setters still apply, and that a change dispatched with CodeMirror's `filter: false` is not seen by any filter. `## format() semantics` and `## Search and replace` each gained a clause.
+
+9. **Changelog and migration.** The two bullets went in as the last of `## Fixed` → `### Components`, hard-wrapped at 76 columns like their neighbours, with a third for difference 6. The read-only bullet also names the viewer's code blocks, the option setters and difference 5, and points to the migration page. `migration/next.md`'s note "A read-only `MarkdownEditor` refuses its editing commands" gained two clauses: a read-only `CodeEditor` now refuses every other change too, and a registered language can no longer edit one through its own commands. The plan names neither file's change beyond the two bullets. The earlier Enter bullet lost its sentence on bracket pairs inside `<script>` (difference 3), and its last sentence now speaks of the marker line only. The new Enter bullet differs from the plan's text in two places: "a selection that starts inside a code block …", as in difference 7, and a clause saying the pair is split inside `<script>` and `<style>` in a container too (difference 3). The deletion-key bullet names the combinations that are signalled: each key alone, Shift-Backspace, and each with the modifier that deletes a word or a line.
+
+10. **The round-trip corpus**, asked for by the run's briefing. `git diff --stat` therefore touches thirteen files and the plan file, not the plan's eight.
+
+    - `corpus/enterInCode.ts` (new, registered in `corpus/index.ts`): 33 cases, the documents the code rows end with (C35, F1–F7, F9–F21, F24, F25, F29, F30, S1, S3, S5), some with text typed on the new line, and two shapes no row has (a tab after the `>`, and a tab after the list marker). Each case carries `reads`: every block that holds no blocks itself, with the path of its quote or list item and a code block's text.
+    - `corpus/enterInsideHtml.ts`: the C24 case follows its row, and 12 cases were added for the HTML shapes (C42, F32, F34–F37, S2, four of them with text typed on the new line).
+    - `markdown-roundtrip.test.ts` gained one `describe` of 33 tests, which reads each code case with the viewer and compares with `reads`. The documents Enter gave before this branch fail it (`> code` over an empty line has no code in its quote). The existing test over the HTML cases runs over the 12 new ones unchanged.
+    - Every case passes `parity`, `idempotence`, `verbatim`, `canonical`, `canonicalIdempotence`, `definitions` and the edit fuzz, so the WYSIWYG importer reads each document as the viewer does. 32 cases list a known `surface` divergence, all existing ones (`quoteBlocks`, `listItemBlocks`): a quote or a tight list item that holds a code or HTML block loads as a raw block. No new divergence was needed.
+    - **One code case is listed as read otherwise, and it shows the viewer's defect that the earlier plan found, not Enter's.** After `-→` and a fence, Enter gives the new line the prefix ` →` (the marker as a space, then the tab), which is column 4 as CommonMark counts, the item's content column. The viewer counts a tab that follows a space as four columns and shows the line as one space of code. The test holds it in `READ_WITH_OTHER_CODE_TEXT` and expects the check to fail, so a fix of the viewer turns it red until the entry is removed. `markdown-tab-column-parity` is that fix.
+
+11. **Test layout.** The plan puts three helpers ahead of rows S1–S6 and RO1–RO6. `typedReadOnly` stands after S8, directly above RO1, so that the read-only rows are one block that the read-only commit holds whole.
+
+12. **Shared files** were edited in the code commit and the documentation commit of the functionality they belong to, not in commits of their own, as the commit rules require.
+
+13. **Three functionalities, six commits.** The plan is one document for two fixes, and difference 6 is a third. Each has one code commit and one documentation commit: read-only, Enter (with the demo button and the corpus), and the deletion keys.
+
+### What a read-only editor refuses, and what it still takes from code
+
+Read from `CodeEditor.ts` and run on a mounted view.
+
+| From code | In a read-only editor | Row |
+|---|---|---|
+| `setValue(value)`, also from `MarkdownEditor.setValue` and `setMode` | loads the document, fires `"change"`, signals nothing; the same before the view is mounted | G5, G8, G16, RO12 |
+| `setLanguage`, `setTabSize`, `setLineWrap`, `setLineNumbers`, `setPlaceholder`, `setHighlightWhitespace`, `setLint`, `setSpellcheck`, the theme | apply: each dispatches effects only | G14, RO15 |
+| `revealRange`, `moveCursorToEnd`, `focus`, `copy`, the search panel's find commands, folding | work: none changes the document | G11, RO8 |
+| `setReadOnly(false)` | lifts the lock; `setReadOnly(true)` puts it back | G6, G15, G19 |
+| `replaceRange`, `cut`, `paste`, `format` | refused before they dispatch, with the event and the flash, as at the base | the existing tests; G15 |
+| `paste()` and `format()` that end after the editor became read-only | refused (difference 5) | G13, the `format()` test |
+| the search panel's Replace and Replace all | inert and silent, as at the base | G11 |
+
+**What a consumer could have relied on that is now refused.** The library's own callers rely on none of it: `MarkdownEditor` reaches its source editor through `setValue`, `replaceRange`, `cut`, `paste`, `copy`, `getValue`, `getSelection`, `markClean`, `focus` and `setReadOnly` only, and the viewer builds its code blocks read-only and never writes to them. SQLAdmin's three read-only editors (`dock/IndexInfoPanel.ts:99`, `dock/QueryPanel.ts:1234`, `shell/localStorageWindow.ts:248`) are filled through the constructor, `setValue` and `setLanguage`, all of which still work; that application was read, not run or changed.
+
+- A language registered with `registerLanguage` whose extension dispatches a document change on its own, from a key binding, a DOM event handler, an input handler, a lint action or a completion's `apply`, could edit a read-only editor. It no longer can. The changelog and the migration note say so.
+- A completion picked with the mouse used to be inserted into a read-only editor. It is refused.
+- Backspace and Delete used to do nothing visible. They flash, and fire `"readonlyedit"` (difference 6). A host that counts `"readonlyedit"` events sees more of them.
+- A `format()` started on a writable editor used to be applied after `setReadOnly(true)`. It is refused (difference 5).
+- A transaction dispatched with `filter: false` is shown to no filter, so it still changes a read-only document. Among the installed CodeMirror packages only the history's undo and redo use it (`@codemirror/commands` index.js:536), and both decline in a read-only state before they build it (row G9). `CodeEditor` exposes no view, so only a registered language's extension could dispatch one.
+
+**Consistency with `MarkdownEditor`.** The stack makes a read-only `MarkdownEditor` refuse each editing command before it reaches a surface, hands `cut()` and `paste()` to the source editor so that it flashes, and keeps `setValue` allowed, in source mode by forwarding to `CodeEditor.setValue`. The filter leaves all of that as it is: a refused source-mode command is refused by `replaceRange`'s own check, before any transaction, and flashes once (row G16); `setValue` and a mode switch pass the filter through `setValue`'s mark. `setContentEditable` concerns the WYSIWYG surface only and is not touched.
+
+### Checks beyond the plan's own
+
+- **A differential over every caret position.** Enter was pressed at each caret position of 74 documents, the tab documents at `tabSize` 2, 4 and 8: 1,853 positions, on the base's `languages.ts` and on this branch's. 478 results differ, in 40 documents, and each was read: a code block in a blockquote or list item (the new line keeps its `>` and its indentation), a code line indented with a tab (the tab is copied), a tab-indented line at the end of an HTML block and a blank tab-indented line (the tab is copied), an indentation deeper than the item's content at the end of an HTML block, and an empty pair inside `<script>` or `<style>` in a container (split). No position in ordinary Markdown text differs, and none outside every container on a line without a tab. The plan's own check counted 215 of 1,275 on 40 documents; the kinds are the same.
+- **The addendum's table was re-run** on the final code, one mutant at a time, and once more after the last review round's row was added. Every part is pinned; the rows that fail differ from the plan's table by the rows added since.
+
+  | Part removed or changed | Rows that fail |
+  |---|---|
+  | place 3, the end of an HTML block | F34, F35, F36, F37 |
+  | the "text between the prefix and the caret" condition of place 3 | C25 |
+  | the "no list marker" condition of place 3 | M12, M14, M37 |
+  | the "in an HTML block" condition of place 3 | F38 |
+  | the "Markdown before the caret" branch | F39 |
+  | the container condition for HTML | M27, C34, C42, F42 |
+  | place 4, the blank line | F32 |
+  | the "Markdown is active" test of place 4 | F42 |
+  | code blocks handled only inside a container | F17, F18 |
+  | a code block also recognised from the character after the caret | F23 |
+  | selections passed on | S1, S2, S3, S7, S8 |
+  | pairs not split | C11, C12, C13, C42, F24, F25, F26, F27, M32 |
+  | only tag pairs split / only bracket pairs split | C42, F24–F27 / C11, C12, C13, M32 |
+  | a selection that starts between a pair split too | S7 |
+  | "Markdown after" read at the start of the range, not its end | S8 |
+  | a blank line not emptied | C24, F29, F30, F31, F32 |
+  | the binding listed after the Markdown support | F19, F20, F34, F35, F36, F37 |
+  | the binding without `Prec.high` | 68 rows |
+  | the `state.readOnly` check | C38 |
+  | the `null` for a caret in front of a marker | C22, F8, S9 |
+  | the dropped spaces after the caret | C2, C20, C21, C28 |
+  | list markers copied as written | 26 rows |
+  | with several carets, act on those it can | 33 rows, S6 among them |
+  | the transaction filter | RO1–RO4, RO7, RO11, RO13, RO14, G1–G4, G13, G15, G16 |
+  | the filter at the default precedence | RO14 |
+  | `setValue` without its mark | RO12, G5, G8, G9, G16, G18 |
+  | the refused transaction keeps its selection | RO1, RO3, RO4, RO7, G1, G4, G13, G15, G16 |
+  | the update listener does not signal | G1–G4, G13, G15, G16, G17, G19, G20 |
+  | one signal per refused transaction, not per update | RO13 |
+  | the `readOnly` flag not set | RO9, RO15, G7–G10, G14, G18, G20 |
+  | `format()` not re-checked after its awaits | the `format()` test of difference 5 |
+  | the deletion-key bindings removed | RO16, G17, G19, G20 |
+  | the deletion-key bindings at the highest precedence | G20 |
+  | a refusal bound to every binding that stops the default / to every Backspace and Delete binding | RO16, G18 / RO16 |
+  | no refusal bound to Shift with the key | RO16, G17 |
+  | the refusal dispatches nothing | G17, G19, G20 |
+  | the extension's read-only parts also installed when not read-only | RO9, RO10, RO11, RO16, K1, K4, G6, G15, G19 |
+
+  As in the earlier plan, no row tells the two position tests at the end of `isBetweenPair` (`open.to === pos && close.from === pos`) from their absence, and none can: in the HTML grammar an open tag directly before the caret and a close tag directly after it, as children of one node, already touch at the caret. The tests are redundant and were kept as the plan has them.
+- **Reach.** `CodeEditor.ts` gained no Markdown- or HTML-named identifier: the one mention the diff adds is in the JSDoc of `refuseDocumentChange`. `buildReadOnlyExtension` is exported `@internal` and is not in `component/editor/index.ts`. `MarkdownEditor.ts` is unchanged.
+- **Selections, by enumeration**, on the harness: a selection inside one code line, across two, from a code block into a paragraph after it, from a paragraph into a code block, inside HTML on a marker line and off it, with a tab, and of a whole top-level code line. A selection that starts in one of the four places is replaced by the line break and the prefix of its first line; one that starts in Markdown text is Markdown's own, which passes it on; and one that starts in front of its line's marker is passed on like a caret there (row S9).
+- **A bracket pair with a space in it** (`f( | )`) is not an empty pair: the command adds one line. At the top level of a `<script>` the editor's plain Enter still splits it, by JavaScript's syntax tree. The plan's test for a pair is the textual one, and the docs say "empty pair".
+
+### Manual checks
+
+Run on 2026-10-12 in Chromium against the worktree's own demo server (`127.0.0.1:5399`, not 8015), with real key events and a real text drag sent through Chrome DevTools; the count of flashes was read off the rejection overlay's opacity. V1–V10 all gave the expected result, V5 for Backspace only with difference 6. The rows on Backspace and Delete were run again on the derived bindings, and the whole list, V1–V10 and the table below, once more on the final code after the third review round, with the same results.
+
+| In a read-only editor | Text | Flashes |
+|---|---|---|
+| a typed character | unchanged | 1 |
+| Enter at the end of `- item` (`markdown`); Enter in `javascript` | unchanged | 1 |
+| Backspace and Delete at the end of `- item`; Backspace after the `- ` marker; Shift-Backspace, Ctrl-Backspace, Ctrl-Delete | unchanged | 1 each |
+| Shift-Delete over a selection | unchanged; the browser's cut runs, which copies | 0 |
+| Alt-Backspace | unchanged | 0 |
+| Ctrl-Shift-K, Alt-Up, Ctrl-/, Ctrl-], Ctrl-Enter | unchanged; no `beforeinput` follows | 0 |
+| Tab, Shift-Tab | unchanged; focus moves to the next, the previous control | 0 |
+| Ctrl-V of plain text; Ctrl-V of a URL over a selection (`markdown`) | unchanged | 1 each |
+| Ctrl-X over a selection | unchanged; the selection is on the clipboard | 0 |
+| Ctrl-Z, Ctrl-Y, with edits in the history from before the lock | unchanged | 0 |
+| selected text of another field dragged in and dropped | unchanged; the source keeps its text | 1 |
+| a composition (see below) | unchanged; the content is put back | 1 |
+| Ctrl-Space, then a click on an entry; then Enter on the open list | unchanged; the list stays open until Escape | 1 each |
+| the context menu | offers Copy only, so Cut and Paste cannot be chosen | — |
+| Shift-Arrow, Ctrl-C, Ctrl-F, Enter in the find field | select, copy, open the search panel seeded with the selection, find | 0 |
+| Enter in the replace field; the Replace all button | unchanged | 0 |
+
+- **IME.** No input method is installed on the machine. The composition was made of script-dispatched `compositionstart`, `beforeinput`, a text node edit, `input` and `compositionend` events, which reach the same handlers but are not what an input method sends. A real composition is a manual check.
+- **Firefox and WebKit** are not installed: every row above is a manual check there. Two things to look at first: whether `beforeinput` fires for a typed character and for Enter (the flash for both depends on it), and that Delete on a macOS keyboard, and Alt and Cmd with Backspace there, flash once.
+
+### Changes made after the review
+
+The first review round had two blocking findings, both in the read-only half, and both were fixed, with its advisory findings, under the standing rule for this stack that advisories are fixed and not left. Each fix was folded into the commit it belongs to; the three documentation commits were rebuilt in place for it, since two of them change the same paragraph.
+
+| # | Finding | What was done |
+|---|---|---|
+| B1 | The docs, the JSDoc of `on("readonlyedit")` and these notes said three things are refused quietly; more are. A key whose command declines on its own (Ctrl-Shift-K, Alt-Up, Ctrl-/, Ctrl-], Tab, Shift-Tab, Ctrl-Enter) is silent too | Wording, not behaviour: difference 8. Each key was pressed in Chromium first; all are silent there too, and Tab and Shift-Tab move focus. Row G18 has the keys, under a title that no longer calls them "keys that edit nothing" |
+| B2 | The deletion binding took every combination with Backspace or Delete, on the false premise that each deletes or cuts | The bindings are derived from the editor's own deletion bindings: difference 6. Rows RO16 and G21 are new, G17 has Shift-Backspace |
+| A | RO11, RO14 and RO15 repeated the mount-and-spy sequence | one helper, `mountReadOnlyOffline` |
+| A | Two comments said the filter leaves the mark, which the deletion command now dispatches too | both reworded |
+| A | A stale row range in a test comment; G17's Markdown row had the caret where Markdown's own Backspace takes the key; G20's title against its last assertion; two statements on one line in G20 | the comment names F1–F42 and S1–S8; G17 puts the caret at the end of the document in all three languages; G20 asserts no signal after Backspace, then one after Delete, with a comment; the command is a named function |
+| A | No blank line between the last two changelog bullets; "Two carets" read as two cursors | both corrected |
+| A | These notes said "five changes" for six | corrected in difference 7 |
+| A | A possible double signal on Android Chrome | not changed; recorded under "Found on the way" |
+| A | G20 leaves a registered test language behind | not changed: the registry has no way to remove a language, and the `format()` tests of `code-editor.test.ts` register theirs the same way |
+| A | No row pins the two position tests of `isBetweenPair` | not changed; disclosed above |
+
+The second round had one blocking finding, in the changelog, and it was fixed with its advisory findings in the same pass. To fold them, the branch was rebuilt commit by commit from its start point, each fix applied from the commit it belongs to; the final tree is the one the fixes give on top of the reviewed tip.
+
+| # | Finding | What was done |
+|---|---|---|
+| B | The changelog said every combination but the word and line deletions "is left to the browser as before", which is false for Shift-Backspace: it is bound, signalled (rows RO16 and G17), and was swallowed before | The bullet, and the Read-only section, name the signalled combinations: each key alone, Backspace with Shift, each with the modifier that deletes a word or a line. The JSDoc of `on("readonlyedit")` names the two keys and no combination |
+| A | The docs bullet "A line that holds only spaces and tabs is emptied" was unscoped: on a blank indented line inside a list item, Markdown's own command removes the indentation and adds no line | The bullet says where it holds and what happens in a list item. Its text was the plan's |
+| A | `paste()`'s JSDoc said a late read-only "signals the same way", which holds only for a clipboard that is not empty | reworded |
+| A | Difference 6 did not say why the editor's DOM hooks could not carry the deletion keys | a sentence in difference 6 |
+| A | "with one addition to the first" understated the read-only extension's changes; difference 9 did not itemise two wording changes of the Enter changelog bullet | both corrected |
+| A | G16 disposed its `MarkdownEditor` inline, so a failed assertion leaked it; `mountReadOnlyOffline` near-duplicated `mountOffline`; G21 stood between G18 and G19; a call stood in an `if` condition of `mountInto` | the editor is disposed by the file's `afterEach`; one `mountOffline` at module level; G21 is the last test; the call's result is a constant |
+| A | RO16 lists CodeMirror's six deletion bindings by hand | kept, as the reviewer suggests: an upgrade that adds one fails the row. If it does, read `standardKeymap` again and bring the row and the two docs sentences in line |
+
+The third round, the loop's last, had no blocking finding. Its advisory findings were fixed all the same, folded in by the same rebuild. **No reviewer has read these last fixes.** They change one test title, add one row that pins behaviour the branch already had, and reword two docs bullets and these notes; no source file changed.
+
+| # | Advisory | What was done |
+|---|---|---|
+| 1 | Difference 7 said "six changes" for seven | corrected, with the row for the "emptied" bullet |
+| 2 | The deletion-key bindings still need the user's sign-off | nothing to change: they are listed under "Decisions that await the user's sign-off" |
+| 3 | A language handler that dispatches without claiming its event is signalled twice | recorded under "Found on the way" |
+| 4 | A whole line selected from the margin in a quoted code block still loses its `>`, and neither the docs nor the notes said so | row S9, a sentence in the "With text selected" bullet, an entry under "Found on the way" and one for the user's sign-off |
+| 5 | The docs listed an adjacent tag pair among the pairs that split without saying "in HTML" | "in HTML" added |
+| 6 | The two position tests of `isBetweenPair` are redundant, not only unpinned | the disclosure says so |
+| 7 | G9's title read wider than what it pins | the title says "while the editor is read-only" |
+
+### Found on the way
+
+- **The viewer's live preview logs an error per keystroke while a fenced block is being typed in the "MD Editor" tab's source mode**: `Layout flush: an afterNextLayout callback threw … DOM handle … is not registered`. It is the same with the base's `CodeEditor.ts` and `languages.ts` put back, so it is not this branch's. A code block's `CodeEditor` defers its first height sync to the next layout, and the preview has disposed that editor by then. It needs a plan of its own.
+- **CodeMirror's plain Enter tests the wrong text for "only whitespace in front of the caret".** `insertNewlineAndIndent` slices the caret's line with the document offset where it means the offset in the line (`@codemirror/commands` index.js, `line.text.slice(0, from)`), so the test holds on the first line of a document and for a wholly blank line, and nowhere else. The plan's "a line of only spaces and tabs is emptied" is what that amounts to. If an upgrade fixes it, plain Enter will also empty the indentation in front of a caret that stands in it, and rows that pin plain Enter there (the differential has them, the test file has none) would change; this command would then differ from it for such a caret.
+- **A whole line selected from the margin in a quoted code block still loses its `>`** (row S9). Home, Shift-End, Enter on `> code` in a fenced block in a blockquote leaves an empty line and a new line without `>`, which ends the quote and breaks the fence: defect 1 for that gesture, as at the base. The selection starts in front of the `>`, which the plan's non-goal "A caret in front of a marker on its line" passes on. The docs say so. Closing it means giving a prefix to a line break in front of a marker, which the earlier plan and this one decline.
+- **A language's handler that dispatches a change and does not claim its event is signalled twice** (seen by the third reviewer in a jsdom probe). A registered language's `paste` handler that dispatches and returns `false` gives one `"readonlyedit"` from the update listener and one from the editor's own `paste` hook; an Enter command that dispatches and returns `false` would do the same in a browser through `beforeinput`. No built-in language does this.
+- **A selection that covers the whole text of the last line of an HTML block in a blockquote** (`> [abc]` under `> <div>`, at the block's end) gets a new line without the `>`. The range starts at the end of the prefix, which place 3 leaves to Markdown's own command so that an empty quoted line can be left (row C25), and Markdown's own command passes a selection on. It is the same as in ordinary quoted text (row S4). Mid-block the same selection keeps its `>` (row S2).
+- **On Android Chrome a deletion key may be signalled twice** (read from `@codemirror/view`, not run). A virtual keyboard's Backspace arrives as `beforeinput`, which the editor's hook signals; CodeMirror then replays it as a key press, which reaches the bindings of difference 6. The flash restarts, so it shows once; `"readonlyedit"` would fire twice.
+- **In an unclosed fenced block in a blockquote, Enter cannot leave the quote** (row F7's second line). The docs say to close the fence or delete the prefix.
+
+### Verification
+
+- `npm run typecheck`, `npm run typecheck:test`, `npm run lint`: clean. `npm run test`: green (the count is in the run's report). `npm run docs:api`: no warnings. `npm run docs:llms:check`: OK. `npm run build:lib` succeeds, and the languages chunk still imports no `@codemirror/lang-*` package statically.
+- The plan's greps: `EditorState.transactionFilter.of(refuseDocumentChange)` once in `CodeEditor.ts`; `continueContainersInsideHtml`, `isCaretInsideContainedHtml` and `isBetweenAdjacentTags` nowhere in `languages.ts`; `run: insertNewlineKeepPrefix(support.language)` once; `buildReadOnlyExtension` not in `component/editor/index.ts`.
+- The rebase-clean checkpoint: the branch stands on its start point, `fef32344b`, a phase start and not `master`, so there was nothing to rebase.
+
+### Decisions that await the user's sign-off
+
+No non-goal of the plan was reversed. These were decided without the user:
+
+- **Backspace and Delete flash a read-only editor** (difference 6). New behaviour in every read-only `CodeEditor`, SQLAdmin's three and the viewer's code blocks among them. It is what the plan's V5 expects and what its table assumes already happens. It adds a pattern with no precedent in the library, a key map derived from another by a test on the key's name. It is separate: the code commit "Signal Backspace and Delete in a read-only CodeEditor" and the documentation commit "Document that Backspace and Delete flash a read-only CodeEditor". Dropping both leaves the rest intact: the Read-only section then counts the two keys among "every other key that edits", and V5 holds for Enter only.
+- **What stays quiet** (difference 8). Every key whose command declines on its own is refused with no event and no flash, as at the base: undo, redo, the comment, indent and line commands, and Tab, which moves focus on. So are Replace and Replace all, and the cut key still copies the selection where `cut()` called from code copies nothing. After difference 6, Backspace flashes and Ctrl-Shift-K, which deletes a line, does not. Whether those keys should flash, and whether the cut key should be refused like `cut()`, is the user's call; nothing was changed. The plan's own wording, that an edit "is signalled once for each refused edit", could not be kept: the docs and the JSDoc now say what is signalled and what is not.
+- **A whole line selected from the margin in a quoted code block** still breaks the quote on Enter (row S9, and "Found on the way"). It is inside the plan's non-goal, and it is defect 1 for a common gesture. Whether to close it is the user's call; nothing was changed beyond a row and a docs sentence.
+- **The completion list still opens in a read-only editor and stays open after a refused pick.** The plan's non-goal keeps the opening; the staying open follows from dropping the whole transaction.
+- **The filter's precedence** (difference 4) and **the re-check in `format()`** (difference 5): both are in the read-only code commit and cannot be separated from it without leaving the gap they close.
+- **The migration note** gained two clauses and the changelog bullet a pointer to it (difference 9), though the plan files the change under "Fixed" with no migration text. It is in the read-only documentation commit.
+- **Rows beyond the plan** (difference 2) and **the corpus cases with the test over them** (difference 10). Tests only. The test lists one case the viewer reads otherwise; fixing the viewer is `markdown-tab-column-parity`'s.
+- **Row C42's new text** (difference 3), which the earlier plan's notes announce.
+- **The `CodeEditor.md` wording** in differences 7 and 8.
+
+### For the plans that follow
+
+**`markdown-tab-column-parity`**
+
+- It pins rows TAB1–TAB11 "after the M37 loop" in `code-editor.test.ts`. Ids taken in the file now: M1–M37, C1–C42, H1, H2, B1–B24, K1–K4, F1–F42, S1–S9, RO1–RO16. The mounted file holds G1–G21.
+- `describe('built-in markdown language typing', …)` starts at 3385; `buildTypingState` and `settle` are unchanged, 162 lines further down than it records. `mountOffline`, which its neighbour `describe('CodeEditor keymap order', …)` uses, is now a module-level function at 1995.
+- `markdown-roundtrip.test.ts` has a **second named exception** of the kind it removes: `READ_WITH_OTHER_CODE_TEXT`, with the case `Enter after a fence opened on an item marker line with a tab after the marker`. Once the viewer counts that tab as CommonMark does, the test turns red until the constant, its lookup and the `else` branch are removed, as for `READ_OUT_OF_ITS_ITEM`.
+- It adds a `blocks` field to `CorpusCase` in `corpus/types.ts`. `corpus/enterInCode.ts` declares a subtype, `EnterInCodeCase`, with a `reads` field of the same purpose in another shape (a list of leaves with their container path). The two can stay side by side; if that plan wants one field, the 33 `reads` are the ones to rewrite.
+- `corpus/enterInsideHtml.ts`, which it edits, has 12 more cases at its end and a changed doc comment ("some with text typed on the new line").
+- The docs bullet on `tabSize`, which it leaves to this plan, is now the "editor's plain Enter" bullet of `CodeEditor.md`'s Enter list. Its example is a tab-indented line inside a top-level `<div>` block.
+- `MARKDOWN_TAB_STOP` and `indentInsideMarkdownHtml` in `languages.ts` are unchanged.
+
+**`markdown-source-mode-block-locator`**
+
+- It touches none of this branch's source files. Its source-mode commands still reach the editor through `CodeEditor.replaceRange`, one change per command; in a read-only editor that method refuses before it dispatches, so the filter is never asked.
+- `MarkdownEditor.md` and `next.md`, which it shares, changed in two places each: the source-mode sentence and the read-only paragraph of the first, and three bullets at the end of `## Fixed` → `### Components` of the second, with one sentence taken out of the earlier Enter bullet.
+
+**`markdown-source-mode-command-gaps`**
+
+- The plan file is not in this worktree's `plans/`; it is tracked on `master`, where it was read. It shares only `MarkdownEditor.md` and `next.md` with this branch, changed as above, and it relies on `canSetBlockType` staying `true` in source mode "whenever the editor is not read-only", which this branch does not touch.
