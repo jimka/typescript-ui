@@ -67,6 +67,29 @@ SELECT * FROM t WHERE c <@ '{}'::jsonb;
 CREATE OR REPLACE FUNCTION f() RETURNS int AS $$ BEGIN RETURN 1; END; $$ LANGUAGE plpgsql;
 `;
 
+// The places the "markdown" language handles Enter itself: a fenced code
+// block in a blockquote, one opened on a list item's marker line, and an HTML
+// block in a nested item whose lines are indented with a literal tab. Enter at
+// the end of any of their lines is the manual-verify handle for "the new line
+// stays in its quote, item and code block", at each "Tab size"; with
+// "Read-only: on", Enter on the first line is the handle for "a read-only
+// editor cannot be edited from the keyboard".
+const SAMPLE_MARKDOWN = `- item
+
+> \`\`\`js
+> const quoted = true;
+> \`\`\`
+
+- \`\`\`js
+  const listed = true;
+  \`\`\`
+
+- a
+  - b
+\t<div>
+\tx
+\t</div>`;
+
 // A foldable block plus a single long line, with autoHeightMaxRows set, so
 // toggling Wrap and folding/unfolding the block below are both manual-verify
 // handles for line wrap and folding driving auto-height growth/shrink — the
@@ -90,11 +113,11 @@ const longLine = "this line is deliberately long enough that, with Wrap turned o
  * the dirty flag (standing in for a host that has persisted the document),
  * Reveal and Preview jump the editor to a fixed range — Preview without
  * taking focus, to demonstrate the highlight surviving an unfocused editor —
- * and the Language row swaps the editor between JavaScript, CSS, Python, and
- * JSON samples. The editor sits in a `Fit` panel so it fills the available
- * space and scrolls internally — which also means it has no
- * `autoHeightMaxRows`, so it cannot demonstrate line wrap or folding driving
- * a height change on its own.
+ * and the Language row swaps the editor between JavaScript, CSS, Python,
+ * JSON, SQL and Markdown samples. The editor sits in a `Fit` panel so it
+ * fills the available space and scrolls internally — which also means it
+ * has no `autoHeightMaxRows`, so it cannot demonstrate line wrap or folding
+ * driving a height change on its own.
  *
  * The lower editor exists for exactly that: it carries `autoHeightMaxRows`,
  * and its own Wrap button — its only action, so it stands alone above the
@@ -203,6 +226,7 @@ class CodeEditorPanel extends Panel {
         upperToolbar.addComponent(this.makeLanguageButton('Python', 'python', SAMPLE_PYTHON));
         upperToolbar.addComponent(this.makeLanguageButton('JSON', 'json', SAMPLE_JSON));
         upperToolbar.addComponent(this.makeLanguageButton('SQL', 'sql', SAMPLE_SQL));
+        upperToolbar.addComponent(this.makeLanguageButton('Markdown', 'markdown', SAMPLE_MARKDOWN));
         this.addComponent(upperToolbar);
 
         const editorHost = new Panel({ layoutManager: new Fit() });
