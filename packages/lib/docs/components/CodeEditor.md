@@ -155,7 +155,7 @@ A language extension that binds a key the editor also binds — Enter, Backspace
 - When the result does change the document, the editor's visible area no longer unconditionally jumps to the top. It stays exactly in place when nothing above it changed length, which is the common case for an incremental edit-then-save, and can otherwise shift — by roughly however much text the formatter added or removed above it, never all the way back to the top — when a reformat changes text throughout the document, e.g. a first-time format of a wholly unformatted file.
 - If the formatter **throws** (invalid syntax, or an `options` value the engine rejects — e.g. a negative `indentWidth`), the promise **rejects** and the document is left **completely untouched** — formatting never loses content.
 - If the active language has no formatter (or none is set), `format()` re-indents the whole document using CodeMirror's own indentation service instead, ignoring `options` entirely.
-- While the editor is read-only, `format()` is refused: no formatter runs, nothing is re-indented, and the rejection surfaces through the `"readonlyedit"` event and the read-only flash, as it does for `replaceRange()`. The promise still resolves.
+- While the editor is read-only, `format()` is refused: no formatter runs, nothing is re-indented, and the rejection surfaces through the `"readonlyedit"` event and the read-only flash, as it does for `replaceRange()`. The promise still resolves. A result that arrives after the editor was made read-only is refused the same way.
 
 ## Formatting options
 
@@ -206,6 +206,16 @@ has no formatter at all, so `format()` re-indents instead and `options`
 ## Dirty state
 
 The editor reports itself dirty, via the framework's [`Component.isDirty()`](/api/core/classes/Component) mechanism, whenever its document differs from the text at the last clean point — the text it was constructed with, or the text `markClean()` last accepted. Typing, paste, `format()`, and `setValue()` all go through the same check, so an edit undone back to the clean text clears the flag on its own. `isDirty()` folds up into every ancestor container automatically. A host that loads a document with `setValue()` should follow it with `markClean()`, so the loaded text becomes the clean text.
+
+## Read-only
+
+`readOnly: true`, or `setReadOnly(true)`, locks the document. The caret, selection, copy, search, folding and scrolling keep working; nothing the user does changes the text. That holds for every key, for paste, drop and cut, for a completion picked from the list, and for every language, including one you [register](#registering-a-language): the editor itself refuses any change to a read-only document, so a language's own key bindings and handlers cannot edit it either. The one way past it is a change dispatched with CodeMirror's `filter: false`, which no built-in language uses.
+
+A refused edit fires the `"readonlyedit"` event and flashes the editor when it reaches the editor as input or as a change to the document: typed text, Enter, a paste, a drop, a completion picked from the list, and whatever a language's own command or handler tries to change. `replaceRange()`, `cut()`, `paste()` and `format()` are refused the same way when called from code, and so is a `paste()` or `format()` that was started before the editor became read-only and ends after.
+
+Every other key that edits is refused quietly, with no event and no flash, because its command declines on its own and nothing reaches the editor, such as undo and redo, toggling a comment, moving, copying or deleting a line, and indenting. Tab and Shift-Tab then move focus to the next or previous control, as there is nothing to indent. Replace and Replace all in the search panel are quiet as well, and the cut key copies the selection and removes nothing. The completion list still opens with `Ctrl-Space`; picking an entry is refused, and the list stays open until `Escape`.
+
+`setValue()` still replaces the whole document: read-only guards against edits, not against the host loading another document. `setLanguage()` and the other option setters work as before.
 
 ## Cursor position
 
@@ -287,6 +297,8 @@ Tab then moves focus again, and the same shortcut switches back to indenting.
 | `(` / `[` / `{` / `"` / `'` (typed) | Insert the matching closing character, caret between. The active language decides which characters close: `json` closes only `[`, `{` and `"`, while `javascript` and `sql` also close a backtick |
 | `Backspace` (caret between an empty pair the language closes, such as `()` or `""`) | Delete both characters. With several carets, only when every caret is between such a pair. In `python`, three quotes typed in a row close as `"""` on each side of the caret, and each `Backspace` there deletes one quote on each side |
 
+In a [read-only](#read-only) editor none of these keys changes the document.
+
 When the app enables [spatial focus navigation](/concepts/accessibility#spatial-focus-navigation), its `Ctrl+Alt`+arrow chord takes `Ctrl-Alt-↑` / `Ctrl-Alt-↓` (add a cursor above / below) on Windows and Linux: the chord moves focus out of the editor instead. Alt+drag still makes a rectangular selection. Word selection (`Ctrl-Shift-←` / `Ctrl-Shift-→`) is not affected.
 
 ## Search and replace
@@ -306,7 +318,7 @@ The card has nine controls, each a glyph-only button whose hover tooltip names i
 | Replace all | Replaces every match in one undo step |
 | Close | Closes the card |
 
-Replace and Replace all are inert while the editor is `readOnly: true`.
+Replace and Replace all are inert while the editor is `readOnly: true`, with no flash; see [Read-only](#read-only).
 
 ## Revealing a range
 
@@ -339,10 +351,10 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 
 | Method | Purpose |
 | --- | --- |
-| `getValue()` / `setValue(value)` | Read or replace the whole document. |
+| `getValue()` / `setValue(value)` | Read or replace the whole document. `setValue` also works while the editor is [read-only](#read-only). |
 | `getLanguage()` / `setLanguage(id, options?)` | Read or swap the active language and its options (grammar loads lazily; omitted options reset to `{}`). |
 | `getLanguageOptions()` | Read a copy of the active language's options. |
-| `getReadOnly()` / `setReadOnly(readOnly)` | Read or toggle whether the editor accepts edits. |
+| `getReadOnly()` / `setReadOnly(readOnly)` | Read or toggle whether the editor accepts edits. See [Read-only](#read-only). |
 | `format(options?)` | Format the document (or re-indent, with no formatter). Refused, with the read-only flash, while the editor is read-only: nothing is formatted or re-indented. |
 | `on('change', fn)` / `off('change', fn)` | Subscribe to document changes. |
 | `getAutoHeightMaxRows()` | Read the configured `autoHeightMaxRows`, or `null` when unset. |

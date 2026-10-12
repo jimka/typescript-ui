@@ -1540,6 +1540,25 @@ page resets to empty.
   selection. The caret now stands on that empty line. No consumer action is
   needed.
 
+- **A read-only `CodeEditor` can no longer be edited from the keyboard or
+  the completion list.** `readOnly` relied on each editing command checking
+  it, and some do not. With `language: "markdown"`, Enter on a list or
+  blockquote line added a line, Backspace after a list marker removed the
+  marker, and pasting a URL over selected text wrapped the text in a link.
+  In every language, clicking an entry of the completion list, which
+  `Ctrl-Space` still opens, inserted it. A read-only `MarkdownEditor` in
+  `"source"` mode was affected the same way, and so was a code block of the
+  `Markdown` viewer, which is a read-only `CodeEditor`. The editor now
+  refuses every change to a read-only document itself, whichever key
+  binding, handler or language it comes from, and signals it with the
+  `"readonlyedit"` event and the rejection flash. `setValue()` still loads a
+  document into a read-only editor, and `setLanguage()` and the other option
+  setters still apply. A `format()` whose formatter ends after the editor
+  was made read-only is refused like one called while it was. A language you
+  registered is covered too: if its extension changes the document of a
+  read-only editor on its own, that change is now refused. See
+  [Migration](/reference/migration/next) for the note.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
