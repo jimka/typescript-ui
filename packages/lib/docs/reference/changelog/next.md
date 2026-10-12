@@ -1478,11 +1478,9 @@ page resets to empty.
   marker replaced by spaces. It never starts a new list item. The prefix is
   copied as written, so a tab stays a tab whatever the editor's `tabSize`.
   Inside `<script>` and `<style>` in a blockquote or list item, the new line
-  gets that prefix too, in place of JavaScript's or CSS's own indentation,
-  and Enter between a bracket pair there (`f(|)`) adds one line: the closing
-  bracket no longer moves to a line of its own, as it does not in other text
-  of a quote or item. Markdown's own continuation at the end of an HTML
-  block is unchanged. No consumer action is needed.
+  gets that prefix too, in place of JavaScript's or CSS's own indentation.
+  Markdown's own continuation on a list item's marker line at the end of an
+  HTML block is unchanged. No consumer action is needed.
 
 - **`MarkdownEditor`'s block type and list commands act where a deleted
   table leaves the caret.** After `deleteTable()` the caret stands
@@ -1539,6 +1537,29 @@ page resets to empty.
   `$getTextNodeOffset: invalid offset` and left the editor without a usable
   selection. The caret now stands on that empty line. No consumer action is
   needed.
+
+- **Enter in a Markdown code block keeps the new line in its blockquote or
+  list item.** In `MarkdownEditor`'s `"source"` mode, and in any
+  `CodeEditor` with `language: "markdown"`, Enter in a fenced code block
+  inside a blockquote started the new line without the `>`, which ends the
+  quote and breaks the fence. Enter after a fence opened on a list item's
+  first line (`` - ```js ``) put the new line at the margin, outside the
+  item, and Enter in an indented code block inside a blockquote or list item
+  dropped the code's indentation. In a code block the new line now starts
+  with the same prefix as the line the caret is on: its `>` markers and its
+  indentation, with a list marker replaced by spaces. The prefix is copied
+  as written, so a tab stays a tab whatever the editor's `tabSize`. Before,
+  Enter on a tab-indented code line wrote `tabSize` spaces, which at
+  `tabSize: 2` moved the new line out of an indented code block or a nested
+  list item. The same now holds at the end of an HTML block on a line of a
+  list item, where a tab-indented line used to lose its indentation
+  altogether, on a blank indented last line of the document, and when Enter
+  replaces a selection that starts inside a code block or inside HTML in a
+  blockquote or list item. Enter between an empty `()`, `[]` or `{}` in a
+  code block still moves the closing bracket to its own line, now with the
+  prefix on both new lines, and does so inside `<script>` and `<style>` in a
+  blockquote or list item as well. Markdown's own list and blockquote
+  continuation is unchanged. No consumer action is needed.
 
 - **A read-only `CodeEditor` can no longer be edited from the keyboard or
   the completion list.** `readOnly` relied on each editing command checking
