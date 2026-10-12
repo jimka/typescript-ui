@@ -1857,6 +1857,16 @@ page resets to empty.
   is removed with the table and no break is added. No consumer
   action is needed.
 
+- **A raw Markdown block left holding nothing shows as an empty paragraph.**
+  Deleting all that a raw block holds, or a selection from its start on into
+  a later block, left a raw block of no text. A save writes nothing for one,
+  so a reload showed the document without it, Shift+Enter could leave it
+  holding a lone line break, and what was pasted into it went in as plain
+  text. It now shows as an empty paragraph holding the caret, whichever key
+  removed the text, and what is typed or pasted next is rich text.
+  Shift+Enter over a selection that would leave nothing but the break does
+  nothing, as in any empty paragraph. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
