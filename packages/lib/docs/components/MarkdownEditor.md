@@ -315,11 +315,12 @@ One corner case: a `markClean()` taken in source mode over text the WYSIWYG surf
 - It is a tab stop. Tab and Shift+Tab leave it, from a table cell too.
 - The arrow keys, Home and End, PageUp and PageDown, and their word and document forms move the caret. Shift with any of them selects, and Ctrl/Cmd+A selects the editor's text, not the page's. The mouse selects as before.
 - Ctrl/Cmd+C copies the selection. Shift+F10 or the ContextMenu key opens the context menu at the caret, which then offers only Copy.
+- Enter with the caret in a link opens the link, and so does a click on one — see [below](#following-a-link).
 - Switching read-only on or off leaves the selection and the keyboard focus where they are.
 
 While read-only no edit reaches the document or the undo history, and a refused edit leaves the caret or the selection where it is:
 
-- Typing, Enter, Backspace and Delete, a paste, a cut, a drop, a composition (IME input), a spelling replacement, and the browser's format shortcuts (Ctrl/Cmd+B, +I, +U) are refused. Text that is dragged out of the editor is copied, not moved.
+- Typing, Enter outside a link, Backspace and Delete, a paste, a cut, a drop, a composition (IME input), a spelling replacement, and the browser's format shortcuts (Ctrl/Cmd+B, +I, +U) are refused. Text that is dragged out of the editor is copied, not moved.
 - The undo and redo keys (Ctrl/Cmd+Z, Ctrl+Y, Ctrl/Cmd+Shift+Z, and Alt+Backspace with or without Shift, which a browser on Windows gives its undo and redo) do nothing: not in the editor, whose history is kept as it is for when the lock is lifted, and not in the rest of the page, whose last edit the browser's own undo would otherwise take back from here.
 - Every command that edits is refused, called from code or from a toolbar: a call such as `toggleBold()`, `insertTable()` or `cut()` leaves the document and the selection as they are, and `paste()` resolves `false` without reading the clipboard. `copy()` still copies.
 - Replacing the whole document with `setValue()` stays possible, as on a read-only `CodeEditor`: read-only guards against edits, not against the host loading another document. To change a read-only editor's document from code, load the new text with `setValue()`, or lift the lock around the command.
@@ -338,8 +339,6 @@ What a browser makes of `aria-readonly` is the browser's. Chromium reports the t
 
 `setContentEditable` is separate from read-only, in both directions. It decides whether the WYSIWYG surface hosts a caret at all: `setContentEditable(false)` takes the caret, the keyboard selection and the tab stop away, read-only or not. A read-only editor's surface is `contenteditable`, which is what gives it its caret, and `setContentEditable(true)` cannot make a read-only editor editable: every edit is refused all the same.
 
-A link in the editor is not followed, read-only or not: a click on one places the caret in it.
-
 Known limits of a read-only WYSIWYG surface:
 
 - `copy()` at a caret copies the word the caret is in without selecting it.
@@ -353,6 +352,19 @@ Known limits of a read-only WYSIWYG surface:
 - The read-only state is written as `aria-readonly`, which Chromium does not pass on to assistive technology for an editing host (see above).
 
 For a purely *display* use case, prefer the leaner [`Markdown`](/components/Markdown) viewer, which needs no Lexical — `MarkdownEditor`'s read-only mode is for temporarily locking an editor, not for replacing the viewer.
+
+### Following a link
+
+A read-only editor follows its links; an editable one does not, since a click there places the caret for editing and Enter breaks the paragraph.
+
+- **By keyboard:** move the caret into the link and press Enter. `getSelectionState().linkUrl` says when the caret is in one, and Enter follows the link at every place where it does: in the link's text, and beside an image the link holds. A held Enter opens the link once.
+- **By mouse:** click the link, with the main button or the middle one. A run of clicks opens the link once, on its first click: the later clicks of a double click, a triple click or a longer run go on to select a word or a block and open nothing more. A first click that itself selects text, the end of a drag or a Shift+click, does not open the link. A click on a link whose text is selected already opens it, and a click beside a link does not.
+
+The link opens in a new tab, with `target="_blank"` and `rel="noopener noreferrer"`, as a link of the [`Markdown`](/components/Markdown) viewer does by default. Its address is the one the link was written with, which is what `linkUrl` reports: a relative address, or one that starts with `http:`, `https:`, `mailto:`, `tel:` or `sms:`. A link with any other scheme, `javascript:` for instance, is not followed, and neither is a relative address that holds a `:` or a link with an empty address (`[text]()`); Enter in such a link is a refused edit like Enter anywhere else. Following a link is not an edit: no `"readonlyedit"` fires and nothing flashes.
+
+Enter follows a link from a caret only, and pressed alone. With text selected it is a refused edit, and so is Shift+Enter; with Ctrl, Alt or Cmd held the editor does not treat it as Enter and leaves the key to the browser: it follows no link, and whatever edit the browser then announces is a refused edit like any other.
+
+The editor alone follows a link of a read-only editor. Where the surface is not `contenteditable` (after `setContentEditable(false)`), a browser would follow a clicked or middle-clicked link itself, a click in the same tab; the editor cancels that and opens the link in a new tab as above. There a link is a tab stop of its own, and Enter on it follows it. An editable editor leaves a click on a link to the browser.
 
 ## Theming
 

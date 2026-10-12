@@ -697,6 +697,17 @@ page resets to empty.
   mode it is what the source `CodeEditor` reports, which had no public hook.
   The `listeners` option takes it too.
 
+- **A read-only `MarkdownEditor` follows its links.** In WYSIWYG mode,
+  Enter with the caret in a link opens the link, and so does a click or a
+  middle click on it, in a new tab with `rel="noopener noreferrer"`, as
+  the `Markdown` viewer opens a link by default. The address is the one the link was
+  written with; one that is empty, or neither relative nor an `http:`,
+  `https:`, `mailto:`, `tel:` or `sms:` address, is not followed. A run of
+  clicks opens the link once, on its first click, and a drag over the
+  link's text opens nothing. An editable editor
+  follows no link, as before: a click there places the caret. See
+  *Following a link* in the `MarkdownEditor` docs.
+
 ### Core
 
 - **`Body.init({ strings })`, `Body.setStrings`, `Body.getStrings` and the
