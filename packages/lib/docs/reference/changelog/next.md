@@ -1559,6 +1559,18 @@ page resets to empty.
   read-only editor on its own, that change is now refused. See
   [Migration](/reference/migration/next) for the note.
 
+- **Backspace and Delete flash a read-only `CodeEditor`.** A read-only
+  editor answers typed text and Enter with the `"readonlyedit"` event and
+  the rejection flash, but Backspace and Delete were ignored without either,
+  in every language: CodeMirror's bindings for the two keys stop the
+  browser's default even when their command declines, so the editor never
+  saw the key as input. Both keys are now signalled like a typed character,
+  once per key press: each alone, Backspace with Shift, and each with the
+  modifier that deletes a word or a line. Those are the combinations that
+  were swallowed. Every other combination with the two keys, Shift-Delete
+  among them, still goes to the browser, as in an editor that is not
+  read-only. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
