@@ -40,6 +40,7 @@ import { $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNo
 import {
     $buildInlineContent, $readBlocksWithDefinitions, $readRawBlockAsBlocks, MARKDOWN_IMPORT_TAG,
 } from "~/component/editor/markdownImporter.js";
+import { $placeOfSourceOffset, $placeOutsideSourceNode } from "~/component/editor/markdownSourcePlaces.js";
 import {
     $isMarkdownRawBlockNode, $isMarkdownSourceTextNode, MarkdownRawBlockNode, MarkdownSourceTextNode,
 } from "~/component/editor/markdownSourceNodes.js";
@@ -1020,9 +1021,12 @@ function $readListAgainAroundRawBlock(node: MarkdownRawBlockNode): void {
  * block ends it, a fence typed into it opens a code block, a tag a deletion
  * broke leaves a paragraph. The save writes the raw block's text, which the
  * viewer reads as those blocks, so the editor shows them so too, each as a
- * load builds it; the caret goes to the block it was in, at the same place
- * in its text where that text reads as the raw text did. Not during a load,
- * which builds raw blocks from text that reads as one raw block.
+ * load builds it; the caret goes to the block it was in, at the place in
+ * that block's text where it stood in the raw text: counted from the
+ * block's start where the text before the caret shows as it is written,
+ * and found from the source of what the block shows where it does not
+ * ({@link $selectCaretPlace}). Not during a load, which builds raw blocks
+ * from text that reads as one raw block.
  *
  * @param node - The raw block whose text changed.
  */
@@ -1031,7 +1035,8 @@ function $showRawBlockAsItsBlocks(node: MarkdownRawBlockNode): void {
         return;
     }
 
-    const reading = $readRawBlockAsBlocks(node.getTextContent());
+    const text = node.getTextContent();
+    const reading = $readRawBlockAsBlocks(text);
 
     if (reading === null) {
         return;
@@ -1050,28 +1055,56 @@ function $showRawBlockAsItsBlocks(node: MarkdownRawBlockNode): void {
     }
 
     const index = Math.max(0, reading.spans.findIndex(([, end]) => end >= caret));
-    const [start] = reading.spans[index] ?? [0, 0];
+    const span = reading.spans[index] ?? [0, 0];
+    const [start] = span;
     const block = reading.nodes[index] ?? reading.nodes[reading.nodes.length - 1]!;
 
     if (!$isElementNode(block)) {
         return;
     }
 
+    const showsAsWritten = block.getTextContent().startsWith(text.slice(start, caret));
+
     if (caret <= start) {
         block.selectStart();
-    } else if (block.getTextContent().startsWith(node.getTextContent().slice(start, caret))) {
+    } else if (showsAsWritten) {
         $selectTextOffset(block, caret - start);
     } else {
+        $selectCaretPlace(text, caret, block, span);
+    }
+}
+
+/**
+ * Puts the caret where it stood in a raw block's text, in the block that
+ * text now reads as, when the text before the caret does not show as it is
+ * written — a quote's or a list item's marker stands before it, a line end
+ * that shows as a space, the delimiters of formatted text: at the place
+ * the caret's offset has in the block ({@link $placeOfSourceOffset}), so
+ * that nothing the block shows is on another side of the caret than its
+ * source was; at the end of the block where that place is not found.
+ *
+ * @param text - The raw block's text.
+ * @param caret - The caret's offset in it.
+ * @param block - The block the text reads as around the caret.
+ * @param span - The block's `[start, end)` offsets in the text.
+ */
+function $selectCaretPlace(text: string, caret: number, block: ElementNode, span: readonly [number, number]): void {
+    const place = $placeOfSourceOffset(text, caret, block, span[0], span[1]);
+
+    if (place === null) {
         block.selectEnd();
+    } else {
+        place.node.select(place.offset, place.offset);
     }
 }
 
 /**
  * Puts a collapsed caret at an offset in a block's text, a line break
  * counting as the one character it shows as: inside the text node the offset
- * falls in, or, where it falls on a line that holds no text, at the element
- * point before that line's line break, which is how Lexical addresses an
- * empty line of a block.
+ * falls in — beside it, when that node is a source node
+ * ({@link $placeOutsideSourceNode}) — or, where it falls on a line that
+ * holds no text, at the element point before that line's line break, which
+ * is how Lexical addresses an empty line of a block.
  *
  * @param block - The block.
  * @param offset - The offset in the block's text content.
@@ -1084,7 +1117,10 @@ function $selectTextOffset(block: ElementNode, offset: number): void {
             const size = node.getTextContentSize();
 
             if (remaining <= size) {
-                node.select(remaining, remaining);
+                // Counted from the block's start, the offset can fall inside a source node, where no caret is left.
+                const place = $placeOutsideSourceNode({ node, offset: remaining });
+
+                place.node.select(place.offset, place.offset);
 
                 return;
             }

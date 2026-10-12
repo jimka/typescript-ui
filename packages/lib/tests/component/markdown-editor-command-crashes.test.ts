@@ -1234,6 +1234,8 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
     const CODE_TEXT = 'code *a*\nline2';
     const TABLE = '| a | b |\n| --- | --- |\n| c1 | d1 |';
     const TWO_RAW = '<div>\nraw one\n</div>\n\n<section>\nraw two\n</section>\n\nafter';
+    /** A quote of two paragraphs, which the editor holds as one raw block. */
+    const RAW_QUOTE_ALONE = '> q1\n>\n> q2';
 
     /** One way of removing or replacing a selection. */
     type Route =
@@ -1297,13 +1299,50 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         { id: 'TE42', name: 'raw comment → later word, left open before a block', source: '<!-- c1\nc2 -->\n\nafter\n\nmore', start: ['<!-- c1', 6], end: ['after', 1], typed: '\\<!-- cxfter\n\nmore', deleted: '\\<!-- cfter\n\nmore' },
         { id: 'TE43', name: 'raw comment of a list item → a later paragraph of that item, left open before a block', source: '- one\n\n  <!-- c1\n  c2 -->\n\n  para\n\n  more\n- z\n\nafter', start: ['<!-- c1', 6], end: ['para', 1], typed: '- one\n\n  \\<!-- cxara\n\n  more\n\n- z\n\nafter', deleted: '- one\n\n  \\<!-- cara\n\n  more\n\n- z\n\nafter' },
         { id: 'TE44', name: 'raw comment → the text of an item that holds blocks, left open before them', source: '<!-- c1\nc2 -->\n\n- two\n\n  pq\n- z\n\nafter', start: ['<!-- c1', 6], end: ['two', 1], typed: '\\<!-- cxwo\n\npq\n\n- z\n\nafter', deleted: '\\<!-- cwo\n\npq\n\n- z\n\nafter' },
+        { id: 'TE45', name: 'the first paragraph of a raw quote → later word (re-read as a quote)', source: '> q1 w\n>\n> q2\n\nafter', start: ['> q1 w', 5], end: ['after', 1], typed: '> q1 xfter', deleted: '> q1 fter' },
+        { id: 'TE46', name: 'a later line of a raw quote → a later block\'s start (re-read as a quote of two lines)', source: '> q1\n>\n> q2\n\nafter b\n\nmore', start: ['>', 0], end: ['after b', 0], typed: '> q1\n> xafter b\n\nmore', deleted: '> q1\n> after b\n\nmore' },
+        { id: 'TE47', name: 'a later line of a raw list → later word (re-read as a list)', source: '- a\n  > q\n- b\n\nafter', start: ['  > q', 2], end: ['after', 1], typed: '- a\n  xfter', deleted: '- a\n  fter' },
+        { id: 'TE48', name: 'a later line of a raw table → later word (re-read as a paragraph)', source: '| a |\n| - |\n| b | c |\n\nafter', start: ['| - |', 2], end: ['after', 1], typed: '| a |\n| xfter', deleted: '| a |\n| fter' },
+        { id: 'TE49', name: 'a later line of a raw list → an escaped character (re-read as a list)', source: '- a\n  > q\n- b\n\nx \\* yz', start: ['  > q', 2], end: ['x * yz', 2], typed: '- a\n  x* yz', deleted: '- a\n  \\* yz' },
         { id: 'TE50', name: 'level 3 heading → raw start', source: `### head **b**\n\n${RAW}\n\nafter`, start: ['head ', 2], end: ['<div>', 0], typed: '### hex\\<div> raw text \\</div>\n\nafter', deleted: '### he\\<div> raw text \\</div>\n\nafter' },
+        { id: 'TE51', name: 'a raw quote\'s marker → later word\'s space (re-read as a quote, the caret inside a marker)', source: '> q1\n>\n> q2\n\nab cd\n\nmore', start: ['>', 1], end: ['ab cd', 2], typed: '> q1\n> xcd\n\nmore', deleted: '> q1\n> cd\n\nmore' },
         { id: 'TE52', name: 'a bold run after its space → raw', source: `ab **cd ef** gh\n\n${RAW}\n\nafter`, start: ['cd ef', 3], end: ['raw text', 2], typed: 'ab **cd x**w text\\\n\\</div>\n\nafter', deleted: 'ab **cd** w text\\\n\\</div>\n\nafter' },
+        { id: 'TE53', name: 'a raw quote\'s marker → a bold word\'s start (re-read, the caret between the marker and bold text)', source: `${RAW_QUOTE_ALONE}\n\n**Note** rest\n\nlast`, start: ['> q1', 2], end: ['Note', 0], typed: '> **xNote** rest\n\nlast', deleted: '> **Note** rest\n\nlast' },
+        { id: 'TE54', name: 'a raw quote\'s marker → inside a bold word', source: `${RAW_QUOTE_ALONE}\n\nx **bold** y\n\nlast`, start: ['> q1', 2], end: ['bold', 1], typed: '> **xold** y\n\nlast', deleted: '> **old** y\n\nlast' },
+        { id: 'TE55', name: 'a raw quote\'s marker → a link\'s start', source: `${RAW_QUOTE_ALONE}\n\n[link](/u) rest\n\nlast`, start: ['> q1', 2], end: ['link', 0], typed: '> x[link](/u) rest\n\nlast', deleted: '> [link](/u) rest\n\nlast' },
+        { id: 'TE56', name: 'a later line of a raw quote → inline code\'s start', source: `${RAW_QUOTE_ALONE}\n\n\`code\` rest\n\nlast`, start: ['>', 0], end: ['code', 0], typed: '> q1\n> `xcode` rest\n\nlast', deleted: '> q1\n> `code` rest\n\nlast' },
+        { id: 'TE57', name: 'a raw list\'s marker → a bold word\'s start', source: '- a\n  > q\n- b\n\n**Note** rest\n\nlast', start: ['- a', 2], end: ['Note', 0], typed: '- **xNote** rest\n\nlast', deleted: '- **Note** rest\n\nlast' },
+        { id: 'TE58', name: 'after bold text of a raw quote → a later block\'s end (the caret after formatted text, nothing after it; the space before the range goes)', source: '> **b** w\n>\n> q2\n\nafter', start: ['> **b** w', 7], end: ['after', 5], typed: '> **bx**', deleted: '> **b**' },
+        { id: 'TE59', name: 'after bold text of a raw quote → before a hard break (the caret after formatted text, a line break after it)', source: '> **b** w\n>\n> q2\n\nab\\\ncd', start: ['> **b** w', 7], end: ['ab', 2], typed: '> **bx**\\\n> cd', deleted: '> **b**\\\n> cd' },
+        { id: 'TE60', name: 'a raw quote\'s marker → before two spaces (the caret before spaces of which one shows)', source: `${RAW_QUOTE_ALONE}\n\nend.  Next\n\nmore`, start: ['> q1', 1], end: ['end.  Next', 4], typed: '> x Next\n\nmore', deleted: '> Next\n\nmore' },
+        { id: 'TE61', name: 'a later line\'s marker of a raw quote → before two spaces', source: `${RAW_QUOTE_ALONE}\n\nab  cd\n\nmore`, start: ['>', 1], end: ['ab  cd', 2], typed: '> q1\n> x cd\n\nmore', deleted: '> q1\n> cd\n\nmore' },
         { id: 'TE62', name: 'raw start → a later block\'s end (the raw block emptied)', source: `${RAW}\n\nafter\n\nlast`, start: ['<div>', 0], end: ['after', 5], typed: 'x\n\nlast', deleted: 'last' },
         { id: 'TE63', name: 'raw start → the end of the document (the raw block emptied, nothing left)', source: `${RAW}\n\nafter`, start: ['<div>', 0], end: ['after', 5], typed: 'x', deleted: '' },
         { id: 'TE64', name: 'the start of a list item\'s raw block → the end of that item\'s paragraph (the raw block emptied)', source: '- one\n\n  <div>\n  raw text\n  </div>\n\n  para\n- z\n\nafter', start: ['<div>', 0], end: ['para', 4], typed: '- one\n\n  x\n\n- z\n\nafter', deleted: '- one\n\n- z\n\nafter' },
         { id: 'TE65', name: 'raw start → the end of the next raw block (both emptied)', source: TWO_RAW, start: ['<div>', 0], end: ['</section>', 10], typed: 'x\n\nafter', deleted: 'after' },
+        { id: 'TE66', name: 'after bold text that ends in punctuation → before a space (the space stays after the caret)', source: '> a **Note:** w\n>\n> q2\n\nab next\n\nlast', start: ['> a **Note:** w', 13], end: ['ab next', 2], typed: '> a **Note**:x next\n\nlast', deleted: '> a **Note:** next\n\nlast' },
+        { id: 'TE67', name: 'after italic text written with underscores → before a space', source: '> some _word_ w\n>\n> q2\n\nab next\n\nlast', start: ['> some _word_ w', 13], end: ['ab next', 2], typed: '> some *word*x next\n\nlast', deleted: '> some *word* next\n\nlast' },
+        { id: 'TE68', name: 'after struck text that ends in punctuation → before two spaces', source: '> a ~~s.~~ w\n>\n> q2\n\nab  next\n\nlast', start: ['> a ~~s.~~ w', 10], end: ['ab  next', 2], typed: '> a ~~s~~.x  next\n\nlast', deleted: '> a ~~s.~~  next\n\nlast' },
+        { id: 'TE69', name: 'after italic text of a raw list\'s item → before a space', source: '- one _w_ w\n  > q\n- b\n\nab next\n\nlast', start: ['- one _w_ w', 9], end: ['ab next', 2], typed: '- one *w*x next\n\nlast', deleted: '- one *w* next\n\nlast' },
+        { id: 'TE70', name: 'a raw quote\'s word → before a space and bold text that opens with punctuation', source: '> q1 w\n>\n> q2\n\nab **(b)** z\n\nlast', start: ['> q1 w', 5], end: ['ab ', 2], typed: '> q1 x **(b)** z\n\nlast', deleted: '> q1  **(b)** z\n\nlast' },
+        { id: 'TE71', name: 'after bold text that ends in punctuation → before a space and bold text that opens with punctuation', source: '> a **Note:** w\n>\n> q2\n\nab **(b)** z\n\nlast', start: ['> a **Note:** w', 13], end: ['ab ', 2], typed: '> a **Note**:x **(b)** z\n\nlast', deleted: '> a **Note:** **(b)** z\n\nlast' },
+        { id: 'TE72', name: 'inside the address of a link the two halves make (the caret after the link)', source: '> [k](/ab zz\n>\n> q2\n\ncd) tail', start: ['> [k](/ab zz', 9], end: ['cd) tail', 0], typed: '> [k](/abcd)x tail', deleted: '> [k](/abcd) tail' },
+        { id: 'TE73', name: 'after a backslash → an escaped character (the caret before the backslash the two make)', source: '> esc \\ w\n>\n> q2\n\nab*e\n\nlast', start: ['> esc \\ w', 7], end: ['ab*e', 2], typed: '> esc x\\\\*e\n\nlast', deleted: '> esc \\\\*e\n\nlast' },
+        { id: 'TE74', name: 'inside inline code the two halves make', source: '> a `co w\n>\n> q2\n\nabde` x\n\nlast', start: ['> a `co w', 7], end: ['abde` x', 2], typed: '> a ` coxde\\ ` x\n\nlast', deleted: '> a ` code\\ ` x\n\nlast' },
+        { id: 'TE75', name: 'a raw quote\'s word → before a space and a link whose text holds an escaped bracket', source: '> q1 w\n>\n> q2\n\nab [a \\[b](/u) c\n\nlast', start: ['> q1 w', 5], end: ['ab ', 2], typed: '> q1 x [a \\[b](/u) c\n\nlast', deleted: '> q1  [a \\[b](/u) c\n\nlast' },
+        { id: 'TE76', name: 'right after a task item\'s checkbox → a word after a space', source: '- [x] ta\n  > q\n- [ ] tb w\n\nab cd *ef*', start: ['- [x] ta', 6], end: ['ab cd ', 2], typed: '- [x] xcd *ef*', deleted: '- [x] cd *ef*' },
+        { id: 'TE77', name: 'between a task item\'s checkbox and the space the tail gives it', source: '- [x] ta\n  > q\n- [ ] tb w\n\nab next', start: ['- [x] ta', 5], end: ['ab next', 2], typed: '- [x] xnext', deleted: '- [x] next' },
+        { id: 'TE78', name: 'a tag\'s opening before the range and its `>` after: the join keeps both text, and makes no tag', source: '> a <b w\n>\n> q2\n\nab>cd', start: ['> a <b w', 6], end: ['ab>cd', 2], typed: '> a \\<bx>cd', deleted: '> a \\<b>cd' },
+        { id: 'TE79', name: 'a raw list item\'s start → the end of a later block (the joint\'s item shows nothing)', source: '- a\n- b\n  > q\n- c\n\nafter', start: ['- b', 2], end: ['after', 5], typed: '- a\n- x', deleted: '- a\n-' },
+        { id: 'TE80', name: 'a raw table\'s first body cell → the end of a later block (the joint\'s cell shows nothing)', source: '| h1 | h2 |\n| --- | --- |\n| a | b | c |\n\nafter', start: ['| a | b | c |', 2], end: ['after', 5], typed: '| h1 | h2 |\n| --- | --- |\n| x |  |', deleted: '| h1 | h2 |\n| --- | --- |\n|  |  |' },
+        { id: 'TE81', name: 'a raw table\'s second body cell → the end of a later block (the joint\'s cell shows nothing)', source: '| h1 | h2 |\n| --- | --- |\n| a | b | c |\n\nafter', start: ['| a | b | c |', 6], end: ['after', 5], typed: '| h1 | h2 |\n| --- | --- |\n| a | x |', deleted: '| h1 | h2 |\n| --- | --- |\n| a |  |' },
         { id: 'TE82', name: 'a word of a paragraph → a later paragraph (bold link text elsewhere in the block, nothing raw)', source: 'x [**b**](/u)yz and more\n\nQZ 7Y', start: ['yz and more', 8], end: ['QZ 7Y', 2], typed: 'x [**b**](/u)yz and mx 7Y', deleted: 'x [b](/u)yz and m 7Y' },
+        { id: 'TE83', name: 'right after a bold link of a raw list item → a later paragraph', source: '- a [**b**](/u) c\n  > q\n- b\n\nQZ 7Y', start: ['- a [**b**](/u) c', 15], end: ['QZ 7Y', 2], typed: '- a [**b**](/u)x 7Y', deleted: '- a **[b](/u)** 7Y' },
+        { id: 'TE84', name: 'the first body cell of a table in a raw list item → a later paragraph', source: '- | h1 | h2 |\n  | --- | --- |\n  | a | b |\n- t\n  > q\n\nafter', start: ['  | a | b |', 4], end: ['after', 5], typed: '- | h1 | h2 |\n  | --- | --- |\n  | x |  |', deleted: '- | h1 | h2 |\n  | --- | --- |\n  |  |  |' },
+        { id: 'TE85', name: 'the second body cell of a table in a raw list item → a later paragraph', source: '- | h1 | h2 |\n  | --- | --- |\n  | c | d |\n- y\n  > q\n\nafter', start: ['  | c | d |', 8], end: ['after', 5], typed: '- | h1 | h2 |\n  | --- | --- |\n  | c | x |', deleted: '- | h1 | h2 |\n  | --- | --- |\n  | c |  |' },
+        { id: 'TE86', name: 'from the next item of a raw list whose first item holds only a nested list → a later paragraph', source: '- - x\n- b\n  > q\n- c\n\nafter', start: ['- b', 2], end: ['after', 5], typed: '- - x\n- x', deleted: '- - x\n-' },
+        { id: 'TE87', name: 'from the next item of a raw list whose first item holds only a nested ordered list → a later paragraph', source: '- 1. x\n- b\n  > q\n\nafter', start: ['- b', 2], end: ['after', 5], typed: '- 1. x\n- x', deleted: '- 1. x\n-' },
+        { id: 'TE88', name: 'right after the pipe that closes an empty last cell of a raw table → a later paragraph', source: '| h1 | h2 |\n| --- | --- |\n| c |  | x |\n\nafter', start: ['| c |  | x |', 8], end: ['after', 5], typed: '| h1 | h2 |\n| --- | --- |\n| c | x |', deleted: '| h1 | h2 |\n| --- | --- |\n| c |  |' },
     ];
 
     /** The routes that are a method of the editor: they start their own update. */
@@ -1480,7 +1519,10 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
     it.each<[string, Route, string]>([
         // Neither cut tags the update that removes the range for the run-edge rule: `cut()` carries no tag, as at the
         // parent, and the native cut's tag marks the command's own update, while the removal follows in an update of its
-        // own. So a cut keeps the bold of a link's text elsewhere in the block, as the parent's cut did (TE82).
+        // own. So a cut leaves a run's edges as they are, where Delete tidies them (TE71), and keeps the bold of a link's
+        // text elsewhere in the block, as the parent's cut did (TE82).
+        ['TE71', 'cut()', '> a **Note: (b)** z\n\nlast'],
+        ['TE71', 'CUT_COMMAND', '> a **Note: (b)** z\n\nlast'],
         ['TE82', 'cut()', 'x [**b**](/u)yz and m 7Y'],
         ['TE82', 'CUT_COMMAND', 'x [**b**](/u)yz and m 7Y'],
         ['TE1', 'Delete', '<div>\nrah **ij** kl [a](u) \\*x\\*\n\nafter'],
@@ -1683,6 +1725,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         ['TS11', 'TE36', 'INSERT_PARAGRAPH_COMMAND', '- ab\n\nafter'],
         ['TS12', 'TE5', 'paste nodes', '<div>\nrazp\n\nafter'],
         ['TS15', 'TE50', 'paste blocks', '### hep1 **zb**\n\np2\\<div>\\\nraw text\\\n\\</div>\n\nafter'],
+        ['TS17', 'TE61', 'Enter', '> q1\n\ncd\n\nmore'],
     ])('%s: %s, %s', async (_name, id, route, expected) => {
         const shape = shapeOfId(id);
 
@@ -1696,7 +1739,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         }
     });
 
-    const CONTRACT_SHAPES = ['TE15', 'TE20', 'TE33', 'TE34', 'TE37', 'TE38', 'TE39'];
+    const CONTRACT_SHAPES = ['TE15', 'TE20', 'TE33', 'TE34', 'TE37', 'TE38', 'TE39', 'TE79', 'TE80', 'TE81'];
     const CONTRACT_ROUTES: readonly Route[] = ['word delete', 'cut()', 'Enter', 'INSERT_PARAGRAPH_COMMAND', 'PASTE_COMMAND', 'paste nodes', 'paste blocks'];
 
     it.each(CONTRACT_SHAPES.flatMap((id) => CONTRACT_ROUTES.map((route) => [id, route] as const)))(
@@ -1726,6 +1769,11 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
     /** Shapes whose removal makes a raw block show as other blocks, each with where the removal's joint is in what Delete saves. */
     const JOINTS: ReadonlyArray<readonly [id: string, joint: TextPoint]> = [
         ['TE7', ['<fter', 1]], ['TE42', ['<!-- cfter', 6]], ['TE43', ['<!-- cara', 6]], ['TE44', ['<!-- cwo', 6]],
+        ['TE45', ['q1 fter', 3]], ['TE46', ['after b', 0]], ['TE47', ['fter', 0]], ['TE48', ['| fter', 2]], ['TE49', ['* yz', 0]], ['TE51', ['cd', 0]],
+        ['TE53', ['Note', 0]], ['TE54', ['old', 0]], ['TE55', ['link', 0]], ['TE56', ['code', 0]], ['TE57', ['Note', 0]], ['TE58', ['b', 1]],
+        ['TE59', ['b', 1]],
+        ['TE66', [' next', 0]], ['TE67', [' next', 0]], ['TE68', ['  next', 0]], ['TE69', [' next', 0]], ['TE70', ['q1  ', 3]], ['TE71', [' ', 0]],
+        ['TE72', [' tail', 0]], ['TE74', ['code\\', 2]], ['TE75', ['q1  ', 3]], ['TE76', ['cd ', 0]], ['TE77', ['next', 0]], ['TE78', ['a <b>cd', 4]],
     ];
 
     /** The routes run at a joint: every route that acts over a guarded range, but for the native cut, which removes later. */
@@ -1734,7 +1782,19 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         'INSERT_PARAGRAPH_COMMAND', 'Shift+Enter', 'Tab', 'PASTE_COMMAND', 'paste()', 'paste nodes', 'paste blocks',
     ];
 
-    it.each(JOINTS.flatMap(([id, joint]) => JOINT_ROUTES.map((route) => [id, route, joint] as const)))(
+    // But for Tab at a joint before inline code, which TS16 pins, or inside it (TE74): a tab takes the caret's format,
+    // which the removal gives the caret for typed and pasted text only, where after Delete a browser's selection change
+    // gives it for any key.
+    // Nor has TE71 a cut() row: neither cut tags the update that removes the range for the run-edge rule, so a cut leaves the
+    // bold that ends in punctuation beside the bold that opens with it as one run, where Delete tidies the two apart; the
+    // route rows of TE71 pin both cuts.
+    // TE60 and TE61 have no row here: the text node after their joint keeps a space that a save trims, so the document
+    // Delete saves, loaded anew, holds another text node there. Nor has TE73: its joint is inside the two characters
+    // of an escape, where a loaded document has no place.
+    const JOINT_ROWS = JOINTS.flatMap(([id, joint]) => JOINT_ROUTES.map((route) => [id, route, joint] as const))
+        .filter(([id, route]) => !((id === 'TE56' || id === 'TE74') && route === 'Tab') && !(id === 'TE71' && route === 'cut()'));
+
+    it.each(JOINT_ROWS)(
         'TJ: %s, %s acts at the joint, where the selection was', async (id, route, joint) => {
             const shape = shapeOfId(id);
             const removesOnly = ['Delete', 'Backspace', 'word delete', 'REMOVE_TEXT_COMMAND', 'cut()'].includes(route);
@@ -1759,6 +1819,191 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
                 expect(rangeOf(direct), `backward ${backward}`).toBe(rangeOf(atJoint));
             }
         });
+
+    const RAW_QUOTE = `${RAW_QUOTE_ALONE}\n\nafter`;
+
+    it.each<[string, string, TextPoint, TextPoint, Route, string, string]>([
+        ['TP1: the text before the caret shows as written', `${RAW}\n\nafter`, ['<div>', 1], ['<div>', 4], 'Delete', '<>\nraw text\n\n</div>\n\nafter', '"<>"@1'],
+        ['TP2: a quote\'s marker stands before the caret', RAW_QUOTE, ['> q1', 4], ['>', 1], 'Delete', '> q1\n> q2\n\nafter', '"q1"@2'],
+        ['TP3: a quote\'s marker stands before the caret', RAW_QUOTE, ['> q1', 4], ['>', 1], 'type', '> q1x\n> q2\n\nafter', '"q1x"@3'],
+        ['TP4: a line end stands before the caret', RAW_QUOTE, ['>', 0], ['> q2', 1], 'Delete', '> q1\n> q2\n\nafter', '" q2"@0'],
+        ['TP5: the caret stands inside a quote\'s marker, before its space', RAW_QUOTE, ['>', 1], ['> q2', 1], 'Delete', '> q1\n> q2\n\nafter', '"q2"@0'],
+        ['TP7: a quote\'s marker stands before the caret and bold text after it', '> q1\n>\n> **b** x\n\nafter', ['> q1', 2], ['> **b** x', 2], 'Delete', '> **b** x\n\nafter', '"b"@0'],
+        // A caret inside a link's address shows in no text: the link's text is before it, and what follows the link after it.
+        ['TP6: the caret stands inside a link\'s address', '> [k](/abzz\n>\n> cd) t\n\nafter', ['> [k](/abzz', 9], ['> cd) t', 3], 'Delete', '> [k](/abd) t\n\nafter', '" t"@0'],
+        ['TP8: italic text written with underscores stands before the caret, and a space after it', '> a _b_ c\n>\n> q2\n\nafter', ['> a _b_ c', 7], ['> q2', 1], 'Delete', '> a *b* q2\n\nafter', '" q2"@0'],
+    ])('%s: an edit inside one raw block that makes it show as its blocks keeps the caret\'s place', async (_name, source, anchor, focus, route, expected, caret) => {
+        const editor = load(source);
+
+        selectText(editor, anchor, focus);
+        await run(editor, route, true);
+
+        expect(editor.getValue()).toBe(expected);
+        expect(rangeOf(editor)).toBe(`${caret} -> ${caret}`);
+    });
+
+    it.each<[string, string, TextPoint, TextPoint, Route, string, string]>([
+        // A block that shows nothing has one place.
+        ['TL1: a quote that shows nothing', `${RAW_QUOTE_ALONE}\n\nafter`, ['> q1', 1], ['after', 5], 'Delete', '>', 'quote@0 -> quote@0'],
+        // A tab that indents a list item's line past the item's text shows as spaces the source does not hold.
+        ['TL2: a list item\'s line that a tab indents, after the caret', '- a\n  > q\n- b\n\t zz\n\nafter', ['  > q', 2], ['  > q', 5], 'Delete', '- a\n\n- b\n  zz\n\nafter', '"   zz"@5 -> "   zz"@5'],
+        // `marked` hands a task item's text back without the spaces that open it.
+        ['TL3: a task item\'s text that opens with a space, after the caret', '- a\n  > q\n- [x]  zz\n\nafter', ['  > q', 2], ['  > q', 5], 'Delete', '- a\n\n- [x] zz\n\nafter', '"zz"@2 -> "zz"@2'],
+    ])('%s: the caret goes to the end of its block (the limit)', async (_name, source, anchor, focus, route, expected, caret) => {
+        const editor = load(source);
+
+        selectText(editor, anchor, focus);
+        await run(editor, route, true);
+
+        expect(editor.getValue()).toBe(expected);
+        expect(rangeOf(editor)).toBe(caret);
+    });
+
+    it('TL5: a tab between the words of the caret\'s own list item keeps the caret at the joint: `marked` 18.1 hands the tab back as written', async () => {
+        const editor = load('- a\tb w\n  > q\n- b\n\nQZ 7Y');
+
+        selectText(editor, ['- a\tb w', 7], ['QZ 7Y', 2]);
+        await run(editor, 'Delete', true);
+
+        expect(editor.getValue()).toBe('- a\tb w 7Y');
+        expect(rangeOf(editor)).toBe('"a\\tb w 7Y"@5 -> "a\\tb w 7Y"@5');
+    });
+
+    it('TL4: a tab-indented line of an earlier item takes nothing from the caret\'s place', async () => {
+        // The line a tab indents stands in an item before the caret\'s: all that follows the caret has its source found.
+        const editor = load('- a\n\t zz\n- b w\n  > q\n\nafter');
+
+        selectText(editor, ['- b w', 4], ['after', 1]);
+        await run(editor, 'type', true);
+
+        expect(editor.getValue()).toBe('- a\n  zz\n- b xfter');
+    });
+
+    /**
+     * The editor's Markdown once nothing is pending: a typing shortcut is applied in an update of its own, which the
+     * listener that sees a typed character starts when that character's update is committed, so each read here commits
+     * what the one before it started.
+     *
+     * @param editor - The editor.
+     * @returns Its Markdown.
+     */
+    function settledValue(editor: MarkdownEditor): string {
+        lexicalOf(editor).read(() => null);
+        lexicalOf(editor).read(() => null);
+
+        return editor.getValue();
+    }
+
+    it.each<[string, string, TextPoint, TextPoint, string]>([
+        ['TK1: escaped emphasis', '> a \\*x\\* w\n>\n> q2\n\nab cd', ['> a \\*x\\* w', 9], ['ab cd', 2], '> a \\*x\\* cd'],
+        ['TK2: an escaped bullet', '> \\- w\n>\n> q2\n\nab cd', ['> \\- w', 5], ['ab cd', 2], '> \\-  cd'],
+        ['TK3: an escaped heading marker', '> \\# w\n>\n> q2\n\nab cd', ['> \\# w', 5], ['ab cd', 2], '> \\#  cd'],
+        ['TK4: an escaped list number', '> 1\\. w\n>\n> q2\n\nab cd', ['> 1\\. w', 6], ['ab cd', 2], '> 1\\.  cd'],
+        ['TK5: asterisks the joined text writes as text', '> a **Note:** w\n>\n> q2\n\nab **cd** ef', ['> a **Note:** w', 13], ['cd', 1], '> a \\*\\*Note:\\*\\***d** ef'],
+    ])('%s: a removal that leaves the caret at the joint, right behind text that reads as a typing shortcut, completes none', async (_name, source, start, end, expected) => {
+        for (const route of ['Delete', 'Backspace', 'word delete', 'REMOVE_TEXT_COMMAND', 'cut()'] as const) {
+            for (const [backward, inUpdate] of VARIANTS) {
+                const isRepeat = METHOD_ROUTES.includes(route) && inUpdate;
+
+                if (isRepeat) {
+                    continue;
+                }
+
+                const editor = load(source);
+                const context = `${route}, backward ${backward}, in an update ${inUpdate}`;
+
+                selectText(editor, backward ? end : start, backward ? start : end);
+                await run(editor, route, inUpdate);
+
+                expect(settledValue(editor), context).toBe(expected);
+                expectParity(editor);
+
+                // The removal is the one step there is: no shortcut ran as an update of its own after it.
+                lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+                expect(settledValue(editor), `undo, ${context}`).toBe(source);
+            }
+        }
+    });
+
+    it.each<[string, Route]>([
+        ['TK8: Enter over a range that ends at the end of a block, right behind escaped emphasis', 'Enter'],
+        ['TK8: Shift+Enter over such a range', 'Shift+Enter'],
+        ['TK8: a new paragraph over such a range', 'INSERT_PARAGRAPH_COMMAND'],
+    ])('%s completes no typing shortcut', async (_name, route) => {
+        // The range ends where its block does, so the break or the paragraph adds no text after the joint: all the update
+        // leaves is escaped text right behind a shortcut's syntax, as the removal alone leaves it.
+        for (const [backward, inUpdate] of VARIANTS) {
+            const editor = load('> a \\*x\\* w\n>\n> q2\n\ntwo yz');
+
+            selectText(editor, backward ? ['two yz', 6] : ['> a \\*x\\* w', 9], backward ? ['> a \\*x\\* w', 9] : ['two yz', 6]);
+            await run(editor, route, inUpdate);
+
+            expect(settledValue(editor), `backward ${backward}, in an update ${inUpdate}`).toMatch(/^> a \\\*x\\\*/);
+        }
+    });
+
+    // A range inside one raw block is no guarded range: Lexical removes it, as it removes a range in an ordinary
+    // paragraph, and a removal completes no typing shortcut. Here the block reads as a quote afterwards and the caret
+    // stands at the joint, right behind the text, where the parent put it at the block's end.
+    it('TK6: a removal inside one raw block that leaves the caret right behind text reading as a shortcut completes no shortcut', async () => {
+        for (const inUpdate of [true, false]) {
+            const editor = load('> a \\*x\\*.\n>\n> q2');
+
+            selectText(editor, ['> a \\*x\\*.', 9], ['> q2', 2]);
+            await run(editor, 'Delete', inUpdate);
+
+            expect(settledValue(editor), `in an update ${inUpdate}`).toBe('> a \\*x\\*q2');
+        }
+    });
+
+    it('TK7: Enter over a range that leaves the caret behind text reading as a marker starts a paragraph, and applies no shortcut', async () => {
+        const source = '> \\- w\n>\n> q2\n\nab cd';
+
+        for (const [backward, inUpdate] of VARIANTS) {
+            const editor = load(source);
+            const context = `backward ${backward}, in an update ${inUpdate}`;
+
+            selectText(editor, backward ? ['ab cd', 5] : ['> \\- w', 5], backward ? ['> \\- w', 5] : ['ab cd', 5]);
+            await run(editor, 'Enter', inUpdate);
+
+            expect(settledValue(editor), context).toBe('> \\-');
+            expect(rootChildren(editor), context).toEqual(['quote:- ', 'paragraph:']);
+            lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+            expect(settledValue(editor), `undo, ${context}`).toBe(source);
+        }
+
+        // Enter after Delete is another key press, and Lexical's own Enter shortcut takes it: with the caret at the end of
+        // a block's first text, and that text reading as a marker, it makes the block a list item. It asks for a caret,
+        // so Enter over a selection never meets it; the two differ here, as they do in a paragraph with no raw block.
+        const stepped = load(source);
+
+        selectText(stepped, ['> \\- w', 5], ['ab cd', 5]);
+        await run(stepped, 'Delete', true);
+        expect(settledValue(stepped)).toBe('> \\-');
+        await run(stepped, 'Enter', true);
+        expect(settledValue(stepped)).toBe('-');
+    });
+
+    it('TS16: Tab at a joint before inline code puts a plain tab before the code', async () => {
+        // A tab takes the caret's format, and the removal gives the caret that of the text it lands in for typed and
+        // pasted text only: Delete, then Tab in a browser, whose selection change gives it, puts the tab inside the code.
+        for (const [backward, inUpdate] of VARIANTS) {
+            const editor = select(shapeOfId('TE56'), backward);
+
+            await run(editor, 'Tab', inUpdate);
+
+            const [format, next] = lexicalOf(editor).read(() => {
+                const tab = $dfs().map(({ node }) => node).find((node) => node.getType() === 'tab') as TextNode;
+
+                return [tab.getFormat(), tab.getNextSibling()?.getTextContent()];
+            });
+
+            expect(editor.getValue(), `backward ${backward}, in an update ${inUpdate}`).toBe('> q1\n> `code` rest\n\nlast');
+            // 0 is Lexical's format bitmask with no format set.
+            expect(format).toBe(0);
+            expect(next).toBe('code');
+        }
+    });
 
     it.each<[string, Route, string]>([
         ['TG1', 'type', '<x>\nraw text\n</div>\n\nafter'],
@@ -1935,7 +2180,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         }
     });
 
-    it.each(['TE82'])('TS23: typing over %s keeps the bold of a link\'s text elsewhere in the block, as typing over any range does', async (id) => {
+    it.each(['TE82', 'TE83'])('TS23: typing over %s keeps the bold of a link\'s text elsewhere in the block, as typing over any range does', async (id) => {
         const shape = shapeOfId(id);
 
         for (const backward of [false, true]) {
