@@ -222,6 +222,12 @@ editor.insertTable(2, 3);
 editor.setReadOnly(true);
 ```
 
+A refused command is no longer silent on the WYSIWYG surface either: it fires
+the editor's `"readonlyedit"` event and flashes the surface, as the source
+surface always flashed. Code that calls a command on a read-only editor and
+relies on nothing visible happening should test `getReadOnly()`, or the
+matching `can…` field of `getSelectionState()`, first.
+
 A toolbar of your own that enables its Table control on `inTable` stays
 enabled over a read-only editor, though its commands are refused: `inTable`
 says where a caret or a text selection is (it is `false` while whole table
