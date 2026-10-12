@@ -376,9 +376,10 @@ const CLIPBOARD_HINT_DURATION_MS = 6000;
 const hostDocumentLoad = Annotation.define<boolean>();
 
 /**
- * Marks the transaction that took the place of a refused edit: one that would
- * have changed a read-only document. The editor's update listener reads the
- * mark to signal the refusal.
+ * Marks a transaction that stands for a refused edit: the one the filter puts
+ * in the place of a change to a read-only document, and the one a refused
+ * deletion key dispatches (see refuseDeletionKey). The editor's update
+ * listener reads the mark to signal the refusal.
  */
 const readOnlyEditRefused = Annotation.define<boolean>();
 
@@ -408,13 +409,30 @@ function refuseDocumentChange(transaction: Transaction): TransactionSpec {
 }
 
 /**
- * Builds the read-only extension. Read-only, it is two parts.
+ * Refuses a deletion key in a read-only editor: dispatches a transaction that
+ * carries only the refusal mark, which the editor's update listener signals.
+ * Bound by refusedDeletionKeymap, behind every other command for the key.
+ *
+ * @param view - The editor's view.
+ * @returns `true`: the key is handled.
+ */
+function refuseDeletionKey(view: EditorView): boolean {
+    view.dispatch(view.state.update({ annotations: readOnlyEditRefused.of(true) }));
+
+    return true;
+}
+
+/**
+ * Builds the read-only extension. Read-only, it is three parts.
  * `EditorState.readOnly` is the flag CodeMirror's own input handling and
  * commands read; it leaves the content focusable, so the caret, selection and
  * copy keep working. (`EditorView.editable.of(false)` would take the caret
  * away too, so it is not used.) The transaction filter is what makes the
  * state hold: it refuses a document change from any command, handler or
- * language that does not read the flag.
+ * language that does not read the flag. The key bindings signal the deletion
+ * keys, which reach neither the filter nor the editor's input hooks (see
+ * refusedDeletionKeymap). They have the lowest precedence, so every command
+ * bound to such a key is tried first.
  *
  * The filter has the highest precedence. CodeMirror runs transaction filters
  * from the lowest precedence to the highest, and each may replace the
@@ -435,7 +453,11 @@ export function buildReadOnlyExtension(readOnly: boolean): Extension {
         return EditorState.readOnly.of(false);
     }
 
-    return [EditorState.readOnly.of(true), Prec.highest(EditorState.transactionFilter.of(refuseDocumentChange))];
+    return [
+        EditorState.readOnly.of(true),
+        Prec.highest(EditorState.transactionFilter.of(refuseDocumentChange)),
+        Prec.lowest(keymap.of(refusedDeletionKeymap)),
+    ];
 }
 
 /**
@@ -471,6 +493,26 @@ export const codeEditorKeymap: readonly KeyBinding[] = [
     ...foldKeymap,
     indentWithTab,
 ];
+
+/** A key binding on Backspace or Delete, alone or with modifiers. */
+const DELETION_KEY = /(^|-)(Backspace|Delete)$/;
+
+/**
+ * The key bindings of a read-only editor: one for each of the editor's own
+ * bindings on Backspace or Delete that stops the browser's default, on the
+ * same keys. CodeMirror stops the default for such a binding even when its
+ * command declines, as each deletion command does in a read-only state. No
+ * `beforeinput` follows the key then, so without these it would be ignored
+ * with no signal, where a typed character or Enter is refused with one.
+ *
+ * Derived from codeEditorKeymap, so a combination CodeMirror binds no
+ * deletion to (Shift-Delete, which cuts on Windows and Linux, or a browser's
+ * own Ctrl-Shift-Delete) is left to the browser, as in an editor that is not
+ * read-only.
+ */
+const refusedDeletionKeymap: readonly KeyBinding[] = codeEditorKeymap
+    .filter((binding) => binding.preventDefault === true && DELETION_KEY.test(binding.key ?? binding.mac ?? ""))
+    .map((binding) => ({ ...binding, run: refuseDeletionKey, shift: binding.shift ? refuseDeletionKey : undefined }));
 
 /** The reveal highlight's mark, without the entrance flash (reduced motion). */
 const REVEAL_MARK = Decoration.mark({ class: REVEAL_CLASS });
@@ -1888,11 +1930,11 @@ class CodeEditor extends Component<CodeEditorOptions> {
     /**
      * Registers a listener for the `"readonlyedit"` event, fired when an edit
      * that reached the editor is refused because it is read-only: typed text,
-     * Enter, a paste, a drop, a completion picked from the list, a change a
-     * language's own command or handler tried to make, or a call to
-     * `replaceRange`, `cut`, `paste` or `format`. A key whose command
-     * declines on its own in a read-only editor, such as undo or indent,
-     * fires nothing.
+     * Enter, Backspace and Delete, a paste, a drop, a completion picked from
+     * the list, a change a language's own command or handler tried to make,
+     * or a call to `replaceRange`, `cut`, `paste` or `format`. A key whose
+     * command declines on its own in a read-only editor, such as undo or
+     * indent, fires nothing.
      *
      * @param event - Must be `"readonlyedit"`.
      * @param listener - Invoked with no arguments on each rejected edit.
@@ -2404,6 +2446,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
                 // does become a transaction is refused by the filter and
                 // signalled from the update listener above; its key or paste
                 // event is handled by then, so it does not reach these hooks.
+                // Backspace and Delete on a keyboard reach neither: the
+                // read-only extension binds those keys itself.
                 beforeinput: () => this.onEditIntent(),
                 paste:       () => this.onEditIntent(),
                 drop:        () => this.onEditIntent(),
@@ -2943,7 +2987,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
     /**
      * Signals a refused edit when one of an update's transactions carries the
-     * refusal mark the read-only extension's filter leaves. One signal per
+     * refusal mark the read-only extension leaves. One signal per
      * update, however many of its transactions were refused. Factored out of
      * the update listener in {@link CodeEditor.mount} so it can be tested
      * without a view.

@@ -9,17 +9,22 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EditorSelection } from '@codemirror/state';
+import { keymap } from '@codemirror/view';
 import type { EditorView } from '@codemirror/view';
 import { foldAll, foldedRanges, language } from '@codemirror/language';
 import { startCompletion } from '@codemirror/autocomplete';
 import { SearchQuery, findNext, replaceAll, replaceNext, setSearchQuery } from '@codemirror/search';
 import { CodeEditor } from '~/component/editor/CodeEditor';
+import { registerLanguage } from '~/component/editor/LanguageRegistry';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import '~/component/editor/index';
 import { DOM } from '~/core/DOM';
 
 /** The editors a test built, disposed after it. */
 const editors: (CodeEditor | MarkdownEditor)[] = [];
+
+/** Ctrl held, and nothing else. */
+const CTRL = { ctrlKey: true };
 
 beforeEach(() => {
     // jsdom has no layout; CodeMirror's measure pass calls both.
@@ -84,11 +89,11 @@ async function mountReadOnly(doc: string, languageId: string | null): Promise<Mo
  * @param view - The live view.
  * @param key - The key's name.
  * @param keyCode - The key's legacy code, which CodeMirror reads.
- * @param ctrlKey - Whether Ctrl is held, which is CodeMirror's `Mod` here.
- * @returns Whether a key binding handled the key.
+ * @param modifiers - The modifier keys held. Ctrl is CodeMirror's `Mod` here.
+ * @returns Whether a key binding handled the key, or stopped its default.
  */
-function pressKey(view: EditorView, key: string, keyCode: number, ctrlKey: boolean = false): boolean {
-    const event = new KeyboardEvent('keydown', { key, keyCode, ctrlKey, bubbles: true, cancelable: true });
+function pressKey(view: EditorView, key: string, keyCode: number, modifiers: { ctrlKey?: boolean; altKey?: boolean; shiftKey?: boolean } = {}): boolean {
+    const event = new KeyboardEvent('keydown', { key, keyCode, ...modifiers, bubbles: true, cancelable: true });
 
     view.contentDOM.dispatchEvent(event);
 
@@ -205,10 +210,10 @@ describe('CodeEditor read-only, mounted', () => {
 
         editor.setValue('new');
 
-        pressKey(view, 'z', 90, true);
+        pressKey(view, 'z', 90, CTRL);
         expect(view.state.doc.toString()).toBe('new');
 
-        pressKey(view, 'y', 89, true);
+        pressKey(view, 'y', 89, CTRL);
         expect(view.state.doc.toString()).toBe('new');
     });
 
@@ -232,7 +237,7 @@ describe('CodeEditor read-only, mounted', () => {
     it('G11: selecting, searching and folding still work, and Replace changes nothing', async () => {
         const { view } = await mountReadOnly('function f() {\n  return f;\n}', 'javascript');
 
-        pressKey(view, 'a', 65, true);
+        pressKey(view, 'a', 65, CTRL);
         expect(view.state.selection.main.to - view.state.selection.main.from).toBe(view.state.doc.length);
 
         view.dispatch({ selection: EditorSelection.cursor(0), effects: setSearchQuery.of(new SearchQuery({ search: 'return', replace: 'x' })) });
@@ -339,5 +344,130 @@ describe('CodeEditor read-only, mounted', () => {
         expect(view.state.doc.toString()).toBe('new');
         expect(markdownEditor.getValue()).toBe('new');
         expect(refusals()).toBe(2);
+    });
+
+    // CodeMirror's Backspace and Delete bindings stop the browser's default
+    // even when their command declines, so no `beforeinput` follows the key
+    // and the editor's input hooks never see it.
+    for (const [languageId, doc] of [['markdown', '- item'], ['javascript', 'a(1)'], [null, 'text']] as const) {
+        it(`G17: ${languageId ?? 'no language'}: a deletion key that no command takes changes nothing and signals once`, async () => {
+            const { view, refusals } = await mountReadOnly(doc, languageId);
+
+            view.dispatch({ selection: EditorSelection.cursor(doc.length) });
+
+            expect(pressKey(view, 'Backspace', 8)).toBe(true);
+            expect(refusals()).toBe(1);
+
+            expect(pressKey(view, 'Delete', 46)).toBe(true);
+            expect(refusals()).toBe(2);
+
+            pressKey(view, 'Backspace', 8, { shiftKey: true });
+            pressKey(view, 'Backspace', 8, CTRL);
+            pressKey(view, 'Delete', 46, CTRL);
+
+            expect(refusals()).toBe(5);
+            expect(view.state.doc.toString()).toBe(doc);
+            expect(view.state.selection.main.head).toBe(doc.length);
+        });
+    }
+
+    it('G18: a key whose command declines on its own, or that edits nothing, signals nothing', async () => {
+        const { editor, view, refusals } = await mountReadOnly('ab\ncd', 'javascript');
+
+        editor.setValue('ab\ncd!');
+        view.dispatch({ selection: EditorSelection.cursor(1) });
+
+        // Keys that edit nothing.
+        pressKey(view, 'ArrowRight', 39);
+        pressKey(view, 'End', 35);
+        pressKey(view, 'Escape', 27);
+
+        // Keys whose command edits a writable document and declines here
+        // without a transaction: indent, toggle comment, move, copy and
+        // delete a line, a blank line below, undo and redo. Nothing in the
+        // editor hears of them.
+        pressKey(view, 'Tab', 9);
+        pressKey(view, 'Tab', 9, { shiftKey: true });
+        pressKey(view, '/', 191, CTRL);
+        pressKey(view, ']', 221, CTRL);
+        pressKey(view, 'ArrowUp', 38, { altKey: true });
+        pressKey(view, 'ArrowDown', 40, { altKey: true, shiftKey: true });
+        pressKey(view, 'K', 75, { ctrlKey: true, shiftKey: true });
+        pressKey(view, 'Enter', 13, CTRL);
+        pressKey(view, 'z', 90, CTRL);
+        pressKey(view, 'y', 89, CTRL);
+
+        expect(view.state.doc.toString()).toBe('ab\ncd!');
+        expect(refusals()).toBe(0);
+    });
+
+    it('G19: in an editor that is not read-only, Backspace deletes and signals nothing', async () => {
+        const editor = new CodeEditor('ab', { language: 'javascript' });
+
+        editors.push(editor);
+
+        const { view, refusals } = await mountInto(editor);
+
+        view.dispatch({ selection: EditorSelection.cursor(2) });
+        pressKey(view, 'Backspace', 8);
+
+        expect(view.state.doc.toString()).toBe('a');
+        expect(refusals()).toBe(0);
+
+        editor.setReadOnly(true);
+        pressKey(view, 'Backspace', 8);
+        editor.setReadOnly(false);
+        pressKey(view, 'Backspace', 8);
+
+        expect(view.state.doc.toString()).toBe('');
+        expect(refusals()).toBe(1);
+    });
+
+    it('G20: a language\'s own Backspace command that edits nothing still runs, and signals nothing', async () => {
+        const taken: string[] = [];
+
+        const takeBackspace = (): boolean => {
+            taken.push('Backspace');
+
+            return true;
+        };
+
+        registerLanguage({
+            id:            'test-read-only-own-backspace',
+            loadExtension: async () => keymap.of([{ key: 'Backspace', run: takeBackspace }]),
+        });
+
+        const { editor, view, refusals } = await mountReadOnly('ab', null);
+
+        editor.setLanguage('test-read-only-own-backspace');
+        await vi.waitFor(() => expect(view.state.facet(keymap).flat().some((binding) => binding.key === 'Backspace' && !binding.preventDefault)).toBe(true));
+
+        view.dispatch({ selection: EditorSelection.cursor(2) });
+        pressKey(view, 'Backspace', 8);
+
+        expect(taken).toEqual(['Backspace']);
+        expect(refusals()).toBe(0);
+
+        // Delete is not the language's: the editor's own binding declines, and the key is signalled.
+        pressKey(view, 'Delete', 46);
+
+        expect(taken).toEqual(['Backspace']);
+        expect(view.state.doc.toString()).toBe('ab');
+        expect(refusals()).toBe(1);
+    });
+
+    it('G21: Backspace and Delete with modifiers the editor binds nothing to are left to the browser', async () => {
+        const { view, refusals } = await mountReadOnly('abc', 'javascript');
+
+        view.dispatch({ selection: EditorSelection.range(1, 2) });
+
+        // Alt-Backspace is the legacy undo chord on Windows, Shift-Delete
+        // cuts on Windows and Linux, and Ctrl-Shift-Delete is a browser's own.
+        expect(pressKey(view, 'Backspace', 8, { altKey: true })).toBe(false);
+        expect(pressKey(view, 'Delete', 46, { shiftKey: true })).toBe(false);
+        expect(pressKey(view, 'Delete', 46, { ctrlKey: true, shiftKey: true })).toBe(false);
+
+        expect(view.state.doc.toString()).toBe('abc');
+        expect(refusals()).toBe(0);
     });
 });

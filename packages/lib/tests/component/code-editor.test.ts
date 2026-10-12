@@ -2119,6 +2119,23 @@ describe('CodeEditor read-only extension', () => {
             expect(transaction.state.doc.toString()).toBe('abc');
         }
     });
+
+    it('RO16: the read-only extension binds a refusal to each deletion key the editor\'s keymap stops the default of', () => {
+        const bound    = EditorState.create({ extensions: buildReadOnlyExtension(true) }).facet(keymap).flat();
+        const writable = EditorState.create({ extensions: buildReadOnlyExtension(false) }).facet(keymap).flat();
+
+        // CodeMirror's six deletion bindings, as `standardKeymap` lists them.
+        expect(bound.map(({ key, mac, shift }) => ({ key, mac, shift: shift !== undefined }))).toEqual([
+            { key: 'Backspace', mac: undefined, shift: true },
+            { key: 'Delete', mac: undefined, shift: false },
+            { key: 'Mod-Backspace', mac: 'Alt-Backspace', shift: false },
+            { key: 'Mod-Delete', mac: 'Alt-Delete', shift: false },
+            { key: undefined, mac: 'Mod-Backspace', shift: false },
+            { key: undefined, mac: 'Mod-Delete', shift: false },
+        ]);
+        expect(bound.every((binding) => binding.any === undefined)).toBe(true);
+        expect(writable).toEqual([]);
+    });
 });
 
 describe('CodeEditor revealRange', () => {
