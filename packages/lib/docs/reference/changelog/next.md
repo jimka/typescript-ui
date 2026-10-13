@@ -1631,6 +1631,18 @@ page resets to empty.
   among them, still goes to the browser, as in an editor that is not
   read-only. No consumer action is needed.
 
+- **A Markdown typing shortcut in `MarkdownEditor` is applied by typing
+  only.** Deleting or cutting text applied a shortcut when the text left
+  before the caret read as one: `\- .text` with the `.` removed by
+  Backspace became a list item, and `a \*x\*.b` went italic, each as a
+  second undo step. Pasting or dropping the one character that completes a
+  shortcut applied it too. A shortcut is now applied by a typed key, text
+  composed with an input method and an autocorrection, and by nothing
+  else. Known limit: a composition cancelled or emptied right behind
+  shortcut-shaped text still applies it, as before. Enter after a marker or
+  a code fence opener converts the block as before. No consumer action is
+  needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
