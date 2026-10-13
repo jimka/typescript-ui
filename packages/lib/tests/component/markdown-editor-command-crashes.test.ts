@@ -960,15 +960,17 @@ function pressEnter(editor: MarkdownEditor): void {
 }
 
 /**
- * Types one character at the selection, in an update of its own as a
- * keystroke does, so the typing shortcuts see it.
+ * Types one character at the selection with the command a keystroke
+ * dispatches, in an update of its own, so the typing shortcuts see it.
  *
  * @param editor - The editor.
  * @param char - The character.
  */
 async function typeChar(editor: MarkdownEditor, char: string): Promise<void> {
-    lexicalOf(editor).update(() => {
-        ($getSelection() as RangeSelection).insertText(char);
+    const lexical = lexicalOf(editor);
+
+    lexical.update(() => {
+        lexical.dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, char);
     }, { discrete: true });
     await Promise.resolve();
 }

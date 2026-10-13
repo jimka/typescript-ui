@@ -16,7 +16,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     $getRoot, $getSelection, $isElementNode, $isRangeSelection, $setSelection,
-    CLEAR_EDITOR_COMMAND, CLEAR_HISTORY_COMMAND, CLICK_COMMAND, CONTROLLED_TEXT_INSERTION_COMMAND, COPY_COMMAND,
+    BEFORE_INPUT_COMMAND, CLEAR_EDITOR_COMMAND, CLEAR_HISTORY_COMMAND, CLICK_COMMAND, CONTROLLED_TEXT_INSERTION_COMMAND, COPY_COMMAND,
     DELETE_CHARACTER_COMMAND, DELETE_LINE_COMMAND, DELETE_WORD_COMMAND, FOCUS_COMMAND, FORMAT_ELEMENT_COMMAND,
     FORMAT_TEXT_COMMAND, INSERT_LINE_BREAK_COMMAND, INSERT_PARAGRAPH_COMMAND, INSERT_TAB_COMMAND, PASTE_COMMAND,
     REMOVE_TEXT_COMMAND, SELECTION_CHANGE_COMMAND, UNDO_COMMAND,
@@ -1612,6 +1612,26 @@ describe('MarkdownEditor read-only, mounted: switching read-only', () => {
         expect(document.activeElement).toBe(m.root);
         expect(lexicalFocus).not.toHaveBeenCalled();
         expect(selectionOf(m)).toBe(selection);
+    });
+
+    it('M7: a typed beforeinput whose input event a read-only editor refuses leaves no wait behind: once read-only is lifted, a removal of the character before the caret completes no typing shortcut', async () => {
+        const m = mounted('\\- .cd', false);
+
+        selectIn(m, '- .cd', 3);
+
+        // The browser announces typed text, and read-only is switched on before its input event arrives. jsdom's
+        // InputEvent has no getTargetRanges, so Lexical listens for no beforeinput here: the command is dispatched,
+        // and the input event is a real one.
+        m.lexical.update(() => { m.lexical.dispatchCommand(BEFORE_INPUT_COMMAND, beforeInput('insertText', true) as InputEvent); }, { discrete: true });
+        m.editor.setReadOnly(true);
+        m.root.dispatchEvent(inputEvent('insertText'));
+        m.editor.setReadOnly(false);
+        selectIn(m, '- .cd', 2, 3);
+        m.lexical.update(() => { m.lexical.dispatchCommand(REMOVE_TEXT_COMMAND, null); }, { discrete: true });
+        await settle();
+
+        expect(m.editor.getValue()).toBe('\\- cd');
+        expect(m.lexical.read(() => $getRoot().getFirstChild()?.getType())).toBe('paragraph');
     });
 });
 

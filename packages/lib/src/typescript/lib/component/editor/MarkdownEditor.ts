@@ -29,7 +29,7 @@ import {
     $caretFromPoint, $normalizeCaret, $setPointFromCaret, KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND, $isRootOrShadowRoot,
     $getChildCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection, COMMAND_PRIORITY_LOW,
     INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND, $getNodeByKey, $addUpdateTag, $setState,
-    HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG,
+    HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG, BEFORE_INPUT_COMMAND, INPUT_COMMAND, COMMAND_PRIORITY_EDITOR, COMPOSITION_END_TAG,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
@@ -3533,11 +3533,178 @@ function $declinesFormat(): boolean {
 }
 
 /**
- * Registers the Markdown typing shortcuts everywhere except inside a raw
- * Markdown block, whose text is saved as Markdown: a shortcut there would turn
- * typed syntax into formatting the block does not save.
+ * The update tag of an update Lexical makes while it handles input that
+ * types text ({@link registerTypedTextMarks}). The Markdown typing shortcuts
+ * are applied by typing alone
+ * ({@link registerMarkdownShortcutsOutsideRawBlocks}).
+ */
+const TYPED_TEXT_TAG = "markdown-typed-text";
+
+/**
+ * The `inputType`s of the input events that type text: a character from the
+ * keyboard, an input method or dictation (`insertText`), text being composed
+ * and its commit (`insertCompositionText`, and `insertFromComposition`, which
+ * Safari sends), and a replacement the browser makes for what was typed —
+ * autocorrect, a text substitution, a picked spelling
+ * (`insertReplacementText`). A paste, a drop, a yank and every deletion have
+ * other types.
+ */
+const TYPING_INPUT_TYPES: ReadonlySet<string> = new Set([
+    "insertText", "insertCompositionText", "insertFromComposition", "insertReplacementText",
+]);
+
+/**
+ * How long a typed `beforeinput` that Lexical left to the browser is awaited
+ * for its `input` event: until the task it was handled in has ended, which
+ * is what a timer of no delay gives.
+ */
+const END_OF_TASK_DELAY_MS = 0;
+
+/** What {@link registerTypedTextMarks} returns. */
+interface TypedTextMarks {
+    /** Removes the listeners. */
+    unregister:    () => void;
+
+    /** Whether an update that carries these tags typed text. */
+    isTypedUpdate: (tags: ReadonlySet<string>) => boolean;
+}
+
+/**
+ * Whether what a text-insertion command carries is typed text. Lexical
+ * hands a typed character over as a string, and a composition's commit, a
+ * text replacement, a drop and a yank as their input event.
+ *
+ * @param payload - The command's payload.
+ * @returns Whether it is typed text.
+ */
+function isTypedPayload(payload: InputEvent | string): boolean {
+    return typeof payload === "string" || TYPING_INPUT_TYPES.has(payload.inputType);
+}
+
+/**
+ * Marks the updates that type text, for the Markdown typing shortcuts
+ * ({@link registerMarkdownShortcutsOutsideRawBlocks}): a shortcut is applied
+ * by typing, never by a removal, a paste, a drop, an undo, a command or a
+ * change of the text with no input behind it.
  *
  * @remarks
+ * Typed text reaches Lexical by three commands, and each tags its update
+ * {@link TYPED_TEXT_TAG} when its input types text
+ * ({@link TYPING_INPUT_TYPES}): `BEFORE_INPUT_COMMAND` and `INPUT_COMMAND`,
+ * which carry the browser's input event, and
+ * `CONTROLLED_TEXT_INSERTION_COMMAND`, by which Lexical inserts the text
+ * itself. The end of a composition has Lexical's own `COMPOSITION_END_TAG`,
+ * and counts as typing. The first two listeners are at
+ * {@link COMMAND_PRIORITY_CRITICAL}, ahead of Lexical's own handlers, which
+ * end their commands. The third is at {@link COMMAND_PRIORITY_EDITOR}, the
+ * priority of `registerRichText`'s handler that inserts the text: call this
+ * before `registerRichText`, so that the tag is set in the update that holds
+ * the text. A command dispatched outside an update runs each priority's
+ * listeners in an update of their own, and a tag set at a higher priority
+ * would be lost with that update when it changes nothing. A read-only editor
+ * refuses these commands ahead of all three listeners
+ * ({@link registerReadOnlyGuard}), so none of them runs for a refused edit.
+ *
+ * A browser may put a typed character in by itself, and Lexical may read it
+ * off the DOM in an update with no command — before the `input` event's
+ * command, where another listener runs ahead of Lexical's. So a
+ * `beforeinput` of typed text that Lexical left to the browser (it is not
+ * prevented) makes every update typed while its `input` event is awaited.
+ * That wait never outlives the event it is for. It ends at the `input`
+ * command, at the next `beforeinput` command, at the end of the task in
+ * which the `beforeinput` was handled (a browser fires the `input` event in
+ * that task, and Lexical's mutation observer reads the text in a microtask
+ * of it), when the editor's editability changes, and when the listeners are
+ * removed. A `beforeinput` whose `input` event never reaches the editor,
+ * such as one a read-only editor refuses, makes no later update typed.
+ *
+ * Known limit: the end of a composition counts as typing whatever the
+ * composition did. One that is cancelled or emptied right behind
+ * shortcut-shaped text, or that ends by removing text, applies the shortcut,
+ * as it does without this function.
+ *
+ * @param editor - The editor.
+ * @returns The unregister function and the test of an update's tags.
+ */
+function registerTypedTextMarks(editor: LexicalEditor): TypedTextMarks {
+    // The `beforeinput` of typed text seen last, until its `input` event arrives or the wait ends otherwise.
+    let awaited: InputEvent | null = null;
+    let awaitedTimer: TimerId | null = null;
+
+    const endWait = (): void => {
+        if (awaitedTimer !== null) {
+            DOM.sink.clearTimeout(awaitedTimer);
+        }
+
+        awaited = null;
+        awaitedTimer = null;
+    };
+
+    const startWait = (event: InputEvent): void => {
+        awaited = event;
+        awaitedTimer = DOM.sink.setTimeout(endWait, END_OF_TASK_DELAY_MS);
+    };
+
+    const tagWhenTyping = (isTyping: boolean): void => {
+        if (isTyping) {
+            $addUpdateTag(TYPED_TEXT_TAG);
+        }
+    };
+
+    const unregister = mergeRegister(
+        editor.registerCommand(BEFORE_INPUT_COMMAND, (event) => {
+            const isTyping = TYPING_INPUT_TYPES.has(event.inputType);
+
+            endWait();
+
+            if (isTyping) {
+                startWait(event);
+            }
+
+            tagWhenTyping(isTyping);
+
+            return false;
+        }, COMMAND_PRIORITY_CRITICAL),
+        editor.registerCommand(INPUT_COMMAND, (event) => {
+            endWait();
+            tagWhenTyping(TYPING_INPUT_TYPES.has(event.inputType));
+
+            return false;
+        }, COMMAND_PRIORITY_CRITICAL),
+        editor.registerCommand(CONTROLLED_TEXT_INSERTION_COMMAND, (payload) => {
+            tagWhenTyping(isTypedPayload(payload));
+
+            return false;
+        }, COMMAND_PRIORITY_EDITOR),
+        editor.registerEditableListener(endWait),
+        endWait,
+    );
+
+    const isTypedUpdate = (tags: ReadonlySet<string>): boolean => {
+        const isAwaited = awaited !== null && !awaited.defaultPrevented;
+
+        return tags.has(TYPED_TEXT_TAG) || tags.has(COMPOSITION_END_TAG) || isAwaited;
+    };
+
+    return { unregister, isTypedUpdate };
+}
+
+/**
+ * Registers the Markdown typing shortcuts everywhere except inside a raw
+ * Markdown block, whose text is saved as Markdown: a shortcut there would turn
+ * typed syntax into formatting the block does not save. A shortcut is
+ * applied by typing alone: an update that removes, cuts, pastes or drops
+ * completes none, however the text before the caret reads when it ends.
+ *
+ * @remarks
+ * `registerMarkdownShortcuts` takes any update that leaves a collapsed
+ * caret in changed text, at most one character further on than it was, for
+ * a typed character. A Backspace is such an update, and so is the removal
+ * of a range: `a \*x\*.b` with the `.` removed read as a typed `*x*` and
+ * went italic, as an update of its own. So its update listener is handed an
+ * update only when the update typed text (`isTypedUpdate`). Its Enter
+ * listener is left as it is: Enter is a key press.
+ *
  * `registerMarkdownShortcuts` hard-codes its one exclusion (a `CodeNode`
  * parent) and offers no hook, so it is handed the editor through a proxy
  * whose `registerUpdateListener` and `registerCommand` wrap each listener to
@@ -3550,11 +3717,18 @@ function $declinesFormat(): boolean {
  * it.
  *
  * @param editor - The editor.
+ * @param isTypedUpdate - Whether an update that carries the given tags typed text ({@link registerTypedTextMarks}).
  * @returns The unregister function.
  */
-function registerMarkdownShortcutsOutsideRawBlocks(editor: LexicalEditor): () => void {
+function registerMarkdownShortcutsOutsideRawBlocks(editor: LexicalEditor, isTypedUpdate: (tags: ReadonlySet<string>) => boolean): () => void {
     const registerUpdateListener = (listener: UpdateListener): (() => void) =>
         editor.registerUpdateListener((payload) => {
+            const isTyped = isTypedUpdate(payload.tags);
+
+            if (!isTyped) {
+                return;
+            }
+
             const inRawBlock = payload.editorState.read($isSelectionInRawBlock);
 
             if (!inRawBlock) {
@@ -8414,13 +8588,17 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             this._cleanValue = editor.read(() => $serializeMarkdown(this._sourceMap));
         }
 
+        // Before `registerRichText`, whose handler of the text-insertion command, at the same priority, inserts the text.
+        const typedTextMarks = registerTypedTextMarks(editor);
+
         this._unregister = mergeRegister(
             unregisterWritableStateRules,
+            typedTextMarks.unregister,
             registerRichText(editor),
             registerList(editor),
             registerTablePlugin(editor),
             registerMarkdownHistory(editor),
-            registerMarkdownShortcutsOutsideRawBlocks(editor),
+            registerMarkdownShortcutsOutsideRawBlocks(editor, typedTextMarks.isTypedUpdate),
             editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
             registerColumnPaste(editor),
             registerTablePartPaste(editor),
