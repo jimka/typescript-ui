@@ -1,5 +1,7 @@
 ---
 depends-on:
+  - marked-version-pin-or-upgrade
+  - marked-upgrade
   - markdown-list-toggle-task-item-parity
   - markdown-editor-raw-block-edge-cases
   - markdown-editor-raw-block-range-edits
@@ -24,14 +26,17 @@ touches-shared:
 | `- one ⏎⏎   second ⏎⏎ - two` | `one`, bulleted toggle | `one ⏎⏎ second ⏎⏎ - two` | `one ⏎⏎ - second ⏎⏎ - two` | `one ⏎⏎ second ⏎⏎ - two` |
 | same | `one`, numbered toggle | `1. one ⏎⏎    second ⏎⏎ - two` | `1. one ⏎⏎ - second ⏎⏎ - two` | `1. one ⏎⏎    second ⏎⏎ - two` |
 | `- [x] a ⏎   - b ⏎   - c ⏎ - d` | `b`, `setBlockType("h2")` | `- [x] a ⏎⏎ ## b ⏎⏎ - - c ⏎ - d` | nothing | `- [x] a ⏎ ## b ⏎ - - c ⏎ - d` |
+| `- one ⏎⏎ →second ⏎ - two` | `one`, bulleted toggle | `one ⏎⏎ second ⏎⏎ - two` | nothing | `one ⏎⏎ ··second ⏎ - two` |
 
 `⏎` is a line end, `⏎⏎` a blank line, `→` a tab and `·` a space throughout.
 
-The whole change is in [markdownSourceLines.ts](../packages/lib/src/typescript/lib/component/editor/markdownSourceLines.ts). `markdownSourceTokens.ts`, `MarkdownEditor.ts` and `CodeEditor.ts` are not touched. The tests are rows in two existing test files. The docs lose their paragraph on "the difference that is to go".
+A line that leaves the list this way loses the list items' indentation. When a tab stands in that indentation, the tab is written as the spaces it stood for, so the line reads at its new place as it read in the item (the last row). No other byte of the line changes.
+
+The whole change is in [markdownSourceLines.ts](../packages/lib/src/typescript/lib/component/editor/markdownSourceLines.ts). `markdownSourceTokens.ts`, `markdownExtensions.ts`, `MarkdownEditor.ts` and `CodeEditor.ts` are not touched. The tests are rows in two existing test files. The docs lose their paragraph on "the difference that is to go".
 
 A first implementation of this rule was written inside `markdown-list-toggle-task-item-parity`, went through five reviews without converging, and was withdrawn on 2026-10-11. Its branch was deleted on 2026-10-12. This plan calls it *the first attempt*; its design is not reused.
 
-*Base* means the code this plan starts from: commit `75d022ba1`, the tip of the Markdown stack, with the plans of `depends-on` on top. Every number here was measured on `75d022ba1` with `marked` 18.0.9, the installed version, once as it is and once with the code of `markdown-tab-column-parity` installed.[^measured] Line numbers are from `75d022ba1`; find each site by its symbol name.
+*Base* means the code this plan starts from: commit `736452bbc`, the tip of the Markdown stack, with the plans of `depends-on` on top. `marked` is 18.1.0 there (`marked-version-pin-or-upgrade`, then `marked-upgrade`), and `markdown-tab-column-parity` reads a tab in a line's container prefix as the spaces to its tab stop. Every number here was measured on `736452bbc` with those three plans' code applied and `marked` 18.1.0.[^measured] `markdownSourceLines.ts` is the same file at `736452bbc` as at the older tip `75d022ba1`, but for one comment line `marked-upgrade` edits. Line numbers are from `736452bbc`; find each site by its symbol name.
 
 ---
 
@@ -75,7 +80,7 @@ Every form of the tail candidate is tried before any form of the base candidate.
 |---|---|---|---|
 | `- one ⏎⏎   second ⏎ - two` | `## one ⏎⏎ second ⏎ - two` reads as expected | not tried | the tail candidate's |
 | `` - one ⏎⏎   ``` ⏎   open ⏎ - two `` (a code fence left open) | `` ## one ⏎⏎ ``` ⏎ open ⏎ - two `` does not: the fence now takes `- two` | `` ## one ⏎⏎ - ``` ⏎   open ⏎ - two `` reads as expected | the base candidate's |
-| `- one ⏎⏎ →second ⏎ - two` (a tab indents the tail) | not built | not built: the base cannot re-open the item on a tab either | none: the command declines, as at the base |
+| `- one ⏎⏎ →second ⏎ - two` (a tab indents the tail) | `## one ⏎⏎ ··second ⏎ - two` reads as expected | not tried (it would not be built: the base cannot re-open the item on a tab) | the tail candidate's, where the base did nothing |
 
 Because the base candidate is the base's own edit under the base's own check, a command that acts at the base acts after this plan. That holds by construction and was measured.[^mechanism]
 
@@ -94,20 +99,37 @@ A new function, `liftLinesWithTail`, stands beside `liftLines` and has its shape
 | the outermost list item | the wrap item's first line | the item's marker |
 | the outermost list item | after that line | its spaces, as they are |
 
-What stands past the prefixes is the line's content. `liftLinesWithTail` writes it back byte for byte: a tab in a code line, trailing spaces, an escape. A line that carries less than a prefix — a lazy line, or a line of whitespace — gives up the spaces it carries and nothing more.
+What stands past the prefixes is the line's content. `liftLinesWithTail` writes it back byte for byte: a tab in a code line, trailing spaces, an escape. A tab in the prefixes themselves is the one exception, the next decision. A line that carries less than a prefix — a lazy line, or a line of whitespace — gives up the spaces it carries and nothing more.
 
-`liftLines`, `reopenContainers`, `containerPrefix` and `itemIndent` are not changed. The base candidate runs through them as before.
+`liftLines` and `reopenContainers` are not changed. `containerPrefix` and `itemIndent` gain one optional parameter, `tabStops`, `false` by default; the base candidate runs through all four as before.
 
-### A tab in a list item's indentation is not taken apart
+### A tab in a moved line's container prefix is written as the spaces it stood for
 
-`liftLinesWithTail` reads a list item's indentation in spaces. When a tab stands in the indentation of a line after the lifted block, the tail candidate is not built, and the base candidate decides.[^tabs]
+`liftLinesWithTail` reads each line after a lifted block in its *spaces form*: the line with every tab of its container prefix written as the spaces that reach that tab's stop, counted from the line's start. That is what `withPrefixTabsAsSpaces` returns, the function `markdown-tab-column-parity` adds to `markdownExtensions.ts` and the lexer reads every list and quote line through. A *container prefix* is that plan's term: a line's leading run of spaces, tabs, `>` markers and list markers, and a task checkbox right after a list marker.
 
-| Line after the lifted block, in a `- ` item | Its indentation | Tail candidate |
-|---|---|---|
-| `··second` | two spaces | built |
-| `··a→b` | two spaces; the tab is content | built, the tab kept |
-| `→second` | a tab | not built |
-| `·→second` | a space and a tab | not built |
+The prefixes are taken off and put on in the spaces form, as for a line without a tab. The line is then written as its own bytes up to the first column the lift changes, and as the spaces form from there on (`keptBytes`). An item's marker line is read in its spaces form too, so a tab after the marker gives the item's content column (`-→one` puts it at column 4).[^tabs] The pattern is the lexer's own: `listWithTabStops` in `markdownExtensions.ts` (added by `markdown-tab-column-parity`) reads a list from the spaces form of its lines and sets each token's `raw` back to the source's bytes.
+
+Which bytes the tail lift may rewrite, and which never:
+
+| Bytes of a line after the lifted block | Written |
+|---|---|
+| a tab of the container prefix at or past the first column the lift changes | the spaces that reach its tab stop from the column it stood at; the lift then takes the list items' columns off those spaces as off any others |
+| whitespace that holds a tab and ends the line right after a marker (`··-→`) | one space, as `withPrefixTabsAsSpaces` writes it and the lexer reads it |
+| a tab of the container prefix before the first column the lift changes | kept |
+| a tab past the container prefix: in text, a code span, or a code or HTML line past its first character that is no prefix | kept |
+| every byte of a line whose prefixes the lift writes back unchanged: a line before the lifted block, a line from the wrap item on that keeps all its prefixes, a line outside the outermost list item | kept |
+| a line the base candidate writes | as at the base: a tab there still makes the base decline |
+
+| Line after the lifted block, in a `- ` item (`one` lifted, bulleted toggle) | Written |
+|---|---|
+| `··second` | `second` |
+| `··a→b` in a code block | `a→b` |
+| `→second` | `··second`: the tab ran from column 0 to 4, two of them the item's |
+| `··→bb` in a code block | `··bb` |
+| `··-→old` in a code block | `-·old` |
+| `→after`, below the item's nested list | `→after`: the outermost item keeps its columns from the nested list on |
+
+The lifted block's own lines are not in this table: the lift writes them from the block's text, without any indentation, whether a tab stood there or not.
 
 ### The expected leaves come from the block tree, the lines from the text
 
@@ -133,28 +155,43 @@ The base candidate is checked as at the base, without instances, so that it acce
 
 ### `markdownSourceTokens.ts` is not changed
 
-The token search stays as it is. A block whose text it does not find stays unlocated, and a command on it declines as at the base. Source analysis therefore costs what it cost.[^analysis]
+The token search stays as it is. A block whose text it does not find stays *unplaced*: the analysis has no source offsets for it. A command on it declines as at the base. Source analysis therefore costs what it cost.[^analysis]
+
+### Ownership — this plan writes the lines after a lifted block, `markdown-source-mode-block-locator` places blocks
+
+`markdown-source-mode-block-locator` comes next. It replaces the token search, so that a block a tab indents is placed (rows `E25`, `E26`), and its owner's answer B1 is that a block command on such a block writes the block's line without the tab. The two plans split the work this way:
+
+| Lines | Owner | What happens to a tab there |
+|---|---|---|
+| the lifted block's own lines | the lift as it stands at the base | the line is written from the block's text, so no indentation is kept, tab or not; B1 is this, once the block is placed |
+| the lines after the lifted block that the tail lift writes: the tail, the wrap item's line, the lines below it | this plan | a tab of the container prefix that moves is written as spaces (the table above) |
+| which blocks are placed, and so which commands reach a lift at all | `markdown-source-mode-block-locator` | none: placing writes no line |
+
+Once the locator places a tab-indented block, every line after it that a lift moves goes through this plan's rule. There is one rule for prefix tabs, not two.
 
 ### What a tab does, on top of `markdown-tab-column-parity`
 
-`markdown-tab-column-parity` is implemented first. It makes the viewer and the WYSIWYG surface read a tab in a line's container prefix as the spaces that reach its tab stop, counted from the line start, and keep every other tab. This plan adds no tab reading of its own. Each tab shape is decided by the two decisions above:[^tab-order]
+`markdown-tab-column-parity` is implemented first. It makes the viewer and the WYSIWYG surface read a tab in a line's container prefix as the spaces that reach its tab stop, counted from the line start, and keep every other tab. This plan reads tabs through that plan's `withPrefixTabsAsSpaces` and adds no reading of its own.[^tab-order]
 
-| Shape (`- ` item, caret on `one`) | Source mode after this plan | Why | Row |
+| Shape (`- ` item, caret on `one` unless said) | Source mode after this plan | Why | Row |
 |---|---|---|---|
-| `` ··``` ⏎ ··a→b ⏎ ··``` `` held by the item: a tab inside a code line | the code block leaves the list, the tab kept | the tab is content and reads the same anywhere | `E38`, moves to `SAME` |
-| `` ··``` ⏎ ··aa ⏎ ··→bb ⏎ ··``` ``: a tab that indents a code line | acts, the code block left in the list | the tab is two columns wide in the item and four at the margin: the tail candidate reads otherwise and is rejected | `E18`, new, `DIFFERS` |
-| `→second` held by the item: a tab indents the block after the caret's | nothing | the tail candidate is not built; the base cannot re-open the item on a tab | `E24` (two), stays |
-| the caret on that `second` | nothing | the token search does not find the block | `E25`, stays |
-| `→- nested`: a nested list indented by a tab, caret on `nested` or on `one` | nothing | the same two reasons | `E26`, `E27`, stay |
-| `-→one ⏎⏎ →second`: a tab after the marker of an item that holds more lines | nothing | the item's content column cannot be read from `-→` | `E19` `UL`, stays |
-| `- one→tab`: a tab in the item's text | acts | content tab; `markdown-tab-column-parity` already makes it act | `E19` `h2`, in `SAME` since that plan |
-| a block before a tab-indented block: `··ok ⏎⏎ →tabbed` | acts, `ok` and `tabbed` left in the list | the tail candidate is not built; the base candidate reads | source-mode row |
+| `` ··``` ⏎ ··a→b ⏎ ··``` `` held by the item: a tab inside a code line | the code block leaves the list, the tab kept | the tab is content | `E38`, moves to `SAME` |
+| `` ··``` ⏎ ··aa ⏎ ··→bb ⏎ ··``` ``: a tab that indents a code line | the code block leaves the list as `aa ⏎ ··bb`, the WYSIWYG surface's text | the tab moves, and is written as the two columns it stood for in the item | `E18`, new, source-mode rows |
+| `→second` held by the item: a tab indents the block after the caret's | `second` leaves the list as `··second` | the tab moves | `E24` (two), to source-mode rows |
+| `-→one ⏎⏎ →second`: a tab after the marker of an item that holds more lines | `second` leaves the list as `second` | the marker line is read in its spaces form: the content column is 4, as wide as the tab of `→second` | `E19` `UL`, to source-mode rows |
+| the caret on that `second` in `- one ⏎⏎ →second` | nothing | the token search does not place the block | `E25`, stays; the locator's |
+| `→- nested`: a nested list indented by a tab, caret on `nested` | nothing | the same | `E26`, stays; the locator's |
+| the same, caret on `one` | nothing | the nested list the tail ends at is not placed, so the tail candidate is not built | `E27`, stays; once the locator places the list, this plan's rule writes the list's line |
+| `- one→tab`: a tab in the item's text | acts | content tab | `E19` `h2`, in `SAME` since `marked-upgrade` |
+| a block before a tab-indented block: `··ok ⏎⏎ →tabbed` | both leave the list, `tabbed` as `··tabbed` | the tab moves | source-mode row |
 
-Declining on the `E24` to `E27` and `E19` `UL` shapes is right for three reasons. A tab in an item's indentation covers the item's columns and some of the content's, so taking the item's part off means rewriting the tab, and this plan rewrites no byte outside a prefix written in spaces. The block behind such a tab is not located without a search that follows tabs, and that search is what made analysis quadratic in the first attempt. And the shape is hand-written: the editor saves indentation in spaces.
+The `E18`, `E19` `UL` and `E24` documents hold a tab in an item's indentation, which the editor never saves, so they cannot be `SAME` rows; they become rows of the source-mode `CASES` table, and their results read as the WYSIWYG results do.
 
-### Decisions that await the user's sign-off
+### Decisions (signed off 2026-10-14)
 
-**1. `setBlockType` and the code fence lift the tail too.** The three commands share one lift, as on the WYSIWYG surface. The user was told and did not object; it is not yet confirmed.
+The repository's owner answered these on 2026-10-14. The plan is written for these answers.
+
+**L1. `setBlockType` and the code fence lift the tail too — accepted.** The three commands share one lift, as on the WYSIWYG surface.
 
 | Document | Caret | Command | Source mode at the base | Source mode after | WYSIWYG |
 |---|---|---|---|---|---|
@@ -171,15 +208,13 @@ Declining on the `E24` to `E27` and `E19` `UL` shapes is right for three reasons
 | `- a ⏎   - b ⏎⏎   c ⏎⏎ - d` | `b` | bulleted toggle | `- a ⏎⏎ b ⏎⏎ - c ⏎⏎ - d` | `- a ⏎⏎ b ⏎⏎ c ⏎⏎ - d` | the same |
 | `- o ⏎   - x ⏎     - n ⏎   - y ⏎ - z` | `x` | bulleted toggle | `- o ⏎⏎ x ⏎⏎ - - - n ⏎   - y ⏎ - z` | `- o ⏎⏎ x ⏎⏎ - - n ⏎   - y ⏎ - z` | the same |
 
-If the answer is no for `setBlockType` or the fence, give `convertBlocks` or `FENCED_CODE_SOURCE` the base candidate alone, and leave their rows in `DIFFERS`.
+**L2. `setBlockType` on a block inside a task item acts as on any other item — accepted.** `setBlockType` on a block an item holds converts it in place on the WYSIWYG surface and takes it out of the list in source mode (the `setBlockType("h2")` row on `second` above). At the base source mode did nothing where that block stood in a task item with more of the item after it. It now acts there as on any other item, so those cases move from "both do nothing" to that known difference (rows `T20` `h2`, `M33` `h2`).[^held]
 
-**2. `setBlockType` on a block inside a task item now takes it out of the list.** The row above for `setBlockType("h2")` on `second` shows a difference that exists already: `setBlockType` on a block an item holds converts it in place on the WYSIWYG surface and takes it out of the list in source mode. At the base source mode did nothing where that block stood in a task item with more of the item after it. It now acts there as on any other item, so those cases move from "both do nothing" to that known difference (rows `T20` `h2`, `M33` `h2`).[^held]
+**L3. Row `E18`: the code block leaves the list, its tab written as spaces — decided against the first recommendation.** With `markdown-tab-column-parity` the tab in `··→bb` is two columns wide inside a `- ` item. The WYSIWYG surface takes the code block out of the list and writes those two columns as spaces (`··bb`). Source mode now does the same: it rewrites the bytes of that line's indentation, and the two surfaces agree.[^e18]
 
-**3. Row `E18`: a code block whose line a tab indents stays in the list in source mode.** With `markdown-tab-column-parity` the tab in `··→bb` is two columns wide inside a `- ` item. The WYSIWYG surface takes the code block out of the list and writes those two columns as spaces (`··bb`). Source mode would have to write the tab's bytes at the margin, where a tab is four columns wide, so it leaves the block in the list. The recommendation is to keep this pinned as a `DIFFERS` row and a docs clause, and to change neither surface.[^e18]
+**L4. The tab-indented item lines of `E24` to `E27` and `E19` `UL` are rewritten too — decided against the first recommendation.** The same rule as L3: a tab in a moved line's container prefix is written as the spaces the tab rule gives. `E24` and `E19` `UL` act with this plan. `E25`, `E26` and `E27` stay declined here, because their blocks are not placed. Once `markdown-source-mode-block-locator` places them, that plan's B1 covers the placed block's own line (`E25`, `E26`), and this plan's rule every line a lift moves after it (`E27`'s nested list). What those three rows then give is that plan's to measure.
 
-**4. The tab shapes of `E24` to `E27` and `E19` `UL` stay declined.** See the tab table above. The first attempt acted on `E24`; this plan does not.
-
-**5. A tail inside a quote stays in the quote.** When a quote holds the list, a numbered toggle on `one` in `> - one ⏎ > ⏎ >   second` gives `1. one ⏎ > ⏎ > second`: the new item stands outside the quote, so the tail cannot be one of its blocks. The WYSIWYG surface keeps such a list as a raw block, so there is nothing to agree with.
+**L5. A tail inside a quote stays in the quote — accepted.** When a quote holds the list, a numbered toggle on `one` in `> - one ⏎ > ⏎ >   second` gives `1. one ⏎ > ⏎ > second`: the new item stands outside the quote, so the tail cannot be one of its blocks. The WYSIWYG surface keeps such a list as a raw block, so there is nothing to agree with.
 
 ### Scope edges
 
@@ -192,7 +227,7 @@ If the answer is no for `setBlockType` or the fence, give `convertBlocks` or `FE
 
 ### Tests are rows in the existing tables, each seen to fail first
 
-Parity rows go into `SAME` and `DIFFERS` of [markdown-editor.test.ts:908](../packages/lib/tests/component/markdown-editor.test.ts#L908). Source-mode rows that hold text the editor would not save go into the `CASES` table of `describe('MarkdownEditor source-mode line commands read the viewer's blocks')` ([:2511](../packages/lib/tests/component/markdown-editor.test.ts#L2511)). Rows on the transforms themselves go into `describe('line commands act on the blocks the viewer reads')` in [markdown-source-edits.test.ts:1388](../packages/lib/tests/component/markdown-source-edits.test.ts#L1388). There is no new test file.
+Parity rows go into `SAME` and `DIFFERS` of [markdown-editor.test.ts:1113](../packages/lib/tests/component/markdown-editor.test.ts#L1113). Source-mode rows that hold text the editor would not save go into the `CASES` table of `describe('MarkdownEditor source-mode line commands read the viewer's blocks')` ([:2853](../packages/lib/tests/component/markdown-editor.test.ts#L2853)). Rows on the transforms themselves go into `describe('line commands act on the blocks the viewer reads')` in [markdown-source-edits.test.ts:1389](../packages/lib/tests/component/markdown-source-edits.test.ts#L1389). There is no new test file.
 
 ---
 
@@ -541,6 +576,19 @@ function holdsEntry(node: SourceBlockNode, entry: number): boolean {
     readonly follow?: string;
 ```
 
+The module imports the spaces form from the lexer module. Add this line directly after the import of `lineEndAt`:
+
+```ts
+import { withPrefixTabsAsSpaces } from "~/component/display/markdownExtensions.js";
+```
+
+`itemIndent` and `containerPrefix` each gain a last parameter, `tabStops = false`. With it `true`, `itemIndent` reads the item's first line in its spaces form. Every existing call keeps its arguments, so the base candidate reads exactly as before; only `itemPrefixAfterLift` below passes `true`.
+
+| Function | Change |
+|---|---|
+| `containerPrefix` | signature `(analysis, container, rest, indents, tabStops = false)`; doc `@param tabStops - Whether lines are read in their spaces form, as {@link itemIndent} takes it.`; its call `itemIndent(analysis, container, indents)` becomes `itemIndent(analysis, container, indents, tabStops)` |
+| `itemIndent` | signature `(analysis, item, indents, tabStops = false)`, written over three lines like `containerPrefix`'s; doc `@param tabStops - Whether the first line is read in its spaces form ({@link withPrefixTabsAsSpaces}), as a tail lift reads it.`; `const line = text.slice(lineStart, lineEndAt(text, lineStart));` becomes `const source = text.slice(lineStart, lineEndAt(text, lineStart));` followed by `const line = tabStops ? withPrefixTabsAsSpaces(source) : source;`; its two calls, `itemIndent(analysis, container, indents)` and `containerPrefix(analysis, container, line.slice(position), indents)`, pass `tabStops` as the last argument |
+
 The functions below go directly after `liftLines`, before `liftedRegionEnd`. `liftedItems` moves nowhere; it is already in the module.
 
 ```ts
@@ -817,20 +865,63 @@ function wrapperItemAfter(node: SourceBlockNode): SourceBlockNode | null {
 
 /**
  * How much of a list item's indentation a line carries: the spaces it opens
- * with, up to the indentation's width.
+ * with, up to the indentation's width. The line is in its spaces form
+ * ({@link withPrefixTabsAsSpaces}), so its indentation holds no tab.
  *
  * @param rest - The line, from where the indentation starts.
  * @param width - The indentation's width.
- * @returns The count, or `null` when a tab stands in the indentation: part of a tab cannot be taken off.
+ * @returns The count.
  */
-function carriedIndent(rest: string, width: number): number | null {
+function carriedIndent(rest: string, width: number): number {
     let carried = 0;
 
     while (carried < width && rest[carried] === " ") {
         carried += 1;
     }
 
-    return carried < width && rest[carried] === "\t" ? null : carried;
+    return carried;
+}
+
+/**
+ * The columns a tab advances to in Markdown: the next multiple of four. The
+ * lexer's tab rule (`withPrefixTabsAsSpaces` in `display/markdownExtensions.ts`)
+ * and source mode's Enter rule (`editor/languages.ts`) hold the same number.
+ */
+const MARKDOWN_TAB_STOP = 4;
+
+/**
+ * A line after a lifted block as a tail lift writes it, from what it wrote
+ * for the line's spaces form: the line's own characters up to the first
+ * column the lift changed, then what was written from that column on. A tab
+ * of the line's container prefix at or past that column is thereby written
+ * as the spaces that reach its tab stop, counted where the line stood; every
+ * other character is the line's own.
+ *
+ * @param line - The line, as it stands in the document.
+ * @param changedAt - The first column the lift changed, `-1` for none.
+ * @param written - What was written for the line's spaces form.
+ * @returns The line to write.
+ */
+function keptBytes(line: string, changedAt: number, written: string): string {
+    if (changedAt === -1) {
+        return line;
+    }
+
+    let column = 0;
+    let index = 0;
+
+    while (index < line.length) {
+        const width = line[index] === "\t" ? MARKDOWN_TAB_STOP - (column % MARKDOWN_TAB_STOP) : 1;
+
+        if (column + width > changedAt) {
+            break;
+        }
+
+        column += width;
+        index += 1;
+    }
+
+    return line.slice(0, index) + written.slice(column);
 }
 
 /**
@@ -843,6 +934,9 @@ function carriedIndent(rest: string, width: number): number | null {
  * stands past the prefixes is the line's content and is written back byte
  * for byte. A line that carries less than a prefix (a lazy line, or a line
  * of whitespace) gives up what it carries of a prefix that is taken off.
+ * The prefixes are read from the line's spaces form, in which a tab of the
+ * container prefix is the spaces that reach its tab stop; the line keeps its
+ * own bytes up to the first column the lift changes ({@link keptBytes}).
  *
  * @param analysis - The document's analysis.
  * @param lineStart - The line's start.
@@ -851,23 +945,28 @@ function carriedIndent(rest: string, width: number): number | null {
  * @param indents - List item indentation already read; updated.
  * @returns The line to write, or `null` when a container that must be
  *   re-opened on the line cannot be, or a list item's indentation cannot be
- *   read (a tab in it, or right after the item's marker).
+ *   read (its marker not where expected).
  */
 function writeLineAfterLift(
     analysis: SourceAnalysis, lineStart: number, line: string, closed: ClosedForTail, indents: Map<SourceBlockNode, ItemIndent | null>,
 ): LineAfterLift | null {
     const chain = containersOfLine(analysis, lineStart);
     const deepest = chain.findLastIndex((container) => closed.quotes.has(container) || closed.outermost.has(container) || closed.inner.has(container));
-    const leading = leadingQuoteMarkers(chain, line);
+    const spaced = withPrefixTabsAsSpaces(line);
+    const leading = leadingQuoteMarkers(chain, spaced);
     let isTail = false;
     let written = "";
-    let rest = line;
+    let rest = spaced;
+    let changedAt = -1;
+
+    /** The line as written so far, with what stands past the prefixes read. */
+    const result = (): LineAfterLift => ({ text: keptBytes(line, changedAt, written + rest), isTail, leading });
 
     /** Ends the line where it stops carrying its containers' prefixes: nothing below can be re-opened on it. */
     const endLazily = (from: number): LineAfterLift | null => {
         const opens = chain.slice(from, deepest + 1).some((pending) => closed.quotes.has(pending) || closed.outermost.get(pending)?.wrapLine === lineStart);
 
-        return opens && !isBlank(line) ? null : { text: written + rest, isTail, leading };
+        return opens && !isBlank(line) ? null : result();
     };
 
     for (const [index, container] of chain.slice(0, deepest + 1).entries()) {
@@ -883,6 +982,12 @@ function writeLineAfterLift(
             return endLazily(index);
         }
 
+        const isChanged = changedAt === -1 && prefix.written !== rest.slice(0, prefix.length);
+
+        if (isChanged) {
+            changedAt = written.length;
+        }
+
         written += prefix.written;
         rest = rest.slice(prefix.length);
         isTail = isTail || prefix.isTail;
@@ -892,7 +997,7 @@ function writeLineAfterLift(
         }
     }
 
-    return { text: written + rest, isTail, leading };
+    return result();
 }
 
 /** The prefix one container gives a line after a lifted block, with what a tail lift writes in its place. */
@@ -946,21 +1051,21 @@ function quotePrefixAfterLift(quote: SourceBlockNode, rest: string, closed: Clos
  * @param lineStart - The line's start.
  * @param closed - The containers closed; updated.
  * @param indents - List item indentation already read; updated.
- * @returns The prefix, or `null` when the indentation cannot be read (a tab
- *   in it, or right after the item's marker) or the item must be re-opened on
- *   a line that does not carry its whole indentation.
+ * @returns The prefix, or `null` when the indentation cannot be read (the
+ *   item's marker not where expected) or the item must be re-opened on a line
+ *   that does not carry its whole indentation.
  */
 function itemPrefixAfterLift(
     analysis: SourceAnalysis, item: SourceBlockNode, rest: string, lineStart: number, closed: ClosedForTail,
     indents: Map<SourceBlockNode, ItemIndent | null>,
 ): PrefixAfterLift | null {
-    const indent = itemIndent(analysis, item, indents);
-    const carried = indent === null ? null : carriedIndent(rest, indent.width);
+    const indent = itemIndent(analysis, item, indents, true);
 
-    if (indent === null || carried === null) {
+    if (indent === null) {
         return null;
     }
 
+    const carried = carriedIndent(rest, indent.width);
     const isWhole = carried === indent.width;
     const outermost = closed.outermost.get(item);
     const isInner = closed.inner.has(item);
@@ -1471,7 +1576,7 @@ The module's opening comment and the JSDoc of `blockPrefixSource`, `FENCED_CODE_
 
 | Where | Text now | Text after |
 |---|---|---|
-| the module's opening comment | "and splits those containers around it: what follows the block inside them stays in them, each container re-opened by its own marker on its first line after the block." | "and splits those containers around it. What follows the block in its list items, up to the next list item, leaves the list with it; from that item on, what follows stays in the list, in one item the outermost list item's marker re-opens. A quote keeps what follows inside it." |
+| the module's opening comment | "and splits those containers around it: what follows the block inside them stays in them, each container re-opened by its own marker on its first line after the block." | "and splits those containers around it. What follows the block in its list items, up to the next list item, leaves the list with it; from that item on, what follows stays in the list, in one item the outermost list item's marker re-opens. A quote keeps what follows inside it. A tab in the indentation of a line that moves is written as the spaces it stood for." |
 | the same comment, its last sentence | "otherwise the command tries the same edit with the lifted blocks set apart by blank lines and with their first character escaped, and declines when no form reads back as intended." | "otherwise the command tries the same edit with the lifted blocks set apart by blank lines and with their first character escaped, then the same forms with what followed the blocks left in their list items, and declines when no form reads back as intended." |
 | `blockPrefixSource` | "those containers split around it: what follows it inside them stays in them, re-opened by their own marker (`- x\n  - a\n  - b`, `a` to a heading, gives `- x\n## a\n- - b`)." | "those containers split around it. What follows it in its list items up to the next list item leaves the list with it (`- a\n\n  b`, `a` to a heading, gives `## a\n\nb`); from that item on, what follows stays in the list (`- x\n  - a\n  - b`, `a` to a heading, gives `- x\n## a\n- - b`). Where what follows would read otherwise outside the list, it is left in the list, re-opened by the item's marker." |
 | `FENCED_CODE_SOURCE` | "the blocks lifted out of their quotes and list items as {@link blockPrefixSource} lifts them." | unchanged: the reference covers it |
@@ -1482,32 +1587,34 @@ The module's opening comment and the JSDoc of `blockPrefixSource`, `FENCED_CODE_
 
 ## Ordered Implementation Steps
 
-Run every command from `packages/lib`. The scratch folder is `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans3/source-list-lift/`. It holds the measured module (`proto/zz-clean-lines.ts`), the two test files with this plan's changes (`proto/zz-plan-markdown-editor.test.ts`, `proto/zz-plan-markdown-source-edits.test.ts`), the same changes as a diff against the files as `markdown-tab-column-parity` leaves them (`tests-after-tab-column.diff`), and the probes of step 8. Use the files to check your edits against, not in place of them: the plans of `depends-on` may have changed lines around them. The folder is not in the repository.
+Run every command from `packages/lib`. Never run `npm install`, `npm ci` or `npm update`. The scratch folder is `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans4/lift-revision/`. It holds the measured module (`proto/markdownSourceLines.ts`), the two test files with this plan's changes (`proto/markdown-editor.test.ts`, `proto/markdown-source-edits.test.ts`), the same changes as a diff against the files as `markdown-tab-column-parity` leaves them (`proto/tests.diff`), and the probes of step 8. Use the files to check your edits against, not in place of them: the plans of `depends-on` may have changed lines around them. The folder is not in the repository.
 
-1. **Check the base.** `npx vitest run tests/component/markdown-editor.test.ts tests/component/markdown-source-edits.test.ts` is green. `git diff 75d022ba1 -- src/typescript/lib/component/editor/markdownSourceLines.ts` shows what the plans of `depends-on` changed in the module. If `liftLines`, `firstReadingEdit`, `expectLeaves`, `readsAsExpected`, `convertBlocks`, `FENCED_CODE_SOURCE`, `listOff`, `listOn`, `expectedItemLeaves`, `readListJoin`, `itemReplacement` or `itemsApart` differ from `75d022ba1`, stop and report: the code of this plan was measured against those bodies.
+0. **Check the `marked` version and the tab plan.** `node -p "require('marked/package.json').version"` prints `18.1.0`, and `grep -n "export function withPrefixTabsAsSpaces" src/typescript/lib/component/display/markdownExtensions.ts` finds the function `markdown-tab-column-parity` adds. If either does not hold, stop and report: every expectation below was measured with both.
 
-2. **Change the parity rows** in `tests/component/markdown-editor.test.ts`, as `### Parity rows` says: move 84 rows from `DIFFERS` to `SAME` with their new source-mode text, move `E38`, add 6 `SAME` rows, restate 2 `DIFFERS` rows, add 4, delete three comments of the `DIFFERS` table and shorten two.
+1. **Check the base.** `npx vitest run tests/component/markdown-editor.test.ts tests/component/markdown-source-edits.test.ts` is green. `git diff 736452bbc -- src/typescript/lib/component/editor/markdownSourceLines.ts` shows what the plans of `depends-on` changed in the module: on the measured base that is one comment line, which `marked-upgrade` shortens. If `liftLines`, `reopenContainers`, `containerPrefix`, `itemIndent`, `firstReadingEdit`, `expectLeaves`, `readsAsExpected`, `convertBlocks`, `FENCED_CODE_SOURCE`, `listOff`, `listOn`, `expectedItemLeaves`, `readListJoin`, `itemReplacement` or `itemsApart` differ from `736452bbc`, stop and report: the code of this plan was measured against those bodies.
 
-3. **Change the source-mode rows** in the same file, as `### Source-mode rows` says: restate 2 rows of the `CASES` table, add 18, and add one row to the wiring table.
+2. **Change the parity rows** in `tests/component/markdown-editor.test.ts`, as `### Parity rows` says: move 84 rows from `DIFFERS` to `SAME` with their new source-mode text, move `E38`, add 6 `SAME` rows, delete 8 `DIFFERS` rows whose documents move to the source-mode rows, restate 2 `DIFFERS` rows, add 2, delete four comments of the `DIFFERS` table, and change three.
+
+3. **Change the source-mode rows** in the same file, as `### Source-mode rows` says: restate 3 rows of the `CASES` table, add 21, and add one row to the wiring table.
 
 4. **Change the transform tests** in `tests/component/markdown-source-edits.test.ts`, as `### Transform tests` says.
 
-5. **See the rows fail.** `npx vitest run tests/component/markdown-editor.test.ts tests/component/markdown-source-edits.test.ts`. Exactly 116 tests fail: 91 `SAME` rows (the 84, `E38` and the 6 new), `T20 h2` and `M33 h2` of `DIFFERS`, 17 rows of the `CASES` table, the wiring row, and 5 tests of `markdown-source-edits.test.ts`. `### What is red before the code` lists them. The rows `E18` (two), `E39`, `E40` and the three `CASES` rows named there are green: they pin what stays. If another test fails, or one of these does not, stop and report.
+5. **See the rows fail.** `npx vitest run tests/component/markdown-editor.test.ts tests/component/markdown-source-edits.test.ts`. Exactly 123 tests fail: 91 `SAME` rows (the 84, `E38` and the 6 new), `T20 h2` and `M33 h2` of `DIFFERS`, 23 rows of the `CASES` table, the wiring row, and 6 tests of `markdown-source-edits.test.ts`. `### What is red before the code` lists them. The rows `E39`, `E40`, the `CASES` row `a code fence left open stays in its list item, where the item closes it` and the test `leaves what a list item holds in the list where it would read otherwise outside it` are green: they pin what stays. If another test fails, or one of these does not, stop and report.
 
 6. **Change `markdownSourceLines.ts`**, in this order, each as `## Internal Structure` gives it:
    1. the two `holders` fields and the four edits of `readLeaves`;
    2. `readsAsExpected` and `sameHolders`;
    3. `expectLeaves` and the declarations that follow it in that code block, placed between `expectLeaves` and the comment line `// ---- reading the selection`;
    4. the `follow` field of `LineReplacement`;
-   5. the tail lift, after `liftLines`;
+   5. the import of `withPrefixTabsAsSpaces`, the `tabStops` parameter of `containerPrefix` and `itemIndent`, and the tail lift, after `liftLines`;
    6. `firstReadingEdit`, `EditCandidate`, `tailLifts`;
    7. `convertBlocks`, `FENCED_CODE_SOURCE`, `listOff`;
    8. `listOn`, `tailGoesIntoItem`, `lastLineOfNewItems`, `expectedItemLeaves`, and the `tail` parameter of `readListJoin`, `itemReplacement`, `itemsApart`;
    9. the comments.
 
-   Check: `npm run typecheck` is clean. `grep -n "firstReadingEdit(" src/typescript/lib/component/editor/markdownSourceLines.ts` gives five lines: the definition and four calls. `grep -c "liftLinesWithTail" src/typescript/lib/component/editor/markdownSourceLines.ts` is at least 3. `git diff --stat` names no file under `src/` but `markdownSourceLines.ts`.
+   Check: `npm run typecheck` is clean. `grep -n "firstReadingEdit(" src/typescript/lib/component/editor/markdownSourceLines.ts` gives five lines: the definition and four calls. `grep -c "liftLinesWithTail" src/typescript/lib/component/editor/markdownSourceLines.ts` is at least 3. `grep -n "tabStops)" src/typescript/lib/component/editor/markdownSourceLines.ts` gives three lines: the two calls inside `itemIndent` and the one inside `containerPrefix`. `git diff --stat` names no file under `src/` but `markdownSourceLines.ts`.
 
-7. **See the rows pass.** The command of step 5 is green: 1,220 tests in the two files when only this plan's rows were added to what `markdown-tab-column-parity` left (the count is higher by whatever the other plans added).
+7. **See the rows pass.** The command of step 5 is green: 1,242 tests in the two files when only this plan's rows were added to what `markdown-tab-column-parity` left, 26 more than its 1,216 (the count is higher by whatever the other plans added).
 
 8. **Run the differential check** of `## Verification`. Every hard check is 0.
 
@@ -1537,13 +1644,15 @@ Everything here is unit-testable but `### Manual checks`.
 
 ### Parity rows
 
-A row is `[id, document, word the selection starts in, word it ends in or null, command, what the WYSIWYG surface saves, what source mode leaves]`. Each row was run on both surfaces with the module of this plan and the code of `markdown-tab-column-parity` in place.
+A row is `[id, document, word the selection starts in, word it ends in or null, command, what the WYSIWYG surface saves, what source mode leaves]`. Each row was run on both surfaces with the module of this plan, the code of `markdown-tab-column-parity` and `marked` 18.1.0 in place.
 
-**Rows that leave `DIFFERS` for `SAME`.** Delete from `DIFFERS` every row with one of these ids, but `T20 h2` and `M33 h2`, which stay and are restated below, and the five rows named under `### Source-mode rows`, which leave both tables:
+**Rows that leave `DIFFERS` for `SAME`.** Delete from `DIFFERS` every row with one of these ids, but `T20 h2` and `M33 h2`, which stay and are restated below. Five of the deleted rows (`T20 UL`, `T20 OL`, `E30 UL`, `E30 h2`, `E34 UL`) go to neither table but to the source-mode rows of `### Source-mode rows`:
 
 `T9 T14 T16 T19 T20 T21 X23 X24 X25 S6 M1 M6 M7 M8 M10 M12 M13 M14 M15 M17 M18 M20 M22 M24 M25 M26 M27 M28 M30 M31 M32 M33 M34 M35 M36 M37 C3 E30 E34 E38`
 
-Append these 85 rows to `SAME`. Only the last element of each differs from the row deleted.
+Delete also the three `DIFFERS` rows `E19 UL` (`'-\tone\n\n\tsecond\n- two'`), `E24 UL` and `E24 h2`. Their documents move to the source-mode rows too.
+
+Append these 85 rows to `SAME`, directly after the row `E37`, the last row `markdown-tab-column-parity` leaves there. Only the last element of each differs from the row deleted.
 
 ```ts
         // What a list item holds after a lifted block leaves the list with the block, on both surfaces.
@@ -1645,44 +1754,47 @@ Append these 85 rows to `SAME`. Only the last element of each differs from the r
         ['F3', '- one\n\n  \\- dash\n\n- two', 'one', null, 'OL', '1. one\n\n   \\- dash\n\n- two', '1. one\n\n   \\- dash\n\n- two'],
 ```
 
-**`DIFFERS`.** Delete the comments of the table that speak of the deferral: the four lines that start `// The source-mode lift rule is deferred`, the three that start `// The deferral also leaves source mode doing nothing`, and the three that start `` // `- ---` is a thematic break of its own ``. In the comment on text opening with `[ ] `, end the sentence after `` `\\[ \\]`) ``. In the comment on lines that read otherwise, end the sentence after `markers are indented`. Append:
+**`DIFFERS`.** Delete four comments of the table: the line that starts `// The code block leaves the list on the WYSIWYG surface alone` (above `E38`, which leaves), the four lines that start `// The source-mode lift rule is deferred`, the three that start `// The deferral also leaves source mode doing nothing`, and the three that start `` // `- ---` is a thematic break of its own ``. Change three:
+
+- The comment line `// A block or a nested list indented with a tab: the block itself, and a block before it in the item.` becomes the two lines `// A block or a nested list indented with a tab, which source mode does not find: the block itself, and the` and `// block before such a list in the item.`
+- In the comment on text opening with `[ ] `, end the sentence after `` `\\[ \\]`) ``.
+- In the comment on lines that read otherwise, end the sentence after `markers are indented`.
+
+Append:
 
 ```ts
         // `setBlockType` on a block a list item holds converts it in place on the WYSIWYG surface and takes it out of
         // the list in source mode, with what the item holds after it (the rows `E4` and `E12` are the plain cases).
         ['T20', '- [x] alpha\n\n  beta\n\n  gamma\n- delta', 'beta', null, 'h2', '- [x] alpha\n\n  ## beta\n\n  gamma\n\n- delta', '- [x] alpha\n\n## beta\n\ngamma\n- delta'],
         ['M33', '- one\n\n  para\n\n  ---\n\n- two', 'para', null, 'h2', '- one\n\n  ## para\n\n  ---\n\n- two', '- one\n\n## para\n\n---\n\n- two'],
-        // A tab that indents a code line reads by the column it stands at, so a code block that holds one stays in its
-        // list item in source mode; the WYSIWYG surface takes the block out and writes the spaces the tab read as.
-        ['E18', '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two', 'one', null, 'UL', 'one\n\n```\naa\n  bb\n```\n\n- two', 'one\n\n- ```\n  aa\n  \tbb\n  ```\n\n- two'],
-        ['E18', '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two', 'one', null, 'h2', '## one\n\n```\naa\n  bb\n```\n\n- two', '## one\n\n- ```\n  aa\n  \tbb\n  ```\n\n- two'],
         // What a list item holds stays in the list in source mode where it would read otherwise outside it: a code
         // fence left open, and a numbered item not numbered 1 that would come to stand right under a paragraph.
         ['E39', '- one\n\n  ```\n  open\n- two', 'one', null, 'UL', 'one\n\n```\nopen\n```\n\n- two', 'one\n\n- ```\n  open\n- two'],
         ['E40', '* eps\n  10) zeta\n\n      1) eta\n      2) theta\n\n      kappa\n  11) lam', 'zeta', null, 'UL', '* eps\n\n* zeta\n\n* 1) eta\n  2) theta\n\n  kappa\n\n  10) lam', '* eps\n* zeta\n* 10) 1) eta\n      2) theta\n\n      kappa\n  11) lam'],
 ```
 
-After this step `DIFFERS` has 56 rows where `markdown-tab-column-parity` left 142, and `SAME` has 91 more.
+After this step `DIFFERS` has 51 rows where `markdown-tab-column-parity` left 142, and `SAME` has 91 more.
 
-| Of the 142 `DIFFERS` rows of `75d022ba1` | Rows |
+| Of the 142 `DIFFERS` rows `markdown-tab-column-parity` leaves | Rows |
 |---|---|
-| read alike with this plan, and move to `SAME` | 84 |
-| read alike, in a document the editor would not save: move to the source-mode `CASES` | 5 |
+| read alike with this plan, and move to `SAME` (`E38` among them) | 85 |
+| read alike, in a document the editor would not save: move to the source-mode `CASES` (`T20 UL`, `T20 OL`, `E30 UL`, `E30 h2`, `E34 UL`, `E19 UL`, `E24 UL`, `E24 h2`) | 8 |
 | still differ, with another source-mode text (`T20 h2`, `M33 h2`) | 2 |
-| unchanged | 51, one of which (`E19 h2`) `markdown-tab-column-parity` moves |
+| unchanged, `E25`, `E26` and `E27` among them | 47 |
 
-The notes of `markdown-list-toggle-task-item-parity` name 70 rows and 23 more that change with the lift. All 70 read alike. Of the 23, 19 read alike, `T20 h2` and `M33 h2` change their text and stay, and the two `E24` rows stay as they are.[^rows-23]
+The notes of `markdown-list-toggle-task-item-parity` name 70 rows and 23 more that change with the lift. All 70 read alike. Of the 23, 21 read alike, and `T20 h2` and `M33 h2` change their text and stay.[^rows-23]
 
 ### Source-mode rows
 
-In the `CASES` table of `describe('MarkdownEditor source-mode line commands read the viewer's blocks')`, restate two rows:
+In the `CASES` table of `describe('MarkdownEditor source-mode line commands read the viewer's blocks')`, restate three rows:
 
 | Row | Name after | `result` after |
 |---|---|---|
 | `a heading from a list item keeps the item's indented content in the item` | `a heading from a list item takes the item's indented content out of the list with it` | `'## a\n\nb'` |
 | `a code block from a list item keeps the item's indented content in the item` | `a code block from a list item takes the item's indented content out of the list with it` | `` '```\na\n```\n\nb' `` |
+| `a list toggle declines over a tab-indented block of the item` | `E24 UL: a list toggle takes a tab-indented block of the item out of the list, the tab written as spaces` | `'one\n\n  second\n- two'` |
 
-Add these rows after the row `a task marker stays with the first line of its item's text`. The last five are the `DIFFERS` rows `T20 UL`, `T20 OL`, `E30 UL`, `E30 h2` and `E34 UL`: both surfaces now read alike on them, but their documents are not in the form the editor saves, which a `SAME` row requires.
+Add these 21 rows after the row `a task marker stays with the first line of its item's text`. Eight of them are `DIFFERS` rows: `E18` (two), `E24 h2`, `E19 UL`, `T20 UL`, `T20 OL`, `E30 UL`, `E30 h2` and `E34 UL`; with the restated `E24 UL`, nine. Both surfaces read alike on them, but their documents are not in the form the editor saves, which a `SAME` row requires: a tab in an item's indentation, or text the editor would write otherwise. On the `E18`, `E19 UL` and `E24` rows the WYSIWYG surface saves `one ⏎⏎ ``` ⏎ aa ⏎ ··bb ⏎ ``` ⏎⏎ - two` (with `## ` before `one` for `h2`), `one ⏎⏎ second ⏎⏎ - two` and `one ⏎⏎ second ⏎⏎ - two` (`## one` for `h2`), which the results below read as.
 
 ```ts
         {
@@ -1714,8 +1826,12 @@ Add these rows after the row `a task marker stays with the first line of its ite
             run: (editor) => editor.toggleUnorderedList(), result: 'one\n\n```\na\tb\n```\n\n- two',
         },
         {
-            name: 'a code block whose line a tab indents stays in its list item, where the tab keeps its width', doc: '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two', select: [3, 3],
-            run: (editor) => editor.toggleUnorderedList(), result: 'one\n\n- ```\n  aa\n  \tbb\n  ```\n\n- two',
+            name: 'E18 UL: a code block whose line a tab indents leaves its list item, the tab written as the spaces it read as', doc: '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two', select: [3, 3],
+            run: (editor) => editor.toggleUnorderedList(), result: 'one\n\n```\naa\n  bb\n```\n\n- two',
+        },
+        {
+            name: 'E18 h2: a code block whose line a tab indents leaves its list item, the tab written as the spaces it read as', doc: '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two', select: [3, 3],
+            run: (editor) => editor.setBlockType('h2'), result: '## one\n\n```\naa\n  bb\n```\n\n- two',
         },
         {
             name: 'a line of whitespace in a code block gives up the item\'s indentation alone', doc: '- one\n\n  ```\n  aa\n      \n  bb\n  ```\n\n- two', select: [3, 3],
@@ -1734,8 +1850,16 @@ Add these rows after the row `a task marker stays with the first line of its ite
             run: (editor) => editor.setBlockType('h2'), result: '## one\n\n- ```\n  open\n- two',
         },
         {
-            name: 'a block before a tab-indented block of the item leaves both in the list', doc: '- one\n\n  ok\n\n\ttabbed\n- two', select: [3, 3],
-            run: (editor) => editor.toggleUnorderedList(), result: 'one\n\n- ok\n\n\ttabbed\n- two',
+            name: 'a tab-indented block of the item leaves the list after the block before it, the tab written as spaces', doc: '- one\n\n  ok\n\n\ttabbed\n- two', select: [3, 3],
+            run: (editor) => editor.toggleUnorderedList(), result: 'one\n\nok\n\n  tabbed\n- two',
+        },
+        {
+            name: 'E24 h2: what the item holds leaves the list, its tab written as spaces, in a document the editor would not write so', doc: '- one\n\n\tsecond\n- two', select: [3, 3],
+            run: (editor) => editor.setBlockType('h2'), result: '## one\n\n  second\n- two',
+        },
+        {
+            name: 'E19 UL: an item whose marker a tab follows lets its tab-indented block leave the list with its text', doc: '-\tone\n\n\tsecond\n- two', select: [3, 3],
+            run: (editor) => editor.toggleUnorderedList(), result: 'one\n\nsecond\n- two',
         },
         {
             name: 'T20 UL: what the item holds leaves the list in a document the editor would not write so', doc: '- [x] alpha\n\n  beta\n\n  gamma\n- delta', select: [16, 16],
@@ -1784,6 +1908,8 @@ In `describe('line commands act on the blocks the viewer reads')` of `markdown-s
 
 3. In the test `writes a new item as a list of its own where joining the list above would change how that list reads`, the last expectation becomes `'2) [x] a\n\n   ~~~js\n   > q \n1. b\n\n   c'`: the paragraph `c` is the tail of `b` and goes under the new item.
 
+4. Replace the test `declines when a tab on an item's marker line stands where the command has to read`, with the two comment lines above it, by the test after the five. Its two declines now act; its other three expectations are kept.
+
 ```ts
     it('takes what a list item holds after a lifted block out of the list with it, up to the next list item', () => {
         expect(apply('- a\n  - b\n- c', blockPrefixSource('## ')('- a\n  - b\n- c', 2, 2)!)).toBe('## a\n- - b\n- c');
@@ -1821,7 +1947,7 @@ In `describe('line commands act on the blocks the viewer reads')` of `markdown-s
         expect(blockTypes('one\n\n>\n> second\n>\n> 4. two')).toEqual(['paragraph', 'blockquote']);
     });
 
-    it('writes back every byte of what leaves a list, but for the list items\' indentation', () => {
+    it('writes back every byte of what leaves a list, but for the list items\' indentation and the tabs in it', () => {
         const tab = '- one\n\n  ```\n  a\tb\n  ```\n\n- two';
         const spaces = '- one\n\n  second  \n  third\n   \n- two';
         const lazy = '- one\n\n  second\nlazy\n- two';
@@ -1838,8 +1964,6 @@ In `describe('line commands act on the blocks the viewer reads')` of `markdown-s
         const open = '- one\n\n  ```\n  open\n- two';
         const trailing = '- one\n\n      code \n';
         const numbered = '* eps\n  10) zeta\n\n      1) eta\n      2) theta\n\n      kappa\n  11) lam';
-        const tabbed = '- one\n\n  ok\n\n\ttabbed\n- two';
-        const tabCode = '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two';
 
         // An open fence is closed by the end of its item; outside the list it would take the rest of the document.
         expect(apply(open, blockPrefixSource('## ')(open, 2, 2)!)).toBe('## one\n\n- ```\n  open\n- two');
@@ -1848,11 +1972,6 @@ In `describe('line commands act on the blocks the viewer reads')` of `markdown-s
         // One level up, `11) lam` would stand right under the paragraph `kappa` and continue it.
         expect(apply(numbered, blockPrefixSource('## ')(numbered, numbered.indexOf('zeta'), numbered.indexOf('zeta'))!))
             .toBe('* eps\n## zeta\n\n* 10) 1) eta\n      2) theta\n\n      kappa\n  11) lam');
-        // A tab that indents a code line reads by its column: two columns wide in the item, four at the margin.
-        expect(apply(tabCode, listSource('unordered')(tabCode, 2, 2)!)).toBe('one\n\n- ```\n  aa\n  \tbb\n  ```\n\n- two');
-        // A tab in an item's indentation is not taken apart: the line stays as it is, in the list.
-        expect(apply(tabbed, listSource('unordered')(tabbed, 2, 2)!)).toBe('one\n\n- ok\n\n\ttabbed\n- two');
-        expect(listSource('unordered')('- one\n\n\tsecond\n- two', 2, 2)).toBeNull();
     });
 
     it('acts in a task item and before a thematic break, where a re-opened marker would read otherwise', () => {
@@ -1867,17 +1986,45 @@ In `describe('line commands act on the blocks the viewer reads')` of `markdown-s
     });
 ```
 
+```ts
+    // A tab in the container prefix of a line that a lift moves is written as the spaces that reach its tab stop,
+    // counted where the line stood, so the line reads at its new place as it read in the item. A tab the lift does
+    // not move, and a tab past the container prefix, is kept.
+    it('writes a tab of a moved line\'s container prefix as the spaces it read as', () => {
+        const marker = '-\tone\n\n\tsecond\n- two';
+        const block = '- one\n\n  ok\n\n\ttabbed\n- two';
+        const code = '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two';
+        const unmoved = '- one\n\n  - inner\n\n\tafter\n- two';
+
+        // The tab after the marker puts the item's text at column 4, and the tab of `second` reaches it.
+        expect(apply(marker, blockPrefixSource('## ')(marker, 2, 2)!)).toBe('## one\n\nsecond\n- two');
+        expect(apply(marker, listSource('unordered')(marker, 2, 2)!)).toBe('one\n\nsecond\n- two');
+        // Two of the tab's four columns were the item's; the other two stay, as spaces.
+        expect(apply(block, listSource('unordered')(block, 2, 2)!)).toBe('one\n\nok\n\n  tabbed\n- two');
+        expect(apply(code, listSource('unordered')(code, 2, 2)!)).toBe('one\n\n```\naa\n  bb\n```\n\n- two');
+        // From the nested list on, the outermost item keeps its columns, so the tab of `after` does not move.
+        expect(apply(unmoved, listSource('unordered')(unmoved, 2, 2)!)).toBe('one\n\n- - inner\n\n\tafter\n- two');
+
+        // A tab in the item's text is content, and the command reads past it.
+        expect(apply('- one\ttab\n- z', blockPrefixSource('## ')('- one\ttab\n- z', 2, 2)!)).toBe('## one\ttab\n- z');
+        expect(apply('- one\ttab\n- z', listSource('ordered')('- one\ttab\n- z', 2, 2)!)).toBe('1. one\ttab\n- z');
+
+        // An item of one line: the tab after its marker goes with the marker.
+        expect(apply('-\tone\n- two', blockPrefixSource('## ')('-\tone\n- two', 2, 2)!)).toBe('## one\n- two');
+    });
+```
+
 ### What is red before the code
 
-With the rows in place and `markdownSourceLines.ts` unchanged, 116 tests fail.
+With the rows in place and `markdownSourceLines.ts` unchanged, 123 tests fail.
 
 | Where | Red | Green controls |
 |---|---|---|
 | `SAME` | the 85 moved rows and the 6 new ones | every row that was there |
-| `DIFFERS` | `T20 h2`, `M33 h2` | `E18 UL`, `E18 h2`, `E39 UL`, `E40 UL`, and every row that was there |
-| `CASES`, line commands | the 2 restated rows; of the 18 new ones, all but three | `a code block whose line a tab indents stays in its list item, where the tab keeps its width`; `a code fence left open stays in its list item, where the item closes it`; `a block before a tab-indented block of the item leaves both in the list` |
+| `DIFFERS` | `T20 h2`, `M33 h2` | `E39 UL`, `E40 UL`, and every row that was there |
+| `CASES`, line commands | the 3 restated rows; of the 21 new ones, all but `a code fence left open stays in its list item, where the item closes it` | that row, and every row that was there |
 | `CASES`, wiring | `toggleUnorderedList, with what the item holds` | the rest |
-| `markdown-source-edits.test.ts` | `takes what a list item holds after a lifted block out of the list with it, up to the next list item`; `keeps the quotes around what leaves a list, and splits none of them`; `writes back every byte of what leaves a list, but for the list items' indentation`; `acts in a task item and before a thematic break, where a re-opened marker would read otherwise`; `writes a new item as a list of its own where joining the list above would change how that list reads` | `leaves what a list item holds in the list where it would read otherwise outside it` |
+| `markdown-source-edits.test.ts` | `takes what a list item holds after a lifted block out of the list with it, up to the next list item`; `keeps the quotes around what leaves a list, and splits none of them`; `writes back every byte of what leaves a list, but for the list items' indentation and the tabs in it`; `writes a tab of a moved line's container prefix as the spaces it read as`; `acts in a task item and before a thematic break, where a re-opened marker would read otherwise`; `writes a new item as a list of its own where joining the list above would change how that list reads` | `leaves what a list item holds in the list where it would read otherwise outside it` |
 
 ### What does not change
 
@@ -1896,20 +2043,22 @@ Needs manual verification, in a browser on the demo's MD Editor page (`npx vite`
 | B3 | the same | caret on `one`; context menu ▸ **Block style ▸ Heading 2** | `## one`, blank, `second`, blank, `- two` |
 | B4 | `- [x] a`, `  - b`, `  - c`, `- d` | caret on `b`; **Insert ▸ Bulleted list** | `- [x] a`, blank, `b`, blank, `- - c`, `- d` |
 | B5 | B1's result | switch to WYSIWYG | two paragraphs and a one-item list, as the viewer shows them |
+| B6 | `- one`, blank, a tab and `second`, `- two` | caret on `one`; **Insert ▸ Bulleted list** | `one`, blank, two spaces and `second`, `- two`: the tab is gone, the line reads as a paragraph |
 
 ---
 
 ## Verification
 
 1. `npm run typecheck`, `npm run typecheck:test`, `npm run lint`: clean.
-2. `npm test`: green. Against the base the count grows by 28: 6 `SAME` rows, 4 `DIFFERS` rows, 13 line-command `CASES` rows, the wiring row and 4 tests of `markdown-source-edits.test.ts`. Five more `CASES` rows replace five `DIFFERS` rows.
+2. `npm test`: green. Against the base the count grows by 26: 6 `SAME` rows, 2 `DIFFERS` rows, 21 line-command `CASES` rows, the wiring row and 4 tests of `markdown-source-edits.test.ts`, less the 8 `DIFFERS` rows whose documents move to the `CASES` rows. On the measured copy the whole suite is 591 files and 20,196 tests, 2 of them `todo`.
 3. `npm run docs:api`, `npm run docs:llms:check`, `npm run build:lib`.
-4. **The differential check against the base.** Before step 6, copy `src/typescript/lib/component/editor/markdownSourceLines.ts` to `tests/component/zz-base-lines.ts`. The probes are in the scratch folder under `probes-impl/`. They compare `zz-base-lines.ts` with the module itself, in one process. `run.sh` there copies a probe into the tests tree, runs it and removes it; set `P_LIB` to your `packages/lib`. `runimpl.sh` shows the three runs; leave out its `P_CONFIG` and `P_MODULE`, which stood in for code that is in the tree by then.
+4. **The differential check against the base.** The probes are in the scratch folder under `probes/`. Before step 6, copy `src/typescript/lib/component/editor/markdownSourceLines.ts` over `probes/zz-base-lines.ts` there (the file there now is the measured base); `run.sh` copies it into the tests tree with the other helpers on every run. They compare `zz-base-lines.ts` with the module itself, in one process. `run.sh` there copies a probe and the probes' helper files into the tests tree, runs the probe and removes the probe; set `P_LIB` to your `packages/lib`. `runall.sh` gives the first three runs below, two Vitest processes at a time; `rundump.sh` the planner's sets again for `cat2.py`.
 
-   - `zz-proto-gen.test.ts` for seeds 11 to 14, with the case counts `runimpl.sh` gives.
-   - `zz-proto-rows.test.ts` over every file of `sets/` (`runrows.sh`).
-   - `zz-proto-parity.test.ts` for the three families (`runparity.sh`).
-   - `zz-proto-equiv.test.ts`, after copying `proto/zz-proto-lines.ts` to `tests/component/`. It compares the module with the prototype that was measured, edit for edit: `differ` is 0.
+   - `zz-lr-gen.test.ts` for seeds 11 to 14, with the case counts `runall.sh` gives.
+   - `zz-lr-rows.test.ts` over every file of `scratch-keep/plans3/source-list-lift/sets/`.
+   - `zz-lr-parity.test.ts` for the three families.
+   - `zz-lr-tabeq.test.ts` for seeds 21 and 22, 1,500 drawn documents each.
+   - `zz-lr-equiv.test.ts`. It compares the module with the measured one (`zz-proto-lines.ts`, a copy of `proto/markdownSourceLines.ts`), edit for edit: `differ` is 0.
 
    Delete every `zz-*` file from the tests tree afterwards and commit none of them.
 
@@ -1921,44 +2070,47 @@ Needs manual verification, in a browser on the demo's MD Editor page (`npx vite`
    | H2 | the base acts and the new module declines |
    | H3 | the viewer's text, all blocks joined and whitespace removed, differs from the document's (commands other than the code fence) |
    | H4 | two blocks of text are one block afterwards, where the base's result keeps them apart or the base declines; a join beside a code block that the command turned into text is the base's own rule and is not counted |
-   | H5 | a line kept by a tail lift differs from its source line by more than quote markers and spaces taken off, or a list marker and spaces put on, at its start. Only the prototype counts this, through counters of its own; for the module, the equivalence run stands in |
+   | H5 | a line kept by a tail lift differs from its source line by more than quote markers and spaces taken off, a list marker and spaces put on, and a tab of its container prefix written as the spaces to its stop; or it keeps a prefix tab that does not stand in the bytes the line kept, or it loses a tab past its prefix. Only the module with trace lines counts this (`proto/markdownSourceLines.hooked.ts`, the measured module with lines ending `//HOOK` added); for the module in the tree, the equivalence run stands in |
    | H7 | an edit that changes nothing |
    | H8 | a source-mode result, loaded into the editor, is shown otherwise than the viewer shows it, in a document that holds no list the WYSIWYG surface keeps as a raw block |
    | H9 | a source-mode result, loaded and saved, does not reload to itself |
    | P | the base's result reads as the WYSIWYG result and the new one does not, in a case that is not `setBlockType` on a block a list item holds |
+   | T | a document with tabs in its container prefixes, all of whose blocks are placed, gets a result whose spaces form is not the result on its spaces form, or a result where its spaces form gets none, or the reverse (`zz-lr-tabeq.test.ts`: every count whose name starts `TAB-`) |
 
-   Measured on `75d022ba1`, with the code of `markdown-tab-column-parity` installed:[^numbers]
+   Measured on `736452bbc` with the code of the three plans before this one, and `marked` 18.1.0:[^numbers]
 
-   | Set | Cases | H1 to H7 | Acts where the base did nothing | Differs from the base's edit | Tail candidate tried, base candidate taken |
-   |---|---|---|---|---|---|
-   | review 6's generator, seeds 11 to 14, 1,500 documents each (`zz-proto-gen.test.ts`) | 2,017,812 | 0 | 225,604 | 191,553 | 1,670 |
-   | review 5's source rows, 17 sets (`sets/r5-*.json`): 267,212 rows, of which 165,208 are line commands | 165,208 | 0 | 14,808 | 17,098 | 7,060 |
-   | the planner's and implementer's differential sets and reviews 1 to 3 (`sets/pl-*.json`) | 68,522 | 0 | 9,330 | 10,823 | 0 |
-   | review 4: `hand`, `rand41`, `tab`, `tab2` (`sets/r4-*.json`) | 2,822 | 0 | 711 | 565 | 42 |
+   | Set | Cases | H1 to H7 | Acts where the base did nothing | Differs from the base's edit | Tail candidate tried, base candidate taken | A prefix tab written as spaces |
+   |---|---|---|---|---|---|---|
+   | review 6's generator, seeds 11 to 14, 1,500 documents each (`zz-lr-gen.test.ts`) | 2,017,812 | 0 | 225,604 | 191,553 | 1,670 | 0 |
+   | review 5's source rows, 17 sets (`sets/r5-*.json`): 267,212 rows, of which 165,208 are line commands | 165,208 | 0 | 17,897 | 18,969 | 5,305 | 4,797 |
+   | the planner's and implementer's differential sets and reviews 1 to 3 (`sets/pl-*.json`) | 68,522 | 0 | 9,330 | 10,823 | 0 | 0 |
+   | review 4: `hand`, `rand41`, `tab`, `tab2` (`sets/r4-*.json`) | 2,822 | 0 | 711 | 607 | 0 | 42 |
+   | review 6's generator with spaces written as tabs, seeds 21 and 22 (`zz-lr-tabeq.test.ts`) | 385,476 | 0 | 17,566 | 12,746 | 10,485 | 9,927 |
 
    The 102,004 other rows of review 5 are inline commands, which never reach this module.
 
-   Parity with the WYSIWYG surface (`zz-proto-parity.test.ts`, review 6's three families, seeds 300 to 307, 60 documents each; the third family with a task probability of 0.25, which reproduces review 6's counts exactly):
+   On the tab documents of the last row, T counts 0. In 1,013 documents with a tab, the result on the tab document, in its spaces form, is the result on the space document in all 106,010 cases where both act and the tab document's blocks are all placed. In the other 1,300 cases where both act, and the 122,497 where only the space document's command acts, the tab document has a block the token search does not place: they are `markdown-source-mode-block-locator`'s.
+
+   Parity with the WYSIWYG surface (`zz-lr-parity.test.ts`, review 6's three families, seeds 300 to 307, 60 documents each; the third family with a task probability of 0.25, which reproduces review 6's counts exactly):
 
    | | Cases | Source reads otherwise than WYSIWYG, base | after | P | H8 | H9 |
    |---|---|---|---|---|---|---|
    | all three families | 90,454 | 10,098 | 7,087 | 0 | 0 | 0 |
 
-   Every one of the 7,087 stands under a clause the docs keep: 2,294 in documents that hold a list the WYSIWYG surface keeps as a raw block, 2,460 where the selection runs from one `:::` column into the next, 2,333 `setBlockType` on the heading an item opens with (`anpar.py`).
+   Every one of the 7,087 stands under a clause the docs keep: 2,294 in documents that hold a list the WYSIWYG surface keeps as a raw block, 2,460 where the selection runs from one `:::` column into the next, 2,333 `setBlockType` on the heading an item opens with (`anpar.py` of `scratch-keep/plans3/source-list-lift/`). The probe also counts 68 cases where the editor shows a result otherwise than the viewer; all are in two documents that hold a list the WYSIWYG surface keeps as a raw block, which H8 leaves out.
 
-   On the 68,522 cases of the planner's probe, whose WYSIWYG results are recorded: 33,332 read otherwise at the base and 19,150 after. `cat2.py` puts every remaining one under a clause, for documents in the form the editor saves; the footnote has the table.[^clauses]
+   On the 68,522 cases of the planner's probe, whose WYSIWYG results are recorded: 33,332 read otherwise at the base and 19,150 after. `cat2.py` puts every remaining one under a clause, for documents in the form the editor saves; the footnote has the table.[^clauses] On review 4's sets, 1,758 of 2,684 cases with a recorded WYSIWYG result read otherwise at the base and 1,017 after.
 
-5. **Cost.** `markdownSourceTokens.ts` is the same file, so analysis costs the same: measured 1.5 ms at 400 lines and 4.1 ms at 1,600 for review 5's two-tab document, and 2.5 ms for a list of 800 items. A command costs more, since the tail candidate's expected leaves are read as well and each of its forms that does not read is one more lex. Over 143 timings of commands on documents of 200 to 4,000 lines, the new module took 1.3 times the base's time at the median, 1.7 times at the ninth decile and 2.1 times at worst. Rerun `zz-proto-perf.test.ts` and report its table.[^cost]
+5. **Cost.** `markdownSourceTokens.ts` is the same file, so analysis costs the same: measured 1.5 ms at 400 lines and 4.1 ms at 1,600 for review 5's two-tab document, and 2.5 ms for a list of 800 items. A command costs more, since the tail candidate's expected leaves are read as well and each of its forms that does not read is one more lex. Over 210 timings of commands on documents of 200 to 4,800 lines, the new module took 1.4 times the base's time at the median, 1.7 times at the ninth decile and 2.0 times at worst. Rerun `zz-lr-perf.test.ts` and report its table.[^cost]
 
    | Document, 800 items | Selection | Bulleted toggle, base / after | `setBlockType("h2")`, base / after |
    |---|---|---|---|
-   | a tight list | a caret in the middle | 13 ms / 18 ms | 10 ms / 18 ms |
-   | a tight list | everything | 34 ms / 36 ms | 48 ms / 49 ms |
-   | a loose list, each item holding a paragraph | a caret in the middle | 18 ms / 31 ms | 21 ms / 32 ms |
-   | a loose list, each item holding a paragraph | everything | 1,088 ms / 1,192 ms | 610 ms / 824 ms |
-   | one item holding 800 paragraphs | a caret in its text | 117 ms / 120 ms | 114 ms / 121 ms |
-
----
+   | a tight list | a caret in the middle | 10 ms / 14 ms | 6 ms / 11 ms |
+   | a tight list | everything | 35 ms / 34 ms | 52 ms / 57 ms |
+   | a loose list, each item holding a paragraph | a caret in the middle | 15 ms / 24 ms | 15 ms / 24 ms |
+   | a loose list, each item holding a paragraph | everything | 1,030 ms / 1,109 ms | 599 ms / 812 ms |
+   | one item holding 800 paragraphs | a caret in its text | 61 ms / 63 ms | 60 ms / 63 ms |
+   | a loose list, each item holding a code fence one line of which a tab indents | a caret on the first item | 13 ms / 24 ms | 15 ms / 23 ms |
 
 ## Documentation Impact
 
@@ -1968,22 +2120,24 @@ No export changes. Two pages change. `markdown-tab-column-parity` and the three 
 
 1. In the paragraph that starts `The block commands —`, replace from `Those containers split around it, and what followed it inside them stays there, re-opened by its own marker:` to `rather than leaving `b` behind as indented code.` with:
 
-   > Those containers split around it. What a list item holds after the block, up to the item's next list item, leaves the list with it — `setBlockType("h2")` on `10. a` / (blank) / `    b` gives `## a` / (blank) / `b` — or becomes the blocks of the item a list toggle makes of it (`toggleOrderedList()` on `one` in `- one` / (blank) / `  second` gives `1. one` / (blank) / `   second`). From that list item on, what followed stays in the list, in one item that the outermost item's marker re-opens: on `a` in `- x` / `  - a` / `  - b` the heading command gives `- x` / `## a` / `- - b`. A quote keeps what followed inside it. Only the indentation of the list items around the block is taken off those lines; every other character is written back as it was.
+   > Those containers split around it. What a list item holds after the block, up to the item's next list item, leaves the list with it — `setBlockType("h2")` on `10. a` / (blank) / `    b` gives `## a` / (blank) / `b` — or becomes the blocks of the item a list toggle makes of it (`toggleOrderedList()` on `one` in `- one` / (blank) / `  second` gives `1. one` / (blank) / `   second`). From that list item on, what followed stays in the list, in one item that the outermost item's marker re-opens: on `a` in `- x` / `  - a` / `  - b` the heading command gives `- x` / `## a` / `- - b`. A quote keeps what followed inside it. Only the indentation of the list items around the block is taken off those lines. A tab in that indentation counts to its tab stop, as the viewer reads it, and is written as the spaces it stood for: `toggleUnorderedList()` on `one` in `- one` / (blank) / a tab and `second` gives `one` / (blank) / two spaces and `second`. Every other character, a tab inside text or code included, is written back as it was.
 
 2. In the paragraph that starts `For Markdown written as the editor saves it`, keep the first sentence and delete the rest of the paragraph, from `One of them is to go:` to its end. Join the paragraph to the next one, whose opening `The others come from the surfaces holding different things:` becomes `They come from the surfaces holding different things:`.
 
 3. In that joined paragraph, the clause on `setBlockType` becomes: `` `setBlockType` on a block a list item holds after its text, or on the heading it opens with, converts it in place on the WYSIWYG surface and takes it out of the list in source mode, with what the item holds after it ``.
 
-4. In the paragraph that starts `Markdown the editor would not write itself`:
+4. In the paragraph that starts `Markdown the editor would not write itself`, as `markdown-tab-column-parity` leaves it:
+   - replace `These are a tab right after an item's marker when the item holds further lines, for commands on that item's text; a list in a blockquote` with `These are a list in a blockquote`: that tab no longer stops a command;
+   - replace `a block or a nested list of an item indented with a tab, for commands on it and on any block before it in the item;` with `a block or a nested list of an item indented with a tab, which source mode does not find, for commands on it and on the block before such a nested list in the item;`;
    - in the clause on text that opens with an unescaped `[ ] `, delete `, and any command on the block right before such text in a list item`;
    - in the clause on indentation, delete `, an HTML block indented deeper than its item's content`;
    - add before the sentence that starts `Where an item's marker stands on a line of its own`:
 
-   > Where what a list item holds would read otherwise outside the list, source mode leaves it in the list, in an item the marker re-opens, and the WYSIWYG command takes it out: a code fence left open, which the end of its item closes; a code or HTML block that ends its list on trailing whitespace; a numbered item not numbered 1 that would come to stand right under a paragraph; a code block one of whose lines a tab indents, since that tab is as wide as its column makes it; and a line after the block whose indentation holds a tab.
+   > Where what a list item holds would read otherwise outside the list, source mode leaves it in the list, in an item the marker re-opens, and the WYSIWYG command takes it out: a code fence left open, which the end of its item closes; a code or HTML block that ends its list on trailing whitespace; and a numbered item not numbered 1 that would come to stand right under a paragraph.
 
 **`docs/reference/changelog/next.md`.** In the entry `` **`MarkdownEditor`'s list toggles change the selected blocks only.** ``, replace from `One difference between the surfaces stays for now:` to `the source-mode command does nothing.` with:
 
-> In source mode the blocks an item holds after its text now leave the list with it, as on the WYSIWYG surface, for the two toggles, `setBlockType` and the code fence alike: `setBlockType("h2")` on `10. a` / (blank) / `    b` gives `## a` / (blank) / `b`, where it gave `## a` / (blank) / `10. b`. The commands also act inside a task item and before a thematic break written with the list's marker, where they did nothing.
+> In source mode the blocks an item holds after its text now leave the list with it, as on the WYSIWYG surface, for the two toggles, `setBlockType` and the code fence alike: `setBlockType("h2")` on `10. a` / (blank) / `    b` gives `## a` / (blank) / `b`, where it gave `## a` / (blank) / `10. b`. A tab in the indentation of a line that leaves the list is written as the spaces it stood for, so the line reads as it did. The commands also act inside a task item, before a thematic break written with the list's marker, on the text of an item whose marker a tab follows, and before a block a tab indents, where they did nothing.
 
 Run `npm run docs:llms:check` afterwards.
 
@@ -1994,7 +2148,9 @@ Run `npm run docs:llms:check` afterwards.
 - **The base moved.** The plans of `depends-on` may have edited the functions this plan replaces. Step 1 stops on that; merge by hand, then rerun step 8 in full.
 - **A row's expected text differs by a blank line.** The set-apart form is taken only when the plain form does not read. If a row fails on a blank line, the form order in `firstReadingEdit` is wrong, not the row.
 - **A lint rule on the regex or on `findLast`.** `findLastIndex` is already used in the module (`reopenContainers`); `findLast` is the same library level.
-- **The differential shows H2 above 0.** Then a base candidate is not the base's. Compare `liftLines` and the base candidate's `build` and `expected` with `75d022ba1`; do not add a case.
+- **The differential shows H2 above 0.** Then a base candidate is not the base's. Compare `liftLines`, `reopenContainers`, `containerPrefix` and `itemIndent` (called without `tabStops`), and the base candidate's `build` and `expected`, with `736452bbc`; do not add a case.
+- **A tab kept where the plan says it is rewritten, or the reverse.** `keptBytes` is the one place that decides; the line's spaces form decides everything else. A row that fails on a tab compares `changedAt` with the table in `### A tab in a moved line's container prefix is written as the spaces it stood for`.
+- **`withPrefixTabsAsSpaces` not exported.** It is exported by `markdown-tab-column-parity` (marked `@internal`). Step 0 stops when it is missing; do not copy it into this module.
 - **Slow full-selection commands on large lists.** The base's `containersOfLine` walks every block for every line. This plan inherits that cost and does not add to its order.
 
 ---
@@ -2002,20 +2158,21 @@ Run `npm run docs:llms:check` afterwards.
 ## Critical Files
 
 - [markdownSourceLines.ts](../packages/lib/src/typescript/lib/component/editor/markdownSourceLines.ts) — the module changed. Read `liftLines` (:672), `reopenContainers` (:793), `containerPrefix` (:851), `itemIndent` (:883), `firstReadingEdit` (:977) and `listOn` (:1343) first: the new code mirrors them.
+- `markdownExtensions.ts` as `markdown-tab-column-parity` leaves it — `withPrefixTabsAsSpaces` and `containerPrefixEnd`, the spaces form and the container prefix this plan reads lines in, and `MARKDOWN_TAB_STOP`, the number `keptBytes` mirrors.
 - [markdownSourceTokens.ts](../packages/lib/src/typescript/lib/component/editor/markdownSourceTokens.ts) — `SourceAnalysis`, `SourceBlockNode`, the entries. Read only.
 - [markdownListItemNode.ts:780](../packages/lib/src/typescript/lib/component/editor/markdownListItemNode.ts#L780) — `$liftItemOut`, the WYSIWYG lift whose result the rule copies.
-- [markdown-editor.test.ts](../packages/lib/tests/component/markdown-editor.test.ts) — the tables `SAME` (:908), `DIFFERS` (:1043), the wiring `CASES` (:2087) and the line-command `CASES` (:2511).
-- [markdown-source-edits.test.ts](../packages/lib/tests/component/markdown-source-edits.test.ts) — `describe('line commands act on the blocks the viewer reads')` (:1388).
+- [markdown-editor.test.ts](../packages/lib/tests/component/markdown-editor.test.ts) — the tables `SAME` (:1113), `DIFFERS` (:1248), the wiring `CASES` (:2430) and the line-command `CASES` (:2854); `markdown-tab-column-parity` adds rows to `SAME` and `DIFFERS` before this plan.
+- [markdown-source-edits.test.ts](../packages/lib/tests/component/markdown-source-edits.test.ts) — `describe('line commands act on the blocks the viewer reads')` (:1389).
 - [plans/implemented/markdown-list-toggle-task-item-parity.md](implemented/markdown-list-toggle-task-item-parity.md) — the contract, and in its notes the section *For the follow-up plan (source-mode lift rule)*.
 - [plans/markdown-tab-column-parity.md](markdown-tab-column-parity.md) — how a tab is read once that plan is in.
+- [plans/markdown-source-mode-block-locator.md](markdown-source-mode-block-locator.md) — the next plan, which places the blocks this plan cannot reach (`E25` to `E27`).
 
 ---
 
 ## Non-Goals
 
-- **Tabs in a list item's indentation.** Acting on them needs each nested block traced to its source lines without a text search. That is a locator of its own, and a plan of its own.
-- **`marked`'s version.** `packages/lib/package.json` allows `marked` 18.1.0, which reads tabs and nested links otherwise than the installed 18.0.9. The plan `marked-version-pin-or-upgrade` owns that. Everything here was measured on 18.0.9.
-- **The WYSIWYG surface**, including what it writes for row `E18` and the looseness of a list that lost its blocks.
+- **Placing a block a tab indents.** A command on such a block, or on a block whose tail ends at a nested list a tab indents (`E25`, `E26`, `E27`), declines here because the token search does not find the block. `markdown-source-mode-block-locator` owns placing blocks; once it has, the lines after the block go through this plan's rule.
+- **The WYSIWYG surface**, including the looseness of a list that lost its blocks.
 - **`setBlockType` on a block a list item holds.** Source mode takes it out of the list and the WYSIWYG surface converts it in place. Which is right is a question about `setBlockType`.
 - **A code block turned into text.** `setBlockType("paragraph")` and `("quote")` over a fenced code block join its text to the block of text below it when no blank line parts them. The base does this, and it now also shows in task-item documents where the base declined.[^code-join]
 - **The base's own misreadings.** A tab-indented block followed by a line with the same text is located on the later line. The tail candidate's check rejects what follows from it and the base candidate decides as before.
@@ -2026,41 +2183,41 @@ Run `npm run docs:llms:check` afterwards.
 
 ## Notes
 
-[^measured]: The measurements were made in a worktree at `75d022ba1`, with no source file edited. The module of this plan stood in the tests tree and was put in place of `markdownSourceLines.ts` by a Vitest plugin; the two modules of `markdown-tab-column-parity` were put in place of `markdownExtensions.ts` and `markdownSerializer.ts` the same way, from that plan's scratch folder. The three raw-block plans were not installed: they do not touch `markdownSourceLines.ts`, `markdownSourceTokens.ts` or the lexer. Everything is kept in the scratch folder named in `## Ordered Implementation Steps`: `PROGRESS.md` there says which output is which.
+[^measured]: The measurements were made in a private copy of commit `736452bbc`, with the code and tests of `marked-version-pin-or-upgrade`, `marked-upgrade` and `markdown-tab-column-parity` applied as committed by that plan's planner (`plans4/tab-revision/repo`), and `marked` 18.1.0 in a `node_modules` of the copy's own. Nothing was installed in the main tree or a worktree. This plan's module and test changes were then applied to the copy. The three raw-block plans were not installed: they do not touch `markdownSourceLines.ts`, `markdownSourceTokens.ts` or the lexer. The first version of this plan was measured on `75d022ba1` with `marked` 18.0.9; where a footnote quotes that measurement, it says so. Everything is kept in the scratch folder named in `## Ordered Implementation Steps`: `PROGRESS.md` there says which output is which.
 
-[^rule]: The rule is the one the first implementation settled on, recorded in the notes of `markdown-list-toggle-task-item-parity`. On the 68,522 cases of the planner's probe the module of this plan gives the same text as that implementation in 68,480. In 41 the two differ in one line of whitespace: a line that holds exactly its item's indentation is written empty here, and with the new item's indentation there. In one, this plan acts on a list inside a quote where that implementation left the document.
+[^rule]: The rule is the one the first implementation settled on, recorded in the notes of `markdown-list-toggle-task-item-parity`. Measured for the first version of this plan, on 18.0.9: on the 68,522 cases of the planner's probe the module of this plan gives the same text as that implementation in 68,480. In 41 the two differ in one line of whitespace: a line that holds exactly its item's indentation is written empty here, and with the new item's indentation there. In one, this plan acts on a list inside a quote where that implementation left the document.
 
 [^mechanism]: Three mechanisms were weighed.
 
     | Mechanism | Verdict |
     |---|---|
     | Write the tail from `marked`'s tokens: each tail block's `raw` is its text with the containers' prefixes already taken off | Rejected. A nested token's `raw` is not the source. `marked` lexes what a list item holds from a copy with tabs written as spaces and the task marker removed, and a quote's content from a copy with setext lines re-indented. Writing `raw` back rewrites content bytes, which is what row `E18` does on the WYSIWYG surface. Mapping `raw` to source bytes instead needs each nested token traced to its lines, which is the search that went quadratic |
-    | Keep the base's line arithmetic, add no reading of tabs, never touch the token search | Taken, for writing. `containerPrefix` and `itemIndent` have run on every source-mode command since `markdown-source-mode-editing`, and the differential sets hold no misreading by them of a prefix written in spaces |
+    | Keep the base's line arithmetic, read a tab only through the lexer's own spaces form, never touch the token search | Taken, for writing. `containerPrefix` and `itemIndent` have run on every source-mode command since `markdown-source-mode-editing`, and the differential sets hold no misreading by them of a prefix written in spaces; the spaces form gives them nothing else to read |
     | Decline exactly where the result cannot be proved by re-lexing, the shapes enumerated | Taken, for deciding, with one change: where the tail lift cannot be proved, fall back to the base's edit, and decline only where that cannot be proved either |
 
     What makes the design closed is that no shape is decided by a case in the writer. The writer applies one table to every line. The check accepts or rejects. The base candidate guarantees that nothing the base did is lost. The first attempt had the first two and not the third, so every shape where a block read otherwise outside its list — an open fence, trailing whitespace at a list's end, a numbered item under a paragraph — became a decline, and each was then patched in the writer. Those shapes are now the footnote on clauses, not code.
 
-[^tabs]: Half a tab cannot be kept. In `→second` under a `- ` item the tab covers the item's two columns and two more. The first attempt wrote the rest as spaces and needed `peelIndent`, a tab-aware `containerPrefix` and a tab-aware token search to stay consistent with it; reviews 4 and 5 found four blocking defects in that code. `carriedIndent` returns `null` on such a line and the candidate is dropped whole.
+[^tabs]: The owner decided L3 and L4 on 2026-10-14: a moved tab is rewritten, so that source mode agrees with the WYSIWYG surface. The first version of this plan declined there instead, for three reasons that no longer hold. It rewrote no byte outside a prefix written in spaces; the owner now asks for the prefix tab's bytes to change. Half a tab cannot be kept; the spaces form does not keep half a tab, it writes the whole tab as spaces before any column is taken off, so there is nothing to split. And the first attempt's tab handling (`peelIndent`, a tab-aware `containerPrefix`, a tab-aware token search) had four blocking defects in reviews 4 and 5; here no reader of the module learns about tabs, the token search is not touched, and the one tab rule is the lexer's, which `markdown-tab-column-parity` measured on 2,932 drawn tab documents. Measured for this plan: on 1,013 documents drawn by review 6's generator with the spaces that reach a tab stop written as a tab (seeds 21 and 22, 385,476 cases), the module's result on the tab document, written in its spaces form, is the result on the space document in every case where both act and the tab document's blocks are all placed; it never declines or acts alone there. Every case where the two differ is one where the token search places fewer blocks in the tab document, which is the locator's. Keeping the tab bytes up to the first changed column (`keptBytes`) keeps a tab the lift does not move, which L4 asks for; writing the whole line in its spaces form would have rewritten such tabs too.
 
 [^independent]: The notes of the first attempt say: "The lift writes lines and expects leaves from the same reading of the document. What it gets wrong in one it gets wrong in both, and the check by lexing passes." There `leavesListWithLift` decided per line what `pathAfterLifts` decided per leaf, both from the same container walk, and a list later in the same quote was taken along by both. Here a line's role comes from the containers that hold that line, and a leaf's from the entries of the lifted block's outermost list item; a list elsewhere in the quote is in neither.
 
-[^instances]: Review 2 found a quote split in two by a blank line written without its `>`, accepted by the check because both halves had the path `quote / p`. `separatorBelowTail` now writes the marker, and the instance comparison is the check that would catch the next writer that does not. Measured: without the comparison the module gives another result in 39 of 236,552 rows, all on one document of review 5's tab sets, where two quotes of different list items came to stand under one another and read as one. With the comparison the tail candidate is rejected there. It changes no result in the planner's sets or in review 4's.
+[^instances]: Review 2 found a quote split in two by a blank line written without its `>`, accepted by the check because both halves had the path `quote / p`. `separatorBelowTail` now writes the marker, and the instance comparison is the check that would catch the next writer that does not. Measured for the first version of this plan, on 18.0.9: without the comparison the module gives another result in 39 of 236,552 rows, all on one document of review 5's tab sets, where two quotes of different list items came to stand under one another and read as one. With the comparison the tail candidate is rejected there. It changes no result in the planner's sets or in review 4's.
 
 [^analysis]: The first attempt made `findAligned` follow tabs, and `analyzeMarkdownSource` took 821 ms at 400 lines and 13 s at 1,600 on review 5's two-tab document, on every command and every selection-state read. Here the file is not in the diff.
 
-[^tab-order]: This plan is implemented after `markdown-tab-column-parity` because that plan changes what `lexMarkdown` reads, and both the source analysis and the check of this plan read through `lexMarkdown`. Measured both ways. Without that plan's code, `marked` writes the tab of `··a→b` as four spaces while the block stands in its item and keeps it once the block is out, so the tail candidate is rejected and the code block stays in the list; a prototype that compared code text with tabs taken for four spaces was run to get past that, and is not needed. With that plan's code the content tab reads the same in both places and the candidate is accepted as it is. If the order were reversed, `markdown-tab-column-parity` would have to re-run this plan's step 8 and move `E38`.
+[^tab-order]: This plan is implemented after `markdown-tab-column-parity` because that plan changes what `lexMarkdown` reads, both the source analysis and the check of this plan read through `lexMarkdown`, and the tail lift reads lines through that plan's `withPrefixTabsAsSpaces`. For the first version of this plan, on 18.0.9, the order was measured both ways. Without that plan's code, `marked` writes the tab of `··a→b` as four spaces while the block stands in its item and keeps it once the block is out, so the tail candidate is rejected and the code block stays in the list; a prototype that compared code text with tabs taken for four spaces was run to get past that, and is not needed. With that plan's code the content tab reads the same in both places and the candidate is accepted as it is. If the order were reversed, `markdown-tab-column-parity` would have to re-run this plan's step 8 and move `E38`.
 
-[^held]: On the planner's probe, 195 cases read alike at the base and not after, and 21 on review 4's sets. All are `setBlockType("paragraph")`, `("h2")` or `("quote")` on a block that a task item holds and that already has that type: the WYSIWYG surface has nothing to change, the base did nothing because a re-opened task item reads as a plain one, and source mode now takes the block out of the list as it does in a plain item.
+[^held]: On the planner's probe, 195 cases (measured again on 18.1.0 with the tab rule: the same 195 and 21) read alike at the base and not after, and 21 on review 4's sets. All are `setBlockType("paragraph")`, `("h2")` or `("quote")` on a block that a task item holds and that already has that type: the WYSIWYG surface has nothing to change, the base did nothing because a re-opened task item reads as a plain one, and source mode now takes the block out of the list as it does in a plain item.
 
-[^e18]: The other two ways were weighed. Source mode could write the two columns as spaces, as the WYSIWYG surface does; that rewrites bytes of a line the user did not edit, and the user ruled that out for content. The WYSIWYG surface could keep the tab; it reads the block from `marked`'s token, where the tab is already spaces (`markdown-tab-column-parity` pins that as row T30 and says why it stays). So each surface is right by its own rule, and the row says so.
+[^e18]: The first version of this plan recommended keeping `E18` as a pinned difference: rewriting the tab's bytes was ruled out, and the WYSIWYG surface cannot keep the tab, because it reads the block from `marked`'s token, where the tab is already spaces (`markdown-tab-column-parity` pins that as row T30). The owner chose agreement instead. The line is the only one in `E18` that changes beyond its item's indentation, and only in its prefix: `··→bb` is written `··bb`, the bytes the WYSIWYG surface saves. Source mode reads it as the same code line before and after, `··bb`.
 
 [^looseness]: The WYSIWYG surface keeps one loose flag per list, set at load. In source mode a list is loose when a blank line parts two of its blocks. `- cu ⏎   - ni ⏎⏎     hu ⏎⏎ - nu` with the numbered toggle on `hu` leaves `- cu ⏎   - ni` in source mode, which is tight, and `- cu ⏎⏎   - ni` on the WYSIWYG surface. Rows `E6` and `E7` pin the kind. On documents in the form the editor saves, 386 of the cases that the lift settles are left with this difference alone.
 
-[^rows-23]: The 23 are `T19` to `T21` (eight), `M33` to `M35` (eight), `M36`, `M37`, `E24` (two), `E30` (two) and `E34`. The first attempt made the two `E24` rows read alike by taking a tab's columns apart; this plan leaves a tab in an item's indentation alone.
+[^rows-23]: The 23 are `T19` to `T21` (eight), `M33` to `M35` (eight), `M36`, `M37`, `E24` (two), `E30` (two) and `E34`. The two `E24` rows read alike through the tab rule of L4, as they did in the first attempt; there the tab's columns were taken apart by a tab-aware reader of the module's own, here by the lexer's `withPrefixTabsAsSpaces`.
 
-[^prototype]: `proto/zz-clean-lines.ts` in the scratch folder is the module as this section gives it; the code blocks here were cut from that file by script. `proto/zz-proto-lines.ts` is the same logic with counters, which the probes read. The two give the same edit on 176,396 cases, run with the tab plan's code installed. The whole suite was run with `zz-clean-lines.ts` in place of the module and the tab plan's two modules in place of theirs: 557 files, 16,768 tests pass and 98 fail. The 98 are the 91 `DIFFERS` rows of `75d022ba1` that this plan moves or restates, the 4 tests it restates, and the 3 tests that `markdown-tab-column-parity` changes itself. `eslint`, given the file under the module's own path, reports nothing.
+[^prototype]: `proto/markdownSourceLines.ts` in the scratch folder is the module as this section gives it; the code blocks here are cut from it. `proto/markdownSourceLines.hooked.ts` is the same file with trace lines ending `//HOOK`, which the probes read; without those lines the two files are equal. The whole library suite was run with the module and this plan's two test files in place, on the copy the first note describes: 591 files, 20,194 tests pass and 2 are `todo`. `eslint` reports nothing on the module, and `npm run typecheck:test` is clean.
 
-[^numbers]: The last column, and H5, come from counters that only the prototype has. The whole table but those two was then measured again as step 8 asks, with `proto/zz-clean-lines.ts` standing as the module (`runimpl.sh`): every count is the same. The same sets were first run without the code of `markdown-tab-column-parity`, on a prototype that took a code block's tabs for four spaces. Every hard check was 0 there too, and the counts for the sets that hold no tab are the same. Review 4's WYSIWYG results were recorded without that plan's code, so its `tab` and `tab2` sets (82 cases) are not counted under P.
+[^numbers]: The columns "Tail candidate tried, base candidate taken" and "A prefix tab written as spaces", and H5, come from the trace lines of `proto/markdownSourceLines.hooked.ts`, which was the module for every run of this table. `zz-lr-equiv.test.ts` then compared it with the module without them on 84,520 cases, review 5's and review 4's tab sets among them: `differ` 0. The first version of this plan, on 18.0.9 and without the tab rule, measured the first and third sets with the same counts, and the second and fourth with 14,808 and 711 newly acting, 17,098 and 565 differing, and 7,060 and 42 tail candidates that fell back. Then 4,280 of review 5's and 12 of review 4's tail candidates could not be built, mostly on a tab in an item's indentation; now 529 of review 5's cannot (a wrap item the token search does not place), and the rest of the 5,305 are built and rejected by the check, the base's edit taken, for the reasons the clauses note lists. Review 4's WYSIWYG results were recorded on the older base; its tab sets are not counted under P.
 
 [^clauses]: For documents in the form the editor saves, the previous implementation put every case of the planner's probe where the surfaces differ under a clause of the docs (its note D22): 11,078 cases, of which 6,678 stood under the three clauses "to go". With this plan:
 
@@ -2075,8 +2232,8 @@ Run `npm run docs:llms:check` afterwards.
     | a selection that takes the line after a backslash line break | 9 |
     | the document holds a list the WYSIWYG surface keeps as a raw block | 8 |
 
-    The 4,400 other cases are unchanged and keep their clause. Of the 21,053 cases that read alike at the base, 59 now differ, all of the kind of sign-off 2. For hand-written text the tail candidate fell back to the base candidate for these reasons, counted on review 5's rows (7,060) and on the generated set (1,670): the lifted text read otherwise (an open fence; whitespace at a list's end; a line after the list whose reading depends on the list, such as a numbered item or a setext underline under a moved block), a tab stood in an item's indentation, or two containers came to read as one. `out/` in the scratch folder has each case.
+    The 4,400 other cases are unchanged and keep their clause. Of the 21,053 cases that read alike at the base, 59 now differ, all of the kind of L2. The planner's sets hold no tab, and this table is the same on 18.1.0 with the tab rule as it was for the first version of this plan (`rundump.sh`, then `cat2.py` of `scratch-keep/plans3/source-list-lift/`). For hand-written text the tail candidate fell back to the base candidate for these reasons, counted on review 5's rows (5,305) and on the generated set (1,670): the lifted text read otherwise (an open fence; whitespace at a list's end, a closing fence followed by a tab among them; a line after the list whose reading depends on the list, such as a numbered item or a setext underline under a moved block), the list item that ends the tail was not placed (529 of review 5's), or two containers came to read as one. `out/` in the scratch folder has each case.
 
-[^cost]: The timings are the least of three runs each, on a machine that other suites were using, and vary by up to a factor of two between runs. The base's own cost grows with lines times blocks, because `containersOfLine` walks every block for every line of the lifted region; the second-long figures are the base's. `planLifts` reads each lift's wrap item once, and `wrapperItemAfter` walks up from the block, so a selection of n blocks in one item costs n short walks, not n walks of the whole item.
+[^cost]: The timings are the least of three runs each, on a machine another planner's suites were using, and vary by up to a factor of two between runs. The base's own cost grows with lines times blocks, because `containersOfLine` walks every block for every line of the lifted region; the second-long figures are the base's. `planLifts` reads each lift's wrap item once, and `wrapperItemAfter` walks up from the block, so a selection of n blocks in one item costs n short walks, not n walks of the whole item.
 
 [^code-join]: 76 of the 2,017,812 generated cases, all with a fenced code block in the selection and a task item below it. The base joins the same way in 1,476 cases of that set where it acts.

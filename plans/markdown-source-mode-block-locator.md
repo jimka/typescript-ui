@@ -1,7 +1,9 @@
 ---
 depends-on:
-  - markdown-source-mode-list-lift-parity
+  - marked-version-pin-or-upgrade
+  - marked-upgrade
   - markdown-tab-column-parity
+  - markdown-source-mode-list-lift-parity
 touches-shared:
   - packages/lib/src/typescript/lib/component/display/markdownExtensions.ts
   - packages/lib/src/typescript/lib/component/editor/markdownSourceTokens.ts
@@ -23,13 +25,13 @@ touches-shared:
 |---|---|---|
 | It can find a look-alike | `- one ⏎⏎ →same ⏎⏎ ··same ⏎ - two` | the paragraph on the tab line is placed on the later `··same` line |
 | It can find nothing | `- one ⏎⏎ →second ⏎ - two` | the paragraph `second` is not placed, so every command on it does nothing, bold included |
-| A command asks about every line by walking every block | select everything in a list of 6,400 lines that nests eight levels deep, bulleted toggle | 23 seconds |
+| A command asks about every line by walking every block | select everything in a list of 6,400 lines that nests eight levels deep, bulleted toggle | 24 seconds |
 
 This plan replaces the search with a computation that needs none. A block's place follows from two facts about the lexer, and every line of the result is compared with the source. A block is then placed where it stands or not at all. The plan also gives the line commands one index of what each line holds, so a command costs time in proportion to the document.
 
 The change is in three source files: the analysis in [markdownSourceTokens.ts](../packages/lib/src/typescript/lib/component/editor/markdownSourceTokens.ts), the line commands' lookups in [markdownSourceLines.ts](../packages/lib/src/typescript/lib/component/editor/markdownSourceLines.ts), and one small recorder in the lexer module [markdownExtensions.ts](../packages/lib/src/typescript/lib/component/display/markdownExtensions.ts). `MarkdownEditor.ts`, `CodeEditor.ts`, `markdownSourceEdits.ts` and the WYSIWYG surface are not touched.
 
-*Base* means the code this plan starts from: commit `75d022ba1`, the tip of the Markdown stack, with the plans of `depends-on` on top. Every number here was measured on `75d022ba1` with `marked` 18.0.9, the installed version, with the code of `markdown-tab-column-parity` and of `markdown-source-mode-list-lift-parity` installed from those plans' own prototypes.[^measured] Line numbers are from `75d022ba1`; find each site by its symbol name.
+*Base* means the code this plan starts from: commit `736452bbc`, the tip of the Markdown stack, with the four plans of `depends-on` on top. `marked` is 18.1.0 there (`marked-version-pin-or-upgrade`, then `marked-upgrade`). `markdown-tab-column-parity` reads a tab in a line's container prefix as the spaces to its tab stop, and `markdown-source-mode-list-lift-parity` takes what a list item holds after a lifted block out of the list with it, writing a tab in a moved line's container prefix as spaces. Every number here was measured on `736452bbc` with the code of those four plans applied and `marked` 18.1.0.[^measured] The three modules this plan replaces code in are the same at `736452bbc` as at the older tip `75d022ba1`. Line numbers are from `736452bbc`; find each site by its symbol name.
 
 ---
 
@@ -39,7 +41,7 @@ The change is in three source files: the analysis in [markdownSourceTokens.ts](.
 
 The analysis walks the tokens `lexMarkdown` returned and computes each one's place. It never looks for a block's text. Two facts about the lexer make that possible.
 
-**Fact 1: the `raw`s of a token list add up to the text the list was lexed from.** `marked`'s lexer advances by exactly `token.raw.length` after every token (`blockTokens` in `marked`'s `Lexer.ts`, version 18.0.9). So in any token list — the document's, a list item's, a quote's, a `:::` column's — each token starts where the one before it ends. The same holds for a list's items inside the list's own `raw`.
+**Fact 1: the `raw`s of a token list add up to the text the list was lexed from.** `marked`'s lexer advances by exactly `token.raw.length` after every token (`blockTokens` in `marked`'s `Lexer.ts`, version 18.1.0). So in any token list — the document's, a list item's, a quote's, a `:::` column's — each token starts where the one before it ends. The same holds for a list's items inside the list's own `raw`.
 
 **Fact 2: a container's content is lexed from a copy of its lines with the container's prefix taken off.** A *container* is a block that holds other blocks: a quote, a list item, a `:::` column. `marked` builds the text of a list item, and of a quote, line by line from the item's or quote's own lines. From each line it takes off the marker, the indentation or the `>`. It adds nothing but leading whitespace. So line *n* of the content is the *end* of line *n* of the container, and what stands before it there is the container's prefix.
 
@@ -66,7 +68,7 @@ Two pieces of existing code already work this way. The editor's import pairs eac
 
 ### Every placed line is compared with the line it is placed on
 
-The two facts are read off `marked` 18.0.9 and the dialect's wrappers. The analysis does not rely on them unchecked. Each line it places is compared with the line it is placed on, as the tables above say. A line that does not compare is not placed, and no block that touches it is placed. A container whose content has more lines than the container, or leaves lines of the container over that hold more than container syntax, places nothing inside it.
+The two facts are read off `marked` 18.1.0 and the dialect's wrappers. The analysis does not rely on them unchecked. Each line it places is compared with the line it is placed on, as the tables above say. A line that does not compare is not placed, and no block that touches it is placed. A container whose content has more lines than the container, or leaves lines of the container over that hold more than container syntax, places nothing inside it.
 
 So a change in the lexer that broke a fact would show as blocks that are not placed — commands that do nothing — and as failing rows `P1` to `P16` of this plan. It would not show as a block placed on another block's lines.[^checked]
 
@@ -94,11 +96,11 @@ Three more things make a token's `raw` differ from the text it was read from. Ea
 
 ### What is not placed
 
-A block is left unplaced, and a command on it does nothing, in one known shape: a list that holds both a tab outside a line's indentation and the character U+FDD0. `markdown-tab-column-parity` uses U+FDD0 as a stand-in to carry such tabs through `marked`; a source that already holds it gets no stand-in, and `marked` then writes those tabs as four spaces, which is not what the source holds. Row `P13` pins this.[^unplaced]
+A block is left unplaced only when a line it stands on does not compare; a command on it then does nothing. In the documents measured that never happens: every block of 21,660 documents is placed, a quarter of them built to hold look-alike lines, tabs, carriage returns, whitespace at line ends and lazy lines. Row `P13` pins a tab inside an item's text, a shape the first version of this plan could not place when the document also held the character U+FDD0.[^unplaced]
 
 ### The text of a table cell is still looked for inside its row's line
 
-A table's lines are placed by the rules above, each row on its own line. Inside a row's line, each cell's text is still found by a search, as at the base. The search cannot leave the row. It can take the text of a merged-away cell for the next cell's: in `| a | << | < |` the last cell's `<` is placed on the `<<`. Both the base and this plan do that, and a command there does nothing. Placing cells exactly needs the table tokenizer to say which column each cell came from; that is a change to another module and is left out.[^cells]
+A table's lines are placed by the rules above, each row on its own line. Inside a row's line, each cell's text is still found by a search, as at the base. The search cannot leave the row. It can take the text of a merged-away cell for the next cell's: in `| a | << | < |` the last cell's `<` is placed on the `<<`. Both the base and this plan do that, and a command there does nothing. Placing cells exactly needs the table tokenizer to say which column each cell came from; that is a change to another module, and `markdown-source-mode-command-gaps` makes it (owner's answer B3).[^cells]
 
 ### One index of what each line holds makes a command linear
 
@@ -121,36 +123,66 @@ The stated bound: an analysis, and a command on it, cost time in proportion to t
 
 The editor's import pairs each top-level token with its source text to save unedited blocks byte for byte ([markdownImporter.ts:592](../packages/lib/src/typescript/lib/component/editor/markdownImporter.ts#L592), `locateTokens`). It is not changed and does not use the new places.[^importer]
 
+### A placed block a tab indents is written as its spaces form is
+
+Once a block a tab indents is placed, the line commands of `markdown-source-mode-list-lift-parity` act on it with no change. Two plans write the lines of such a command:
+
+| Lines | Written by | What happens to a tab in the line's container prefix |
+|---|---|---|
+| the block's own lines | the lift as it stands at the base, now that the block is placed (owner's answer B1) | the line is written anew from the block's text; the tab's columns that the list items around the block took go with them, and any columns left over stay, as spaces |
+| every line after the block that a lift moves: the tail, the wrap item's first line, the lines below it | `markdown-source-mode-list-lift-parity` (its L4) | written as the spaces it stood for, as that plan's table says |
+| every other line | nobody | kept byte for byte |
+
+Together the two give one rule: a command on a document with tabs in its container prefixes gives the result it gives on the document's *spaces form*, the same text with each such tab written as the spaces to its tab stop, in every line it rewrites. Measured on 1,013 drawn tab documents, the rule holds in every case where both forms act. In 668 cases the spaces form acts and the tab document does nothing; all of them are the list-lift plan's base candidate, which still declines on a tab (see `## Non-Goals`).[^spaces-form]
+
+| Document, caret, command | Spaces form of the document | Result on either |
+|---|---|---|
+| `- one ⏎⏎ →second ⏎ - two`, `second`, bulleted toggle | `- one ⏎⏎ ····second ⏎ - two` | `- one ⏎⏎ - second ⏎ - two` |
+| the same, `setBlockType("h2")` | the same | `- one ⏎⏎ ## second ⏎ - two` |
+| the same, `setBlockType("code")` | the same | `` - one ⏎⏎ ``` ⏎ ··second ⏎ ``` ⏎ - two ``: the item took two of the tab's four columns, the code keeps the other two |
+| `- one ⏎ →- nested ⏎ - two`, `one`, bulleted toggle | `- one ⏎ ····- nested ⏎ - two` | `one ⏎ -···- nested ⏎ - two`: the nested list is the wrap item, re-opened by the outer item's marker |
+
 ### Which pinned rows change
 
-Rows of the tables in [markdown-editor.test.ts](../packages/lib/tests/component/markdown-editor.test.ts), as `markdown-source-mode-list-lift-parity` leaves them. `E25` and `E26` hold a tab in their indentation, which is not text the editor saves, so they cannot stand in the `SAME` table; they become rows of the source-mode `CASES` table.
+Rows of the tables in [markdown-editor.test.ts](../packages/lib/tests/component/markdown-editor.test.ts), as `markdown-source-mode-list-lift-parity` leaves them. `E25`, `E26` and `E27` are the three rows that plan leaves in `DIFFERS` because their blocks are not placed. All three now read as the WYSIWYG result. Their documents hold a tab in an item's indentation, which is not text the editor saves, so they cannot stand in the `SAME` table; they become rows of the source-mode `CASES` table.
 
-| Row | Document, caret | Source mode at the base | After this plan | Where the row goes |
-|---|---|---|---|---|
-| `E25` `UL` | `- one ⏎⏎ →second ⏎ - two`, `second` | nothing | `- one ⏎⏎ - second ⏎ - two`, which reads as the WYSIWYG result `- one ⏎⏎ - second ⏎⏎ - two` | out of `DIFFERS`; a `CASES` row |
-| `E26` `UL` | `- one ⏎ →- nested ⏎ - two`, `nested` | nothing | `- one ⏎⏎ nested ⏎⏎ - two`, the WYSIWYG result | out of `DIFFERS`; a `CASES` row |
-| `E24` `UL`, `h2` | `- one ⏎⏎ →second ⏎ - two`, `one` | nothing | nothing | stays in `DIFFERS` |
-| `E27` `UL` | `- one ⏎ →- nested ⏎ - two`, `one` | nothing | nothing | stays in `DIFFERS` |
-| `E19` `UL` | `-→one ⏎⏎ →second ⏎ - two`, `one` | nothing | nothing | stays in `DIFFERS` |
-| `S2` of `markdown-source-edits.test.ts` | `>→- a ⏎ >→- b`, `a`, `setBlockType("h2")` | nothing | `## a ⏎ >→- b` | restated: it acts |
+| Row | Document, caret | Source mode at the base | After this plan | WYSIWYG | Who writes which line |
+|---|---|---|---|---|---|
+| `E25` `UL` | `- one ⏎⏎ →second ⏎ - two`, `second` | nothing | `- one ⏎⏎ - second ⏎ - two` | `- one ⏎⏎ - second ⏎⏎ - two` | `- second`: this plan (B1) |
+| `E26` `UL` | `- one ⏎ →- nested ⏎ - two`, `nested` | nothing | `- one ⏎⏎ nested ⏎⏎ - two` | the same | `nested`: this plan (B1) |
+| `E27` `UL` | `- one ⏎ →- nested ⏎ - two`, `one` | nothing | `one ⏎ -···- nested ⏎ - two` | `one ⏎⏎ - - nested ⏎ - two` | `one`: the lift, as at the base; `-···- nested`: `markdown-source-mode-list-lift-parity` (L4) |
+| `S2` of `markdown-source-edits.test.ts` | `>→- a ⏎ >→- b`, `a`, `setBlockType("h2")` | nothing | `## a ⏎ >→- b` | — (a raw block there) | `## a`: this plan |
 
-`E24`, `E27` and `E19` `UL` stay because of what the commands do once the blocks are placed, which this plan does not change. The caret's block is placed in all three at the base already. The command then has to take the item's indentation off the line after it, and that line's indentation is a tab; `markdown-source-mode-list-lift-parity` does not take a tab apart.[^stay]
+`E27` did nothing at the base because the nested list its tail ends at was not placed, so the tail lift could not be built. The rows `E24` (two), `E19` `UL` and `E18` (two) act already with `markdown-source-mode-list-lift-parity` and give the same text after this plan.
 
 An inline command on a tab-indented block acts and keeps the tab: `toggleBold` on `second` in `- one ⏎⏎ →second para ⏎ - two` gives `- one ⏎⏎ →**second** para ⏎ - two`.
 
 ### The `can…` fields are not changed
 
-In source mode `canFormat`, `canLink`, `canSetBlockType` and the others stay `true` whenever the editor is not read-only ([MarkdownEditor.ts:5902](../packages/lib/src/typescript/lib/component/editor/MarkdownEditor.ts#L5902)). Source mode does not predict where a command does nothing; this plan only makes it do nothing in fewer places.
+In source mode `canFormat`, `canLink`, `canSetBlockType` and the others stay `true` whenever the editor is not read-only (`readSurfaceSelectionState`, [MarkdownEditor.ts:6864](../packages/lib/src/typescript/lib/component/editor/MarkdownEditor.ts#L6864)). Source mode does not predict where a command does nothing; this plan only makes it do nothing in fewer places.
 
-### Decisions that await the user's sign-off
+### Decisions (signed off 2026-10-14)
 
-**1. A block command on a tab-indented block writes that block's line without the tab.** `setBlockType("h2")` on `second` above gives `## second`; the bulleted toggle gives `- second`. The block's own line is the line the command rewrites, on tab and space indentation alike. The alternative is to keep declining there (leave `E25` and `E26` in `DIFFERS`), by making the line module refuse a target whose line holds a tab in its indentation.
+The repository's owner answered three of the four questions on 2026-10-14. The plan is written for these answers.
 
-**2. Commands that acted at the base through a misplaced block now do nothing.** A selection that takes in the line of a repeated link reference definition is documented as doing nothing ("source the viewer does not show"). At the base it acted when the search had placed some later block's look-alike text on that line. 77 of 970,320 generated cases behave so; none is in the sets of the earlier reviews.
+**B1. A block command on a tab-indented block writes that block's line without the tab — accepted.** `setBlockType("h2")` on `second` in `- one ⏎⏎ →second ⏎ - two` gives `## second`; the bulleted toggle gives `- second`. The block's own line is the line the command rewrites, on tab and space indentation alike.
 
-**3. Table cells stay searched inside their row.** See the decision above. The alternative adds a `column` field to `MdTableBodyCell` in `markdownTableExtension.ts` and places each cell on its own segment of the row.
+**B3. Table cells stay searched inside their row — accepted.** See the decision above. `markdown-source-mode-command-gaps` adds a `column` field to the table tokens and places each cell on its own segment of the row.
 
-**4. `setBlockType("paragraph")` on a tab-indented paragraph of a list item still does nothing.** The block is a paragraph already, so the command would only take it out of the list, and writing the line without rewriting its tab leaves it indented. The WYSIWYG command changes nothing there either. Row `a paragraph command declines on a block of an item that a tab indents` pins it.
+**B4. `setBlockType("paragraph")` on a tab-indented paragraph of a list item does nothing — accepted, as on the WYSIWYG surface.** The block is a paragraph already. Source mode leaves it where it stands, as it does the same block indented with spaces (`- one ⏎⏎ ····second ⏎ - two`), and the WYSIWYG command changes nothing there either. Row `a paragraph command declines on a block of an item that a tab indents` pins it.
+
+### Decision that awaits the owner's sign-off
+
+**B2. Commands that acted at the base through a misplaced block now do nothing.** In 78 of 970,320 generated cases a line command acted at the base and does nothing after this plan; none is in the sets of the earlier reviews. 77 of them were examined for the first version of this plan; on the base this plan now starts from they are the same 77, with the same base results, and one more case joins them. In 75 the selection takes in the line of a repeated link reference definition, where the search had put a later paragraph's text. In 2, one document with a tab, it takes in the first line of a list item's setext heading, where the search had put a nested item. In the new one the caret stands on a code line of a fence that a tab indents, where the search had put the item's later paragraph: the base took that paragraph out of the list and rewrote the code line, an edit of a block the caret was not in. No source-mode rule gives the base's results:
+
+| The same selection in another document | Base | This plan |
+|---|---|---|
+| the definition kept, under a label of its own | nothing | nothing |
+| the tab documents with spaces for the tabs | nothing | nothing |
+
+Both rows follow documented rules: a line command does nothing over a definition, and a source-mode list toggle does nothing on a setext heading. The WYSIWYG surface acts in all 77 examined. In the 75 it converts the definition's text with the other blocks, a documented difference between the surfaces; in the 2 its result reads as the base's.[^seventy-seven] The new case is a fault of the search and not part of the question: with the tabs written as spaces both the base and this plan do nothing, as this plan does on the tab document.
+
+*Recommendation:* accept. The plan's code stays as it is, and the test `declines on a selection that takes in a repeated definition, which no block holds` pins the change. *To answer in one line:* do these 77 commands do nothing, as over any definition and any setext heading (recommended), or should source-mode line commands pass over definition lines, in a plan of their own?
 
 ---
 
@@ -160,7 +192,7 @@ No public API changes. Everything below is internal to the library; the three ne
 
 ### `markdownExtensions.ts` — the recorder, and a tab-free prefix with its index map
 
-Insert this block directly above the doc comment that starts `The dialect's extensions, shared by the bounded instance`. `containerPrefixEnd`, `MARKDOWN_TAB_STOP` and `withPrefixTabsAsSpaces` are in the file already, from `markdown-tab-column-parity`.
+Insert this block directly above the doc comment that starts `The dialect's extensions, shared by the bounded instance`. `containerPrefixEnd`, `MARKDOWN_TAB_STOP`, `TABBED_LINE_END` and `withPrefixTabsAsSpaces` are in the file already, from `markdown-tab-column-parity`. `prefixTabsAsSpacesWithIndexes` writes exactly what `withPrefixTabsAsSpaces` writes, including that plan's one exception: whitespace that holds a tab and ends the line after a marker is one space.
 
 ```ts
 /** Read off `marked`'s `def` rule, which begins `^ {0,3}\[`. */
@@ -256,7 +288,12 @@ export interface SpacedLine {
     readonly text:    string;
     /** For each character of the tab-free prefix, the index of the line's character it stands for. */
     readonly indexes: readonly number[];
-    /** Where the container prefix ends in the line: character `indexes.length + n` of `text` is character `end + n` of the line. */
+    /**
+     * Where the container prefix ends in the line: character `indexes.length + n`
+     * of `text` is character `end + n` of the line. Whitespace holding a tab that
+     * ends the line after a marker is one space in `text`, standing for the
+     * first character of that whitespace.
+     */
     readonly end:     number;
 }
 
@@ -272,6 +309,8 @@ export interface SpacedLine {
  */
 export function prefixTabsAsSpacesWithIndexes(line: string): SpacedLine {
     const end = containerPrefixEnd(line);
+    const rest = line.slice(end);
+    const endsInTab = end > 0 && TABBED_LINE_END.test(rest);
     const indexes: number[] = [];
     let prefix = "";
 
@@ -286,7 +325,7 @@ export function prefixTabsAsSpacesWithIndexes(line: string): SpacedLine {
         prefix += written;
     }
 
-    return { text: prefix + line.slice(end), indexes, end };
+    return { text: prefix + (endsInTab ? " " : rest), indexes, end };
 }
 ```
 
@@ -300,7 +339,7 @@ Then make three edits in the same file.
    ];
    ```
 
-2. Replace the body of `withPrefixTabsAsSpaces` (from `markdown-tab-column-parity`) with one line, so the two functions cannot drift apart. Its doc comment and signature stay. Because `prefixTabsAsSpacesWithIndexes` is declared further down the file, this works only for a function declaration, which it is.
+2. Replace the body of `withPrefixTabsAsSpaces` (from `markdown-tab-column-parity`) with one line, so the two functions cannot drift apart. Its doc comment and signature stay. `TABBED_LINE_END` is then read by `prefixTabsAsSpacesWithIndexes` alone; leave the constant where it is. Because `prefixTabsAsSpacesWithIndexes` is declared further down the file, this works only for a function declaration, which it is.
 
    ```ts
    export function withPrefixTabsAsSpaces(line: string): string {
@@ -1580,7 +1619,7 @@ How the pieces fit:
 
 ### `markdownSourceLines.ts` — one index per analysis, maps and searches for the rest
 
-The module is the one `markdown-source-mode-list-lift-parity` leaves. Each edit below replaces a lookup and keeps its answer.
+The module is the one `markdown-source-mode-list-lift-parity` leaves. Each edit below replaces a lookup and keeps its answer. The edits were applied by script to that plan's measured module (`proto/markdownSourceLines.ts` of its scratch folder), and every text they replace was found there once.
 
 **1. `allNodes`.** Replace the body, so that listing a tree's nodes does not copy the list once per level:
 
@@ -1782,7 +1821,7 @@ function targetOfEntry(targets: readonly SourceBlockNode[]): (entry: number) => 
 | `expectedItemLeaves` | `const index = plans.findIndex((plan) => firstEntryOf(plan.target) <= leaf.entry && leaf.entry < plan.target.entryEnd);` | `const index = planOf(leaf.entry);`, and add `const planOf = targetOfEntry(plans.map((plan) => plan.target));` on its own line before the `return expectLeaves(…)` statement that holds it |
 | `convertBlocks` | `const own = leaves.find((leaf) => leaf.entry === target.entryStart);` | `const own = leafAt.get(target.entryStart);`, and add `const leafAt = new Map(leaves.map((leaf) => [leaf.entry, leaf]));` on the line before `const wildcardPaths = …` |
 
-**5. Lifts.** Replace the `LiftPlan` interface, `planLifts` and `liftBefore` whole, add `countWhile` after `planLifts`, and replace one statement of `instanceId`.
+**5. Lifts.** Replace the `LiftPlan` interface, `planLifts` and `liftBefore` whole, add `countWhile` after `planLifts`, and replace one statement of `instanceId`. Then delete `holdsEntry` and its doc comment (`Whether a leaf at an entry lies inside a block.`): `liftBefore` was its one caller, and `npm run typecheck` reports it unused once `liftBefore` is replaced.
 
 ```ts
 /** The lifts of one command, with the document's blocks by entry. */
@@ -1946,23 +1985,26 @@ function wildcardAt(wildcards: readonly WildcardRange[], offset: number): Wildca
 
 ## Ordered Implementation Steps
 
-Run every command from `packages/lib`. The scratch folder is `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans3/source-locator/`. It is not in the repository. It holds:
+Run every command from `packages/lib`. Never run `npm install`, `npm ci` or `npm update`. The scratch folder is `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans4/locator-revision/`. It is not in the repository. It holds:
 
 | In the scratch folder | What it is |
 |---|---|
-| `proto/zz-loc-tokens.ts`, `proto/zz-loc-lines.ts`, `proto/markdownExtensions.loc.ts` | the three modules as measured. The first two import `./zz-loc-tokens` where the real ones import `markdownSourceTokens.js`; apart from that their code is the code of `## Internal Structure` |
-| `proto/base-lines.ts` | `markdownSourceLines.ts` as `markdown-source-mode-list-lift-parity` gives it: what step 1 compares with |
-| `snip/*.txt` | the test code of `## Expected Behaviour`, as files |
-| `mkbase.sh`, `runimpl.sh`, `probes-impl/` | the differential probes of `## Verification` and their runner |
+| `proto/markdownExtensions.loc.ts`, `proto/markdownSourceTokens.loc.ts`, `proto/markdownSourceLines.loc.ts` | the three modules as measured, under their own import paths; the code of `## Internal Structure` was taken from them |
+| `proto/zz-loc-tokens.ts`, `proto/zz-loc-lines.ts` | the same two editor modules for the equivalence run; `zz-loc-lines.ts` imports `./zz-loc-tokens` |
+| `base/` | the four modules as the plans of `depends-on` leave them: what step 1 compares with |
+| `snip/*.txt` | the test code of `## Expected Behaviour`, as files; `applytests.py` wrote them into the copy's test files |
+| `mkbase.sh`, `runimpl.sh`, `probes-impl/`, `docs-sets.json`, `sumcounts.py` | the probes of `## Verification` and their runner |
+| `repo/` | the private copy the numbers were measured in, with its own `node_modules/marked` 18.1.0 |
 | `PROGRESS.md`, `out/`, `logs/` | the planner's log and measured outputs |
 
 Use the files to check your edits against, not in place of them.
 
 1. **Check the base.**
+   - `node -p "require('marked/package.json').version"` prints `18.1.0`.
    - `npx vitest run tests/component/markdown-editor.test.ts tests/component/markdown-source-edits.test.ts tests/component/display/markdownLexer.test.ts` is green.
-   - `git diff 75d022ba1 -- src/typescript/lib/component/editor/markdownSourceTokens.ts` shows what the plans of `depends-on` changed in the analysis. This plan expects nothing between the section comments `source search` and `inline`, and nothing in `walkInlineText`. If something changed there, stop and report.
-   - `diff src/typescript/lib/component/editor/markdownSourceLines.ts <scratch>/proto/base-lines.ts`. If one of these differs, stop and report: `allNodes`, `containersOfLine`, `lineIsHeld`, `readLineTargets`, `tableInsertionLine`, `neighbourList`, `replacedLines`, `itemReplacement`, `itemsApart`, `listOn`, `targetOfEntry`, `expectedItemLeaves`, `convertBlocks`, `LiftPlan`, `planLifts`, `liftBefore`, `instanceId`, `liftLines`, `liftLinesWithTail`, `readsAsExpected`. The edits of this plan were measured against those bodies.
-   - `grep -n "withPrefixTabsAsSpaces\|containerPrefixEnd\|MARKDOWN_TAB_STOP" src/typescript/lib/component/display/markdownExtensions.ts` finds all three: `markdown-tab-column-parity` is in.
+   - `git diff 736452bbc -- src/typescript/lib/component/editor/markdownSourceTokens.ts` shows what the plans of `depends-on` changed in the analysis. This plan expects nothing between the section comments `source search` and `inline`, and nothing in `walkInlineText`. If something changed there, stop and report.
+   - `diff src/typescript/lib/component/editor/markdownSourceLines.ts <scratch>/base/markdownSourceLines.ts`. If one of these differs, stop and report: `allNodes`, `holdsEntry`, `containersOfLine`, `lineIsHeld`, `readLineTargets`, `tableInsertionLine`, `neighbourList`, `replacedLines`, `itemReplacement`, `itemsApart`, `listOn`, `targetOfEntry`, `expectedItemLeaves`, `convertBlocks`, `LiftPlan`, `planLifts`, `liftBefore`, `instanceId`, `liftLines`, `liftLinesWithTail`, `readsAsExpected`. The edits of this plan were measured against those bodies.
+   - `grep -n "withPrefixTabsAsSpaces\|containerPrefixEnd\|MARKDOWN_TAB_STOP\|TABBED_LINE_END" src/typescript/lib/component/display/markdownExtensions.ts` finds all four, and `diff` of the file with `<scratch>/base/markdownExtensions.ts` shows nothing in `withPrefixTabsAsSpaces` or `containerPrefixEnd`: `markdown-tab-column-parity` is in as measured.
 
 2. **Keep the base for the differential.** `<scratch>/mkbase.sh "$PWD"` copies the three modules into `tests/component/` as `zz-base-tokens.ts`, `zz-base-lines.ts` and `zz-base-edits.ts`. Do this before any source edit.
 
@@ -1972,13 +2014,13 @@ Use the files to check your edits against, not in place of them.
 
 5. **`markdownExtensions.ts`**, as `## Internal Structure` gives it, and the rows `LX40` to `LX44` in `tests/component/display/markdownLexer.test.ts`. Check: `npm run typecheck`; `npx vitest run tests/component/display/markdownLexer.test.ts` is green; `npx vitest run tests/component/markdown-roundtrip` is green (the recorder changes no token).
 
-6. **`markdownSourceTokens.ts`**, the five edits in order. Check: `npm run typecheck` is clean. `grep -n "findAligned\|alignAt\|locateRaw\|builder.cursor\|CONTAINER_PREFIX_CHARACTERS" src/typescript/lib/component/editor/markdownSourceTokens.ts` finds nothing. `grep -n "indexOf(" src/typescript/lib/component/editor/markdownSourceTokens.ts` finds eight lines: five that search for a line end (`"\n"`), the backslash of an escaped `|||` line in `copiedLine`, a cell's text in `findInRow`, and `raw.indexOf(content)` in `contentOffset`, which was there before. None searches the document for a block.
+6. **`markdownSourceTokens.ts`**, the five edits in order. The result is `<scratch>/proto/markdownSourceTokens.loc.ts`; `diff` the two. Check: `npm run typecheck` is clean. `grep -n "findAligned\|alignAt\|locateRaw\|builder.cursor\|CONTAINER_PREFIX_CHARACTERS" src/typescript/lib/component/editor/markdownSourceTokens.ts` finds nothing. `grep -n "indexOf(" src/typescript/lib/component/editor/markdownSourceTokens.ts` finds eight lines: five that search for a line end (`"\n"`), the backslash of an escaped `|||` line in `copiedLine`, a cell's text in `findInRow`, and `raw.indexOf(content)` in `contentOffset`, which was there before. None searches the document for a block.
 
-7. **`markdownSourceLines.ts`**, the six edits in order. Check: `npm run typecheck` is clean. `grep -n "allNodes(analysis.tree)" src/typescript/lib/component/editor/markdownSourceLines.ts` finds three lines: in `nodesByEntry`, `leafNodes` and `lineIndexOf`. `grep -n "replacements.find\|plan.lifts.filter\|plan.lifts.findLast\|targets.findIndex\|plans.findIndex\|wildcards.find" src/typescript/lib/component/editor/markdownSourceLines.ts` finds nothing.
+7. **`markdownSourceLines.ts`**, the six edits in order. The result is `<scratch>/proto/markdownSourceLines.loc.ts`; `diff` the two. Check: `npm run typecheck` is clean. `grep -n "allNodes(analysis.tree)" src/typescript/lib/component/editor/markdownSourceLines.ts` finds three lines: in `nodesByEntry`, `leafNodes` and `lineIndexOf`. `grep -n "replacements.find\|plan.lifts.filter\|plan.lifts.findLast\|targets.findIndex\|plans.findIndex\|wildcards.find\|holdsEntry" src/typescript/lib/component/editor/markdownSourceLines.ts` finds nothing.
 
 8. **See the rows pass.** The command of step 4 is green, and so is the whole of `tests/component/display/markdownLexer.test.ts`.
 
-9. **Run the differential, the exactness check and the cost check** of `## Verification`. Every hard check is 0.
+9. **Run the differential, the exactness check, the spaces-form check and the cost check** of `## Verification`. Every hard check is 0. Run at most two Vitest processes at a time.
 
 10. **Clean up.** Delete every `zz-*` file from `tests/` (`find tests -name 'zz-*' -delete`) and commit none of them. The probes use Node's `fs` and `process`, so `npm run typecheck:test` fails while they are in the tree.
 
@@ -2007,13 +2049,13 @@ Use the files to check your edits against, not in place of them.
 
 ## Expected Behaviour
 
-Everything here is unit-testable but `### Manual checks`. Each test below was run against the prototype (green) and against the base (red where the table says so).[^tests]
+Everything here is unit-testable but `### Manual checks`. Each test below was run against the prototype (green) and against the base (red where the table says so).[^tests] The rows go into the test files as `markdown-source-mode-list-lift-parity` leaves them.
 
 ### Rows of `markdown-editor.test.ts`
 
-**The `DIFFERS` table.** Delete the two rows `E25` and `E26`. In the comment above the `E24` rows, replace `A block or a nested list indented with a tab: the block itself, and a block before it in the item.` with `A block or a nested list indented with a tab: a command on a block before it in the item.` The rows `E19` `UL`, `E24` (two) and `E27` stay as they are.
+**The `DIFFERS` table.** Delete the three rows `E25`, `E26` and `E27`, and the two comment lines above them, which `markdown-source-mode-list-lift-parity` wrote: `// A block or a nested list indented with a tab, which source mode does not find: the block itself, and the` and `// block before such a list in the item.` No row is left under that comment.
 
-**The `CASES` table of `describe('MarkdownEditor source-mode line commands read the viewer's blocks')`.** Add these rows directly after the row `a list toggle declines over a tab-indented block of the item`:
+**The `CASES` table of `describe('MarkdownEditor source-mode line commands read the viewer's blocks')`.** Add these rows directly after the row `E19 UL: an item whose marker a tab follows lets its tab-indented block leave the list with its text`, which `markdown-source-mode-list-lift-parity` adds:
 
 ```ts
         {
@@ -2031,6 +2073,10 @@ Everything here is unit-testable but `### Manual checks`. Each test below was ru
         {
             name: 'E26 h2: a heading from an item of a nested list that a tab indents', doc: '- one\n\t- nested\n- two', select: [10, 10],
             run: (editor) => editor.setBlockType('h2'), result: '- one\n## nested\n- two',
+        },
+        {
+            name: 'E27 UL: the nested list a tab indents stays in the list, re-opened by the item\'s marker, the tab written as spaces', doc: '- one\n\t- nested\n- two', select: [3, 3],
+            run: (editor) => editor.toggleUnorderedList(), result: 'one\n-   - nested\n- two',
         },
         {
             name: 'a paragraph command declines on a block of an item that a tab indents', doc: '- one\n\n\tsecond\n- two', select: [9, 9],
@@ -2094,6 +2140,8 @@ import type { SourceAnalysis, SourceBlockNode } from '~/component/editor/markdow
         expect(apply(doc, linkSource('/u')(doc, 7, 19)!)).toBe('- one\n\n\t[second para](/u)\n- two');
         expect(apply(doc, blockPrefixSource('## ')(doc, 9, 9)!)).toBe('- one\n\n## second para\n- two');
         expect(apply(doc, listSource('unordered')(doc, 9, 9)!)).toBe('- one\n\n- second para\n- two');
+        // The tab ran to column 4 and the item took two of its columns: the code keeps the other two, as spaces.
+        expect(apply(doc, FENCED_CODE_SOURCE(doc, 9, 9)!)).toBe('- one\n\n```\n  second para\n```\n- two');
         // The block stays a paragraph of its item: the tab could only be kept by leaving the line as it is.
         expect(blockPrefixSource('')(doc, 9, 9)).toBeNull();
     });
@@ -2110,10 +2158,16 @@ import type { SourceAnalysis, SourceBlockNode } from '~/component/editor/markdow
 
         expect(blockPrefixSource('## ')(doc, 0, 15)).toBeNull();
         expect(apply(doc, blockPrefixSource('## ')(doc, 21, 21)!)).toBe('word\n\n[w]: u\n[w]: v\n\n## w');
+
+        // The base put `w` on the repeated definition's line, counted that line as held and turned the heading into text.
+        const below = '[w]: u\n\n# h\n\n[w]: v\n\nw';
+
+        expect(blockPrefixSource('')(below, 8, 14)).toBeNull();
+        expect(apply(below, blockPrefixSource('')(below, 8, 12)!)).toBe('[w]: u\n\nh\n\n[w]: v\n\nw');
     });
 ```
 
-**At the end of the file**, add the helper and the two `describe` blocks below. The first table pins where blocks are placed. The second pins the cost without a clock, the way `describe('one lex scans a number of characters proportional to the document')` does in [markdownLexer.test.ts:891](../packages/lib/tests/component/display/markdownLexer.test.ts#L891): it counts the array elements a command hands to scans, for a document and for one eight times as long.[^worktest]
+**At the end of the file**, add the helper and the two `describe` blocks below. The first table pins where blocks are placed. The second pins the cost without a clock, the way `describe('one lex scans a number of characters proportional to the document')` does in [markdownLexer.test.ts:891](../packages/lib/tests/component/display/markdownLexer.test.ts#L891) (line 960 once `markdown-tab-column-parity` is in): it counts the array elements a command hands to scans, for a document and for one eight times as long.[^worktest]
 
 ```ts
 /**
@@ -2177,11 +2231,11 @@ describe('source analysis places each block on the lines it stands on', () => {
         ],
         [
             'P12: a column whose list ends on whitespace', '::: columns\n- a\n  b\t\n|||\nc\n:::',
-            'mdblock 0-30 [column [list 12-19 [list_item 12-19 [text 14-20]]], column [paragraph 25-26]]', [[14, 20], [25, 26]],
+            'mdblock 0-30 [column [list 12-19 [list_item 12-19 [text 14-19]]], column [paragraph 25-26]]', [[14, 19], [25, 26]],
         ],
         [
-            'P13: the stand-in character and a tab in one list are not placed', '- a\uFDD0\n\n  b\tc\n- d',
-            'list 0-15 [list_item 0-11 [paragraph 2-4, paragraph ?], list_item 12-15 [paragraph 14-15]]', [[2, 4], [14, 15]],
+            'P13: a tab in a list item\'s text, past its indentation', '- a\n\n  b\tc\n- d',
+            'list 0-14 [list_item 0-10 [paragraph 2-3, paragraph 7-10], list_item 11-14 [paragraph 13-14]]', [[2, 3], [7, 10], [13, 14]],
         ],
         [
             'P14: the same line twice, behind a tab and behind spaces', '- one\n\n\tsame\n\n  same\n- two',
@@ -2334,6 +2388,8 @@ describe('a line\'s container prefix read with its tabs as spaces tells where ea
         ['  \tb\tc', '    b\tc', [0, 1, 2, 2], 3],
         ['>\t- [ ]\ta', '>   - [ ]   a', [0, 1, 1, 1, 2, 3, 4, 5, 6, 7, 7, 7], 8],
         ['no tab', 'no tab', [], 0],
+        // Whitespace that holds a tab and ends the line after a marker is one space, standing for its first character.
+        ['  -\t', '  - ', [0, 1, 2], 3],
     ] as const) {
         it(`LX44: ${JSON.stringify(line)}`, () => {
             expect(prefixTabsAsSpacesWithIndexes(line)).toEqual({ text, indexes, end });
@@ -2348,10 +2404,10 @@ After step 3 and before step 5, 45 tests fail:
 
 | File | Red | Which |
 |---|---|---|
-| `markdown-editor.test.ts` | 9 | the five line-command rows `E25 UL`, `E25 h2`, `E26 UL`, `E26 h2`, `a numbered toggle acts on a task item whose marker a tab follows`; the four inline rows |
-| `markdown-source-edits.test.ts` | 36 | `S2`; the three tests after it; rows `P1` to `P8`, `P11`, `P12`, `P14`, `P15`, `P16`; `reads the format at a caret in a block that a tab indents`; the 18 command cost tests |
+| `markdown-editor.test.ts` | 10 | the six line-command rows `E25 UL`, `E25 h2`, `E26 UL`, `E26 h2`, `E27 UL`, `a numbered toggle acts on a task item whose marker a tab follows`; the four inline rows |
+| `markdown-source-edits.test.ts` | 35 | `S2`; the three tests after it; rows `P1` to `P8`, `P11`, `P14`, `P15`, `P16`; `reads the format at a caret in a block that a tab indents`; the 18 command cost tests |
 
-These are green before and after, and pin what must not change: `a paragraph command declines on a block of an item that a tab indents`; rows `P9`, `P10` and `P13`; the three `analysing grows at most` cost tests. The rows `LX40` to `LX44` cannot be written before step 5, since they import what that step adds.
+These are green before and after, and pin what must not change: `a paragraph command declines on a block of an item that a tab indents`; rows `P9`, `P10`, `P12` and `P13`; the three `analysing grows at most` cost tests. The rows `LX40` to `LX44` cannot be written before step 5, since they import what that step adds.
 
 ### What does not change
 
@@ -2371,19 +2427,20 @@ Needs manual verification, in a browser on the demo's MD Editor page (`npx vite`
 | B3 | `- one`, `→- nested`, `- two` | caret on `nested`; **Insert ▸ Bulleted list** | `- one`, blank, `nested`, blank, `- two` |
 | B4 | a list of several thousand items (paste one) | Ctrl+A; context menu ▸ **Block style ▸ Heading 2** | the result appears without a pause of seconds; Ctrl+Z gives the list back |
 | B5 | B2's result | switch to WYSIWYG | three list items, as the viewer shows them |
+| B6 | B3's text | caret on `one`; **Insert ▸ Bulleted list** | `one`, then `-`, three spaces and `- nested`, then `- two`; the tab is gone |
 
 ---
 
 ## Verification
 
 1. `npm run typecheck`, `npm run typecheck:test`, `npm run lint`: clean (after step 10; the probes do not typecheck).
-2. `npm test`: green. Against the base the count grows by 57: 6 line-command `CASES` rows less the 2 `DIFFERS` rows deleted, 4 inline `CASES` rows, 3 tests after `S2`, 16 `P` rows, 1 state test, 21 cost tests, and the 8 `LX` tests.
+2. `npm test`: green. Against the base the count grows by 58: 7 line-command `CASES` rows less the 3 `DIFFERS` rows deleted, 4 inline `CASES` rows, 3 tests after `S2`, 16 `P` rows, 1 state test, 21 cost tests, and the 9 `LX` tests (`LX40` to `LX43`, and `LX44` for each of its five lines). On the measured copy the whole suite is 591 files and 20,254 tests, 2 of them `todo`.
 3. `npm run docs:api`, `npm run docs:llms:check`, `npm run build:lib`.
 
 4. **The differential against the base.** The probes are in the scratch folder under `probes-impl/`. They compare the copies step 2 made (`zz-base-*.ts`) with the modules themselves, in one process. `runimpl.sh` copies a probe and its helpers into the tests tree, runs it and removes the probe:
 
    ```
-   export P_LIB="$PWD" K=~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans3/source-locator
+   export P_LIB="$PWD" K=~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans4/locator-revision
    S=~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans3/source-list-lift/sets
    mkdir -p $K/out-impl
    # review 6's generator: the four seeds and case counts of the list-lift plan
@@ -2393,10 +2450,12 @@ Needs manual verification, in a browser on the demo's MD Editor page (`npx vite`
    # look-alike documents with tabs, with the inline commands and the selection state
    $K/runimpl.sh zz-loc-gen.test.ts l31 P_LOOK=1 P_INLINE=1 P_SEED=31 P_DOCS=700 P_OUT=$K/out-impl/look-s31    # and P_SEED=32
    $K/runimpl.sh zz-loc-gen.test.ts g41 P_INLINE=1 P_SEED=41 P_DOCS=700 P_OUT=$K/out-impl/look-g41
+   # the spaces-form check: drawn tab documents against their spaces form
+   $K/runimpl.sh zz-lr-tabeq.test.ts t21 P_SEED=21 P_DOCS=1500 P_OUT=$K/out-impl/tabeq-21    # and P_SEED=22
    python3 $K/sumcounts.py $K/out-impl
    ```
 
-   Run at most four at a time. Hard checks, each 0:
+   Run at most two at a time. Hard checks, each 0:
 
    | Check | Meaning |
    |---|---|
@@ -2408,19 +2467,21 @@ Needs manual verification, in a browser on the demo's MD Editor page (`npx vite`
    | `H7` | an edit that changes nothing |
    | `H8` | a result or a selection state differs from the base's although the two analyses agree on every block, leaf and inline token |
 
-   Measured on `75d022ba1` with the code of the two `depends-on` plans installed:[^numbers]
+   Measured on `736452bbc` with the code of the four `depends-on` plans applied, `marked` 18.1.0:[^numbers]
 
    | Set | Cases | `H1` to `H8` | Same edit as the base | Both do nothing | Acts where the base did nothing | Another edit than the base |
    |---|---|---|---|---|---|---|
    | review 6's generator, seeds 11 to 14, 1,500 documents each — line commands | 2,017,812 | 0 | 1,026,146 | 990,182 | 1,470 | 14 |
-   | the 70 row sets of reviews 4 and 5 and of the planners and implementers (review 4's `tab` and `tab2` among them) — line commands | 236,552 | 0 | 142,969 | 87,560 | 5,967 | 56 |
-   | the same sets — inline commands | 102,004 | 0 | 53,545 | 46,562 | 1,897 | 0 |
+   | the 70 row sets of reviews 4 and 5 and of the planners and implementers (review 4's `tab` and `tab2` among them) — line commands | 236,552 | 0 | 146,459 | 82,412 | 7,567 | 114 |
+   | the same sets — inline commands | 102,004 | 0 | 53,618 | 46,562 | 1,824 | 0 |
    | the same sets — selection states | 81,833 | 0 | 81,833 | — | — | 0 |
-   | 2,100 look-alike and generated documents — line commands | 970,320 | 0 | 323,568 | 584,410 | 62,044 | 221 |
-   | the same documents — inline commands | 267,370 | 0 | 142,898 | 117,092 | 7,380 | 0 |
+   | 2,100 look-alike and generated documents — line commands | 970,320 | 0 | 334,459 | 543,616 | 91,784 | 383 |
+   | the same documents — inline commands | 267,370 | 0 | 141,352 | 118,614 | 7,404 | 0 |
    | the same documents — selection states | 53,474 | 0 | 53,466 | — | — | 8 |
 
-   Every case in the last two columns is in a document where the base places a block elsewhere than it stands, or not at all; `sumcounts.py` prints that split (`other result, …`). Two cases, in one document, differ because the base misplaces a run of text in the *result* it checks.[^result] No command that acts at the base does nothing afterwards in the sets of the earlier reviews. In the look-alike documents 77 line cases do, all of them cases where the base acted on a block it had placed elsewhere (decision 2).[^luck] There 39 more cases change the viewer's text by turning a code block that holds Markdown into text, which is the base's rule for a code block.
+   Every case in the last two columns is in a document where the base places a block, a leaf or a run of inline text elsewhere than it stands, or not at all; `sumcounts.py` prints that split (`other result, …`). Two cases, in one document, differ because the base misplaces a run of text in the *result* it checks.[^result] No command that acts at the base does nothing afterwards in the sets of the earlier reviews. In the look-alike documents 78 line cases do, which the table's columns leave out; in all of them the base acted on a block it had placed elsewhere (decision B2).[^luck] There 39 more cases change the viewer's text by turning a code block that holds Markdown into text, which is the base's rule for a code block.
+
+   The spaces-form check (`zz-lr-tabeq.test.ts`, seeds 21 and 22) has no hard check of its own beyond the differential's, which it runs on every tab document. Its counts are fixed by its seeds: on the measured copy, `TAB-NE` is 16 and `TAB-DECL0` 668, which `### A placed block a tab indents is written as its spaces form is` explains; any other `TAB-` count, or these with other values, means the module differs from the measured one.
 
 5. **Exactness.** `zz-loc-exact.test.ts` places every block of every document with the base and with the new code and checks both against two oracles that use neither a search nor the `raw` arithmetic.[^oracles]
 
@@ -2434,65 +2495,63 @@ Needs manual verification, in a browser on the demo's MD Editor page (`npx vite`
    $K/runimpl.sh zz-loc-exact.test.ts hostile P_HOSTILE=61,62 P_DOCS=2000 P_OUT=$K/out-impl/exact-hostile
    ```
 
-   Hard checks, each 0: any count whose name starts with `H:` (a block off its line, a block on another block's line, a twin placed otherwise, a leaf not on its character, a block not placed in a document without U+FDD0), `H1 NEW THROWS` and `TREE DIFFERS`. The column "off its lines" counts what the perturbation oracle can see, which is lines that hold a letter; a thematic break the base puts on a setext underline shows only in the column before it.
+   Hard checks, each 0: any count whose name starts with `H:` (a block off its line, a block on another block's line, a twin placed otherwise, a leaf not on its character, a block not placed), `blocks: ONLY THE BASE LOCATES`, `H1 NEW THROWS` and `TREE DIFFERS`. The column "off its lines" counts what the perturbation oracle can see, which is lines that hold a letter; a thematic break the base puts on a setext underline shows only in the column before it.
 
    | Documents | Blocks | Placed alike by both | Only the new code places | Placed elsewhere by the base | New code: off its lines | New code: not placed | Base: off its lines |
    |---|---|---|---|---|---|---|---|
-   | the 5,660 documents of the row sets | 113,804 | 107,838 | 5,872 | 94 | 0 | 0 | 122 |
-   | review 6's generator, 6,000 documents | 62,469 | 62,426 | 0 | 43 | 0 | 0 | 0 |
-   | 6,000 look-alike documents: repeated lines, repeated blocks, a block's text again inside a later code block, tab and space forms of one line | 79,507 | 71,031 | 7,182 | 1,294 | 0 | 0 | 1,690 |
-   | 4,000 hostile documents: the same with whitespace at line ends, carriage returns, U+FDD0, lazy lines | 49,893 | 42,244 | 6,463 | 964 | 0 | 222 | 1,390 |
+   | the 5,660 documents of the row sets | 112,028 | 106,431 | 5,501 | 96 | 0 | 0 | 122 |
+   | review 6's generator, 6,000 documents | 61,294 | 61,251 | 0 | 43 | 0 | 0 | 0 |
+   | 6,000 look-alike documents: repeated lines, repeated blocks, a block's text again inside a later code block, tab and space forms of one line | 78,516 | 70,065 | 7,168 | 1,283 | 0 | 0 | 1,676 |
+   | 4,000 hostile documents: the same with whitespace at line ends, carriage returns, U+FDD0, lazy lines | 49,374 | 42,012 | 6,385 | 977 | 0 | 0 | 1,406 |
 
-   The oracle names the block of 176,124 lines in all; the twin compares 18,870 documents. Every block the new code leaves unplaced stands in a document that holds U+FDD0 (185 leaf blocks that hold a line, by shape: a paragraph, text, code block or heading of a list item, at any depth, and what a quote or `:::` column inside such an item holds).
+   The oracle names the block of 178,493 lines in all; the twin compares 18,870 documents. The base places no block that the new code leaves unplaced.
 
 6. **Equivalence with the measured prototype.** Copy `proto/zz-loc-tokens.ts` and `proto/zz-loc-lines.ts` into `tests/component/`, then `$K/runimpl.sh zz-loc-equiv.test.ts eq P_GEN=11,12 P_LOOK=21,22 P_DOCS=1000 P_OUT=$K/out-impl/equiv`. `differ` is 0: the modules place every block and build every edit as the prototype does.
 
 7. **Cost.** `$K/runimpl.sh zz-loc-perf.test.ts perf P_REPS=7 P_MAXMS=8000 P_OUT=$K/out-impl/perf.txt` times the base copies against the modules. Report its table. The requirement: no `ANALYSE` or `STATE` line of the new code is slower than the base's beyond the spread between runs, and every `COMMAND … all` line grows about fourfold from 1,600 to 6,400 lines.
 
-   Measured in ms, on a machine other suites were using. Analysis and selection state: the least of 18 timings each (two runs of nine). A command over everything: the least of six timings for the new code, one timing for the base. The same timing repeated varied by up to a factor of four:[^cost]
+   Measured in ms, with no other Vitest process running: the least of seven timings of each line, in one run (`out/perf/perf1.txt`). Of the seven timings of a line taking a millisecond or more, the slowest was up to 3.4 times the fastest, and up to 2.3 times at 6,400 lines:[^cost]
 
    | Document | Lines | Lexing alone | Analysis, base / new | Selection state after a keystroke, base / new | Bulleted toggle over everything, base / new | Heading over everything, base / new |
    |---|---|---|---|---|---|---|
-   | headings and paragraphs | 400 | 0.3 | 0.5 / 0.5 | 0.5 / 0.5 | 13.6 / 4.7 | 9.7 / 3.8 |
-   | headings and paragraphs | 1,600 | 1.2 | 2.0 / 2.0 | 2.2 / 2.1 | 75.4 / 32.0 | 115 / 15.7 |
-   | headings and paragraphs | 6,400 | 4.3 | 8.5 / 8.8 | 8.6 / 8.6 | 492 / 158 | 1,573 / 106 |
-   | one list, eight levels deep | 400 | 2.2 | 3.1 / 3.0 | 3.5 / 3.2 | 114 / 14.6 | 37.5 / 8.8 |
-   | one list, eight levels deep | 1,600 | 8.4 | 13.6 / 12.2 | 14.0 / 12.8 | 1,393 / 66.1 | 528 / 40.9 |
-   | one list, eight levels deep | 6,400 | 35.8 | 60.6 / 59.6 | 63.8 / 60.5 | 23,140 / 299 | 7,722 / 202 |
-   | review 5's two-tab code block in a list item | 405 | 0.4 | 0.6 / 0.7 | 0.7 / 0.7 | 2.0 / 0.0 (both do nothing) | 0.0 / 0.0 (both do nothing) |
-   | review 5's two-tab code block in a list item | 1,605 | 1.3 | 2.7 / 2.5 | 2.6 / 2.4 | 3.6 / 0.1 (both do nothing) | 0.1 / 0.1 (both do nothing) |
-   | review 5's two-tab code block in a list item | 6,405 | 5.7 | 11.2 / 10.1 | 11.1 / 10.4 | 14.5 / 0.4 (both do nothing) | 0.3 / 0.4 (both do nothing) |
-   | a tight list | 400 | 1.0 | 1.3 / 1.3 | 1.3 / 1.2 | 29.0 / 6.7 | 17.8 / 6.1 |
-   | a tight list | 800 | 2.2 | 2.7 / 2.5 | 2.6 / 2.5 | 32.6 / 12.5 | 53.3 / 10.7 |
-   | a tight list | 1,600 | 3.5 | 5.0 / 5.1 | 5.2 / 5.1 | 163 / 32.3 | 162 / 29.3 |
-   | a tight list | 6,400 | 15.6 | 22.5 / 22.8 | 23.0 / 23.5 | 1,410 / 161 | 2,048 / 140 |
-   | a loose list, each item holding a paragraph | 399 | 0.5 | 0.6 / 0.7 | 0.7 / 0.7 | 29.3 / 3.7 | 13.4 / 2.3 |
-   | a loose list, each item holding a paragraph | 1,599 | 1.9 | 2.6 / 2.8 | 2.7 / 2.9 | 305 / 18.2 | 194 / 14.4 |
-   | a loose list, each item holding a paragraph | 6,399 | 8.0 | 11.8 / 12.6 | 12.3 / 12.8 | 4,368 / 85.2 | 3,031 / 73.0 |
+   | headings and paragraphs | 400 | 0.4 | 0.5 / 0.6 | 0.6 / 0.5 | 7.3 / 9.4 | 9.6 / 3.8 |
+   | headings and paragraphs | 1,600 | 1.2 | 2.2 / 2.4 | 2.2 / 2.0 | 54.9 / 24.5 | 99.1 / 16.4 |
+   | headings and paragraphs | 6,400 | 4.2 | 8.2 / 8.5 | 8.4 / 8.0 | 436 / 124 | 1,295 / 97.8 |
+   | one list, eight levels deep | 400 | 2.6 | 3.5 / 3.4 | 3.5 / 3.4 | 107 / 12.6 | 40.9 / 9.0 |
+   | one list, eight levels deep | 1,600 | 10.5 | 15.0 / 14.2 | 15.6 / 15.3 | 1,434 / 63.3 | 487 / 41.9 |
+   | one list, eight levels deep | 6,400 | 43.0 | 63.0 / 66.5 | 67.0 / 65.9 | 24,170 / 295 | 7,839 / 204 |
+   | review 5's two-tab code block in a list item | 405 | 0.5 | 0.7 / 0.8 | 0.7 / 0.8 | 0.0 / 0.0 (both do nothing) | 0.0 / 0.0 (both do nothing) |
+   | review 5's two-tab code block in a list item | 1,605 | 1.8 | 3.1 / 2.9 | 3.1 / 2.9 | 0.0 / 0.1 (both do nothing) | 0.0 / 0.1 (both do nothing) |
+   | review 5's two-tab code block in a list item | 6,405 | 8.6 | 13.6 / 13.0 | 13.2 / 12.8 | 0.2 / 0.4 (both do nothing) | 0.2 / 0.4 (both do nothing) |
+   | a tight list | 400 | 1.0 | 1.4 / 1.3 | 1.3 / 1.3 | 14.0 / 5.5 | 16.8 / 5.0 |
+   | a tight list | 1,600 | 4.3 | 5.8 / 5.7 | 5.8 / 5.4 | 136 / 27.1 | 224 / 31.4 |
+   | a tight list | 6,400 | 17.0 | 23.8 / 23.8 | 25.4 / 23.3 | 1,377 / 155 | 3,279 / 133 |
+   | a loose list, each item holding a paragraph | 399 | 0.5 | 0.7 / 0.7 | 0.7 / 0.7 | 21.2 / 3.3 | 15.0 / 2.5 |
+   | a loose list, each item holding a paragraph | 1,599 | 2.2 | 2.8 / 3.0 | 2.8 / 2.9 | 299 / 17.3 | 228 / 13.4 |
+   | a loose list, each item holding a paragraph | 6,399 | 9.5 | 12.8 / 12.7 | 12.6 / 13.5 | 4,561 / 75.2 | 3,262 / 65.1 |
 
-   The other four commands over everything are in `out/perf-final-all-*.txt`: at 6,400 lines the base takes 448 to 23,140 ms over the six commands and four documents that act, the new code 46 to 299 ms. A command with the caret in the middle of the document costs what it cost. At 6,400 lines, the six commands, base / new: headings and paragraphs 71 to 78 / 69 to 83 ms; the nested list 317 to 340 / 276 to 298; the tight list 157 to 219 / 148 to 222; the loose list 72 to 85 / 70 to 76 (`out/perf-final-caret.txt`). In the two-tab document the caret stands in the code block, where both do nothing.
+   The other four commands over everything are in the same file: at 6,400 lines the base takes 338 to 24,170 ms over the six commands and four documents that act, the new code 35 to 295 ms. A command with the caret in the middle of the document costs what it cost. At 6,400 lines, over the commands that act, base / new: headings and paragraphs 62 to 89 / 69 to 75 ms; the nested list 322 to 334 / 271 to 295; the tight list 147 to 208 / 129 to 200; the loose list 67 to 71 / 62 to 69. In the two-tab document the caret stands in the code block, where both do nothing.
 
-   Growth for a document four times as long (fourfold is linear). Analysis, new code, 1,600 to 6,400 lines: 4.0- to 4.9-fold. A command over everything, new code: 3.6- to 5.1-fold from 6,400 to 25,600 lines over the six commands on three documents, and 3.9- to 6.7-fold from 1,600 to 6,400 lines, where some timings are a few ms (`out/perf-big-new.txt`). The base's commands over everything grow 6.1- to 23.2-fold from 1,600 to 6,400 lines.
+   Growth for a document four times as long, 1,600 to 6,400 lines (fourfold is linear). Analysis, new code: 3.5- to 4.7-fold. A command over everything, new code: 4.0- to 6.1-fold over the six commands on four documents; the base's 7.9- to 16.9-fold.
 
-   The new analysis is within 0.3 ms of the base's in every row but the loose list, where it is 0.2 ms slower at 1,600 lines and 0.8 ms at 6,400 (7%), and the selection state within 0.5 ms. Those differences are inside the spread; they are named here because the requirement was "not slower at any size". The deterministic count of `### Tests of markdown-source-edits.test.ts` says the same without a clock: for a document eight times as long, a command over everything hands 48 to 68 times as many array elements to scans at the base and 8.4 to 8.9 times as many after.
+   The new analysis is within 0.3 ms of the base's in every row but the nested list at 6,400 lines, where it is 3.5 ms slower (6%), and the selection state within 0.9 ms. Those differences are inside the spread. The one command over everything that is slower is the bulleted toggle on headings and paragraphs at 400 lines, by 2 ms, also inside the spread. The deterministic count of `### Tests of markdown-source-edits.test.ts` says the same without a clock: its 18 command cases fail at the base, where the count grows with the square of the document, and pass after.
 
 ---
 
 ## Documentation Impact
 
-No export changes: nothing is added to a barrel and `llms.txt` is not affected. Two pages change. `markdown-tab-column-parity` and `markdown-source-mode-list-lift-parity` edit the same paragraph before this plan, so find each clause by its words, not by its line.
+No export changes: nothing is added to a barrel and `llms.txt` is not affected. Two pages change. `markdown-tab-column-parity` and `markdown-source-mode-list-lift-parity` edit the same paragraphs before this plan, so find each clause by its words, not by its line.
 
-**`docs/components/MarkdownEditor.md`**, in the paragraph that starts `Markdown the editor would not write itself`:
+**`docs/components/MarkdownEditor.md`**, the source-mode section.
 
-1. Delete the clause `a list in a blockquote whose markers a tab after the `>` indents, for commands on its items;` (added by `markdown-tab-column-parity`). Those commands act now.
-2. Replace `a block or a nested list of an item indented with a tab, for commands on it and on any block before it in the item;` with `a block or a nested list of an item indented with a tab, for commands on a block before it in the item;`.
-3. Add after the sentence that ends `and a line after the block whose indentation holds a tab.` (added by `markdown-source-mode-list-lift-parity`):
+1. In the paragraph that starts `Markdown the editor would not write itself`, as the two plans leave it, replace the two clauses from `These are a list in a blockquote whose markers a tab after the `>` indents` up to and including `for commands on it and on the block before such a nested list in the item; ` with `These are `. The sentence then goes on with the clause on text that opens with an unescaped `[ ] `. Every command those two clauses named acts now.
+2. In the paragraph that starts `The block commands —`, add after the sentence that ends `Every other character, a tab inside text or code included, is written back as it was.` (added by `markdown-source-mode-list-lift-parity`):
 
-   > A command on a tab-indented block itself acts. A format, link or style command keeps the tab: with `second` standing behind a tab in an item, `toggleBold()` writes `**second**` behind the same tab. A block command writes the block's own line anew, without the tab (`setBlockType("h2")` gives `## second`), except `setBlockType("paragraph")`, which does nothing there.
+   > A command on a block that a tab indents acts on it. A format, link or style command keeps the tab: with `second` behind a tab in an item, `toggleBold()` writes `**second**` behind the same tab. A block command writes the block's own line anew, as it writes a line indented with spaces: the tab counts to its tab stop, the list items' columns are taken off, and what is left of it stays as spaces. `setBlockType("h2")` on that `second` gives `## second`, the code fence a code block holding two spaces and `second`. `setBlockType("paragraph")` does nothing there, as on the WYSIWYG surface.
 
 **`docs/reference/changelog/next.md`** — as the last bullet of `## Fixed` → `### Components`, wrapped at 76 columns with a two-space hanging indent like its neighbours:
 
-> - **`MarkdownEditor`'s source-mode commands find each block where it stands.** Source mode found a block by searching the text for its content. A block whose text a later line repeated could be taken for that line, and a block of a list item indented with a tab was not found at all, so `toggleBold()`, `toggleLink()`, the list toggles and `setBlockType` did nothing there. Each block's place is now computed from the lexer's tokens and checked against the text. Commands act on a tab-indented block, a nested list indented with a tab, a task item whose marker a tab follows, and a list in a blockquote whose `>` a tab follows; an inline command keeps the tab. A command over a selection of thousands of lines took seconds and now takes time in proportion to the document. A command on a selection that takes in a repeated link reference definition does nothing, as documented; it could act before when the search had mistaken that line for a block. No consumer action is needed.
+> - **`MarkdownEditor`'s source-mode commands find each block where it stands.** Source mode found a block by searching the text for its content. A block whose text a later line repeated could be taken for that line, and a block of a list item indented with a tab was not found at all, so `toggleBold()`, `toggleLink()`, the list toggles and `setBlockType` did nothing there. Each block's place is now computed from the lexer's tokens and checked against the text. Commands act on a tab-indented block, on a nested list indented with a tab and the block before it, on a task item whose marker a tab follows, and on a list in a blockquote whose `>` a tab follows. An inline command keeps the tab; a block command writes the tab's columns as spaces, as for a line indented with spaces. A command over a selection of thousands of lines took seconds and now takes time in proportion to the document. A command on a selection that takes in a repeated link reference definition does nothing, as documented; it could act before when the search had mistaken that line for a block. No consumer action is needed.
 
 Run `npm run docs:llms:check` afterwards.
 
@@ -2506,7 +2565,8 @@ Run `npm run docs:llms:check` afterwards.
 - **`differ` above 0 in the equivalence run.** The module differs from the measured prototype. Diff it against `proto/zz-loc-tokens.ts` or `proto/zz-loc-lines.ts`.
 - **A cost test fails by a small margin.** The count is deterministic, so a failure is a real extra scan. Look for a `find`, `filter` or `some` over all blocks, leaves or lifts inside a per-line or per-leaf loop.
 - **The lint rule on a call inside a condition.** The project does not put a function call directly in an `if` or `while` condition; the code above assigns each to a named constant first. Keep that when merging.
-- **`marked` is upgraded later.** The two facts were read off 18.0.9. Rows `P1` to `P16`, `LX40` to `LX43` and the exactness run are the check to rerun; a broken fact shows as `?` in a `P` row.
+- **`marked` is upgraded later.** The two facts were read off 18.1.0. Rows `P1` to `P16`, `LX40` to `LX43` and the exactness run are the check to rerun; a broken fact shows as `?` in a `P` row.
+- **`holdsEntry` reported unused.** Edit 5 of `markdownSourceLines.ts` deletes it; `npm run typecheck` fails while it stays.
 
 ---
 
@@ -2518,28 +2578,91 @@ Run `npm run docs:llms:check` afterwards.
 - [markdownImporter.ts:592](../packages/lib/src/typescript/lib/component/editor/markdownImporter.ts#L592) — `locateTokens`, the precedent for placing tokens in order by their `raw`. Read only.
 - [markdownLexer.test.ts:891](../packages/lib/tests/component/display/markdownLexer.test.ts#L891) — the cost test this plan's cost tests are modelled on.
 - [markdown-editor.test.ts](../packages/lib/tests/component/markdown-editor.test.ts) and [markdown-source-edits.test.ts](../packages/lib/tests/component/markdown-source-edits.test.ts) — the tables the rows go into.
-- [plans/markdown-tab-column-parity.md](markdown-tab-column-parity.md) — how a tab is read, `withPrefixTabsAsSpaces`, the stand-in character.
-- [plans/markdown-source-mode-list-lift-parity.md](markdown-source-mode-list-lift-parity.md) — the line module this plan edits, and why a tab in an item's indentation is not taken apart.
-- `marked`'s own `Lexer.ts` (`blockTokens`) and `Tokenizer.ts` (`list`, `blockquote`), version 18.0.9 — where the two facts are read from. A copy is in `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans3/tab-column/marked-src/`.
+- [plans/markdown-tab-column-parity.md](markdown-tab-column-parity.md) — how a tab is read: `containerPrefixEnd`, `withPrefixTabsAsSpaces` and its exception for whitespace that ends a line after a marker.
+- [plans/markdown-source-mode-list-lift-parity.md](markdown-source-mode-list-lift-parity.md) — the line module this plan edits, and its rule for a tab in a moved line's container prefix (L4), which writes the lines after a block this plan places.
+- `marked`'s own `Lexer.ts` (`blockTokens`) and `Tokenizer.ts` (`list`, `blockquote`), version 18.1.0 — where the two facts are read from. A copy is in `marked-src/` of the scratch folder.
 
 ---
 
 ## Non-Goals
 
-- **What a command does once a block is placed.** `E24`, `E27` and `E19` `UL` stay: taking a tab-indented line out of its list item means rewriting the tab, which `markdown-source-mode-list-lift-parity` rules out.
+- **What a command writes once a block is placed.** The lines after the block are `markdown-source-mode-list-lift-parity`'s. Its base candidate, which leaves what follows the block in the list and re-opens the item, still declines where a tab stands in a line it rewrites. With every block placed, that is the one place a tab document still does nothing where its spaces form acts: 668 of 385,476 cases.[^spaces-form]
 - **Table cells.** A cell's text is still searched for inside its row's line (see the decision). Placing it exactly needs a change in `markdownTableExtension.ts`, which this plan does not touch.
 - **Incremental analysis**, and a cache keyed by a document version. See the decision.
 - **The WYSIWYG importer's source preservation.** See the decision.
-- **`marked`'s version.** Everything was measured on the installed 18.0.9. The plan `marked-version-pin-or-upgrade` owns the upgrade.
+- **`marked`'s version.** Everything was measured on 18.1.0, which `marked-version-pin-or-upgrade` and `marked-upgrade` install.
 - **Documents that hold a carriage return.** Once its view is built, `CodeEditor` hands its text over with `\n` line ends only (`state.doc.toString()`). A line end written `\r\n` is read as `marked` reads it and its blocks are placed; nothing here is tuned for it.
 - **Source mode's syntax highlighting.** `@lezer/markdown` is not asked for places, and `CodeEditor` gains no Markdown-specific API.
 - **The `can…` fields.** Source mode still does not predict where a command does nothing.
+- **Line commands that pass over a definition line.** A selection that takes in a definition's line makes a line command do nothing, whether the lexer kept the definition or dropped it as a repeat (B2).
+
+---
+
+## Addendum: The 77 cases of B2
+
+**How the cases were rerun.** The cases were first found on `75d022ba1` with `marked` 18.0.9, and examined on `736452bbc` with 18.0.9 and the two plans' prototypes, where they were the same 77 with the same base results.[^rerun] For this revision they were run again on the base this plan now starts from: `736452bbc` with the four plans of `depends-on` applied and `marked` 18.1.0. The look-alike run of `## Verification` finds the same 77, no more, and the 77 rerun as rows give the same base result in every case and do nothing after this plan (`out/c77/` of the scratch folder). The five ways below were measured on the earlier base and not repeated: the two runs that decide them, the base's result and this plan's, are the same on both bases.
+
+Each case was run five ways:
+
+- the base and this plan, on the case's own selection;
+- this plan on the selection cut short before the first line no block holds;
+- the base and this plan on a *twin*, the same document with each repeated label renamed to a label of the same length, so that the lexer keeps the definition;
+- the WYSIWYG surface, with the selection running from the first to the last top-level block the source selection's lines touch.
+
+The full list, with every document, its lines and offsets and the five results of each case, is `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans4/locator-77/cases-77.txt`.
+
+**Two rules decide these cases.** A source-mode selection takes in every line from the line its start stands on to the line its end stands on. A selection that ends at column 0 of a line therefore takes in that line. A line command does nothing when a line it takes in is held by no block, and when one is held by a block it does not convert: a definition, an HTML block, a table. Both rules are documented, and this plan changes neither.
+
+| Class | Cases | Documents | Commands | Line the base misread |
+|---|---|---|---|---|
+| A — a repeated definition | 75 | 7 (`D0`, `D2` to `D7` of the list) | `setBlockType("paragraph")` 48, `setBlockType("quote")` 27 | the repeated definition's line, held by a later paragraph whose text is the label |
+| B — a setext heading in a list item | 2 | 1 (`D1`) | `toggleUnorderedList` 2 | the first line of the heading, held by a nested item further down |
+
+### Class A — a repeated definition's line
+
+All 75 come from look-alike documents built as one half written twice. The second half's definitions repeat the first half's labels, so the lexer drops them. The selection always ends on such a line: 33 cases end at its column 0, 30 inside it, and 12 take in two of them. The rest of the selection holds paragraphs, headings, quotes, a thematic break, a list in a quote or a code block.
+
+The smallest document that shows the class, `[w]:·u ⏎⏎ #·h ⏎⏎ [w]:·v ⏎⏎ w`, with `setBlockType("paragraph")`:
+
+| Selection | Base | This plan |
+|---|---|---|
+| `#·h` to the start of `[w]:·v` (8 to 14) | `#·h` becomes `h` | nothing |
+| `#·h` and the blank line after it (8 to 12) | `#·h` becomes `h` | `#·h` becomes `h` |
+| 8 to 14 with `[x]:·v`, a definition the lexer keeps | nothing | nothing |
+| 8 to 14 with `setBlockType("h2")` | nothing | nothing |
+
+What was measured over the 75:
+
+- **Where the base put the block.** In every case the base searched for a later paragraph's text (`same`, `word`, `w`) and found it inside the repeated definition's label. That paragraph stands after the selection.
+- **What the base wrote.** The base's edit is in every case the edit this plan makes for the selection cut short before the definition's line. The misplaced paragraph became one more block to convert. Its conversion writes nothing: a paragraph stays a paragraph, and a paragraph already in a quote stays quoted.
+- **Other commands.** `setBlockType("h2")`, `setBlockType("code")` and both list toggles on the same 75 selections do nothing at the base and after this plan. Each of them would also rewrite the misplaced paragraph. Only the two commands that leave that paragraph as it is acted at the base.
+- **A kept definition.** On the twin, the base and this plan both do nothing in all 75: the selection takes in a definition's line.
+- **WYSIWYG.** The surface acts in all 75. It holds each definition as a raw Markdown block and converts that block's text with the other blocks: `[same]:·u` becomes the escaped text `\[same\]:·u` of the new paragraph or quote. Its result never reads in the viewer as the base's. Source mode doing nothing on a definition where the WYSIWYG surface converts its text is a documented difference.
+
+**Verdict.** The base wrote a correct edit of the blocks it should convert, but over a selection on which every rule says the command does nothing, and only because it misplaced a block. It was no edit of a wrong block, and no rule of either surface gives its result. This plan treats the repeated definition as it treats a kept one. That is the right behaviour under the library's rules: a source line the viewer does not show changes nothing, and source mode keeps its one documented difference from the WYSIWYG surface on definitions. The plan needs no change.
+
+The base's results could be kept only by changing the rule for every definition: a line command would pass over a definition's line as it passes over a thematic break, and treat a dropped definition's line as such a line.[^skip-definitions] That is a change of documented behaviour for documents with no repeated label, and it would still not match the WYSIWYG surface. It belongs in a plan of its own, if wanted.
+
+### Class B — a setext heading in a list item
+
+One document, `D1`, two selections: `toggleUnorderedList` from the paragraph `same` on line 0 to the start of line 2 (0 to 6), and to its first character (0 to 7). Lines 2 to 4 are `-·same`, `·→same`, `·→-`. The tab takes line 3 to column 4, inside the item's content, and line 4's `-` is a setext underline there. So the item's first block is the heading `same same`.
+
+- **Base.** It does not place the heading. It places the item `··-·same` of line 5, from the nested list further down, on line 2. Line 2 then reads as an item already bulleted, and the toggle makes line 0 an item: `-·same ⏎⏎ -·same …`.
+- **This plan.** It places the heading on lines 2 to 4. A source-mode list toggle does nothing on a setext heading, so the command does nothing.
+- **The same document with spaces for the tab.** The base and this plan both do nothing.
+- **WYSIWYG.** The surface acts in both cases and writes the list in its standard form. Its result reads in the viewer as the base's.
+
+**Verdict.** The base's result matches the WYSIWYG surface's, but it came from reading the nested item as the outer item's text. Under the documented rule for a setext heading, source mode does nothing, as it does on the same document written with spaces. This plan is right and needs no change. Letting the list toggles act where a setext heading is already an item of the right kind would change the rule of `markdown-source-mode-list-lift-parity`, for space-indented documents first. It is not this plan's to change.
+
+### Recommendation
+
+Keep this plan's behaviour for both classes. The only change is the test pin: two assertions with the document `[w]:·u ⏎⏎ #·h ⏎⏎ [w]:·v ⏎⏎ w` in `declines on a selection that takes in a repeated definition, which no block holds`.[^pin]
 
 ---
 
 ## Notes
 
-[^measured]: The measurements were made in a worktree at `75d022ba1` with no source file edited. The modules of this plan stood in the tests tree. A Vitest plugin put the lexer module (the code of `markdown-tab-column-parity` plus this plan's recorder) and the serializer of `markdown-tab-column-parity` in place of the real ones for both sides of every comparison. The base's line module was `proto/zz-clean-lines.ts` of the list-lift plan's scratch folder, which is the module that plan prints. The other plans of the dependency chain were not installed: none of them is known to touch the analysis or the lexer. `PROGRESS.md` in the scratch folder says which output is which.
+[^measured]: The measurements were made in a private copy of commit `736452bbc` under `scratch-keep/plans4/locator-revision/repo`, with its own `node_modules/marked` 18.1.0; nothing was installed in the main tree or a worktree. The copy was taken from the list-lift plan's measured copy (`plans4/lift-revision/repo`), which holds the code and tests of `marked-version-pin-or-upgrade`, `marked-upgrade`, `markdown-tab-column-parity` and `markdown-source-mode-list-lift-parity`. The three modules of this plan were put in place of the real ones, and the test changes written into the real test files (`applytests.py`). The base side of every comparison is a copy of the three modules before the change (`zz-base-*.ts`, as `mkbase.sh` makes them) over the same lexer module, recorder included, which changes no token. The first version of this plan was measured on `75d022ba1` with `marked` 18.0.9 and the two plans' prototypes; every number here was measured again. `PROGRESS.md` in the scratch folder says which output is which.
 
 [^mechanism]: Three mechanisms were asked about.
 
@@ -2555,32 +2678,40 @@ Run `npm run docs:llms:check` afterwards.
 
 [^recorder]: `marked` gives a block extension the token list being built (`extTokenizer.call({ lexer }, src, tokens)`), which no tokenizer slot gets. That is what lets the record be keyed by the token the definition follows. The recorder reads `marked`'s own `def` tokenizer through `this.lexer.options.tokenizer`, so it matches exactly where the lexer's `def` branch will: a line that matches the `def` rule matches no earlier rule (`code` needs four columns of indentation, the others another first character). It records only where the lexer drops: the label is defined already, and the token before is not a paragraph or list-item text, which the lexer joins a definition to instead. The record holds the length of the previous token's `raw` at that moment, because the lexer adds the line end that closes the definition to that token afterwards; the definition stands inside that `raw`, at that index. The cost for every other lex is one anchored test per block position. A `WeakSet` of the lexes that dropped something lets the analysis skip every lookup for a document that repeats no definition, which is nearly every document.
 
-[^unplaced]: In `- a` U+FDD0 / (blank) / `··b→c` the paragraph `b→c` is read by `marked` as `b····c`. Its line does not end the source line, so it is not placed. The base's search finds some such blocks and misses others. In the hostile documents 31 blocks are placed by the base alone, all in documents that hold U+FDD0. The character is a Unicode noncharacter; `markdown-tab-column-parity` documents the exception.
+[^unplaced]: The first version of this plan, on `marked` 18.0.9, left one shape unplaced: a list that holds both a tab past a line's indentation and the character U+FDD0, which the first version of `markdown-tab-column-parity` used as a stand-in to carry such tabs through `marked`. On 18.1.0 that plan needs no stand-in, since `marked` keeps such a tab itself, and the shape is placed like any other: `- a` / (blank) / `··b→c` / `- d` places the paragraph `b→c` at offsets 7 to 10, with or without U+FDD0 in the document. The hostile documents of the exactness run hold U+FDD0 in a tenth of them; none leaves a block unplaced.
 
 [^cells]: Measured: in `| h | i | j |` / `|---|---|---|` / `| a | << | < |` the last cell's text is placed at offset 34, on the `<<`, by the base and by the prototype; it stands at 39. `toggleBold` with the caret on either `<` does nothing on both. A cell that was merged away emits no token, so the cells a row's tokens stand for are not the row's segments in order; the tokenizer knows the column of each and does not pass it on.
 
-[^index]: Each replaced lookup returns what the old one returned. `containersOfLine` filtered every block for those whose first and last line bracket the line; the index enters each located quote and list item under every line it spans, in the same document order. `targetOfEntry` returned the first target whose entries hold the entry; the map is filled from the last target to the first, so the first one wins. `liftBefore` took the last lift before the leaf whose outermost list item holds the leaf; a list item holds a leaf exactly when the entry it opens on is among the leaf's holders, so the lifts are looked up under those entries and the last one before the leaf is found by binary search in each. `instanceId` counted the lifts inside a container that end by the leaf; with the lifts in document order those are one run, and two binary searches give its two ends. Measured: the module with the indexes and the same module without them, both over the new analysis, give the same edit in 2,643,996 cases (1,090,654 of them acting), with every document also run over everything, its first half and its last two thirds (generated and look-alike documents).
+[^index]: Each replaced lookup returns what the old one returned. `containersOfLine` filtered every block for those whose first and last line bracket the line; the index enters each located quote and list item under every line it spans, in the same document order. `targetOfEntry` returned the first target whose entries hold the entry; the map is filled from the last target to the first, so the first one wins. `liftBefore` took the last lift before the leaf whose outermost list item holds the leaf; a list item holds a leaf exactly when the entry it opens on is among the leaf's holders, so the lifts are looked up under those entries and the last one before the leaf is found by binary search in each. `instanceId` counted the lifts inside a container that end by the leaf; with the lifts in document order those are one run, and two binary searches give its two ends. Measured: the module with the indexes and the list-lift plan's module without them, both over the new analysis, give the same edit in 5,212,320 cases (2,334,156 of them acting), with every document also run over everything: review 6's generator, seeds 11 to 14, and the look-alike documents, seeds 21 to 24, 1,500 documents each (`out/equiv/`).
 
-[^bound]: Per level of nesting the analysis does a fixed number of passes over a container's text: joining its pieces, splitting them into lines, comparing each line, and the walk of its tokens. A line that is nested *d* levels deep is handled *d* times. The line index enters each quote and list item under each of its lines, which is the same sum. Depth is at most a few levels in real documents and eight in the nested test document. The profile of the base's command over everything: `allNodes`, called once per line by `containersOfLine`, took half of the time of the bulleted toggle on the nested document at 1,600 lines (59% with its callback), and the per-leaf search over the targets a fifth of `setBlockType("paragraph")` on a tight list of 1,600 items.
+[^bound]: Per level of nesting the analysis does a fixed number of passes over a container's text: joining its pieces, splitting them into lines, comparing each line, and the walk of its tokens. A line that is nested *d* levels deep is handled *d* times. The line index enters each quote and list item under each of its lines, which is the same sum. Depth is at most a few levels in real documents and eight in the nested test document. The profile of the base's command over everything, taken for the first version of this plan: `allNodes`, called once per line by `containersOfLine`, took half of the time of the bulleted toggle on the nested document at 1,600 lines (59% with its callback), and the per-leaf search over the targets a fifth of `setBlockType("paragraph")` on a tight list of 1,600 items.
 
 [^cache]: `analyzeMarkdownSource` is called by every transform, once on the text and once on each candidate result, and by `readSourceSelectionState`, which `MarkdownEditor` calls from `readSurfaceSelectionState` on every selection change and every text change. A caret move hits the cache. A keystroke misses it, and costs one analysis: 24 ms for a list of 6,400 items. Lexing is between half and two thirds of an analysis (the table of `## Verification`) and `marked` has no incremental mode, so an incremental analysis could save half at most of a cost that is one or two frames for a document of 6,400 lines and under a millisecond for one of 400. A second cache entry would save one analysis after a command that declines; it is not worth a second copy of the entries.
 
 [^importer]: The importer needs something else: every byte of the source assigned to a top-level block or to a gap between two, so that it can write unedited text back. It places only top-level tokens, where the text is the source itself, and it treats a dropped definition as a gap to keep. The new places would let it drop its own small search for dropped definitions, but they are computed for all depths with entries per character, which import does not need. Sharing them is a change to import's cost and to a file with its own byte-for-byte tests.
 
-[^stay]: Measured on the prototype with the list-lift plan's module: on `- one ⏎⏎ →second ⏎ - two` with the caret on `one`, all six line commands do nothing before and after this plan, while bold and link on `one` act on both. The list-lift plan's note on tabs gives the reason: half a tab cannot be kept. With the caret on `second` the same six commands did nothing at the base only because `second` was not placed; five of them act now.
+[^spaces-form]: Measured with `zz-lr-tabeq.test.ts` of `markdown-source-mode-list-lift-parity` (copied to `probes-impl/`), seeds 21 and 22, 1,500 drawn documents each: review 6's generator, with spaces of a container prefix that reach a tab stop written as a tab. 1,013 documents hold a tab and read as their spaces form; 385,476 cases, six line commands. In 229,195 both act and the tab document's result, in its spaces form, is the spaces document's result; in 155,597 both do nothing. With the list-lift plan alone the first count was 106,010, and 123,797 cases fell to blocks the token search did not place; now none does. Two kinds remain. 668 cases do nothing on the tab document where the spaces document acts. The probe keeps 400 of them, from five documents, and each of the 400 was traced: the tail candidate is built and rejected by the check on both, the spaces document then takes the base candidate, and the tab document's base candidate keeps a tab in a line it re-opens and does not read (`out/why-decl.jsonl`). That is the list-lift plan's documented base rule: a tab in a line the base candidate writes makes it decline. 16 cases in one document both act and differ, because the probe wrote a tab into a paragraph's lazy line (`10.→# beta` continuing `alpha·`): there the tab is text, and every command keeps it, as it must.
 
-[^prototype]: `proto/zz-loc-tokens.ts`, `proto/zz-loc-lines.ts` and `proto/markdownExtensions.loc.ts` in the scratch folder are the modules as this section gives them; the code blocks here were cut from those files by script. `eslint`, given each file under its module's own path, reports nothing. The whole suite was run with the three in place of the real modules: 565 files and 19,536 tests, counting the test files of this plan and of the list-lift plan. Against the same run with the base's modules, the only tests that change are `E25` `UL`, `E26` `UL`, `S2`, and the 45 tests of this plan that are red before it.
+[^prototype]: `proto/markdownExtensions.loc.ts`, `proto/markdownSourceTokens.loc.ts` and `proto/markdownSourceLines.loc.ts` in the scratch folder are the modules as this section gives them; the code blocks here were taken from those files. They stood in the copy's own source tree, so `npm run typecheck` and `eslint` ran on them under their own paths: both clean. The line module was made by applying the six edits to the list-lift plan's measured module by script (`build-lines.py`). The whole suite with them in place: 591 files, 20,252 tests passed and 2 `todo`.
 
-[^tests]: The test changes were written to copies of the two test files as `markdown-source-mode-list-lift-parity` leaves them and of the tip's `markdownLexer.test.ts` (`mktests.py` in the scratch folder), and run both ways: 1,446 tests, all green with the prototype, 45 red with the base's modules.
+[^tests]: The test changes were written into the copy's test files as `markdown-source-mode-list-lift-parity` leaves them (`applytests.py` in the scratch folder) and run both ways: the three files hold 1,475 tests, all green with the prototype; in the two editor files 45 of 1,291 are red with the base's modules.
 
 [^worktest]: A clock would make the test flaky on a shared machine. The count is the number of elements of every array handed to `filter`, `find`, `findIndex`, `findLast`, `findLastIndex`, `some`, `every`, `flatMap`, `map`, `forEach`, `indexOf` and `includes` while the command runs. A lookup that walks all blocks for every line shows there as growth with the square of the document. The methods are restored in a `finally`, as the lexer test restores `String.prototype.split`.
 
-[^numbers]: `sumcounts.py` adds the counts of a folder of outputs. The numbers are those of the second full run, made with the final prototype (`out/exact-*g`, `out/rows-g`, `out/gen-g`, `out/look-g` in the scratch folder), through the planner's probes, which compare the base's modules with the prototypes; `probes-impl/` holds the same probes with the imports turned to the base copies and the real modules.
+[^numbers]: `sumcounts.py` adds the counts of a folder of outputs. The numbers are those of the runs in `out/gen/`, `out/rows/`, `out/look/`, `out/exact/` and `out/tabeq/` of the scratch folder, made with the probes of `probes-impl/` against copies of the base's modules, as an implementer runs them. The row sets are the 70 files of `scratch-keep/plans3/source-list-lift/sets/`. Against the first version's numbers, the generator's are the same to the case; the row sets' and the look-alike documents' changed with the tab rule of `markdown-tab-column-parity` on 18.1.0 and with the list-lift plan's revision, which make more of their documents read and act otherwise at the base and after.
 
-[^luck]: Of the 77, 75 are selections that take in the line of a repeated definition; the base had placed a later paragraph's look-alike text inside that definition, so the line counted as held. Two are one document in which the base took an item of a nested list for the outer item's first line. With spaces in place of the tab that document makes both sides do nothing.
+[^luck]: Of the 78, 75 are selections that take in the line of a repeated definition; the base had placed a later paragraph's look-alike text inside that definition, so the line counted as held. Two are one document in which the base took an item of a nested list for the outer item's first line. One is `- same` / (blank) / `·→```` / `··same` / `··→```` / `same` at the end of a longer list, `setBlockType("paragraph")` with the caret on the code line `··same`: the base placed the item's last paragraph, `same`, on that line, so it lifted that paragraph out of the list and wrote the code line without its indentation. The tab documents written with spaces make both sides do nothing. `## Addendum: The 77 cases of B2` examines the first 77.
+
+[^seventy-seven]: `## Addendum: The 77 cases of B2` runs each case on the base, on this plan, on the selection cut short, on a twin with the definitions kept and on the WYSIWYG surface, and sorts the cases into two classes. The full case list is `cases-77.txt` in `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans4/locator-77/`.
+
+[^rerun]: The probes, the redirect config `zz-vitest.l77.config.ts` and the outputs are in `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans4/locator-77/`: `out/look/` holds the rerun of the look-alike differential (`out/look-sum.txt` its counts), `out/cases-a.jsonl` the five runs of each case (probe `probes/zz-l77-cases.test.ts`), `out/cases-othercmd.jsonl` the other four commands on the 75 class A selections, `out/pin.jsonl` the minimal document. The two `H8` cases of the planner's run are counted here as `in a result: leaves or inline tokens differ`, the label the probes were given after that run; they are the same two cases. On the WYSIWYG surface the selection starts at the first top-level block's first character. Its focus is one character into the last block when the source selection ends at that block's first line start or first character, and at that block's end otherwise; a focus at offset 0 was not tried.
+
+[^skip-definitions]: Concretely: in `markdownSourceLines.ts`, `def` would join `SKIPPED_NODE_TYPES`, and `lineIsHeld` would count a line inside a dropped definition's text as held, which the recorder of this plan makes possible. On the 75 cases that gives the base's results. It also makes every line command act over a kept definition, where it does nothing today.
+
+[^pin]: Measured with the probe `zz-l77-pin.test.ts`: on 8 to 14 the base writes `h` and this plan does nothing; on 8 to 12 both write `h`; with `[x]:·v` or with `setBlockType("h2")` both do nothing. The test is already red at the base through its second assertion, so the counts of `### What is red before the code` and of `## Verification` do not change. The copy of the test in the planner's `snip/` folder lacks the two assertions.
 
 [^result]: The document is `same ⏎⏎ word\ ⏎ word ⏎⏎ word ⏎ --- ⏎⏎ ``` ⏎ --- ⏎ ``` ` with `setBlockType("h2")` over the code block. The result is `… word ⏎ --- ⏎⏎ ## ---`. To check it the command analyses it, and the base's search puts the new heading's text `---` on the setext underline above, outside the range the check expects it in. The base therefore rejects its own correct edit and does nothing. The probe `zz-loc-h8.test.ts` found these two among all documents whose own analyses agree; the checks of `probes-impl/` count them under `in a result`.
 
 [^oracles]: `commonmark.js` source positions, which the tab plan used as a reference for readings, were not used here: the dialect's tables, `:::` fences and `marked`'s own readings differ from CommonMark in too many of these documents for its positions to be the truth about `lexMarkdown`'s blocks. The perturbation oracle asks `lexMarkdown` itself and is independent of how a place is computed. It cannot name the block of a line without letters, of a line whose change alters the document's structure, or of a line two blocks read (a definition and the paragraph that uses it); those lines are skipped and counted.
 
-[^cost]: The base's analysis is linear too; the first attempt's tab-aware search was the quadratic one and is not in the base. The new analysis does about the same work in another way: where the base aligned every character of every container against the source, it now compares lines. On the two-tab document the base is fast only because it gives up on the code block; the new code places it and still costs no more. Timings of the same case varied between runs by the factor given; a difference inside that spread is not a difference.
+[^cost]: The base's analysis is linear too; the first attempt's tab-aware search was the quadratic one and is not in the base. The new analysis does about the same work in another way: where the base aligned every character of every container against the source, it now compares lines. On the two-tab document the base is fast only because it gives up on the code block; the new code places it and still costs no more. A difference inside the spread of the seven timings is not a difference. The first version of this plan was timed on a busy machine on 18.0.9; its numbers are replaced by this run.
