@@ -689,10 +689,10 @@ class Markdown extends Component<MarkdownOptions> {
     private readonly handleScheduledMeasure: () => void = () => this.onScheduledMeasure();
 
     /**
-     * Bumped by {@link clearContent}; a resolved dynamic import compares its
-     * captured generation against this to detect a render it no longer
-     * belongs to (a later {@link setMarkdown}, or disposal), mirroring
-     * `DiagramView.relayout`'s generation token.
+     * Bumped by {@link clearContent}; a deferred kickoff and a resolved dynamic
+     * import each compare their captured generation against this to detect a
+     * render they no longer belong to (a later {@link setMarkdown}, or
+     * disposal), mirroring `DiagramView.relayout`'s generation token.
      */
     private _renderGeneration = 0;
 
@@ -1178,9 +1178,11 @@ class Markdown extends Component<MarkdownOptions> {
         this.untrackHandles(this._contentHandles);
         this._contentHandles.length = 0;
 
-        // Bumped so any dynamic import already in flight for this render
-        // (see loadCodeEditorUpgrade) recognises itself as stale and no-ops
-        // instead of applying against handles this rebuild just tore down.
+        // Bumped so a deferred code-upgrade kickoff (see
+        // startCodeEditorImport) and any dynamic import already in flight for
+        // this render (see loadCodeEditorUpgrade) recognise themselves as stale
+        // and no-op instead of reading or applying against handles this
+        // rebuild, or disposal, just tore down.
         this._renderGeneration += 1;
 
         for (const { editor } of this._codeEditors) {
@@ -1326,7 +1328,10 @@ class Markdown extends Component<MarkdownOptions> {
     }
 
     /**
-     * Starts a fenced block's `CodeEditor` upgrade once it clears two gates in
+     * Does nothing for an entry whose render has been replaced or whose viewer
+     * was disposed (its `generation` no longer equals {@link _renderGeneration}):
+     * {@link clearContent} has released that entry's handles. Otherwise starts
+     * a fenced block's `CodeEditor` upgrade once it clears two gates in
      * series. First, effective visibility: if `Markdown` is not currently
      * effectively visible, the entry queues in {@link _awaitingVisibilityKickoffs},
      * flushed later by {@link onEffectiveVisibilityChange} once visibility
@@ -1348,6 +1353,15 @@ class Markdown extends Component<MarkdownOptions> {
      *   language, and the render generation it belongs to.
      */
     private startCodeEditorImport(entry: QueuedCodeUpgrade): void {
+        if (entry.generation !== this._renderGeneration) {
+            // A later setMarkdown() (or disposal, which also bumps the
+            // generation) rebuilt since this block was queued. clearContent
+            // released entry.wrapper, so the viewport read below would throw,
+            // and the visibility queue must not hold an entry of a render that
+            // is gone.
+            return;
+        }
+
         if (!this.isEffectivelyVisible()) {
             this._awaitingVisibilityKickoffs.push(entry);
 
