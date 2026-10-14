@@ -597,3 +597,13 @@ The generation number is the pattern for this plan's case, because a kickoff bec
 [^core-gaps]: `flushPendingVisibility` ([Component.ts:353](packages/lib/src/typescript/lib/core/Component.ts#L353)) clears its queue and then calls each component's reconcile with no `try`/`catch`, so a throw from one `onEffectiveVisibilityChange` leaves the components behind it unreconciled and surfaces as an uncaught error. `runFirstLayoutCallbacks` ([Component.ts:8128](packages/lib/src/typescript/lib/core/Component.ts#L8128)) sets the queue to `null` and then calls each callback with no `try`/`catch`, so a throw drops the callbacks behind it and aborts the enclosing `doLayout`. `flushPendingLayouts` was given per-entry isolation by `layout-flush-degenerate-inputs`; these two were not. Whether they should be is for a plan of its own, written after `nested-scroll-reveal`, which rewrites the flush code of `core/Component.ts`, has merged.
 
 [^record]: The entry says "A code block's `CodeEditor` defers its first height sync to the next layout, and the preview has disposed that editor by then." The stack shows otherwise: the throwing callback is the viewer's kickoff, and no `CodeEditor` exists yet for the stale block. `CodeEditor`'s deferred height sync returns early on a disposed editor (`syncAutoHeight` tests `_view` and `_scrollElement`, both cleared by `destructor`). An implemented plan is a record of its own run and is not rewritten by a later one.
+
+---
+
+## Implementation Notes
+
+- The plan matched the code on this branch: the three anchors of step 1 were present at lines 1350, 1572 and 1971 (the JSDoc and `_renderGeneration` line numbers also held), so nothing drifted despite the longer stack.
+- Step 3 went as predicted: K1 passed and K2-K9 failed. K2-K5 failed on a `console.error` call with `handle N is not registered`, K6 and K9 on the queue contents, K7 on an empty list of started imports, and K8 on a thrown `handle … is not registered`.
+- Full suite: 19,599 passed, 2 todo (base 19,590, +9 as predicted).
+- Departure from step 9: the manual browser check of `#/md-editor` was not run, though step 9 asks for it and for its result to be recorded. The nine unit cases reproduce every row of the Expected Behaviour table against the modelled DOM, and K8 shows that no handle is read; the planner reproduced K2-K6 in a real browser before the fix. Nobody has looked at the fixed code in a real browser.
+- After the first review: the comment in `clearContent` on why `_renderGeneration` is bumped now names the deferred kickoff too (the plan's step 5 had missed it), and one reflowed doc-comment line was wrapped to the file's width.
