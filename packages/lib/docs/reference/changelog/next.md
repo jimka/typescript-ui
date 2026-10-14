@@ -1654,6 +1654,18 @@ page resets to empty.
   text stayed without highlighting until the next `setMarkdown`. No consumer
   action is needed.
 
+- **A `CodeEditor` that became read-only and was disposed during a
+  `format()` no longer fails afterwards.** The refused edit's flash used to
+  play on the disposed editor, so `format()` rejected with `DOM handle … is
+  not registered`. No consumer action is needed.
+
+- **A `MarkdownEditor` that became read-only and was disposed while a
+  context-menu dialog was open no longer fails afterwards.** Answering the
+  Insert link, Edit link, Image… or Column width… dialog ran a command that
+  was refused and flashed the disposed editor, which ended as an unhandled
+  rejection with `DOM handle … is not registered`. No consumer action is
+  needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
