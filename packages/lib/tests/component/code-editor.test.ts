@@ -13,6 +13,7 @@ import '~/component/editor/index';
 import { Component } from '~/core/Component';
 import { Anchor } from '~/layout/Anchor';
 import { DOM } from '~/core/DOM';
+import { Animation } from '~/core/Animation';
 import { installTestDOM, setQuerySelectorResult, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState, EditorSelection, Prec, StateEffect } from '@codemirror/state';
@@ -5526,5 +5527,50 @@ describe('CodeEditor floating search panel', () => {
         editor._searchPanel.handleFindFieldChange();
 
         expect(editor.isDirty()).toBe(false);
+    });
+});
+
+// The read-only flash is a pulse on an overlay whose element handle the editor's
+// teardown releases. A format that resumes after a dispose still asks for
+// the flash, which must find nothing to play on. The unit tests never build a live
+// view, so the overlay is mounted by hand.
+describe('CodeEditor — read-only flash after dispose', () => {
+    const FLASH_AFTER_DISPOSE_LANG = 'test-flash-after-dispose-lang';
+
+    afterEach(() => vi.restoreAllMocks());
+
+    it('flashReadOnly() after dispose() plays nothing and forgets the overlay', () => {
+        const editor = new CodeEditor('x', { readOnly: true }) as any;
+
+        editor.mountFlashOverlay(editor.getElement(true));
+        editor.dispose();
+
+        const play = vi.spyOn(Animation, 'play');
+
+        editor.flashReadOnly();
+
+        expect(play).not.toHaveBeenCalled();
+        expect(editor._flash._overlay).toBeNull();
+    });
+
+    it('format() whose editor became read-only and was disposed meanwhile still resolves', async () => {
+        const editor = new CodeEditor('lower', { language: FLASH_AFTER_DISPOSE_LANG }) as any;
+        let resolveFormatter!: (formatter: Formatter) => void;
+
+        registerLanguage({
+            id: FLASH_AFTER_DISPOSE_LANG,
+            loadExtension: async () => [] as any,
+            loadFormatter: () => new Promise<Formatter>(resolve => { resolveFormatter = resolve; }),
+        });
+
+        editor.mountFlashOverlay(editor.getElement(true));
+
+        const formatting = editor.format();
+
+        editor.setReadOnly(true);
+        editor.dispose();
+        resolveFormatter(async (source: string) => ({ formatted: source.toUpperCase(), cursorOffset: 0 }));
+
+        await expect(formatting).resolves.toBeUndefined();
     });
 });
