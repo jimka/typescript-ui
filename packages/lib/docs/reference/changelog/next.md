@@ -269,6 +269,13 @@ page resets to empty.
   scroll is over, whether it ran or was dropped, and at once when no scroll
   is waiting.
 
+- **A disposed component's setters write nothing.** A setter called after
+  `dispose()` used to throw `DOM handle … is not registered` when it would
+  change an inline style or an attribute. It now updates the component's
+  cached state and returns, which also makes a second `dispose()` safe for a
+  component whose teardown writes an attribute — a `Dialog` that had already
+  closed threw there. Reading or writing through a raw handle still throws.
+
 ### Layouts
 
 - **A floating window rebuilt by `restoreLayout` is built with
