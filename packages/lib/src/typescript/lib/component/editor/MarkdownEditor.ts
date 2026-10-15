@@ -30,7 +30,7 @@ import {
     $getChildCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection, COMMAND_PRIORITY_LOW,
     INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND, $getNodeByKey, $addUpdateTag, $setState,
     HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG, BEFORE_INPUT_COMMAND, INPUT_COMMAND, COMMAND_PRIORITY_EDITOR, COMPOSITION_END_TAG,
-    COMPOSITION_START_COMMAND, $getEditor, $insertNodeToNearestRootAtCaret,
+    COMPOSITION_START_COMMAND, $getEditor, $insertNodeToNearestRootAtCaret, SKIP_DOM_SELECTION_TAG,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
@@ -5572,6 +5572,58 @@ export function $adoptDomSelection(fromDom: RangeSelection | null): void {
 }
 
 /**
+ * The text `copy()` writes to the clipboard: the selection's, the whole table
+ * of a table-edge range, or, at a caret, the word the caret stands in or
+ * beside.
+ *
+ * @returns The text, or `""` when there is nothing to copy.
+ */
+function $copiedSelectionText(): string {
+    const selection = $getSelection();
+    const isRange = $isRangeSelection(selection);
+
+    if (!isRange) {
+        return "";
+    }
+
+    // Non-null only for a caret still collapsed, which is the read-only case.
+    const expansion = $computeWordExpansion();
+
+    if (expansion !== null) {
+        return expansion.node.getTextContent().slice(expansion.start, expansion.end);
+    }
+
+    const isTableEdge = $isTableEdgeRange(selection);
+    const copied = isTableEdge ? $grownTableEdgeRange(selection) : selection;
+
+    return copied.getTextContent();
+}
+
+/**
+ * Whether focusing the WYSIWYG surface's element keeps the editor's
+ * selection: when the selection is a table selection, which no browser
+ * selection stands for and which Lexical never replaces, or when the
+ * browser's own selection already lies inside the editor, which a browser
+ * keeps on focusing an element that holds it. Otherwise the browser would
+ * put a caret at the element's start, and Lexical would adopt that.
+ *
+ * @param editor - The Lexical editor.
+ * @returns `true` where the element can be focused without moving the selection.
+ */
+function $surfaceFocusKeepsSelection(editor: LexicalEditor): boolean {
+    const isTableSelection = $isTableSelection($getSelection());
+
+    if (isTableSelection) {
+        return true;
+    }
+
+    // Lexical's own reading of the browser's selection: null when it lies outside the editor.
+    const browserSelection = DOM.source.readDocumentSelection((selection) => $createRangeSelectionFromDom(selection, editor));
+
+    return browserSelection !== null;
+}
+
+/**
  * Picks the node the context menu is built for. While table cells are
  * selected it is the selection's anchor cell, wherever the event landed: a
  * right-click leaves a table selection in place even outside its table
@@ -6703,6 +6755,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * before the Lexical editor is so much as built, and reported
      * ({@link refuseIfReadOnly}).
      *
+     * A command that applies takes the keyboard here, ahead of its update
+     * ({@link refocusSurface}); one that declines changes nothing, the focus
+     * included.
+     *
      * @param field - The field covering the command.
      * @returns `false` where the command would do nothing, and always while
      *   the editor is read-only.
@@ -6714,7 +6770,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             return false;
         }
 
-        return this.ensureEditor().read(() => $readCommandAvailability($computeWordExpansion())[field]);
+        const applies = this.ensureEditor().read(() => $readCommandAvailability($computeWordExpansion())[field]);
+
+        // The keyboard goes to the surface before the command's update: a toolbar or menu click took it off.
+        if (applies) {
+            this.refocusSurface();
+        }
+
+        return applies;
     }
 
     /**
@@ -7032,23 +7095,27 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Hands keyboard focus back to the WYSIWYG surface after a command that
-     * applies but found nothing to change. A toolbar button or a menu row
-     * takes focus off the surface before its command runs. A command that
-     * changes the document gets it back when Lexical writes the selection
-     * to the browser; one that asks for what is already there runs no such
-     * update, and would leave the keyboard on the control that was clicked.
-     * The document, the selection and the undo history stay as they are, as
-     * after {@link MarkdownEditor.copy}, which hands focus back the same way.
+     * Hands keyboard focus to the WYSIWYG surface. A toolbar button or a menu
+     * row takes it off the surface before its command runs, and every command
+     * that applies calls this before its update ({@link commandApplies}), so
+     * the focus event Lexical's commit would raise is not raised inside that
+     * commit. A command that finds nothing to change runs no update at all,
+     * and would leave the keyboard on the control that was clicked. The
+     * document, the selection and the undo history stay as they are.
      *
-     * An editable editor is focused through Lexical, which writes its
-     * selection to the browser with the focus. A read-only one is focused
-     * through its surface: Lexical writes no selection while it is not
-     * editable, so the browser's selection is the only one, and the browser
-     * keeps a caret it already holds in the surface.
+     * An editable editor's surface element is focused first where that keeps
+     * the selection ({@link $surfaceFocusKeepsSelection}) — with table cells
+     * selected Lexical focuses nothing — then Lexical's own `focus()` is
+     * called, which writes its selection to the browser with the focus. A
+     * read-only one is focused through its surface alone: Lexical writes no
+     * selection while it is not editable, so the browser's selection is the
+     * only one, and the browser keeps a caret it already holds in the
+     * surface.
      *
      * @param preventScroll - Whether to keep the browser from scrolling a
-     *   read-only surface into view; Lexical manages its own focus scroll.
+     *   read-only surface into view. An editable surface's element is always
+     *   focused with `preventScroll: true`, and Lexical manages its own focus
+     *   scroll.
      * @returns This component, for method chaining.
      */
     private refocusSurface(preventScroll: boolean = false): this {
@@ -7056,11 +7123,57 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (readOnly) {
             this._wysiwyg.focus(preventScroll);
-        } else {
-            this.ensureEditor().focus();
+
+            return this;
         }
 
+        const editor = this.ensureEditor();
+        const mounted = editor.getRootElement() !== null;
+        const keepsSelection = mounted && editor.read(() => $surfaceFocusKeepsSelection(editor));
+
+        if (keepsSelection) {
+            this._wysiwyg.focus(true);
+        }
+
+        editor.focus();
+
         return this;
+    }
+
+    /**
+     * Whether the WYSIWYG surface holds keyboard focus.
+     *
+     * @returns `true` when the focused element is the surface's element or inside it.
+     */
+    private surfaceHoldsKeyboard(): boolean {
+        const element = this._wysiwyg.getElement();
+
+        if (!element) {
+            return false;
+        }
+
+        return DOM.source.contains(element, DOM.source.getActiveElement());
+    }
+
+    /**
+     * Replaces the WYSIWYG document with `markdown`, in one discrete update.
+     * Keyboard focus stays where it is: when the surface does not hold it,
+     * the load is tagged to leave the browser's selection and focus alone,
+     * since writing Lexical's selection to the browser is what pulls the
+     * keyboard into the editor. When the surface holds it, the caret goes to
+     * the document's start as before.
+     *
+     * @param editor - The Lexical editor.
+     * @param markdown - The Markdown to load.
+     */
+    private loadWysiwygDocument(editor: LexicalEditor, markdown: string): void {
+        const holdsKeyboard = this.surfaceHoldsKeyboard();
+        const options: EditorUpdateOptions = holdsKeyboard ? { discrete: true } : { discrete: true, tag: SKIP_DOM_SELECTION_TAG };
+
+        // Discrete forces a synchronous commit, so the resulting `"change"` fires before the caller returns.
+        editor.update(() => {
+            this.adoptSourceMap($importMarkdown(markdown));
+        }, options);
     }
 
     /**
@@ -7109,7 +7222,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * toolbar's pressed/enabled state never keeps what the outgoing surface
      * last reported. It is emitted once the surface is the one shown, in
      * either direction, also when the switch is what first builds the
-     * Lexical editor.
+     * Lexical editor. Loading into the WYSIWYG surface leaves keyboard focus
+     * where it is.
      *
      * @param mode - The surface to show.
      * @returns This component, for method chaining.
@@ -7138,9 +7252,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             // right here, so that document's selection state is not reported, only the loaded one's.
             const editor = this._editor ?? this.buildEditor();
 
-            editor.update(() => {
-                this.adoptSourceMap($importMarkdown(markdown));
-            }, { discrete: true });
+            this.loadWysiwygDocument(editor, markdown);
         }
 
         this.updateSelectionState();
@@ -7261,7 +7373,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * surface: the source `CodeEditor` in `"source"` mode, else the Lexical
      * editor (building it if needed). A resulting content change fires
      * `"change"`, and `"selectionstate"` fires when the loaded document's
-     * state differs from the last one reported.
+     * state differs from the last one reported. Keyboard focus stays where it
+     * is: a host that wants the caret in the editor after a load calls
+     * {@link MarkdownEditor.focus}.
      *
      * @param value - The new Markdown source.
      * @returns This component, for method chaining.
@@ -7279,11 +7393,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         // right here: its selection state is not reported, only the loaded one's is, by the update.
         const editor = this._editor ?? this.buildEditor();
 
-        // Discrete forces a synchronous commit, so the resulting `"change"`
-        // fires before this returns rather than on a later flush.
-        editor.update(() => {
-            this.adoptSourceMap($importMarkdown(value));
-        }, { discrete: true });
+        this.loadWysiwygDocument(editor, value);
 
         return this;
     }
@@ -7794,6 +7904,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (declinedInTextOnlyBlock) { return; }
 
+        // No field covers this path, so it takes the keyboard itself, as `commandApplies` does for the others.
+        this.refocusSurface();
+
         this.ensureEditor().update(() => {
             const selection = $getSelection();
 
@@ -7940,48 +8053,26 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         const editor = this.ensureEditor();
         const readOnly = this.getReadOnly();
+        const copiesNothing = editor.read($copiedSelectionText) === "";
+
+        // Nothing to copy: the clipboard, the selection and the focus are left as they are.
+        if (copiesNothing) {
+            return this;
+        }
+
+        // The keyboard goes back to the surface first, after a menu row's click took it: ahead of the update.
+        this.refocusSurface();
 
         // A read-only editor leaves the selection to the browser: the word is copied without being selected.
         if (!readOnly) {
             editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
         }
 
-        const text = editor.read(() => {
-            const selection = $getSelection();
-
-            if (!$isRangeSelection(selection)) {
-                return "";
-            }
-
-            // Non-null only for a caret still collapsed, which is the read-only case.
-            const expansion = $computeWordExpansion();
-
-            if (expansion !== null) {
-                return expansion.node.getTextContent().slice(expansion.start, expansion.end);
-            }
-
-            const isTableEdge = $isTableEdgeRange(selection);
-            const copied = isTableEdge ? $grownTableEdgeRange(selection) : selection;
-
-            return copied.getTextContent();
-        });
+        const text = editor.read($copiedSelectionText);
 
         // Guarded: writing "" would clobber the clipboard with nothing.
         if (text !== "") {
             DOM.sink.writeClipboardText(text);
-
-            // $selectEnclosingWordIfCollapsed() above is a true no-op on an
-            // already non-collapsed selection — it never marks the selection
-            // dirty, so Lexical's reconciler skips its selection-sync step
-            // entirely, which is the only place that would otherwise
-            // incidentally restore focus (as it does for the collapsed-caret
-            // expansion case, which does mark it dirty). Focusing through
-            // Lexical explicitly forces that resync unconditionally: its own
-            // documented behaviour marks an already-clean selection dirty via
-            // $setSelection(selection.clone()) — the same selection, not a
-            // different one — so nothing about what's selected changes. A
-            // read-only editor's surface is focused directly instead.
-            this.refocusSurface();
         }
 
         return this;
@@ -8059,11 +8150,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         const text = await DOM.source.readClipboardText();
 
-        if (text === null) {
-            // See copy()'s comment: restores focus after the context-menu
-            // row's click blurred the editor, even on a denied read.
-            this.ensureEditor().focus();
+        // See copy(): the keyboard goes back to the surface after the context-menu row's click, even on a denied read.
+        this.refocusSurface();
 
+        if (text === null) {
             return false;
         }
 
@@ -8085,10 +8175,6 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 selection?.insertRawText(text);
             }, { discrete: true, tag: PASTE_TAG });
         }
-
-        // See copy()'s comment: restores focus after the context-menu row's
-        // click blurred the editor.
-        this.ensureEditor().focus();
 
         return true;
     }
@@ -8128,7 +8214,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const editor = this.ensureEditor();
         const alreadySet = editor.read(() => $selectedBlocksHaveType(type));
 
-        if (alreadySet) { return this.refocusSurface(); }
+        if (alreadySet) { return this; }
 
         editor.update(() => {
             const selection = $getSelection();
@@ -8207,8 +8293,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
         }, { discrete: true });
 
-        // The update commits nothing where the alignment asked for is the one in place.
-        return this.refocusSurface();
+        return this;
     }
 
     /**
@@ -8274,8 +8359,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
         }, { discrete: true });
 
-        // The update commits nothing where the count and the gap asked for are the ones in place.
-        return this.refocusSurface();
+        return this;
     }
 
     /**
@@ -8613,7 +8697,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const editor = this.ensureEditor();
         const alreadySet = editor.read(() => $enclosingColumnHasAlignment(alignment));
 
-        if (alreadySet) { return this.refocusSurface(); }
+        if (alreadySet) { return this; }
 
         editor.update(() => {
             $setEnclosingColumnAlignment(alignment);
@@ -8750,7 +8834,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const editor = this.ensureEditor();
         const alreadySet = editor.read(() => $enclosingColumnWidth() === (width ?? 0));
 
-        if (alreadySet) { return this.refocusSurface(); }
+        if (alreadySet) { return this; }
 
         editor.update(() => {
             const cell = $getEnclosingTableCellNode();
