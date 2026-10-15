@@ -141,9 +141,12 @@ The tree is one focus stop: its own element holds focus, and the current row is 
 | `ArrowLeft` | Collapse an expanded node, or move to the parent. |
 | `Home` / `End` | Move to the first / last visible row and select it. With `Shift`, extend the selection instead. |
 | `PageUp` / `PageDown` | Move up / down by one page — the number of whole rows the tree shows — and select that row. With `Shift`, extend the selection instead. With no current row yet, the first press lands on the first row. |
+| Printable character | Type-ahead: move to the next visible row whose label starts with what was typed, and select it. Typing one letter again steps through the rows that start with it. Several different letters match as a prefix, searched from the current row itself. The buffer starts again after a 700 ms pause, or on `Escape`. |
 | `Shift+F10` / ContextMenu key | Fire `"contextmenu"` for the current row — see [Context menu](#context-menu). |
 
 `Shift` extends from the anchor: the row last clicked without `Shift` (a `Ctrl`/`Cmd`-click included), moved to by a key that did not extend the selection (any key without `Shift`; `ArrowLeft` and `ArrowRight` always), or passed to `selectNode()`. [`getSelectedNode()`](/api/component/tree/classes/Tree#getselectednode) returns it. With no anchor among the visible rows — nothing selected yet, the anchor's node removed, or the anchor under a collapsed node — `Shift` is ignored: a `Shift` move or a `Shift`-click is a plain one, a `Ctrl`/`Cmd`+`Shift`-click is a `Ctrl`/`Cmd`-click, and the row it lands on becomes the anchor.
+
+Type-ahead searches the rows that are visible — every expanded row, scrolled into view or not — by each node's `label`, whatever a custom renderer draws. It never expands a node and never loads a lazy one. `Shift` types capitals; a key pressed with `Ctrl`, `Alt` or `Meta` is not type-ahead, and neither is `Space`. The key is the tree's own: the browser's default does not run, and a `keydown` listener on an ancestor still receives it.
 
 A key that moves the current row is the tree's own even when the row cannot move: `PageDown` on the last row changes nothing, and the browser does not scroll what is behind the tree. See [Keys in trees, lists and tables](/concepts/accessibility#keys-in-trees-lists-and-tables).
 

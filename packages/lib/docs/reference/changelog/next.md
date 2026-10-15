@@ -751,6 +751,12 @@ page resets to empty.
   A spare row is now hidden until it shows data. No consumer action is
   needed.
 
+- **A `Tree` has type-ahead.** Typing the first letters of a label moves to
+  the next visible row that starts with them, selects it and scrolls it into
+  view. The same letter typed again steps through the matches. Only visible
+  rows are searched and nothing is expanded or loaded, and the keys are
+  prevented, not stopped. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
