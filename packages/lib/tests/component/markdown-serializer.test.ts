@@ -15,7 +15,7 @@ import type { TableCellNode, TableNode } from '@lexical/table';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { $serializeMarkdown } from '~/component/editor/markdownSerializer';
 import {
-    bareAutolinkState, fenceAttributesState, hardBreakMarkerState, imageAttributesState, listLooseState, listMarkerState,
+    bareAutolinkState, fenceOpeningState, hardBreakMarkerState, imageAttributesState, listLooseState, listMarkerState,
     spanAttributesState,
 } from '~/component/editor/markdownNodeState';
 import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode } from '~/component/editor/markdownSourceNodes';
@@ -1476,7 +1476,7 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
             const block = $createMarkdownBlockNode();
 
             block.setAlign(align);
-            $setState(block, fenceAttributesState, authored);
+            $setState(block, fenceOpeningState, ` {${authored}}`);
             block.append(fill($createMarkdownColumnNode(), [p('text')]));
 
             return block;
@@ -1492,6 +1492,19 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
 
         it('the authored attributes survive the fence\'s JSON round trip (a copy, or content restored from JSON)', () => {
             expect(serialize(() => [jsonRoundTrip(fence('x1=2 align=right', 'right'))])).toBe('::: {x1=2 align=right}\ntext\n:::');
+        });
+
+        it('a labelled fence survives the fence\'s JSON round trip', () => {
+            const labelled = (): LexicalNode => {
+                const block = $createMarkdownBlockNode();
+
+                $setState(block, fenceOpeningState, ' tip Title');
+                block.append(fill($createMarkdownColumnNode(), [p('text')]));
+
+                return block;
+            };
+
+            expect(serialize(() => [jsonRoundTrip(labelled())])).toBe('::: tip Title\ntext\n:::');
         });
     });
 

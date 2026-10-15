@@ -40,13 +40,15 @@ export const spanAttributesState: StateConfig<"mdSpanAttributes", string> = crea
 });
 
 /**
- * The attribute text a `:::` fence was loaded with, as it was written between
- * the braces on its opening line (`gap=2rem bogus=1 align=right`), so a save
- * keeps the attributes' order and the ones the editor does not model. The
- * serializer writes it only while it still resolves to the fence's alignment
- * and column gap; `""` (the default) writes those as normalized attributes.
+ * The opening line a `:::` fence was loaded with, as it was written after
+ * its `:::` and without trailing whitespace (` tip Title {gap=2rem bogus=1}`),
+ * so a save keeps the words the viewer ignores (a `tip Title` label), the
+ * attributes' order and the attributes the editor does not model. The
+ * serializer writes the attribute group only while it still resolves to the
+ * fence's alignment and column gap; `""` (the default) is a fence made in
+ * the editor, written in the standard form.
  */
-export const fenceAttributesState: StateConfig<"mdFenceAttributes", string> = createState("mdFenceAttributes", {
+export const fenceOpeningState: StateConfig<"mdFenceOpening", string> = createState("mdFenceOpening", {
     parse: (value) => (typeof value === "string" ? value : ""),
 });
 

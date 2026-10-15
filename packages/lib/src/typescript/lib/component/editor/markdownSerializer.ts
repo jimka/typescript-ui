@@ -17,7 +17,8 @@ import type { TableCellNode, TableNode, TableRowNode } from "@lexical/table";
 import { $dfs } from "@lexical/utils";
 import type { Links, Token, Tokens } from "marked";
 import {
-    blockStyleToAttributes, breaksColumn, cssTextToAttributes, formatAttributes, joinColumnSections, parseAttributes, resolveBlockStyle,
+    blockStyleToAttributes, breaksColumn, cssTextToAttributes, FENCE_ATTRIBUTE_GROUP, FENCE_COLUMNS_KEYWORD, formatAttributes,
+    joinColumnSections, parseAttributes, resolveBlockStyle,
     resolveImageSpec, resolveSpanStyle, spanStyleToAttributes,
 } from "~/component/display/markdownAttributes.js";
 import {
@@ -31,7 +32,7 @@ import { $isMarkdownListItemTextNode } from "~/component/editor/markdownListItem
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import type { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import {
-    bareAutolinkState, codeInfoState, fenceAttributesState, hardBreakMarkerState, imageAttributesState, KEPT_SOURCE_WRITES_LINK,
+    bareAutolinkState, codeInfoState, fenceOpeningState, hardBreakMarkerState, imageAttributesState, KEPT_SOURCE_WRITES_LINK,
     KEPT_SOURCE_WRITES_STYLE, keptSourceState, listLooseState, listMarkerState, NESTED_LINK_WRITES_STYLE, nestedLinkGroupState,
     nestedLinkState, spanAttributesState,
 } from "~/component/editor/markdownNodeState.js";
@@ -2845,9 +2846,8 @@ function serializeCellChild(child: LexicalNode, definitions: Links | null): stri
 }
 
 /**
- * Serializes a `:::` fence: `columns` when it has two or more, its
- * attributes, and `{}` for a one-column fence with none (a bare `:::` cannot
- * open a fence).
+ * Serializes a `:::` fence: its opening line ({@link fenceOpeningLine}), its
+ * columns and its closing `:::`.
  *
  * @param node - The fence.
  * @param definitions - The saved document's link reference definitions, or `null`.
@@ -2860,11 +2860,7 @@ function serializeFence(node: MarkdownBlockNode, definitions: Links | null): str
         return serializeBlockList(node.getChildren(), definitions);
     }
 
-    const attributes = fenceAttributeText(node);
-
-    const opening = ":::"
-        + (columns.length > 1 ? " columns" : "")
-        + (attributes !== "" ? ` {${attributes}}` : columns.length > 1 ? "" : " {}");
+    const opening = fenceOpeningLine(node, columns.length);
 
     const body = joinColumnSections(columns.map((column) => serializeBlockList(column.getChildren(), definitions)));
 
@@ -2872,18 +2868,82 @@ function serializeFence(node: MarkdownBlockNode, definitions: Links | null): str
 }
 
 /**
- * Reads the attribute text a fence is written with: the authored text it was
- * loaded with ({@link fenceAttributesState}) while that text still resolves
- * to the fence's alignment and column gap — keeping the attributes' order and
- * the ones the editor does not model — else its style as normalized
- * attribute text.
+ * Writes a fence's opening line. A fence with an authored label
+ * ({@link MarkdownBlockNode.hasAuthoredLabel}) is written as loaded, its
+ * attribute group rewritten only when the fence's style changed
+ * ({@link withAttributeGroup}). Any other fence is written in the standard
+ * form: `columns` when it has two or more columns, its attributes, and `{}`
+ * for a one-column fence with none (a bare `:::` cannot open a fence).
  *
  * @param node - The fence.
+ * @param columnCount - The fence's column count.
+ * @returns The opening line, starting with `:::`.
+ */
+function fenceOpeningLine(node: MarkdownBlockNode, columnCount: number): string {
+    const authored = $getState(node, fenceOpeningState);
+    const group = FENCE_ATTRIBUTE_GROUP.exec(authored);
+    const attributes = fenceAttributeText(node, group?.[1] ?? "");
+    const labelled = node.hasAuthoredLabel();
+
+    if (labelled) {
+        return ":::" + withAttributeGroup(authored, group, attributes);
+    }
+
+    return ":::"
+        + (columnCount > 1 ? " " + FENCE_COLUMNS_KEYWORD : "")
+        + (attributes !== "" ? ` {${attributes}}` : columnCount > 1 ? "" : " {}");
+}
+
+/**
+ * Applies a fence's attributes to its loaded opening line: no group and no
+ * attributes leaves the line as loaded; no group and attributes adds one at
+ * the end; a group with the same text stays; otherwise the group is replaced
+ * in place, or dropped with the whitespace before it when the attributes are
+ * empty (a space then keeps the words either side of it apart) — unless a later group follows, which the viewer would then read, so
+ * the first stays, emptied.
+ *
+ * @param authored - The opening line's text after its `:::`, as loaded.
+ * @param group - The loaded line's attribute group, or `null` for none.
+ * @param attributes - The attribute text the fence is written with.
+ * @returns The opening line's text after its `:::`.
+ */
+function withAttributeGroup(authored: string, group: RegExpExecArray | null, attributes: string): string {
+    if (group === null) {
+        return attributes === "" ? authored : `${authored} {${attributes}}`;
+    }
+
+    if (group[1] === attributes) {
+        return authored;
+    }
+
+    const before = authored.slice(0, group.index);
+    const after = authored.slice(group.index + group[0].length);
+    // A later group would become the one the viewer reads once this one goes, so it stays, emptied.
+    const droppable = attributes === "" && !FENCE_ATTRIBUTE_GROUP.test(after);
+
+    if (!droppable) {
+        return `${before}{${attributes}}${after}`;
+    }
+
+    const kept = before.trimEnd();
+    // Whitespace after the `:::` (`before` without `kept`) is the author's own, so it is kept too.
+    const joinsWords = (kept !== "" || before !== "") && /^\S/.test(after);
+
+    return joinsWords ? `${kept} ${after}` : kept + after;
+}
+
+/**
+ * Reads the attribute text a fence is written with: the loaded group's text
+ * ({@link fenceOpeningState}) while it still resolves to the fence's
+ * alignment and column gap — keeping the attributes' order and the ones the
+ * editor does not model — else its style as normalized attribute text.
+ *
+ * @param node - The fence.
+ * @param authored - The attribute text inside the loaded opening line's group, or `""`.
  * @returns The attribute text (`align=right …`), or `""` for none.
  */
-function fenceAttributeText(node: MarkdownBlockNode): string {
+function fenceAttributeText(node: MarkdownBlockNode, authored: string): string {
     const normalized = formatAttributes(node.toAttributes());
-    const authored = $getState(node, fenceAttributesState);
     const writable = authored !== "" && !/[\n{}]/.test(authored);
 
     return writable && formatAttributes(blockStyleToAttributes(resolveBlockStyle(parseAttributes(authored)))) === normalized ? authored : normalized;
