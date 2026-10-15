@@ -771,6 +771,10 @@ page resets to empty.
   current row whose children are already loaded, fires `"expand"` for each,
   and never starts a lazy load. No consumer action is needed.
 
+- **`Home` / `End` activate the first / last tab of a `Tab` strip.** They
+  act while a tab or its ✕ holds focus, and a strip tool keeps the keys. No
+  consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
