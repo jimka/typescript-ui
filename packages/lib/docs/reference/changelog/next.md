@@ -1042,3 +1042,8 @@ page resets to empty.
   (`DragManager.isDragging()` is `false`) by the time the source's
   `onDragEnd` runs; it used to end afterwards. No consumer action is
   needed.
+
+- **A `Window` whose content is replaced keeps working.** Replacing the body
+  during a maximise or restore animation threw and left the window unable to
+  change state, and a replacement made at any time stayed visible when the
+  window was minimized. No consumer action is needed.
