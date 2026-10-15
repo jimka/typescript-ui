@@ -20,7 +20,7 @@ touches-shared:
 
 ## Overview
 
-`MarkdownEditor` has two editing surfaces: WYSIWYG, and source mode, which edits the raw Markdown text. A block command is meant to give the same result on both for the same document and selection. Where it cannot, the difference is pinned by a `DIFFERS` row in [markdown-editor.test.ts](../packages/lib/tests/component/markdown-editor.test.ts) and listed in the docs. The plans before this one left a set of such differences that no plan owned. This plan calls them *gaps*. It closes the seven in the table below. It also pins one more difference, a code block made from a heading (rows `E41`), which the plan `markdown-editor-heading-to-code-escapes` closes on the WYSIWYG side.
+`MarkdownEditor` has two editing surfaces: WYSIWYG, and source mode, which edits the raw Markdown text. A block command is meant to give the same result on both for the same document and selection. Where it cannot, the difference is pinned by a `DIFFERS` row in [markdown-editor.test.ts](../packages/lib/tests/component/markdown-editor.test.ts) and listed in the docs. The plans before this one left a set of such differences that no plan owned. This plan calls them *gaps*. It closes the eight in the table below. It also pins one more difference, a code block made from a heading (rows `E41`), which the plan `markdown-editor-heading-to-code-escapes` closes on the WYSIWYG side.
 
 | Gap | Document | Selection, command | WYSIWYG | Source mode before | Source mode after |
 |---|---|---|---|---|---|
@@ -33,10 +33,11 @@ touches-shared:
 | 5 | `` ``` ⏎ code ⏎ ``` ⏎ para `` | the fence, `setBlockType("paragraph")` | `code ⏎⏎ para` | `code ⏎ para`, one paragraph | `code ⏎⏎ para` |
 | 6 | a table row `\| a \| << \| < \|` | the last `<`, `toggleBold()` | `\| a \| << \| **<** \|` | nothing | `\| a \| << \| **<** \|` |
 | 7 | `one #` | `one`, `setBlockType("h2")` | `## one \#` | nothing | `## one \#` |
+| 8 | `- ⏎ ··one ⏎ - two` | `one`, bulleted toggle | `one ⏎⏎ - two` | `- ⏎ one ⏎ - two` | `one ⏎ - two` |
 
 `⏎` is a line end, `⏎⏎` a blank line and `·` a space throughout. Where the WYSIWYG text and the source-mode text of a row differ in spelling, the viewer reads the two the same. Gap 7 was not among the recorded differences. It was found while the others were measured, in a document the editor saves as it stands.[^gap7]
 
-Gaps 1 to 5 and 7 are changes to the line commands in [markdownSourceLines.ts](../packages/lib/src/typescript/lib/component/editor/markdownSourceLines.ts). Gap 6 is a change to where the source analysis places the text of a table cell, in [markdownSourceTokens.ts](../packages/lib/src/typescript/lib/component/editor/markdownSourceTokens.ts) and [markdownTableExtension.ts](../packages/lib/src/typescript/lib/component/display/markdownTableExtension.ts). `MarkdownEditor.ts`, `CodeEditor.ts` and the WYSIWYG surface are not touched. The tests are rows in three existing test files. The docs' list of differences loses four entries and gains two: the pinned difference, and a hand-written shape the list did not name.
+Gaps 1 to 5, 7 and 8 are changes to the line commands in [markdownSourceLines.ts](../packages/lib/src/typescript/lib/component/editor/markdownSourceLines.ts). Gap 6 is a change to where the source analysis places the text of a table cell, in [markdownSourceTokens.ts](../packages/lib/src/typescript/lib/component/editor/markdownSourceTokens.ts) and [markdownTableExtension.ts](../packages/lib/src/typescript/lib/component/display/markdownTableExtension.ts). `MarkdownEditor.ts`, `CodeEditor.ts` and the WYSIWYG surface are not touched. The tests are rows in three existing test files. The docs' list of differences loses five entries and gains two: the pinned difference, and a hand-written shape the list did not name.
 
 *Base* means the code this plan starts from: commit `736452bbc`, the tip of the Markdown stack, with the five plans of `depends-on` on top. `marked` is 18.1.0 there (`marked-version-pin-or-upgrade`, then `marked-upgrade`). Every number here was measured on `736452bbc` with the code of those five plans applied and `marked` 18.1.0.[^measured] Line numbers are from `736452bbc`; the plans of `depends-on` move them, so find each site by its symbol name.
 
@@ -48,7 +49,7 @@ Gaps 1 to 5 and 7 are changes to the line commands in [markdownSourceLines.ts](.
 
 A line command builds its edit in several ways, in a fixed order, and takes the first one whose result reads as intended when it is lexed again. This plan calls each way a *candidate*. `firstReadingEdit` ([markdownSourceLines.ts:977](../packages/lib/src/typescript/lib/component/editor/markdownSourceLines.ts#L977)) runs the order and the check. When no candidate reads, the command does nothing.
 
-Six of the seven gaps, all but gap 6, are closed by adding candidates to that order, by changing what a candidate writes, or by one more condition in the check. Nothing is decided by the shape of the document: the check accepts a candidate or rejects it.
+Seven of the eight gaps, all but gap 6, are closed by adding candidates to that order, by changing what a candidate writes, or by one more condition in the check. Nothing is decided by the shape of the document: the check accepts a candidate or rejects it.
 
 | Gap | What is added | Where it stands in the order |
 |---|---|---|
@@ -58,10 +59,11 @@ Six of the seven gaps, all but gap 6, are closed by adding candidates to that or
 | 4 | for a list toggle: the same toggle over the touched blocks taken whole | after the toggle over the selected lines |
 | 5 | one more condition in the check | — |
 | 7 | nothing new: a heading line is written with its closing `#` run escaped | — |
+| 8 | every candidate once more, with an item's lone marker line among the lines it replaces | before the same candidate without that line |
 
 The precedents are in the same module. `listOn` ([:1343](../packages/lib/src/typescript/lib/component/editor/markdownSourceLines.ts#L1343)) already tries its items joined to the list next to them and then as a list of their own. `markdown-source-mode-list-lift-parity` puts a *tail* candidate, one that also lifts what the list item holds after the block, in front of the candidate that leaves it in the list, in `convertBlocks`, `FENCED_CODE_SOURCE`, `listOff` and `listOn`.[^mechanism]
 
-For gaps 1 and 4 (toggles) every added candidate stands after the base's own. A command that acts at the base therefore gives the same edit after this plan. For gap 3 a new candidate stands before the base's, and for gap 5 the check is stricter, so the edit of a command that already acts can change (owner's answers G1 and G3). For gap 3 the base's own candidate is still tried last. One more shape changes an edit of the base: a setext heading whose text opens with `#` (G5).
+For gaps 1 and 4 (toggles) every added candidate stands after the base's own. A command that acts at the base therefore gives the same edit after this plan. For gaps 3 and 8 a new candidate stands before the base's, and for gap 5 the check is stricter, so the edit of a command that already acts can change (owner's answers G1, G2 and G3). For gaps 3 and 8 the base's own candidate is still tried last. One more shape changes an edit of the base: a setext heading whose text opens with `#` (G5).
 
 ### A new item's text is escaped where it would open something else — gap 1
 
@@ -177,6 +179,35 @@ This gap belongs here and not in `markdown-editor-table-command-fixes`: that pla
 
 Markdown drops a run of `#` at the end of a `#` heading's line when a space stands before it. A heading line is therefore written with the first `#` of such a run escaped: `one #` becomes `## one \#`. The WYSIWYG serializer escapes the same character. At the base the unescaped line lost its `#`, the check rejected it, and the command did nothing. The text of a code block that is turned into a heading is not escaped: it is read afresh as Markdown, as at the base.[^closing-run]
 
+### An item's marker line goes with the item's first block — gap 8
+
+A list item's marker can stand on a line of its own, with the item's text on the next line (`-` / `··one`). When a command lifts the item's first block out of the list, the lines it replaces now start at that marker line. The item is gone once its first block has left it, so its marker goes too, as on the WYSIWYG surface (owner's answer G2). At the base the marker line stayed behind and read as an empty item.
+
+| Document | Caret, command | Base | After | WYSIWYG |
+|---|---|---|---|---|
+| `- ⏎ ··one ⏎ - two` | `one`, bulleted toggle | `- ⏎ one ⏎ - two` | `one ⏎ - two` | `one ⏎⏎ - two` |
+| `4) ⏎ ·····* muro` | `muro`, bulleted toggle | `4) ⏎ muro` | `muro` | `muro` |
+| `- ⏎ ··one ⏎⏎ ··second ⏎ - two` | `one`, `setBlockType("h2")` | `- ⏎ ## one ⏎⏎ second ⏎ - two` | `## one ⏎⏎ second ⏎ - two` | `## one ⏎⏎ second ⏎⏎ - two` |
+
+The rule is one function, `firstReplacedLine`, that every command asks for the first line of a block's replacement. It goes up from the block while the block is the first thing its list item holds and the lines between the item's start and the block hold container syntax alone.
+
+Without the marker line the lines *above* it can read otherwise. Every command therefore tries its candidates twice where a block has such a line: first with the line among the replaced ones, then without it, which is the base's edit (`markerLineChoices`).[^marker-line]
+
+| Document | Caret, command | With the marker line | Without it | Edit |
+|---|---|---|---|---|
+| `- ⏎ ··one ⏎ - two` | `one`, paragraph | `one ⏎ - two` reads | not tried | `one ⏎ - two` |
+| `beta ⏎ 2. x ⏎ - ⏎ ··gamma` | `gamma`, paragraph | `beta ⏎ 2. x ⏎⏎ gamma`: `2. x` is now a line of the paragraph `beta`: rejected | `beta ⏎ 2. x ⏎ - ⏎ gamma` reads | that edit, as at the base |
+
+The marker line goes in one edit with the other changes of this plan. A setext heading that opens such an item is taken whole (G5), and text that would read as a task marker once it stands after a new marker is escaped as G7 writes it:
+
+| Document | Caret, command | Base | After | WYSIWYG |
+|---|---|---|---|---|
+| `- ⏎ ··Title ⏎ ··--- ⏎ - two` | `Title`, bulleted toggle (off) | nothing | `Title ⏎ - two` | `Title ⏎⏎ - two` |
+| `- ⏎ ··[ ] mid ⏎ - two` | `mid`, numbered toggle | nothing | `1. \[ \] mid ⏎ - two` | `1. \[ \] mid ⏎⏎ - two` |
+| `- ⏎ ··[ ] mid ⏎ - two` | `mid`, bulleted toggle (off) | `- ⏎ [ ] mid ⏎ - two` | `[ ] mid ⏎ - two` | `\[ \] mid ⏎⏎ - two` |
+
+Where `setBlockType` takes the block out of the list and the WYSIWYG surface converts it in place (the difference of rows `E4` and `E12`, which stays), source mode now leaves no item at all: `setBlockType("h3")` on `Title` in `- ⏎ ··Title ⏎ ··--- ⏎ - two` gives `### Title ⏎ - two`, where the base gives `- ⏎ ### Title ⏎ - two` and the WYSIWYG surface `- ### Title ⏎ - two`.
+
 ### Two indentation shapes stay different
 
 Rows `E32` and `E33` stay in `DIFFERS`. In both, the lines *after* the new item are indented so that they would read as part of it, and the command would have to rewrite lines of blocks it does not touch.
@@ -187,14 +218,6 @@ Rows `E32` and `E33` stay in `DIFFERS`. In both, the lines *after* the new item 
 | `E33` | `··1. one ⏎⏎ ·····held ⏎⏎ ··2. two` | `one` | the same: `··2. two`, the rest of the list, would become a list inside `- one` |
 
 A line command writes the lines of the blocks it converts and the container prefixes of what follows inside the quotes and list items it splits. It never re-indents a block that only stands below. The WYSIWYG surface acts here because it saves the whole document in its own spacing. Both shapes are hand-written indentation; the editor does not save them.[^indentation]
-
-### An item marker on a line of its own stays where it is
-
-A list item's marker can stand on a line of its own, with the item's text on the next line (`-` / `··one`). When a command lifts the item's text out of the list, source mode leaves that marker line where it is, as at the base, and the viewer reads it as an empty item; the WYSIWYG surface removes it. This plan does not change that (owner's answer G2). Row `E35` stays in `DIFFERS`, and the docs keep their sentence on it.
-
-| Document | Caret, command | Source mode, base and after | WYSIWYG |
-|---|---|---|---|
-| `- ⏎ ··one ⏎ - two` | `one`, bulleted toggle | `- ⏎ one ⏎ - two` | `one ⏎⏎ - two` |
 
 ### One difference is pinned here and closed by another plan — a code block made from a heading
 
@@ -210,7 +233,7 @@ Source mode writes the bytes the heading holds, which is its rule for every bloc
 | Lands first | What this plan does with `E41` |
 |---|---|
 | this plan | adds the two `DIFFERS` rows `E41` below and the docs clause for the difference; `markdown-editor-heading-to-code-escapes` deletes both when it lands (its steps 1 and 7) and adds the rows to `SAME` |
-| `markdown-editor-heading-to-code-escapes` | adds neither: its two `E41` rows are in `SAME` already. `DIFFERS` then ends with 36 rows, not 38 |
+| `markdown-editor-heading-to-code-escapes` | adds neither: its two `E41` rows are in `SAME` already. `DIFFERS` then ends with 35 rows, not 37 |
 
 The row text and the comment above the rows are the ones that plan's step 1 looks for; keep them as given.[^heading-code]
 
@@ -235,7 +258,7 @@ The repository's owner answered the plan's eight questions on 2026-10-14. The pl
 | `one ⏎ more ⏎ ---` | `setBlockType("h1")` | `# one ⏎ # more` | `one ⏎ more ⏎ ===` | the same |
 | `foo ⏎ <b>` | `setBlockType("h2")` | `## foo ⏎ ## <b>` | `## foo <b>` | the same |
 
-**G2. An item marker on a line of its own — not accepted: the marker line stays where it is.** The plan does not take the marker line with the item's first block, and none of its code reads a lone marker line. Row `E35` stays in `DIFFERS`. See *An item marker on a line of its own stays where it is*.
+**G2. An item marker on a line of its own goes with the item's first block — accepted.** The marker left behind showed as an empty item, which the WYSIWYG surface does not leave.[^g2] Row `E35` leaves `DIFFERS`. See *An item's marker line goes with the item's first block*.
 
 **G3. Text that was a code block is set apart by a blank line — accepted, as a defect fix.** See *Text that was a code block stays in blocks of its own*.
 
@@ -265,7 +288,7 @@ The first kind is the same as G7's, on another construct: the label of a definit
 
 ### Every row that remains in `DIFFERS`, and who owns it
 
-After the five plans of `depends-on`, `DIFFERS` has 48 rows. This plan moves 12 of them out and, when it lands before `markdown-editor-heading-to-code-escapes`, adds the 2 rows `E41`. The other 36 stay. Each of the 38 rows is there for one of these reasons.
+After the five plans of `depends-on`, `DIFFERS` has 48 rows. This plan moves 13 of them out and, when it lands before `markdown-editor-heading-to-code-escapes`, adds the 2 rows `E41`. The other 35 stay. Each of the 37 rows is there for one of these reasons.
 
 | Rows | The difference | Why it stays |
 |---|---|---|
@@ -280,7 +303,6 @@ After the five plans of `depends-on`, `DIFFERS` has 48 rows. This plan moves 12 
 | `E13` (two) | a block in a `:::` block that a list item holds | a lifted block could not leave the item without leaving its column |
 | `E14` | a selection from one `:::` column into the next | source mode declines on the `\|\|\|` line |
 | `E15` (two) | an empty list item inside a selection | no line of text for source mode to convert |
-| `E35` | an item marker on a line of its own | the owner's answer G2: source mode leaves the marker line where it is |
 | `E39`, `E40` | a code fence left open; a numbered item not numbered 1 under a paragraph | `markdown-source-mode-list-lift-parity`: what an item holds stays in the list where it would read otherwise outside it |
 | `E32`, `E33` | lines below the result indented into it | this plan: see *Two indentation shapes stay different* |
 | `E41` (two, new) | a code block made from a heading | closed by `markdown-editor-heading-to-code-escapes`; pinned here until it lands |
@@ -392,7 +414,7 @@ function readsAsExpected(
 }
 ```
 
-**A3. A reader.** Add directly before `leafNodes`:
+**A3. Four readers.** Add directly before `leafNodes`:
 
 ```ts
 /**
@@ -409,7 +431,87 @@ function textLineSpans(text: string, node: SourceBlockNode): SourceLine[] {
 
     return isSetext ? lines.slice(0, -1) : lines;
 }
+
+/**
+ * The start of the first line a lifted block's replacement takes: the
+ * block's own first line, or, with `withMarker`, the line of the list item
+ * marker above it when the block opens that item and the marker stands on a
+ * line of its own (`-` / `  one`). Such a line holds nothing but the item,
+ * and the item is gone once its first block has left it, so the line goes
+ * with the block; left behind it would read as an empty item. The same holds
+ * one item further out for each item the block opens through the first item
+ * of a list (`4)` / `   * one`).
+ *
+ * @param text - The full document text.
+ * @param target - The lifted block.
+ * @param withMarker - Whether a lone marker line above the block is taken.
+ * @returns The line's start.
+ */
+function firstReplacedLine(text: string, target: SourceBlockNode, withMarker: boolean): number {
+    let first = lineStartAt(text, target.start);
+    let child = target;
+    let opens = withMarker;
+
+    while (opens && child.parent !== null) {
+        const holder: SourceBlockNode = child.parent;
+        const isLifted = holder.start !== -1 && (holder.type === "list" || LIFTED_NODE_TYPES.has(holder.type));
+        // A task item's checkbox is its marker, not a block: the item's first block is the child after it.
+        const firstChild = holder.children[0]?.type === "checkbox" ? holder.children[1] : holder.children[0];
+        const holderLine = isLifted && firstChild === child ? lineStartAt(text, holder.start) : -1;
+        const isMarkerAlone = holderLine !== -1 && holderLine < first && holder.type === "list_item" && holdsContainerSyntaxAlone(text, holderLine, first);
+
+        opens = holderLine === first || isMarkerAlone;
+        first = isMarkerAlone ? holderLine : first;
+        child = holder;
+    }
+
+    return first;
+}
+
+/**
+ * The ways a command's replacements can start: with the lone marker line
+ * above a lifted block (`true`), and, where a block has one, without it
+ * (`false`), tried after. Without the marker line the lines above it can
+ * read otherwise (`2. x` is a list above `-` and a line of the paragraph
+ * above it otherwise), and the edit that leaves the line is then the one
+ * that reads.
+ *
+ * @param text - The full document text.
+ * @param targets - The lifted blocks.
+ * @returns The choices for {@link firstReplacedLine}'s `withMarker`, the preferred first.
+ */
+function markerLineChoices(text: string, targets: readonly SourceBlockNode[]): readonly boolean[] {
+    const hasLoneMarker = targets.some((target) => firstReplacedLine(text, target, true) !== lineStartAt(text, target.start));
+
+    return hasLoneMarker ? [true, false] : [true];
+}
+
+/**
+ * Whether every line from one line's start up to another's holds container
+ * syntax alone ({@link CONTAINER_SYNTAX_ONLY}): quote markers, list markers
+ * and whitespace.
+ *
+ * @param text - The full document text.
+ * @param from - The first line's start.
+ * @param to - The start of the line after the last one.
+ * @returns Whether they do.
+ */
+function holdsContainerSyntaxAlone(text: string, from: number, to: number): boolean {
+    let lineStart = from;
+    let isSyntaxAlone = true;
+
+    while (isSyntaxAlone && lineStart < to) {
+        const lineEnd = lineEndAt(text, lineStart);
+
+        isSyntaxAlone = CONTAINER_SYNTAX_ONLY.test(text.slice(lineStart, lineEnd));
+        lineStart = lineEnd + 1;
+    }
+
+    return isSyntaxAlone;
+}
 ```
+
+`firstReplacedLine` walks parents and reads `children[0]` and `children[1]` by index. Do not replace those two reads by `find`: a list has as many children as it has items, and the cost tests of `markdown-source-edits.test.ts` count every array handed to a scan.
 
 **A4. Block types.** Replace `convertBlocks`, and add the four declarations after it. Then replace `alreadyBlock`.
 
@@ -470,8 +572,8 @@ function convertBlocks(text: string, from: number, to: number, prefix: string): 
 
     const lifts = tailLifts(analysis, targets);
 
-    /** Builds the replacements, a heading of several lines written in `form`. */
-    const buildFor = (form: HeadingForm) => (escape: boolean): LineReplacement[] => targets.map((target, index) => {
+    /** Builds the replacements, a heading of several lines written in `form`, with or without an item's lone marker line. */
+    const buildFor = (form: HeadingForm, withMarker: boolean) => (escape: boolean): LineReplacement[] => targets.map((target, index) => {
         const lines = textLinesOf(target, "text");
         const isText = level > 0 && !code[index]!;
         const isOneHeading = isText && form !== "lines" && lines.length > 1;
@@ -482,7 +584,7 @@ function convertBlocks(text: string, from: number, to: number, prefix: string): 
             : lines.map((line) => (isBlank(line) || prefix === "" ? line : isText ? atxHeadingLine(prefix, line) : prefix + line.trimStart()));
 
         return {
-            first: lineStartAt(text, target.start),
+            first: firstReplacedLine(text, target, withMarker),
             last:  lineEndAt(text, target.end - 1),
             lines: written.map((line, at) => {
                 // A setext heading's underline is syntax, and its text lines carry no prefix; every other line opens with the prefix.
@@ -503,15 +605,17 @@ function convertBlocks(text: string, from: number, to: number, prefix: string): 
 
     const candidates: EditCandidate[] = [];
 
-    for (const form of forms) {
-        const build = buildFor(form);
-        const change = changeFor(form);
+    for (const withMarker of markerLineChoices(text, targets)) {
+        for (const form of forms) {
+            const build = buildFor(form, withMarker);
+            const change = changeFor(form);
 
-        if (lifts !== null) {
-            candidates.push({ build, expected: () => expectLeaves(leaves, change, lifts), tail: true });
+            if (lifts !== null) {
+                candidates.push({ build, expected: () => expectLeaves(leaves, change, lifts), tail: true });
+            }
+
+            candidates.push({ build, expected: () => expectLeaves(leaves, change), tail: false });
         }
-
-        candidates.push({ build, expected: () => expectLeaves(leaves, change), tail: false });
     }
 
     return firstReadingEdit(analysis, candidates, wildcardPaths, true);
@@ -643,11 +747,138 @@ How the forms map to candidates, for `setBlockType("h2")` on a block in a list i
 | 5 | `lines` | lifted | `## one ⏎ ## more ⏎ - two` |
 | 6 | `lines` | left in the list | the same |
 
-Each candidate is tried in four forms of its own by `firstReadingEdit`, as at the base: as written, set apart by blank lines, and each of those escaped. With no target of several lines `forms` is `["lines"]`, and the candidates are the base's two.
+Each candidate is tried in four forms of its own by `firstReadingEdit`, as at the base: as written, set apart by blank lines, and each of those escaped. With no target of several lines `forms` is `["lines"]`, and the candidates are the base's two. Where a target stands under a lone marker line, the whole list is tried twice: first with `withMarker` set, then without.
 
-`FENCED_CODE_SOURCE` and `listOff` are not changed.
+**A5. The code fence and the list-off toggle.** Replace `FENCED_CODE_SOURCE` and `listOff`. In both, only the end changes: the replacements are built for each choice of `markerLineChoices`, and the candidates are pushed in a loop.
 
-**A5. The task marker's form.** Add directly after `TASK_MARKER_START`:
+```ts
+/**
+ * Converts the blocks the selection's lines touch into one fenced code block:
+ * from the first block's first line to the last block's last line, every line
+ * a converted block's or blank, each block's text taken as written (a code
+ * block's code, its fences dropped, a task item's marker as it was written),
+ * the blocks lifted out of their quotes and list items as
+ * {@link blockPrefixSource} lifts them. The fence is three
+ * backticks, or one more than the longest run opening a code line. The result
+ * must read as that code block with nothing else changed, the block set apart
+ * by blank lines when it does not otherwise. Declines when the lines already
+ * are exactly that block, when a line between the blocks holds anything else,
+ * and when a selected line holds part of any other block.
+ */
+export const FENCED_CODE_SOURCE: MarkdownSourceTransform = (text, from, to) => {
+    const analysis = analyzeMarkdownSource(text);
+    const selection = readLineTargets(analysis, from, to, true);
+
+    if (selection === null) {
+        return null;
+    }
+
+    const { targets } = selection;
+    const code = fencedContent(text, targets);
+
+    if (code === null) {
+        return null;
+    }
+
+    const fence = "`".repeat(Math.max(MIN_FENCE_LENGTH, longestOpeningBacktickRun(code) + 1));
+    const targetOf = targetOfEntry(targets);
+    const leaves = readLeaves(analysis);
+
+    /** Reads the expected leaves, with or without the tails lifted. */
+    const expect = (lifts: LiftPlan | null): ExpectedLeaf[] => {
+        let placed = false;
+
+        return expectLeaves(leaves, (leaf) => {
+            if (targetOf(leaf.entry) === -1) {
+                return null;
+            }
+
+            if (placed) {
+                return undefined;
+            }
+
+            placed = true;
+
+            return { key: `code::${code.join("\n")}`.replace(/\n+$/, ""), path: columnPath(leaf.path), group: "fence" };
+        }, lifts);
+    };
+
+    const lifts = tailLifts(analysis, targets);
+
+    const candidates: EditCandidate[] = [];
+
+    for (const withMarker of markerLineChoices(text, targets.slice(0, 1))) {
+        const replacement: LineReplacement = {
+            first: firstReplacedLine(text, targets[0]!, withMarker),
+            last:  lineEndAt(text, targets[targets.length - 1]!.end - 1),
+            lines: [fence, ...code, fence],
+            nodes: targets,
+        };
+
+        if (lifts !== null) {
+            candidates.push({ build: () => [replacement], expected: () => expect(lifts), tail: true });
+        }
+
+        candidates.push({ build: () => [replacement], expected: () => expect(null), tail: false });
+    }
+
+    return firstReadingEdit(analysis, candidates, [null], false);
+};
+```
+
+```ts
+/**
+ * Lifts list item texts out of their items as paragraphs, a task item's
+ * marker as the text it shows.
+ *
+ * @param analysis - The document's analysis.
+ * @param targets - The item texts.
+ * @returns The edit, or `null` when no form reads as intended.
+ */
+function listOff(analysis: SourceAnalysis, targets: readonly SourceBlockNode[]): MarkdownSourceEdit | null {
+    const text = analysis.text;
+    const targetOf = targetOfEntry(targets);
+    const leaves = readLeaves(analysis);
+
+    const change = (leaf: LeafView): ExpectedLeaf | readonly ExpectedLeaf[] | null => {
+        const index = targetOf(leaf.entry);
+
+        if (index === -1) {
+            return null;
+        }
+
+        const path = [...columnPath(leaf.path), "p"];
+
+        return markerTextLeaves(leaf, path, `t${index}`) ?? { key: leaf.key, path, group: `t${index}` };
+    };
+
+    const lifts = tailLifts(analysis, targets);
+
+    /** Builds the replacements, with or without an item's lone marker line. */
+    const buildFor = (withMarker: boolean) => (escape: boolean): LineReplacement[] => targets.map((target) => ({
+        first: firstReplacedLine(text, target, withMarker),
+        last:  lineEndAt(text, target.end - 1),
+        lines: textLinesOf(target, "text").map((line) => (escape && !isBlank(line) ? escapeBlockStart(line, "") : line)),
+        nodes: [target],
+    }));
+
+    const candidates: EditCandidate[] = [];
+
+    for (const withMarker of markerLineChoices(text, targets)) {
+        const build = buildFor(withMarker);
+
+        if (lifts !== null) {
+            candidates.push({ build, expected: () => expectLeaves(leaves, change, lifts), tail: true });
+        }
+
+        candidates.push({ build, expected: () => expectLeaves(leaves, change), tail: false });
+    }
+
+    return firstReadingEdit(analysis, candidates, targets.map(() => null), true);
+}
+```
+
+**A6. The task marker's form.** Add directly after `TASK_MARKER_START`:
 
 ```ts
 /**
@@ -680,7 +911,7 @@ function escapeItemText(line: string, prefix: string): string {
 }
 ```
 
-**A6. The list toggle.** Replace `toggleList`, and add `takenLines` and `toggleTaken` after it.
+**A7. The list toggle.** Replace `toggleList`, and add `takenLines` and `toggleTaken` after it.
 
 ```ts
 /**
@@ -773,7 +1004,7 @@ function toggleTaken(analysis: SourceAnalysis, targets: readonly SourceBlockNode
 }
 ```
 
-**A7. `listOn` and its plan.** Replace `listOn` and the `ListPlan` interface.
+**A8. `listOn` and its plan.** Replace `listOn` and the `ListPlan` interface.
 
 ```ts
 /**
@@ -799,36 +1030,53 @@ function toggleTaken(analysis: SourceAnalysis, targets: readonly SourceBlockNode
  */
 function listOn(analysis: SourceAnalysis, targets: readonly SourceBlockNode[], selected: ReadonlySet<number>, kind: "unordered" | "ordered"): MarkdownSourceEdit | null {
     const text = analysis.text;
-    const plans: ListPlan[] = targets.map((target) => {
+    /** The blocks with a line to convert; their new items start with or without an item's lone marker line. */
+    const plansFor = (withMarker: boolean): ListPlan[] => targets.map((target) => {
         const lines = textLineSpans(text, target);
         const converted = lines.map((line) => selected.has(line.start) && !isMarkerLine(text, target, line.start, kind));
+        const first = converted.indexOf(true);
         const sourceLines = nodeLines(text, target);
 
-        return { target, lines, converted, first: converted.indexOf(true), last: sourceLines[sourceLines.length - 1]! };
+        return {
+            target, lines, converted, first,
+            from: first === 0 ? firstReplacedLine(text, target, withMarker) : lines[Math.max(first, 0)]!.start,
+            last: sourceLines[sourceLines.length - 1]!,
+        };
     }).filter((plan) => plan.first !== -1);
 
-    if (plans.length === 0) {
+    const preferred = plansFor(true);
+
+    if (preferred.length === 0) {
         return null;
     }
 
-    const runs = adjoiningRuns(text, plans);
-    const hasListItem = plans.some((plan) => liftedItems(plan.target).length > 0);
+    const opening = preferred.filter((plan) => plan.first === 0).map((plan) => plan.target);
+
+    const variants = markerLineChoices(text, opening).map((withMarker) => {
+        const plans = withMarker ? preferred : plansFor(false);
+
+        return { plans, runs: adjoiningRuns(text, plans) };
+    });
+
+    const hasListItem = preferred.some((plan) => liftedItems(plan.target).length > 0);
     const candidates: EditCandidate[] = [];
 
     // Every unescaped candidate is tried before any escaped one: a new item's text is escaped only where it would
     // otherwise open a block or a task marker inside the item (`[ ] a` as an item's text reads as a task item).
     for (const escape of [false, true]) {
-        // A list that gains an item below it no longer ends where it did, and what its last line read as can change
-        // with that (trailing whitespace there, an indented code block, a fence left open). The items then stand apart.
-        for (const tail of hasListItem ? [true, false] : [false]) {
-            let leaves: ExpectedLeaf[] | null = null;
-            /** Reads the expected leaves once for the two candidates that share them. */
-            const expected = (): ExpectedLeaf[] => (leaves ??= expectedItemLeaves(analysis, plans, kind, tail));
+        for (const { plans, runs } of variants) {
+            // A list that gains an item below it no longer ends where it did, and what its last line read as can change
+            // with that (trailing whitespace there, an indented code block, a fence left open). The items then stand apart.
+            for (const tail of hasListItem ? [true, false] : [false]) {
+                let leaves: ExpectedLeaf[] | null = null;
+                /** Reads the expected leaves once for the two candidates that share them. */
+                const expected = (): ExpectedLeaf[] => (leaves ??= expectedItemLeaves(analysis, plans, kind, tail));
 
-            candidates.push({
-                build: () => runs.map((run) => itemReplacement(analysis, run, kind, readListJoin(analysis, run, kind, tail), tail, escape)), expected, tail,
-            });
-            candidates.push({ build: () => itemsApart(analysis, plans, kind, tail, escape), expected, tail });
+                candidates.push({
+                    build: () => runs.map((run) => itemReplacement(analysis, run, kind, readListJoin(analysis, run, kind, tail), tail, escape)), expected, tail,
+                });
+                candidates.push({ build: () => itemsApart(analysis, plans, kind, tail, escape), expected, tail });
+            }
         }
     }
 
@@ -848,25 +1096,28 @@ interface ListPlan {
     readonly converted: boolean[];
     /** The index of the first line that does. */
     readonly first:     number;
+    /** The start of the first line the new items take the place of ({@link firstReplacedLine} for the block's first line). */
+    readonly from:      number;
     /** The block's last line: its text's, or a setext heading's underline, which goes with the text. */
     readonly last:      SourceLine;
 }
 ```
 
-A plan's `lines` are now the lines of the block's *text*, which for a setext heading leave out its underline. Four places read the block's last line from the plan; each now reads `last`, the block's own last line, which for a setext heading is its underline:
+A plan's `lines` are now the lines of the block's *text*, which for a setext heading leave out its underline. Four functions read the block's first or last line from the plan; each now reads the field that says what it means. `from` is the first line the new items take the place of, which for a block under a lone marker line is that marker line. `last` is the block's own last line, which for a setext heading is its underline.
 
 | In | Replace | With |
 |---|---|---|
 | `lastLineOfNewItems` | `const ownLast = plan.lines[plan.lines.length - 1]!.start;` | `const ownLast = plan.last.start;` |
 | `adjoiningRuns` | `previous.lines[previous.lines.length - 1]!.end + 1` | `previous.last.end + 1` |
+| `adjoiningRuns` | `plan.lines[plan.first]!.start - 1` | `plan.from - 1` |
+| `readListJoin` | `const firstLine = first.lines[first.first]!.start;` | `const firstLine = first.from;` |
 | `readListJoin` | `last.lines[last.lines.length - 1]!.start;` | `last.last.start;` |
+| `replacedLines` | `const firstLine = first.lines[first.first]!.start;` | `const firstLine = first.from;` |
 | `replacedLines` | `const lastLine = last.lines[last.lines.length - 1]!;` | `const lastLine = last.last;` |
-
-The reads of a plan's *first* converted line (`plan.lines[plan.first]!.start` in `adjoiningRuns`, `first.lines[first.first]!.start` in `readListJoin` and `replacedLines`) are not changed.
 
 `expectedItemLeaves` is not changed: it finds a leaf's line among `plan.lines`, and a setext underline holds no leaf.
 
-**A8. The item writers.** Replace `itemReplacement` and `itemsApart`. `itemReplacement` escapes a new item's text with `escapeItemText` (A5).
+**A9. The item writers.** Replace `itemReplacement` and `itemsApart`. `itemReplacement` escapes a new item's text with `escapeItemText` (A6).
 
 ```ts
 /**
@@ -936,7 +1187,7 @@ function itemsApart(analysis: SourceAnalysis, plans: readonly ListPlan[], kind: 
 }
 ```
 
-**A9. Comments.** Two doc comments of functions that are not replaced describe what changed.
+**A10. Comments.** Two doc comments of functions that are not replaced describe what changed.
 
 | Doc comment of | Replace | With |
 |---|---|---|
@@ -1140,7 +1391,7 @@ Use the files to check your edits against, not in place of them.
 
 1. **Check the base.**
    - `node -p "require('marked/package.json').version"` prints `18.1.0`.
-   - `grep -c "\['E41'" tests/component/markdown-editor.test.ts` prints `0`. If it prints `2`, `markdown-editor-heading-to-code-escapes` has landed: leave out every part of this plan marked *E41* (the two `DIFFERS` rows and their comment in step 3, the docs clause in step 14). The counts of red tests do not change, since the `E41` rows are green before and after; `DIFFERS` ends with 36 rows instead of 38, and `npm test` grows by 73 instead of 75.
+   - `grep -c "\['E41'" tests/component/markdown-editor.test.ts` prints `0`. If it prints `2`, `markdown-editor-heading-to-code-escapes` has landed: leave out every part of this plan marked *E41* (the two `DIFFERS` rows and their comment in step 3, the docs clause in step 14). The counts of red tests do not change, since the `E41` rows are green before and after; `DIFFERS` ends with 35 rows instead of 37, and `npm test` grows by 78 instead of 80.
    - `npx vitest run tests/component/markdown-editor.test.ts tests/component/markdown-source-edits.test.ts tests/component/display/markdownLexer.test.ts` is green.
    - `python3 <scratch>/decls.py <scratch>/proto/base-lines.ts src/typescript/lib/component/editor/markdownSourceLines.ts` prints nothing. It compares the two files declaration by declaration. Do the same for `base-tokens.ts` against `markdownSourceTokens.ts` and for `base-table.ts` against `src/typescript/lib/component/display/markdownTableExtension.ts`. If it names one of the declarations this plan replaces (`## Internal Structure` lists them), stop and report: the code of this plan was measured against those bodies. A name this plan does not touch is reported and then ignored.
 
@@ -1148,13 +1399,13 @@ Use the files to check your edits against, not in place of them.
 
 3. **Change the tests** as `## Expected Behaviour` says: `tests/component/markdown-editor.test.ts`, `tests/component/markdown-source-edits.test.ts` and `tests/component/display/markdownLexer.test.ts`. The lexer file imports `tableRowSegments`, which step 9 adds; until then `npm run typecheck:test` reports that import and nothing else.
 
-4. **See the rows fail.** `npx vitest run tests/component/markdown-editor.test.ts tests/component/markdown-source-edits.test.ts tests/component/display/markdownLexer.test.ts`. Exactly 90 tests fail: 62 in the first file, 17 in the second and 11 in the third. `### What is red before the code` lists them. If another test fails, or one of these does not, stop and report.
+4. **See the rows fail.** `npx vitest run tests/component/markdown-editor.test.ts tests/component/markdown-source-edits.test.ts tests/component/display/markdownLexer.test.ts`. Exactly 96 tests fail: 67 in the first file, 18 in the second and 11 in the third. `### What is red before the code` lists them. If another test fails, or one of these does not, stop and report.
 
-5. **Part A, the check and the reader** (`markdownSourceLines.ts`): A1, A2 and A3 of `## Internal Structure`. `npm run typecheck` reports the new declarations as not used yet; that ends with step 6.
+5. **Part A, the check and the readers** (`markdownSourceLines.ts`): A1, A2 and A3 of `## Internal Structure`. `npm run typecheck` reports the new declarations as not used yet; that ends with step 6.
 
-6. **Part A, block types**: A4. Check: `npm run typecheck` is clean.
+6. **Part A, block types**: A4 and A5. Check: `npm run typecheck` is clean. `grep -n "firstReplacedLine(" src/typescript/lib/component/editor/markdownSourceLines.ts` gives five lines: the definition, and one each in `markerLineChoices`, `convertBlocks`, `FENCED_CODE_SOURCE` and `listOff`.
 
-7. **Part A, the list toggle**: A5 to A9. Check: `npm run typecheck` is clean. `grep -n "escapeItemText(\|TASK_MARKER_FORM" src/typescript/lib/component/editor/markdownSourceLines.ts` gives four lines: the two declarations, the call in `itemReplacement` and the test in `escapeItemText`. `grep -c '{0,3}#/' src/typescript/lib/component/editor/markdownSourceLines.ts` gives 0: the early return of `toggleList` is gone, `alreadyBlock` reads `ATX_HEADING_START`, and no other test for a `#` heading is left. `grep -n "firstReplacedLine\|markerLineChoices" src/typescript/lib/component/editor/markdownSourceLines.ts` finds nothing: a lone marker line is left as it is (G2).
+7. **Part A, the list toggle**: A6 to A10. Check: `npm run typecheck` is clean. `grep -n "escapeItemText(\|TASK_MARKER_FORM" src/typescript/lib/component/editor/markdownSourceLines.ts` gives four lines: the two declarations, the call in `itemReplacement` and the test in `escapeItemText`. `grep -c '{0,3}#/' src/typescript/lib/component/editor/markdownSourceLines.ts` gives 0: the early return of `toggleList` is gone, `alreadyBlock` reads `ATX_HEADING_START`, and no other test for a `#` heading is left. `grep -c "firstReplacedLine(" src/typescript/lib/component/editor/markdownSourceLines.ts` gives 6: the five of step 6 and the one in `listOn`.
 
 8. **See Part A's rows pass.** The command of step 4 leaves 19 tests red: the rows `P17` to `P22`, the two `bold acts in a table cell …` rows, and the 11 of the lexer file. Everything else in the three files is green.
 
@@ -1212,11 +1463,12 @@ and add to `PARITY_COMMANDS`, beside the `h2` entry:
         h3:        (editor) => editor.setBlockType('h3'),
 ```
 
-**Rows that leave `DIFFERS`.** Delete these 12 rows from `DIFFERS`: `E16` (three), `E17`, `E20`, `E21`, `E31` (two), `E36`, `E28` (two), `E29`. Row `E35` and the comment above it stay (G2). Delete with the 12 the comments that speak of them alone:
+**Rows that leave `DIFFERS`.** Delete these 13 rows from `DIFFERS`: `E16` (three), `E17`, `E20`, `E21`, `E31` (two), `E36`, `E28` (two), `E29`, `E35`. Delete with them the comments that speak of them alone:
 
 - the two lines that start `// The differences that stay. A heading type makes each line of a block a heading`;
 - the line that starts `// A list toggle on a heading written with a setext underline`;
-- the two lines that start `` // Text opening with an unescaped `[ ] ` ``.
+- the two lines that start `` // Text opening with an unescaped `[ ] ` ``;
+- the line that starts `// An item whose marker stands on a line of its own`.
 
 The comment `// A list the WYSIWYG surface keeps as a raw Markdown block is one block there, and lines to source mode.` then opens the group of differences that stay; put `The differences that stay.` in front of its sentence.
 
@@ -1235,7 +1487,7 @@ The comment `// A list the WYSIWYG surface keeps as a raw Markdown block is one 
         ['E31', 'one\nmore\n---\n\npara', 'one', null, 'OL', '1. one\n   more\n\npara', '1. one\nmore\n\npara'],
 ```
 
-The other four (`E28` (two), `E29`, `E36`) hold documents the editor would not save as they stand, which a `SAME` row requires. They become rows of the source-mode `CASES` table below.
+The other five (`E28` (two), `E29`, `E35`, `E36`) hold documents the editor would not save as they stand, which a `SAME` row requires. They become rows of the source-mode `CASES` table below.
 
 **New `SAME` rows**, appended after them:
 
@@ -1287,7 +1539,7 @@ The other four (`E28` (two), `E29`, `E36`) hold documents the editor would not s
         ['E41', '# alpha \\#', 'alpha', null, 'code', '```\nalpha #\n```', '```\nalpha \\#\n```'],
 ```
 
-After this step `DIFFERS` has 38 rows where the base has 48 (36 without the *E41* rows), and `SAME` has 42 more.
+After this step `DIFFERS` has 37 rows where the base has 48 (35 without the *E41* rows), and `SAME` has 42 more.
 
 **One test after the `DIFFERS` loop**, directly before `it('a list kept as a raw block leaves its item with the item's text on the WYSIWYG surface alone', …)`:
 
@@ -1337,6 +1589,26 @@ After this step `DIFFERS` has 38 rows where the base has 48 (36 without the *E41
         {
             name: 'a heading with a setext underline that an item opens with leaves the list as a paragraph', doc: '- Title\n  ---\n- two', select: [3, 3],
             run: (editor) => editor.toggleUnorderedList(), result: 'Title\n- two',
+        },
+        {
+            name: 'E35 UL: an item marker on a line of its own goes with the item\'s text', doc: '-\n  one\n- two', select: [5, 5],
+            run: (editor) => editor.toggleUnorderedList(), result: 'one\n- two',
+        },
+        {
+            name: 'E35 OL: an item marker on a line of its own goes with the item\'s text', doc: '-\n  one\n- two', select: [5, 5],
+            run: (editor) => editor.toggleOrderedList(), result: '1. one\n- two',
+        },
+        {
+            name: 'E35 h2: an item marker on a line of its own goes with the item\'s text', doc: '-\n  one\n- two', select: [5, 5],
+            run: (editor) => editor.setBlockType('h2'), result: '## one\n- two',
+        },
+        {
+            name: 'an item marker on a line of its own goes with a nested first item\'s text', doc: '4)\n     * muro', select: [11, 11],
+            run: (editor) => editor.toggleUnorderedList(), result: 'muro',
+        },
+        {
+            name: 'an item marker on a line of its own goes with the text, and what the item holds follows it', doc: '-\n  one\n\n  second\n- two', select: [5, 5],
+            run: (editor) => editor.toggleUnorderedList(), result: 'one\n\nsecond\n- two',
         },
         {
             name: 'a heading of several lines that has the level already is left as it is', doc: 'one\nmore\n---', select: [1, 1],
@@ -1452,7 +1724,7 @@ After this step `DIFFERS` has 38 rows where the base has 48 (36 without the *E41
 
 The last of these is the last test of its `describe`; the closing `});` in the block above is that `describe`'s.
 
-**In `describe('line commands act on the blocks the viewer reads')`, add six tests** at the end of the `describe`:
+**In `describe('line commands act on the blocks the viewer reads')`, add seven tests** at the end of the `describe`:
 
 ```ts
     it('escapes a new item\'s text where it would read as a task marker or open a block inside the item', () => {
@@ -1493,6 +1765,25 @@ The last of these is the last test of its `describe`; the closing `});` in the b
         expect(apply('one #\ntwo', blockPrefixSource('## ')('one #\ntwo', 1, 1)!)).toBe('one #\ntwo\n---');
         // A code block's text is read afresh, as Markdown.
         expect(apply('```\ncode #\n```', blockPrefixSource('## ')('```\ncode #\n```', 0, 14)!)).toBe('## code #');
+    });
+
+    it('takes an item marker that stands on a line of its own along with the item\'s first block', () => {
+        expect(apply('-\n  one\n- two', listSource('unordered')('-\n  one\n- two', 5, 5)!)).toBe('one\n- two');
+        expect(apply('-\n  one\n- two', listSource('ordered')('-\n  one\n- two', 5, 5)!)).toBe('1. one\n- two');
+        expect(apply('-\n  one\n- two', blockPrefixSource('## ')('-\n  one\n- two', 5, 5)!)).toBe('## one\n- two');
+        expect(apply('4)\n     * muro', listSource('unordered')('4)\n     * muro', 11, 11)!)).toBe('muro');
+        expect(apply('-\n  one\n\n  second\n- two', blockPrefixSource('## ')('-\n  one\n\n  second\n- two', 5, 5)!)).toBe('## one\n\nsecond\n- two');
+        expect(apply('- a\n-\n  one\n- two', listSource('unordered')('- a\n-\n  one\n- two', 9, 9)!)).toBe('- a\n\none\n\n- two');
+        expect(apply('> -\n>   one\n> - two', blockPrefixSource('## ')('> -\n>   one\n> - two', 9, 9)!)).toBe('## one\n> - two');
+        // A setext heading that opens the item is taken whole; text that reads as a task marker after a new marker is escaped.
+        expect(apply('-\n  Title\n  ---\n- two', listSource('unordered')('-\n  Title\n  ---\n- two', 5, 5)!)).toBe('Title\n- two');
+        expect(apply('-\n  Title\n  ---\n- two', blockPrefixSource('### ')('-\n  Title\n  ---\n- two', 5, 5)!)).toBe('### Title\n- two');
+        expect(apply('-\n  [ ] mid\n- two', listSource('ordered')('-\n  [ ] mid\n- two', 9, 9)!)).toBe('1. \\[ \\] mid\n- two');
+        expect(apply('-\n  [ ] mid\n- two', listSource('unordered')('-\n  [ ] mid\n- two', 9, 9)!)).toBe('[ ] mid\n- two');
+        expect(apply('-\n  one', FENCED_CODE_SOURCE('-\n  one', 5, 5)!)).toBe('```\none\n```');
+        // The marker line stays where the lines above it would read otherwise without it: `2. x` is a list only above the `-`.
+        expect(apply('beta\n2. x\n-\n  gamma', blockPrefixSource('')('beta\n2. x\n-\n  gamma', 15, 15)!)).toBe('beta\n2. x\n-\ngamma');
+        expect(apply('beta\n2. x\n-\n  gamma', blockPrefixSource('## ')('beta\n2. x\n-\n  gamma', 15, 15)!)).toBe('beta\n2. x\n-\n## gamma');
     });
 
     it('tells a setext heading whose text opens with # from a # heading', () => {
@@ -1577,23 +1868,23 @@ describe('a table cell names the column it stands in', () => {
 
 ### What is red before the code
 
-With the tests in place and no source file changed, 90 tests fail.
+With the tests in place and no source file changed, 96 tests fail.
 
 | File | Red | Which |
 |---|---|---|
-| `markdown-editor.test.ts` | 62 | the 42 `SAME` rows added; `a heading of several lines that has the level already is left as it is on both surfaces`; the 14 line-command `CASES` rows; the 3 wiring rows; the 2 inline rows |
-| `markdown-source-edits.test.ts` | 17 | the 5 restated tests; the 6 new tests; `P17` to `P22` |
+| `markdown-editor.test.ts` | 67 | the 42 `SAME` rows added; `a heading of several lines that has the level already is left as it is on both surfaces`; the 19 line-command `CASES` rows; the 3 wiring rows; the 2 inline rows |
+| `markdown-source-edits.test.ts` | 18 | the 5 restated tests; the 7 new tests; `P17` to `P22` |
 | `markdownLexer.test.ts` | 11 | `LX45`, the nine `LX46` rows, `LX47` |
 
 After Part A, 19 are still red: `P17` to `P22`, the two inline rows and the 11 of the lexer file. They turn green with Part B.
 
-Green before and after, and pinning what must not change: every `DIFFERS` row that stays, the 36 listed under *Every row that remains in `DIFFERS`* (`E35` among them, which pins that a lone marker line stays), and the two new `E41` rows; the cost tests of `describe('a source-mode command does work proportional to the document')`; and these tests of `describe('line commands keep a paragraph whole')`, which pin that a line below a new item that would end it still makes the toggle decline: `declines a list item over a continuation line that would read as an HTML block` and `declines a list item that a line below would interrupt rather than continue`.
+Green before and after, and pinning what must not change: every `DIFFERS` row that stays, the 35 listed under *Every row that remains in `DIFFERS`*, and the two new `E41` rows; the cost tests of `describe('a source-mode command does work proportional to the document')`; and these tests of `describe('line commands keep a paragraph whole')`, which pin that a line below a new item that would end it still makes the toggle decline: `declines a list item over a continuation line that would read as an HTML block` and `declines a list item that a line below would interrupt rather than continue`.
 
 ### What does not change
 
 - **Availability.** The `can…` fields in source mode, and everything on the WYSIWYG surface.
 - **Undo.** A source-mode command is one transform, one edit and one `CodeEditor` change. The three wiring rows pin it for the new candidates.
-- **A command that acts at the base** gives the same edit, except in the cases of G1, G3 and G5. `## Verification` measures it.
+- **A command that acts at the base** gives the same edit, except in the cases of G1, G2, G3 and G5. `## Verification` measures it.
 - **Bytes outside the touched blocks.** As at the base, a command writes the lines of the blocks it converts and the container prefixes of what follows inside the containers it splits. `H5` of `## Verification` measures it.
 - **Bytes inside the touched blocks**, beyond what the base writes there. The new candidates write nothing but these:
 
@@ -1603,7 +1894,7 @@ Green before and after, and pinning what must not change: every `DIFFERS` row th
   | `===` or `---` on a line of its own | the `setext` form |
   | a space in place of each line end, a hard line break's backslash or trailing spaces dropped | the `joined` form |
   | a backslash before a closing `#` run | every `#` heading line |
-  | nothing in place of a setext underline | a list toggle on a setext heading |
+  | nothing in place of a setext underline, and nothing in place of an item's lone marker line | a list toggle on a setext heading; any command on an item's first block |
 
 - **What the tokenizer reads.** `splitRow` gives the same cell texts for every line; `LX47` and the round-trip suite pin it.
 
@@ -1620,13 +1911,14 @@ Needs manual verification, in a browser on the demo's MD Editor page (`npx vite`
 | B5 | `Title`, `===` | caret on `===`; **Insert ▸ Numbered list** | `1. Title` |
 | B6 | a table whose body row is `\| a \| << \| < \|` | select the last `<`; **Bold** | `\| a \| << \| **<** \|` |
 | B7 | B1's result | switch to WYSIWYG | one heading of two lines, as the viewer shows it |
+| B8 | `-`, `  one`, `- two` | caret on `one`; **Insert ▸ Bulleted list** | `one`, `- two`: no empty item above `one`; one Ctrl+Z gives the text back |
 
 ---
 
 ## Verification
 
 1. `npm run typecheck`, `npm run typecheck:test`, `npm run lint`: clean (after step 13; the probes do not typecheck).
-2. `npm test`: green. Against the base the count grows by 75 (73 without the *E41* rows): in `markdown-editor.test.ts` 42 `SAME` rows and 2 `DIFFERS` rows less the 12 `DIFFERS` rows deleted, 1 test, 14 and 3 and 2 `CASES` rows; in `markdown-source-edits.test.ts` 6 tests and 6 `P` rows; in `markdownLexer.test.ts` 11 tests.
+2. `npm test`: green. Against the base the count grows by 80 (78 without the *E41* rows): in `markdown-editor.test.ts` 42 `SAME` rows and 2 `DIFFERS` rows less the 13 `DIFFERS` rows deleted, 1 test, 19 and 3 and 2 `CASES` rows; in `markdown-source-edits.test.ts` 7 tests and 6 `P` rows; in `markdownLexer.test.ts` 11 tests.
 3. `npm run docs:api`, `npm run docs:llms:check`, `npm run build:lib`.
 
 4. **The differential against the base.** The probes are in the scratch folder under `probes-impl/`. They compare the copies step 2 made with the modules themselves, in one process, and run the measured prototype beside them. `runimpl.sh` copies a probe and its helpers into the tests tree, runs it and removes the probe:
@@ -1660,18 +1952,18 @@ Needs manual verification, in a browser on the demo's MD Editor page (`npx vite`
    | `H4c` | a block is joined to text that was a code block. The base does this; the new code must not |
    | `H5` | a line outside the touched blocks is not in the result, compared without its quote markers, list markers and indentation, each run of spaces and tabs read as one space |
    | `H7` | an edit that changes nothing |
-   | `H8` | a result differs from the base's, or the new code acts where the base did nothing, and the prototype's trace names none of this plan's changes as the reason. A lone marker line taken away would show here: no change of this plan explains it |
+   | `H8` | a result differs from the base's, or the new code acts where the base did nothing, and the prototype's trace names none of this plan's changes as the reason |
    | `H9` | the module gives another edit than the measured prototype |
 
    Measured on `736452bbc` with the code of the five `depends-on` plans applied and `marked` 18.1.0.[^numbers] `H9` is the implementer's check. The planner's counterpart is the run of this plan's module text against the measured prototype: 521,432 cases, none with another edit.
 
    | Set (line commands) | Cases | `H1` to `H8` | Same edit as the base | Both do nothing | Acts where the base did nothing | Another edit than the base | The base splits a heading that is one already |
    |---|---|---|---|---|---|---|---|
-   | documents aimed at this plan's gaps, 6,000 documents, eight commands (`h1` and `h3` among them) | 2,152,584 | 0 | 653,277 | 1,014,838 | 320,834 | 161,149 | 2,486 |
-   | review 6's generator, seeds 11 to 14, 1,500 documents each | 2,017,812 | 0 | 988,425 | 938,063 | 52,119 | 38,944 | 261 |
-   | the 70 row sets of reviews 4 and 5 and of the earlier planners and implementers | 236,552 | 0 | 149,337 | 79,102 | 3,310 | 4,803 | 0 |
-   | the block-locator plan's look-alike documents and one more generated seed, 2,100 documents | 970,320 | 0 | 409,374 | 514,985 | 28,709 | 17,156 | 96 |
-   | documents whose text reads otherwise in another block (a closing `#` run, escapes, punctuation at a line's start or end), 3,000 documents, eight commands | 306,192 | 0 | 197,344 | 40,464 | 37,499 | 30,178 | 707 |
+   | documents aimed at this plan's gaps, 6,000 documents, eight commands (`h1` and `h3` among them) | 2,152,584 | 0 | 614,408 | 1,014,838 | 320,834 | 200,018 | 2,486 |
+   | review 6's generator, seeds 11 to 14, 1,500 documents each | 2,017,812 | 0 | 978,426 | 938,063 | 52,119 | 48,943 | 261 |
+   | the 70 row sets of reviews 4 and 5 and of the earlier planners and implementers | 236,552 | 0 | 148,876 | 79,102 | 3,310 | 5,264 | 0 |
+   | the block-locator plan's look-alike documents and one more generated seed, 2,100 documents | 970,320 | 0 | 405,861 | 514,985 | 28,709 | 20,669 | 96 |
+   | documents whose text reads otherwise in another block (a closing `#` run, escapes, punctuation at a line's start or end), 3,000 documents, eight commands | 306,192 | 0 | 177,243 | 40,464 | 37,499 | 50,279 | 707 |
 
    Why the new code acts where the base did nothing, and why an edit differs, over all five sets (a case can have more than one reason):
 
@@ -1679,16 +1971,18 @@ Needs manual verification, in a browser on the demo's MD Editor page (`npx vite`
    |---|---|---|
    | a new item's text escaped (gap 1) | 50,338 | 8 |
    | of those, a task marker's form written as the text it shows (G7) | 44,945 | 0 |
-   | a setext heading under a list toggle (gap 2) | 145,047 | 8 |
+   | a setext heading under a list toggle (gap 2) | 145,047 | 9 |
    | one heading for a block of several lines (gaps 3 and 4) | 176,559 | 247,980 |
    | of those, a level 1 or 2 heading in the `joined` form | 263 | 729 |
    | the toggle taken by blocks (gap 4) | 85,662 | 0 |
-   | text that was a code block kept apart (gap 5) | 0 | 2,577 |
+   | text that was a code block kept apart (gap 5) | 0 | 2,607 |
    | a closing run of `#` escaped (gap 7) | 9,273 | 0 |
+   | an item's lone marker line taken along (gap 8) | 28,791 | 89,852 |
    | a heading of several lines in the selection left as it is, the other blocks converted | 1,821 | 2,566 |
-   | a setext heading whose text opens with `#`, which the base takes for a `#` heading | 152 | 60 |
+   | a setext heading whose text opens with `#`, which the base takes for a `#` heading | 152 | 65 |
+   | a touched block under a lone marker line that stays: the choice without it was taken, or the toggle does not take the block's first line | 4,515 | 321 |
 
-   The 8 in the last column of the row on escaped text and the 8 of the row on a setext heading under a list toggle are the same 8 cases, and they are among the 60 of the row on a setext heading whose text opens with `#`: the base acts there only because it takes that heading for a `#` heading. Apart from them, no escaped candidate and no toggle by blocks changes an edit the base makes, and no task marker's form written as text does.
+   The 8 in the last column of the row on escaped text are 8 of the 9 of the row on a setext heading under a list toggle, and all 9 are among the 65 of the row on a setext heading whose text opens with `#`: the base acts there only because it takes that heading for a `#` heading. The ninth also takes a lone marker line along. Apart from them, no escaped candidate and no toggle by blocks changes an edit the base makes, and no task marker's form written as text does.
 
    The form `lines`, a heading for each line, was taken in 0 of the 5,683,460 cases, and the `joined` form for a level 1 or 2 heading in 992.
 
@@ -1710,7 +2004,7 @@ Needs manual verification, in a browser on the demo's MD Editor page (`npx vite`
    | Family | Cases | Source reads otherwise than WYSIWYG, base | After | `P` | `H1` | `H8` | `H9` |
    |---|---|---|---|---|---|---|---|
    | review 6's three families (documents the editor saves) | 90,454 | 7,087 | 7,087 | 0 | 0 | 0 | 0 |
-   | the aimed documents (mostly hand-written forms), with `h1` and `h3` | 17,766 | 13,279 | 10,075 | 0 | 0 | 0 | 0 |
+   | the aimed documents (mostly hand-written forms), with `h1` and `h3` | 17,766 | 13,279 | 9,449 | 0 | 0 | 0 | 0 |
    | documents the editor saves whose text reads otherwise in another block, with `h1` and `h3` | 6,040 | 1,385 | 307 | 0 | 0 | 0 | 0 |
 
    Every case that still reads otherwise stands under a clause the docs keep.[^clauses]
@@ -1748,48 +2042,48 @@ Needs manual verification, in a browser on the demo's MD Editor page (`npx vite`
 
    | Document | Lines | Bulleted toggle, caret | Heading 2, caret | Bulleted toggle, everything | Heading 2, everything | Heading 3, everything |
    |---|---|---|---|---|---|---|
-   | headings and paragraphs of two lines | 400 | 3.4 / 3.0 | 2.3 / 2.6 | 4.3 / 4.7 | 3.1 / 3.0 | 3.5 / 3.1 |
-   | headings and paragraphs of two lines | 1,600 | 12.3 / 12.3 | 0.0 / 0.0 (both do nothing) | 25.2 / 26.4 | 17.1 / 14.5 | 17.4 / 17.4 |
-   | headings and paragraphs of two lines | 6,400 | 67.3 / 67.3 | 71.4 / 73.5 | 119.9 / 113.6 | 98.2 / 92.3 | 98.5 / 97.3 |
-   | one list, eight levels deep | 400 | 12.3 / 12.2 | 12.3 / 12.2 | 13.5 / 13.7 | 7.7 / 8.0 | 7.8 / 7.9 |
-   | one list, eight levels deep | 1,600 | 58.5 / 59.2 | 60.0 / 61.8 | 58.9 / 62.7 | 40.5 / 40.5 | 41.5 / 42.3 |
-   | one list, eight levels deep | 6,400 | 270.7 / 275.5 | 277.9 / 276.4 | 285.7 / 285.0 | 200.5 / 198.5 | 193.5 / 196.1 |
-   | a tight list | 400 | 7.4 / 6.8 | 5.0 / 5.1 | 5.4 / 5.4 | 4.6 / 4.7 | 4.5 / 4.7 |
-   | a tight list | 1,600 | 36.9 / 37.9 | 28.5 / 27.0 | 27.6 / 27.0 | 24.1 / 28.1 | 28.0 / 28.0 |
-   | a tight list | 6,400 | 188.6 / 191.0 | 135.4 / 145.2 | 148.5 / 151.2 | 130.3 / 132.8 | 126.8 / 129.5 |
-   | a loose list, each item holding a paragraph | 399 | 2.4 / 2.5 | 2.5 / 2.6 | 3.6 / 3.3 | 2.4 / 2.5 | 2.4 / 2.5 |
-   | a loose list, each item holding a paragraph | 1,599 | 11.0 / 10.7 | 11.6 / 10.8 | 14.5 / 14.0 | 10.9 / 11.0 | 10.8 / 10.8 |
-   | a loose list, each item holding a paragraph | 6,399 | 58.0 / 56.9 | 64.2 / 65.5 | 74.6 / 77.4 | 65.3 / 64.2 | 63.7 / 65.1 |
-   | paragraphs of three lines with a backslash line break | 399 | 2.2 / 2.0 | 3.3 / 2.2 (the base does nothing) | 6.3 / 15.1 (the base does nothing) | 3.9 / 2.3 (the base does nothing) | 4.1 / 2.3 (the base does nothing) |
-   | paragraphs of three lines with a backslash line break | 1,599 | 8.1 / 8.1 | 13.4 / 9.0 (the base does nothing) | 31.7 / 78.2 (the base does nothing) | 21.9 / 11.8 (the base does nothing) | 22.3 / 11.2 (the base does nothing) |
-   | paragraphs of three lines with a backslash line break | 6,399 | 123.5 / 269.7 (the base does nothing) | 95.5 / 60.1 (the base does nothing) | 169.2 / 417.8 (the base does nothing) | 117.9 / 70.8 (the base does nothing) | 114.9 / 70.4 (the base does nothing) |
-   | setext headings of two lines over a paragraph | 401 | 0.0 / 1.4 (the base does nothing) | 1.3 / 0.0 (the new code does nothing) | 0.0 / 2.3 (the base does nothing) | 1.7 / 1.5 | 1.7 / 1.6 |
-   | setext headings of two lines over a paragraph | 1,601 | 0.0 / 4.4 (the base does nothing) | 5.9 / 0.0 (the new code does nothing) | 0.1 / 9.3 (the base does nothing) | 7.6 / 6.7 | 7.8 / 7.2 |
-   | setext headings of two lines over a paragraph | 6,401 | 0.1 / 21.2 (the base does nothing) | 31.1 / 0.1 (the new code does nothing) | 0.4 / 49.3 (the base does nothing) | 44.8 / 38.1 | 42.6 / 42.5 |
-   | paragraphs that open with `[ ] ` | 399 | 3.1 / 4.3 (the base does nothing) | 1.7 / 1.8 | 7.0 / 9.5 (the base does nothing) | 2.2 / 2.3 | 2.3 / 2.3 |
-   | paragraphs that open with `[ ] ` | 1,599 | 11.7 / 20.9 (the base does nothing) | 6.1 / 8.9 | 36.6 / 48.9 (the base does nothing) | 10.0 / 10.6 | 10.4 / 10.7 |
-   | paragraphs that open with `[ ] ` | 6,399 | 76.3 / 109.8 (the base does nothing) | 48.9 / 52.3 | 297.3 / 375.9 (the base does nothing) | 62.1 / 64.3 | 64.6 / 64.3 |
+   | headings and paragraphs of two lines | 400 | 2.5 / 2.5 | 2.0 / 2.7 | 3.9 / 4.1 | 2.9 / 2.8 | 3.0 / 2.8 |
+   | headings and paragraphs of two lines | 1,600 | 9.8 / 9.9 | 0.0 / 0.0 (both do nothing) | 23.0 / 24.7 | 13.8 / 13.2 | 14.9 / 13.8 |
+   | headings and paragraphs of two lines | 6,400 | 62.4 / 59.5 | 64.3 / 64.2 | 105.4 / 108.3 | 89.6 / 85.1 | 90.4 / 84.3 |
+   | one list, eight levels deep | 400 | 11.9 / 11.3 | 11.1 / 11.6 | 11.7 / 11.7 | 7.4 / 7.7 | 7.4 / 7.7 |
+   | one list, eight levels deep | 1,600 | 54.4 / 54.4 | 55.4 / 57.6 | 56.3 / 57.6 | 36.3 / 36.1 | 35.0 / 36.2 |
+   | one list, eight levels deep | 6,400 | 246.5 / 245.3 | 252.0 / 254.7 | 253.4 / 253.8 | 180.7 / 178.4 | 175.0 / 179.0 |
+   | a tight list | 400 | 6.5 / 6.4 | 4.7 / 4.7 | 5.1 / 5.2 | 4.4 / 4.5 | 4.3 / 4.5 |
+   | a tight list | 1,600 | 35.2 / 32.1 | 25.0 / 24.5 | 24.7 / 26.7 | 24.4 / 25.9 | 25.9 / 26.2 |
+   | a tight list | 6,400 | 171.0 / 171.3 | 132.4 / 130.5 | 136.3 / 134.9 | 117.0 / 121.9 | 118.1 / 120.8 |
+   | a loose list, each item holding a paragraph | 399 | 2.4 / 2.4 | 2.4 / 2.4 | 3.6 / 3.4 | 2.3 / 2.4 | 2.3 / 2.4 |
+   | a loose list, each item holding a paragraph | 1,599 | 10.4 / 9.8 | 10.5 / 10.5 | 13.2 / 14.1 | 9.8 / 10.2 | 10.0 / 10.1 |
+   | a loose list, each item holding a paragraph | 6,399 | 53.9 / 55.6 | 57.6 / 59.4 | 68.2 / 70.9 | 59.0 / 58.6 | 57.6 / 60.4 |
+   | paragraphs of three lines with a backslash line break | 399 | 2.4 / 1.9 | 3.1 / 2.0 (the base does nothing) | 6.1 / 14.5 (the base does nothing) | 3.6 / 2.3 (the base does nothing) | 3.9 / 2.1 (the base does nothing) |
+   | paragraphs of three lines with a backslash line break | 1,599 | 7.7 / 7.8 | 12.9 / 8.5 (the base does nothing) | 28.3 / 71.7 (the base does nothing) | 20.2 / 10.6 (the base does nothing) | 19.7 / 10.0 (the base does nothing) |
+   | paragraphs of three lines with a backslash line break | 6,399 | 120.1 / 243.9 (the base does nothing) | 82.8 / 54.7 (the base does nothing) | 149.7 / 379.9 (the base does nothing) | 106.5 / 66.6 (the base does nothing) | 105.2 / 63.5 (the base does nothing) |
+   | setext headings of two lines over a paragraph | 401 | 0.0 / 1.2 (the base does nothing) | 1.3 / 0.0 (the new code does nothing) | 0.0 / 2.2 (the base does nothing) | 1.6 / 1.5 | 1.6 / 1.6 |
+   | setext headings of two lines over a paragraph | 1,601 | 0.0 / 3.9 (the base does nothing) | 5.6 / 0.0 (the new code does nothing) | 0.1 / 7.4 (the base does nothing) | 7.0 / 6.4 | 7.0 / 6.8 |
+   | setext headings of two lines over a paragraph | 6,401 | 0.1 / 19.1 (the base does nothing) | 28.4 / 0.1 (the new code does nothing) | 0.4 / 46.6 (the base does nothing) | 41.6 / 35.2 | 38.6 / 38.4 |
+   | paragraphs that open with `[ ] ` | 399 | 3.0 / 4.0 (the base does nothing) | 1.3 / 1.8 | 6.6 / 9.5 (the base does nothing) | 2.1 / 2.2 | 2.1 / 2.2 |
+   | paragraphs that open with `[ ] ` | 1,599 | 11.1 / 19.6 (the base does nothing) | 6.0 / 7.7 | 32.7 / 46.8 (the base does nothing) | 9.4 / 9.6 | 9.1 / 9.8 |
+   | paragraphs that open with `[ ] ` | 6,399 | 67.0 / 97.3 (the base does nothing) | 45.1 / 44.7 | 285.1 / 350.9 (the base does nothing) | 58.4 / 60.6 | 59.6 / 61.6 |
 
-   Over the 231 command timings where both sides act and the base takes at least 1 ms, the new code took 1.00 times the base's time at the median, 1.06 times at the ninth decile and 1.46 times at worst.
+   Over the 231 command timings where both sides act and the base takes at least 1 ms, the new code took 1.00 times the base's time at the median, 1.05 times at the ninth decile and 1.39 times at worst.
 
    Analysis, base / new analysis (only a table is read otherwise):
 
    | Document | Lines | Analysis |
    |---|---|---|
-   | headings and paragraphs of two lines | 400 | 0.5 / 0.6 |
-   | headings and paragraphs of two lines | 1,600 | 2.0 / 2.1 |
-   | headings and paragraphs of two lines | 6,400 | 8.6 / 9.0 |
-   | one list, eight levels deep | 400 | 3.6 / 3.4 |
-   | one list, eight levels deep | 1,600 | 13.8 / 14.9 |
-   | one list, eight levels deep | 6,400 | 66.0 / 67.5 |
-   | a tight list | 400 | 1.4 / 1.3 |
-   | a tight list | 1,600 | 5.2 / 5.3 |
-   | a tight list | 6,400 | 22.7 / 24.0 |
-   | one table of four columns with merged cells | 402 | 2.8 / 2.5 |
-   | one table of four columns with merged cells | 1,602 | 10.7 / 11.7 |
-   | one table of four columns with merged cells | 6,402 | 53.4 / 52.1 |
+   | headings and paragraphs of two lines | 400 | 0.5 / 0.5 |
+   | headings and paragraphs of two lines | 1,600 | 2.1 / 2.0 |
+   | headings and paragraphs of two lines | 6,400 | 7.8 / 8.0 |
+   | one list, eight levels deep | 400 | 3.4 / 3.4 |
+   | one list, eight levels deep | 1,600 | 12.7 / 13.5 |
+   | one list, eight levels deep | 6,400 | 59.7 / 58.8 |
+   | a tight list | 400 | 1.2 / 1.3 |
+   | a tight list | 1,600 | 5.1 / 5.1 |
+   | a tight list | 6,400 | 21.0 / 21.3 |
+   | one table of four columns with merged cells | 402 | 2.5 / 2.5 |
+   | one table of four columns with merged cells | 1,602 | 10.0 / 10.1 |
+   | one table of four columns with merged cells | 6,402 | 49.5 / 50.8 |
 
-   Growth of a command over everything from 1,600 to 6,400 lines (fourfold is linear): the new code 4.1- to 7.7-fold over 47 timings, 5.5-fold at the median; the base 4.3- to 6.3-fold over 39 timings, 5.4-fold at the median.
+   Growth of a command over everything from 1,600 to 6,400 lines (fourfold is linear): the new code 4.4- to 7.7-fold over 47 timings, 5.5-fold at the median; the base 4.4- to 6.5-fold over 39 timings, 5.4-fold at the median.
 
    Over the 32 timings where the base tries its candidates and does nothing and the new code acts, the new code took 0.5 to 2.5 times the base's time, 1.4 times at the median.
 
@@ -1810,6 +2104,10 @@ No export changes: nothing is added to a barrel and `llms.txt` is not affected. 
 
      > a heading is taken whole and becomes one item, a setext heading's underline dropped; where the selected lines cannot be items of their own — a hard line break written with a backslash stands between them, or an emphasis run spans them — the blocks they touch are toggled whole, each as one item, as on the WYSIWYG surface; a new item's text is escaped where it would read as a task marker or open a block inside the item, as the WYSIWYG surface escapes it (`[ ] a` gives `- \[ \] a`);
 
+   - after `a task item's marker written as the text it shows (`` `- [x] a` `` gives `` `\[x\] a` ``).` add:
+
+     > A list item's marker that stands on a line of its own goes with the item's first block.
+
    - replace `a converted block is first set apart by blank lines (so a paragraph does not join the text or definition around it)` with `a converted block is first set apart by blank lines (so a paragraph does not join the text or definition around it, and text that was a code block stays in blocks of its own)`.
 
 2. In the paragraph that lists the differences for Markdown the editor saves (after `markdown-source-mode-list-lift-parity` it starts `For Markdown written as the editor saves it` and goes on `They come from the surfaces holding different things:`), delete two clauses:
@@ -1822,6 +2120,7 @@ No export changes: nothing is added to a barrel and `llms.txt` is not affected. 
 
 3. In the paragraph that starts `Markdown the editor would not write itself`:
    - delete the clause `a list toggle on text that opens with an unescaped `` `[ ] ` `` or `` `[x] ` ``, which the new item would read as a task marker (the editor writes `` `\[ \]` ``);`
+   - delete the sentence that starts `Where an item's marker stands on a line of its own`;
    - in the clause on indentation, after `a block standing indented below an empty list item` add `(source mode rewrites the lines of the blocks it converts, never the indentation of a block that only stands below them)`;
    - add before `and indentation that would make the lines after the result read otherwise`: `a line below a new item that would end the item rather than continue it (`` `foo` `` / `` `2. bar` `` with the caret on `` `foo` ``);`
 
@@ -1833,7 +2132,7 @@ Under `## Changed` → `### Components`:
 
 Under `## Fixed` → `### Components`:
 
-> - **`MarkdownEditor`'s source-mode block commands act in more places where the WYSIWYG commands act.** A list toggle did nothing on text that opens with `[ ] ` or `[x] `, on a heading written with a setext underline, and for a selection that takes the line after a backslash line break; the heading types did nothing in a block that holds such a break, and on text that ends in a space and a run of `#`. The toggles now write the new item's text escaped as the WYSIWYG surface writes it (`- \[ \] a`), make one item of the heading's text, and toggle the touched blocks whole where their lines cannot be items of their own. A heading line is written with a closing `#` run escaped (`## one \#`). A code block turned into a paragraph or a quote no longer joins the paragraph next to it. `toggleBold()` and the other inline commands now act in a table cell that follows a merged cell (`| a | << | < |`). No consumer action is needed.
+> - **`MarkdownEditor`'s source-mode block commands act in more places where the WYSIWYG commands act.** A list toggle did nothing on text that opens with `[ ] ` or `[x] `, on a heading written with a setext underline, and for a selection that takes the line after a backslash line break; the heading types did nothing in a block that holds such a break, and on text that ends in a space and a run of `#`. The toggles now write the new item's text escaped as the WYSIWYG surface writes it (`- \[ \] a`), make one item of the heading's text, and toggle the touched blocks whole where their lines cannot be items of their own. A heading line is written with a closing `#` run escaped (`## one \#`). A list item's marker on a line of its own no longer stays behind as an empty item, and a code block turned into a paragraph or a quote no longer joins the paragraph next to it. `toggleBold()` and the other inline commands now act in a table cell that follows a merged cell (`| a | << | < |`). No consumer action is needed.
 
 Run `npm run docs:llms:check` afterwards.
 
@@ -1843,8 +2142,8 @@ Run `npm run docs:llms:check` afterwards.
 
 - **The base moved.** A plan of `depends-on` may have edited a function this plan replaces. Step 1 stops on that. Merge by hand, then rerun steps 4, 8, 11 and 12 in full.
 - **A row's expected text differs by a blank line or a backslash.** The order of the candidates decides both. A blank line too many means a form was skipped; a backslash too many means an escaped candidate was tried before an unescaped one. Compare `listOn`'s loop and `convertBlocks`'s `forms` with the code above; do not change the row.
-- **`H2` or `H9` above 0 in the differential.** The jsonl row carries the prototype's trace in `notes`. Diff the function the case runs through against `proto/zz-gap-clean-lines.ts`.
-- **A cost test of `markdown-source-edits.test.ts` fails.** The count is of array elements handed to scans. Look for a `find`, `filter` or `split` over a whole list or a whole text inside `takenLines` or `textLineSpans`.
+- **`H2` or `H9` above 0 in the differential.** The jsonl row carries the prototype's trace in `notes`. Check first that every command tries the choices of `markerLineChoices`: without the second one a command declines where the marker line cannot go. Then diff the function the case runs through against `proto/zz-gap-clean-lines.ts`.
+- **A cost test of `markdown-source-edits.test.ts` fails.** The count is of array elements handed to scans. Look for a `find`, `filter` or `split` over a whole list or a whole text inside `firstReplacedLine`, `takenLines` or `textLineSpans`.
 - **The lint rule on a call inside a condition.** The project does not put a function call directly in an `if` or `while` condition; the code above assigns each to a named constant first. Keep that when merging.
 - **`markdown-editor-heading-to-code-escapes` lands in between.** Step 1 checks for its `E41` rows when you start. If it lands while this plan is in progress, take out this plan's two `E41` rows, their comment and the docs clause before committing.
 - **`marked` changes version.** The setext rule this plan relies on (which lines end a setext heading) was read off 18.1.0, the version `marked-upgrade` pins. The `SAME` rows `G5`, `G8` and `G10` and the row `a continuation line that would end a setext heading is escaped` are the check to rerun after an upgrade.
@@ -1869,8 +2168,7 @@ Run `npm run docs:llms:check` afterwards.
 
 - **Rows `E32` and `E33`.** Acting there means re-indenting blocks the command does not touch. See the decision.
 - **A line below a new item that would end it** (`foo` / `2. bar` with the caret on `foo`). The WYSIWYG surface writes that line indented and escaped; source mode leaves the lines below a new item as they are, and declines. It is a hand-written shape, the docs now name it, and the tests `declines a list item …` pin it.
-- **The differences this plan leaves in `DIFFERS`**: the 36 rows of the table above. Each is another plan's, a product difference, an owner's answer, or a question the owner has not been asked.
-- **An item marker on a line of its own** (row `E35`). Source mode leaves it where it is (G2).
+- **The differences this plan leaves in `DIFFERS`**: the 35 rows of the table above. Each is another plan's, a product difference, an owner's answer, or a question the owner has not been asked.
 - **A code block made from a heading.** Rows `E41` pin it. `markdown-editor-heading-to-code-escapes` closes it on the WYSIWYG surface.
 - **The escapes G7 leaves.** A definition's label that opens a new item's text is escaped at its `[` alone (`- \[a]: /url`, where the WYSIWYG surface writes `- \[a\]: /url`), and source mode writes no escape where the text reads the same without it (`--- tail` as a line of a paragraph, where the WYSIWYG surface writes `\--- tail`). Both readings are the same in the viewer; see G7.
 - **`setBlockType` on a block a list item holds.** Source mode takes it out of the list and the WYSIWYG surface converts it in place. This plan changes how the heading is written there, not where it stands.
@@ -1899,13 +2197,17 @@ Run `npm run docs:llms:check` afterwards.
 
 [^locator-b2]: Class B of the block-locator plan's addendum *The 77 cases of B2*: one tab document (`D1` of `plans4/locator-77/cases-77.txt`), the bulleted toggle from the paragraph `same` on line 0 into the item's setext heading on line 2, two selections. Before that plan source mode misplaced the heading and wrote `- ` before line 0; that plan places the heading, and since a list toggle declined on a setext heading, does nothing; it records the case as following that rule. With this plan the toggle takes the heading whole, and both selections give the same edit as before that plan, `- ` before line 0, as does the same document with spaces for the tab (`out/d1.json` of this plan's scratch folder). That edit reads in the viewer as the WYSIWYG result. Neither plan needs a change: the case is listed so that the two plans' verdicts are read together.
 
-[^atx-test]: `#tag` followed by `---` is a setext heading: a `#` heading needs a space after its `#` run. The base reads such a heading as written with `#` in two places. `toggleList` then does not decline on it, and makes an item of each of its lines; `alreadyBlock` takes it for a heading of its level in the written form, and `setBlockType` with that level does nothing. Both now read it as the setext heading it is. In the measured sets this is 212 cases, all in the set whose text holds such characters.
+[^atx-test]: `#tag` followed by `---` is a setext heading: a `#` heading needs a space after its `#` run. The base reads such a heading as written with `#` in two places. `toggleList` then does not decline on it, and makes an item of each of its lines; `alreadyBlock` takes it for a heading of its level in the written form, and `setBlockType` with that level does nothing. Both now read it as the setext heading it is. In the measured sets this is 217 cases, all in the set whose text holds such characters.
 
 [^two-readings]: The second reading changes the on/off decision too, not only what is written: in `- one\ ⏎ ··two ⏎ - three` the line `two` is no marker line, so by lines the toggle is on; by blocks all touched blocks are items, so it is off, which is what the WYSIWYG surface does. The readings are compared before the second is run, so a command that declines for another reason does not pay for it twice. A hard line break written with trailing spaces does not reach the second reading: `one·· ⏎ two` split into two items reads as intended, because the spaces at the end of an item's text show nothing.
 
 [^heading-forms]: The base wrote a heading per line because a `#` line holds one line. That splits one block into several, whatever is selected: with the caret on one line of a three-line paragraph it wrote three headings. The `lines` form stays as the last candidate so that a command that acts at the base still acts where neither form of one heading can be written; in the measured sets it was taken in 0 of 5,683,460 cases. The setext text lines are written without the whitespace they open with, as the `#` forms write them: `marked` reads a line of four spaces under a setext heading's first line as the end of the heading. The escaped forms escape a line that would end the heading (`2. bar` becomes `2\. bar`); the underline is never escaped.
 
 [^closing-run]: The rule is `ATX_CLOSING_SEQUENCE`: a run of `#` with only whitespace after it, after a space or tab or as the whole text. It is applied wherever a `#` heading line is written from a block of text, in the `joined` and `lines` forms and for a block of one line. It is a rule of the writer and not a candidate, because the unescaped line can never read as intended: the `#` run is always dropped. Measured, no command that acts at the base gives another edit because of it. The serializer's own rule is in `serializeHeading` (`markdownSerializer.ts:2289`).
+
+[^marker-line]: The walk stops at the first container the block does not open, at a `:::` column, and at a quote: a quote's own marker line (`>` above `> one`) is a blank line of the quote, not a marker that the block's leaving empties. The check cannot tell an empty list item from none, because an empty item has no leaf; that is why the base's edit passed it. The second choice, without the marker line, keeps a command acting where the base acts: in `beta ⏎ 2. x ⏎ - ⏎ ··gamma`, `marked` reads `2. x` as a list item only because the `-` line follows it, so the edit that takes the `-` line reads otherwise and is rejected. With both choices the base's own edit is always among the candidates.
+
+[^g2]: The owner first answered G2 no, the marker line left where it is, and reversed that on 2026-10-14: in the parity run on the aimed documents a lone marker stayed behind as an empty item in 496 results where the WYSIWYG surface removes it. With the marker line taken, no result keeps a marker that a command emptied: the 16 results still counted under that clause are one document whose first item, which the command does not touch, the WYSIWYG surface rewrites as it saves the whole document.
 
 [^escape-survey]: `rows-escapes.json` and `rows-escapes2.json` in the scratch folder, run on both surfaces and on both line modules (`out/escapes.jsonl`, `out/escapes2.jsonl`). The 28 line starts of the first set are `# x #`, `> x`, `- x`, `---`, `+ x +`, `++x++`, `* x *`, `***`, `===`, `_x_`, `___`, `~~~`, `~x~`, ```` ``` ````, `` `x` ``, `<div>`, `<b>`, `<x-y>`, `\| a \|`, `::: x`, `: x`, `[a]: b`, `[ ] mid`, `[x] mid`, `[a] b`, `2. bar`, `2) bar` and `1. bar`, each in four positions: a paragraph's second line under both list toggles and `h2`/`h3`, a list item's later paragraph, a quote's second line, and an item's second line, under the toggles and the block types. The second set adds definitions with and without a title, the task forms with `X`, a tab and nothing after the brackets, lone HTML tags, and a fence with a backtick in its info string. In every case where source mode writes an escape, it is the WYSIWYG surface's escape, but for the definition's label.
 
@@ -1921,9 +2223,9 @@ Run `npm run docs:llms:check` afterwards.
 
 [^prototype]: `proto/zz-gap-clean-lines.ts`, `proto/zz-gap-tokens.ts` and `proto/markdownTableExtension.gap.ts` in the scratch folder are the modules as this section gives them; the code blocks here were cut from those files by script (`buildplan.py`). The measured line module, `proto/zz-gap-lines.ts`, is the same code with trace lines; the two gave the same edit in 521,432 cases. Put in place of the real modules in a copy of the private repository, with the plan's three test files beside them, `tsc` reports nothing for the library and for the tests, and `eslint` reports nothing for the three modules.
 
-[^tests]: `mktests.py` in the scratch folder wrote the test changes onto the three test files as the plans of `depends-on` leave them (`tests-base/`), reading the expected texts from the probes' outputs (`out/expect1.jsonl`, `out/expect6.json`, `out/explore8.jsonl`). Run three ways: 1,550 tests, all green with this plan's modules; 90 red with the base's modules; 19 red with the line module of Part A alone. The whole suite of the private copy (591 files) was run with this plan's modules and test files in place: 20,327 tests, all green, 75 more than the 20,252 of the base.
+[^tests]: `mktests.py` in the scratch folder wrote the test changes onto the three test files as the plans of `depends-on` leave them (`tests-base/`), reading the expected texts from the probes' outputs (`out/expect1.jsonl`, `out/expect6.json`, `out/explore8.jsonl`). Run three ways: 1,555 tests, all green with this plan's modules; 96 red with the base's modules; 19 red with the line module of Part A alone. The whole suite of the private copy (591 files) was run with this plan's modules and test files in place: 20,332 tests, all green, 80 more than the 20,252 of the base.
 
-[^numbers]: `sumcounts.py` adds the counts of a folder of outputs. The numbers are those of the full run with the final prototype (`out/aim-r`, `out/gen-r`, `out/rows-r`, `out/look-r`, `out/trickydiff-r`, `out/par-r`, `out/paraim-r`, `out/tricky-r`, `out/cells-r`, `out/inline-r`), through the planner's probes, which compare copies of the base's modules with this plan's; `probes-impl/` holds the same probes with the imports turned to the base copies and the real modules.
+[^numbers]: `sumcounts.py` adds the counts of a folder of outputs. The numbers are those of the full run with the final prototype (`out/aim-g`, `out/gen-g`, `out/rows-g`, `out/look-g`, `out/trickydiff-g`, `out/par-g`, `out/paraim-g`, `out/tricky-g`, `out/cells-g`, `out/inline-g`), through the planner's probes, which compare copies of the base's modules with this plan's; `probes-impl/` holds the same probes with the imports turned to the base copies and the real modules. `out/cells-g` and `out/inline-g` are copies of the earlier revision's runs: the table part's probes do not load the line module, the only module the answer G2 changed.
 
 [^clauses]: `anpar.py` in the scratch folder puts each remaining case under a clause.
 
@@ -1931,6 +2233,6 @@ Run `npm run docs:llms:check` afterwards.
     |---|---|---|
     | review 6's three families | 7,087, each with the source result it had at the base | 1,548 in documents that hold a block the WYSIWYG surface keeps as raw Markdown; 2,550 a selection from one `:::` column into the next; 2,989 `setBlockType` on a block a list item holds, or on the heading it opens with |
     | documents whose text reads otherwise in another block | 307 of 1,385 | 147 `setBlockType` on a block a list item holds; 152 single lines of a block made items; 8 a code block made from a heading (rows `E41`) |
-    | the aimed documents | 10,075 of 13,279 | 4,493 `setBlockType` on a block a list item holds or on the heading or quote it opens with; 2,168 a raw Markdown block in the document; 1,315 a code block, an HTML block, a table, a definition or a thematic break in the selection; 620 single lines; 589 a selection across `:::` columns; 496 an item marker on a line of its own, left where it is (G2); 229 looseness alone; 65 a code block that holds the text in each surface's own form; 21 an empty list item; 79, in 8 hand-written documents, that the script does not place and were read one by one: 48 `setBlockType` on a list item's paragraph reached through a line written without the item's indentation; 16 where the WYSIWYG surface reads a `:::` line right under a paragraph as that paragraph's text and the viewer reads a column block; 15 where source mode does nothing (a line below the new item that would end it, a quote or an item continued by an unindented line) |
+    | the aimed documents | 9,449 of 13,279 | 4,483 `setBlockType` on a block a list item holds or on the heading or quote it opens with; 2,143 a raw Markdown block in the document; 1,315 a code block, an HTML block, a table, a definition or a thematic break in the selection; 490 single lines; 589 a selection across `:::` columns; 243 looseness alone; 65 a code block that holds the text in each surface's own form; 21 an empty list item; 16 in one document whose first item, which no command touches, has its marker on a line of its own and is rewritten by the WYSIWYG surface as it saves the whole document; 84, in 8 hand-written documents, that the script does not place and were read one by one: 53 `setBlockType` on a list item's paragraph reached through a line written without the item's indentation; 16 where the WYSIWYG surface reads a `:::` line right under a paragraph as that paragraph's text and the viewer reads a column block; 15 where source mode does nothing (a line below the new item that would end it, a quote or an item continued by an unindented line) |
 
     The three families hold none of this plan's shapes, so their count does not move; it is the 7,087 that `markdown-source-mode-list-lift-parity` reports. In the aimed documents the base's result reads as the WYSIWYG result and the new one does not in 17 cases. All 17 are `setBlockType` on a setext heading that a list item holds: the base did nothing because of the heading's backslash line break, the WYSIWYG surface has nothing to change, and source mode now takes the heading out of the list, as it does for every block a list item holds. In 30 cases (19 in the aimed documents, 11 in the documents whose text reads otherwise in another block) the base acts and the new code does nothing; in all 30 the WYSIWYG surface changes nothing either: a heading of several lines that has the level already.
