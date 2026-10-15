@@ -733,6 +733,12 @@ page resets to empty.
   distance: up or down for a row, sideways for a table column. See the
   entry under Changed for what follows and what does not.
 
+- **A `Tree`, `Table` or `TreeTable` no longer holds empty rows.** A view
+  with more rows than fit kept three spare pool rows displayed and unbound,
+  which were empty `treeitem` or `row` elements a screen reader could reach.
+  A spare row is now hidden until it shows data. No consumer action is
+  needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
