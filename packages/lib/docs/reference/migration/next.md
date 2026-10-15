@@ -484,6 +484,9 @@ loaded and saved without an edit is still saved byte for byte.
 | `*a*\🙂` — emphasis, then a backslash and an emoji | emphasis holding `a*`, then `🙂` | emphasis holding `a`, then `\🙂` |
 | a line after a hard line break, starting with spaces | the spaces shown | the spaces dropped |
 
+In the editor, text typed as `&#35;` is now saved as `\&#35;`, so that it
+stays the text that was typed.
+
 **Who needs to act.** Nothing fails to compile. Review content that relies
 on one of the readings in the *Before* column. The one most likely to
 matter is a link written around a link: write the outer text without a
@@ -496,3 +499,6 @@ link inside it, or keep only the inner link.
 <!-- After: pick one target -->
 [docs](/in)
 ```
+
+An application that showed `&#35;` or `&#169;` as literal text on purpose
+writes `\&#35;` instead.
