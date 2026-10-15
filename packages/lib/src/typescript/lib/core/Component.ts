@@ -1392,6 +1392,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._ownedHandles.length = 0;
+
+        // Both buffers are still bound to a handle released above, so a setter
+        // called from here on would write through it. Detached, they keep
+        // taking writes and reach no element — what `release()` does for the
+        // same reason.
+        this._inlineStyle.detach();
+        this._elementAttributes.detach();
+
         this._element             = undefined;
     }
 
@@ -4801,6 +4809,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * element handle is released, while its parent link may or may not be —
      * `destructor` clears the child list, not the children's parent links —
      * so the link cannot stand in for liveness.
+     *
+     * A component also asks this of itself after an `await`: the code that
+     * follows may be running after its own teardown, and then it must return
+     * without touching the component, a consumer callback or caller-owned data.
      *
      * @returns `true` once the component has been destroyed.
      *
