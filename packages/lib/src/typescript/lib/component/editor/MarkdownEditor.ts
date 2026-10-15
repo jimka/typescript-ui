@@ -30,7 +30,7 @@ import {
     $getChildCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection, COMMAND_PRIORITY_LOW,
     INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND, $getNodeByKey, $addUpdateTag, $setState,
     HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG, BEFORE_INPUT_COMMAND, INPUT_COMMAND, COMMAND_PRIORITY_EDITOR, COMPOSITION_END_TAG,
-    COMPOSITION_START_COMMAND, $getEditor,
+    COMPOSITION_START_COMMAND, $getEditor, $insertNodeToNearestRootAtCaret,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
@@ -56,7 +56,7 @@ import {
     $insertTableColumnAtSelection, $deleteTableColumnAtSelection,
     $getTableColumnIndexFromTableCellNode, $isTableCellNode, $isTableRowNode,
     $isTableSelection, $mergeCells, $unmergeCell, $isTableNode,
-    INSERT_TABLE_COMMAND, $computeTableMapSkipCellCheck, $createTableCellNode, $createTableNode, $createTableRowNode,
+    $createTableNodeWithDimensions, $computeTableMapSkipCellCheck, $createTableCellNode, $createTableNode, $createTableRowNode,
 } from "@lexical/table";
 import type { TableRowNode, TableSelection } from "@lexical/table";
 import { mergeRegister, $getNearestNodeOfType, $handleIndentAndOutdent } from "@lexical/utils";
@@ -4684,6 +4684,43 @@ export interface CommandAvailability {
 }
 
 /**
+ * `$insertNodeToNearestRootAtCaret`'s test for splitting the block at the
+ * caret: never. Its split then still happens where both halves would hold
+ * content, and is skipped where one half would be empty, so no empty quote,
+ * heading or list item is left beside the inserted node.
+ *
+ * @returns Always `false`.
+ */
+function $makesNoEmptyHalf(): boolean {
+    return false;
+}
+
+/**
+ * Inserts a table at a selection point, after splitting the block holding
+ * it only where the point is inside its content ({@link $makesNoEmptyHalf}).
+ * A table that ends its container gets an empty paragraph after it, which
+ * saves nothing and lets the caret go below the table. The caret lands in
+ * the table's first cell.
+ *
+ * @param point - Where the table goes.
+ * @param rows - The number of rows, including the header row.
+ * @param columns - The number of columns.
+ */
+function $insertTableAt(point: PointType, rows: number, columns: number): void {
+    const table = $createTableNodeWithDimensions(rows, columns, { rows: true, columns: false });
+
+    $insertNodeToNearestRootAtCaret(table, $caretFromPoint(point, "next"), { $shouldSplit: $makesNoEmptyHalf });
+
+    const endsContainer = table.getNextSibling() === null;
+
+    if (endsContainer) {
+        table.insertAfter($createParagraphNode());
+    }
+
+    table.selectStart();
+}
+
+/**
  * The node `insertTable` and `insertImage` insert at when there is no range
  * selection: both then put a caret at the document's end, so it is the
  * document's last node.
@@ -8288,7 +8325,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * where it started; where the removal leaves the caret at a raw block, a
      * code block or another table next to it, the new table goes into a new
      * paragraph where the removed one was. `canInsertTable` reports whether
-     * the table would go in.
+     * the table would go in. The block holding the caret is split only where
+     * the caret is inside its content, so no empty quote, heading or list
+     * item is left beside the table; a table that ends its container is
+     * followed by an empty paragraph.
      *
      * In `"source"` mode, inserts the raw-Markdown GFM table skeleton above
      * the block holding the caret instead.
@@ -8308,26 +8348,33 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         const editor = this.ensureEditor();
 
-        // INSERT_TABLE_COMMAND inserts at the selection's focus and removes nothing. A freshly built editor
-        // may have no selection, so seed one first; a table-edge range is removed first, as insertImage()
-        // removes it, or the table would go into the cell the range ends in. The caret that leaves stays out
-        // of a block next to the removed table that takes no table: a raw block, a code block, another table.
-        // The command is dispatched in the same update, so the removal and the new table are one undo step.
+        // A freshly built editor may have no selection, so seed one first; a table-edge range is removed first,
+        // as insertImage() removes it, or the table would go into the cell the range ends in. The caret that
+        // leaves stays out of a block next to the removed table that takes no table: a raw block, a code block,
+        // another table. The table is placed by $insertTableAt, which splits the caret's block only where both
+        // halves hold content. The removal and the new table are one update, so one undo step.
         editor.update(() => {
-            const selection = $getSelection();
-            const isTableEdge = $isTableEdgeRange(selection);
+            const initial = $getSelection();
+            const moved = $settleSelectionOffContainers(initial);
+            const isTableEdge = $isTableEdgeRange(initial);
+            const hadRange = $isRangeSelection(initial);
 
             if (isTableEdge) {
-                $removeTableEdgeRange(selection, $holdsNoTable);
-            } else if (!$isRangeSelection(selection)) {
+                $removeTableEdgeRange(initial, $holdsNoTable);
+            } else if (!hadRange) {
                 $getRoot().selectEnd();
             }
 
-            editor.dispatchCommand(INSERT_TABLE_COMMAND, {
-                columns:        String(columns),
-                rows:           String(rows),
-                includeHeaders: { rows: true, columns: false },
-            });
+            const selection = $getSelection();
+            const hasRange = $isRangeSelection(selection);
+            // A point moved off a `:::` block, or between two blocks, may have settled where no table goes (a code block).
+            const declinedOnceSettled = moved && !$tableInsertApplies($selectionTouchesTextOnlyBlock());
+
+            if (!hasRange || declinedOnceSettled) {
+                return;
+            }
+
+            $insertTableAt(selection.focus, rows, columns);
         }, { discrete: true });
 
         return this;

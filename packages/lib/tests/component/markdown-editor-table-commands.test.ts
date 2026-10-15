@@ -1,6 +1,8 @@
-// The WYSIWYG commands of `MarkdownEditor` meeting a selection point where no caret can be: on a `:::` block, or an
-// end of a range between two blocks of the root or a column (P rows). Offline: the modelled DOM, no root element.
-// The focus rows are in `markdown-editor-table-commands-mounted.test.ts`.
+// The WYSIWYG commands of `MarkdownEditor` that left something in the document they should not have, or threw:
+// `insertTable()` leaving an empty quote, heading or list item beside the table (T rows), and the commands meeting a
+// selection point where no caret can be: on a `:::` block, or an end of a range between two blocks of the root or a
+// column (P rows). Offline: the modelled DOM, no root element. The focus rows are in
+// `markdown-editor-table-commands-mounted.test.ts`.
 
 // Keeps `@lexical/clipboard`'s real module (`@lexical/rich-text` imports it for its paste path) and replaces only
 // `copyToClipboard`, which needs a browser clipboard the test DOM does not have, and
@@ -157,6 +159,98 @@ function expectOneUndoStep(editor: MarkdownEditor, loaded: string): void {
 
     expect(editor.getValue()).toBe(loaded);
 }
+
+/**
+ * Puts a caret at a text point.
+ *
+ * @param editor - The editor.
+ * @param point - The text and the offset in it.
+ */
+function caretIn(editor: MarkdownEditor, point: TextPoint): void {
+    lexicalOf(editor).update(() => { $textNode(point[0]).select(point[1], point[1]); }, { discrete: true });
+}
+
+
+describe('insertTable() leaves no empty half of the block it splits (T rows)', () => {
+    /** Row name, the document, the caret, what is saved, the root's children after. */
+    const rows: Array<[string, string, TextPoint, string, string[]]> = [
+        ['T1: at the end of a quote', '> quote', ['quote', 5], `> quote\n\n${TABLE}`, ['quote', 'table', 'paragraph']],
+        ['T2: at the start of a quote', '> quote', ['quote', 0], `${TABLE}\n\n> quote`, ['table', 'quote']],
+        ['T3: inside a quote', '> quote', ['quote', 2], `> qu\n\n${TABLE}\n\n> ote`, ['quote', 'table', 'quote']],
+        ['T4: at the end of a heading', '# head', ['head', 4], `# head\n\n${TABLE}`, ['heading', 'table', 'paragraph']],
+        ['T5: at the start of a heading', '# head', ['head', 0], `${TABLE}\n\n# head`, ['table', 'heading']],
+        ['T6: at the end of a list', '- one\n- two', ['two', 3], `- one\n- two\n\n${TABLE}`, ['list', 'table', 'paragraph']],
+        ['T7: at the end of a list\'s first item', '- one\n- two', ['one', 3], `- one\n\n${TABLE}\n\n- two`, ['list', 'table', 'list']],
+        ['T8: at the start of a list', '- one\n- two', ['one', 0], `${TABLE}\n\n- one\n- two`, ['table', 'list']],
+        ['T9: at the start of a list\'s second item', '- one\n- two', ['two', 0], `- one\n\n${TABLE}\n\n- two`, ['list', 'table', 'list']],
+        [
+            'T10: at the end of a nested item', '- one\n  - two\n- three', ['two', 3],
+            `- one\n  - two\n\n${TABLE}\n\n- three`, ['list', 'table', 'list'],
+        ],
+        ['T11: at the end of a paragraph', 'para', ['para', 4], `para\n\n${TABLE}`, ['paragraph', 'table', 'paragraph']],
+        ['T12: at the start of a paragraph', 'para', ['para', 0], `${TABLE}\n\npara`, ['table', 'paragraph']],
+        [
+            'T13: at the end of a paragraph with one after it', 'para\n\nafter', ['para', 4],
+            `para\n\n${TABLE}\n\nafter`, ['paragraph', 'table', 'paragraph'],
+        ],
+        [
+            'T14: at the end of a quote in a column', '::: columns\n> q\n|||\nB\n:::', ['q', 1],
+            `::: columns\n> q\n\n${TABLE}\n|||\nB\n:::`, ['markdown-block'],
+        ],
+    ];
+
+    it.each(rows)('%s', (_name, source, caret, saved, types) => {
+        const editor = load(source);
+        const loaded = editor.getValue();
+
+        caretIn(editor, caret);
+        editor.insertTable(2, 2);
+
+        expect(editor.getValue()).toBe(saved);
+        expect(rootTypes(editor)).toEqual(types);
+        expectRoundTrips(editor);
+        expectOneUndoStep(editor, loaded);
+    });
+
+    it.each([
+        ['T15: an empty document with no selection', '', TABLE, ['table', 'paragraph']],
+        ['T16: a heading with no selection', '# head', `# head\n\n${TABLE}`, ['heading', 'table', 'paragraph']],
+    ])('%s: the table goes in at the document\'s end', (_name, source, saved, types) => {
+        const editor = load(source);
+        const loaded = editor.getValue();
+
+        lexicalOf(editor).update(() => { $setSelection(null); }, { discrete: true });
+        editor.insertTable(2, 2);
+
+        expect(editor.getValue()).toBe(saved);
+        expect(rootTypes(editor)).toEqual(types);
+        expectRoundTrips(editor);
+        expectOneUndoStep(editor, loaded);
+    });
+
+    it.each(rows)('T17, %s: the caret is in the table\'s first cell', (_name, source, caret) => {
+        const editor = load(source);
+
+        caretIn(editor, caret);
+        editor.insertTable(2, 2);
+
+        const inFirstCell = lexicalOf(editor).read(() => {
+            const selection = $getSelection();
+            const isRange = $isRangeSelection(selection);
+
+            if (!isRange) {
+                return false;
+            }
+
+            const cell = selection.anchor.getNode().getParents().find($isTableCellNode) ?? (selection.anchor.getNode() as LexicalNode);
+            const row = cell.getParent();
+
+            return $isTableCellNode(cell) && cell.getPreviousSibling() === null && $isTableRowNode(row) && row.getPreviousSibling() === null;
+        });
+
+        expect(inFirstCell).toBe(true);
+    });
+});
 
 describe('commands at a selection point where no caret can be (P rows)', () => {
     const LIST = 'Above\n\n- one\n- two';
@@ -429,6 +523,7 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
     // second column's.
     it.each([
         ['insertImage', (editor: MarkdownEditor) => editor.insertImage('/i.png', { alt: 'i' })],
+        ['insertTable', (editor: MarkdownEditor) => editor.insertTable(2, 2)],
     ])('P13: %s declines once the point settles into a code block', (_name, command) => {
         const cases: Array<[string, Spot]> = [
             ['::: columns\n```\ncode\n```\n|||\nB\n:::', { on: 'fence', at: 0 }],
@@ -564,6 +659,7 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
         /** The commands, by name; the last two are for ranges only. */
         const COMMANDS: Array<[string, (editor: MarkdownEditor) => void, boolean]> = [
             ['insertImage', (editor) => { editor.insertImage('/i.png', { alt: 'i' }); }, false],
+            ['insertTable', (editor) => { editor.insertTable(2, 2); }, false],
             ['cut', (editor) => { editor.cut(); }, false],
             ['Enter', (editor) => { lexicalOf(editor).dispatchCommand(KEY_ENTER_COMMAND, null); }, false],
             ['INSERT_PARAGRAPH_COMMAND', (editor) => { lexicalOf(editor).dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined); }, false],
