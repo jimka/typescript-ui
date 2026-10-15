@@ -939,6 +939,15 @@ page resets to empty.
   the field, and focus was then lost as the list closed. No consumer action
   is needed.
 
+- **`MarkdownEditor` keeps a `:::` fence's opening line.** Editing anything
+  inside a fence whose opening line carried more than its attributes —
+  `::: tip Title`, `::: tip {align=right}`, `::: {align=right} more words` —
+  saved the line as `::: {}`, `::: {align=right}` or `::: columns`, dropping
+  the words. The words are now kept, and the attribute group is rewritten
+  only when the fence's alignment or gap changes. `setBlockAlignment(null)`
+  and `setColumnCount(1)` no longer remove such a fence. No consumer action
+  is needed.
+
 - **The table's filter row reads a typed `YYYY-MM-DD` as a local day.** A
   `date` or `datetime` operand was parsed with `new Date(text)`, which reads
   a bare date as UTC midnight, so "Equals" and the ordering operators landed
