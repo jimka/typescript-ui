@@ -2126,6 +2126,195 @@ function $settleCaretIntoBlock(selection: RangeSelection, staysOutOf: ((node: Le
 }
 
 /**
+ * Whether a node is a container no caret can stand in: a `:::` block, which
+ * holds columns. A point on one lies between its columns.
+ *
+ * @remarks
+ * Lists and list items are not settled here: a caret between the items of a
+ * list, or between the blocks of an item, has a meaning of its own there
+ * ({@link $openBlockAtItemCaret}), and a range with an end on one is removed
+ * by {@link $removeGuardedRangeForInsert} and the list item rules.
+ *
+ * @param node - The node a point is on.
+ * @returns `true` for such a container.
+ */
+function $holdsNoCaret(node: LexicalNode): boolean {
+    return $isMarkdownBlockNode(node);
+}
+
+/**
+ * Whether a point stands between two blocks of the root or a `:::` column,
+ * just before a list.
+ *
+ * @param point - The point.
+ * @returns `true` for an element point on the root or a column, at a list.
+ */
+function $standsBeforeList(point: PointType): boolean {
+    const node = point.getNode();
+    const isElement = $isElementNode(node);
+    const holdsBlocks = isElement && point.type === "element" && $isRootOrShadowRoot(node) && !$isTableCellNode(node);
+
+    return holdsBlocks && $isListNode(node.getChildAtIndex(point.offset));
+}
+
+/**
+ * Whether a range's point stands between two blocks of the root or a `:::`
+ * column, where a caret can be only while nothing is selected with it. Not
+ * so for a range's start just before a list: the list item rules remove a
+ * range from there with the items it covers (Backspace, paste and typing),
+ * and the paragraph break removes it itself
+ * ({@link $clearGuardedRangeBeforeParagraph}). An end just after a list is
+ * moved into it.
+ *
+ * @param point - An element point of a range.
+ * @param isStart - Whether it is the range's start rather than its end.
+ * @returns `true` for the root and a column, `false` for a table cell and
+ *   for a start just before a list.
+ */
+function $liesBetweenBlocks(point: PointType, isStart: boolean): boolean {
+    const node = point.getNode();
+    const isElement = $isElementNode(node);
+    const holdsBlocks = isElement && $isRootOrShadowRoot(node) && !$isTableCellNode(node);
+
+    return holdsBlocks && !(isStart && $standsBeforeList(point));
+}
+
+/**
+ * Whether a selection is a range that starts just before a list, on the
+ * root or in a `:::` column, whichever end the anchor is at.
+ *
+ * @param selection - The selection.
+ * @returns `true` for such a range.
+ */
+function $isRangeStartingBeforeList(selection: BaseSelection | null): selection is RangeSelection {
+    const isRange = $isRangeSelection(selection);
+    const isOpen = isRange && !selection.isCollapsed();
+
+    return isOpen && $standsBeforeList($orderedPoints(selection)[0]);
+}
+
+/**
+ * Whether a range's end is a point on a list that stands in a `:::` column.
+ * Lexical's removal of a range ending there takes the list and leaves its
+ * column with nothing in it, which a column cannot be; the end is moved into
+ * the list's text instead. On the root the list item rules take such a range.
+ *
+ * @param point - An element point of a range.
+ * @returns `true` for a point on a list whose parent is a column.
+ */
+function $endsListOfColumn(point: PointType): boolean {
+    const node = point.getNode();
+
+    return $isListNode(node) && $isMarkdownColumnNode(node.getParent());
+}
+
+/**
+ * Whether a selection point is one {@link $settleSelectionOffContainers}
+ * moves: an element point on a container no caret can stand in, or, for a
+ * range, one between two blocks of the root or a column.
+ *
+ * @param point - The point.
+ * @param isCollapsed - Whether the selection is a caret.
+ * @param isStart - Whether it is the selection's start rather than its end.
+ * @returns `true` when the point is moved.
+ */
+function $pointNeedsSettling(point: PointType, isCollapsed: boolean, isStart: boolean): boolean {
+    if (point.type !== "element") {
+        return false;
+    }
+
+    const betweenBlocks = !isCollapsed && $liesBetweenBlocks(point, isStart);
+    const endsColumnList = !isCollapsed && !isStart && $endsListOfColumn(point);
+
+    return $holdsNoCaret(point.getNode()) || betweenBlocks || endsColumnList;
+}
+
+/**
+ * Moves an element point to the caret position it names. It goes into the
+ * neighbour block on the side `prefers`, and into the one on the other side
+ * when the container has none there: down to the deepest position of that
+ * block, as {@link $settleCaretIntoBlock} enters a block. A container with
+ * no child at all is left as it is.
+ *
+ * @param point - The point, on an element.
+ * @param prefers - The side of the point to go to first.
+ */
+function $settlePoint(point: PointType, prefers: CaretDirection): void {
+    const container = point.getNode();
+    const isContainer = $isElementNode(container);
+
+    if (!isContainer) {
+        return;
+    }
+
+    const next = container.getChildAtIndex(point.offset);
+    const previous = container.getChildAtIndex(point.offset - 1);
+    const preferred = prefers === "next" ? next : previous;
+    const other: CaretDirection = prefers === "next" ? "previous" : "next";
+    const direction: CaretDirection = preferred !== null ? prefers : other;
+    const neighbour = direction === "next" ? next : previous;
+    const isText = $isTextNode(neighbour);
+
+    if (isText) {
+        point.set(neighbour.getKey(), direction === "next" ? 0 : neighbour.getTextContentSize(), "text");
+
+        return;
+    }
+
+    const isElement = $isElementNode(neighbour);
+
+    if (isElement) {
+        $setPointFromCaret(point, $normalizeCaret($getChildCaret(neighbour, direction)));
+    }
+}
+
+/**
+ * Moves the points of a selection that lie where no caret can be to the
+ * caret positions they name, so a command acts as it does for the same
+ * selection made with the mouse. Such a point can only be set in code: on a
+ * `:::` block, or, for a range, on the root or a column between two blocks.
+ * A caret goes to the start of the block after it (the end of the block
+ * before it at the container's end); a range's start likewise, and its end to
+ * the end of the block before it (the start of the block after it at the
+ * container's start). Lists and list items are not settled, and neither is a
+ * range's start just before a list ({@link $liesBetweenBlocks}).
+ *
+ * @remarks
+ * Lexical's insert needs a block holding inline content around the caret,
+ * and its removal of a range that starts between blocks removes every block
+ * but the root's last child, which it leaves empty. A point on a table, a
+ * table row or a cell is left to `@lexical/table`, and a caret between two
+ * blocks to Lexical, which make and handle them themselves.
+ *
+ * @param selection - The selection, moved in place.
+ * @returns Whether a point moved.
+ */
+function $settleSelectionOffContainers(selection: BaseSelection | null): boolean {
+    const isRange = $isRangeSelection(selection);
+
+    if (!isRange) {
+        return false;
+    }
+
+    const isCollapsed = selection.isCollapsed();
+    const [start, end] = $orderedPoints(selection);
+    const startMoves = $pointNeedsSettling(start, isCollapsed, true);
+    const endMoves = !isCollapsed && $pointNeedsSettling(end, isCollapsed, false);
+
+    if (startMoves) {
+        $settlePoint(start, "next");
+    }
+
+    if (isCollapsed && startMoves) {
+        end.set(start.key, start.offset, start.type);
+    } else if (endMoves) {
+        $settlePoint(end, "previous");
+    }
+
+    return startMoves || endMoves;
+}
+
+/**
  * The list item or list a collapsed caret stands on: an element point
  * between the blocks of an item, or between the items of a list.
  *
@@ -2410,8 +2599,9 @@ function $deleteKeyOverTableEdgeRange(event: CommandPayloadType<typeof KEY_DELET
  * ({@link $removeTableEdgeRange}), else a stale-focus range
  * ({@link $removeStaleFocusRange}). In that order: a table-edge range ending
  * inside a later block's word is a stale-focus range too, and must lose the
- * whole table. Leaves any other selection alone, for the caller's own
- * Lexical call to handle.
+ * whole table. A point where no caret can be is settled first
+ * ({@link $settleSelectionOffContainers}). Leaves any other selection alone,
+ * for the caller's own Lexical call to handle.
  *
  * @param selection - The selection about to be removed or replaced.
  * @param caretStaysOutOf - Passed to {@link $removeTableEdgeRange}, for a
@@ -2419,6 +2609,8 @@ function $deleteKeyOverTableEdgeRange(event: CommandPayloadType<typeof KEY_DELET
  * @returns Whether it was such a range, now removed and collapsed at the removal point.
  */
 function $removeGuardedRange(selection: BaseSelection | null, caretStaysOutOf: ((node: LexicalNode) => boolean) | null = null): boolean {
+    $settleSelectionOffContainers(selection);
+
     const isTableEdge = $isTableEdgeRange(selection);
 
     if (isTableEdge) {
@@ -2445,17 +2637,8 @@ function $removeGuardedRange(selection: BaseSelection | null, caretStaysOutOf: (
  * otherwise run first itself.
  *
  * @remarks
- * Lexical's removal (0.49.0) of a range that starts between two blocks — a
- * point on the root itself, which a programmatic selection can hold — and
- * runs to the end of a document ending in a list or a `:::` block removes
- * every block but the root's last child: it leaves the list, with no item,
- * or the `:::` block, with no column, and the caret on it. Neither holds
- * inline content: Lexical's `insertNodes` throws for a caret on the list,
- * and puts the image where no save writes it on the `:::` block. The
- * emptied one is replaced by an empty paragraph first
- * ({@link $replaceEmptiedContainerAtCaret}). A range that starts at such a
- * point further down and ends on the list or `:::` block itself empties it
- * too, with the caret left just before it: it is replaced the same way.
+ * The range's points are settled first ({@link $removeGuardedRange}), so the
+ * removal runs between two caret positions and empties no container.
  *
  * @param selection - The selection the image goes in at; collapsed afterwards.
  */
@@ -2465,40 +2648,10 @@ function $removeRangeBeforeImage(selection: RangeSelection): void {
 
     if (isLeft) {
         selection.removeText();
-        $replaceEmptiedContainerAtCaret(selection);
     }
 
     // The caret as the removal left it: on a list item or a list it gets a block of its own.
     $openBlockAtItemCaret(selection);
-}
-
-/**
- * Replaces the element a collapsed caret is on — or, for a caret between two
- * blocks, the block right after it — with an empty paragraph holding the
- * caret, when it is a container a removal emptied: a list with no item, or a
- * `:::` block with no column. Leaves any other caret alone: one left on a
- * list between its items is given an item by {@link $openBlockAtItemCaret}.
- *
- * @param selection - The selection, collapsed after a removal.
- */
-function $replaceEmptiedContainerAtCaret(selection: RangeSelection): void {
-    const anchorNode = selection.anchor.getNode();
-    // Between two blocks, the removal of a range ending on the container itself leaves the caret before it.
-    const container = $isRootOrShadowRoot(anchorNode) ? anchorNode.getChildAtIndex(selection.anchor.offset) : anchorNode;
-    const isEmptied = ($isListNode(container) || $isMarkdownBlockNode(container)) && container.isEmpty();
-
-    if (!isEmptied) {
-        return;
-    }
-
-    const paragraph = $createParagraphNode();
-    const caret = $getChildCaret(paragraph, "next");
-
-    // The caret moves before the container goes: `replace()` would move a copy of the selection, not this one.
-    container.insertBefore(paragraph);
-    $setPointFromCaret(selection.anchor, caret);
-    $setPointFromCaret(selection.focus, caret);
-    container.remove();
 }
 
 /**
@@ -2530,15 +2683,38 @@ function $clearGuardedRangeBeforeInsert(): boolean {
 /**
  * `INSERT_PARAGRAPH_COMMAND` listener: makes the selection ready for the
  * paragraph ({@link $removeGuardedRangeForInsert}), then lets Lexical insert
- * it at the now-collapsed caret. A caret left between the blocks of a list
- * item gets its paragraph here, as Lexical gives one to a caret between two
- * blocks of the root: its own insert finds no block around a point on a
- * list item to split.
+ * it at the now-collapsed caret. A range that starts just before a list is
+ * removed here first ({@link $isRangeStartingBeforeList}), the way a range
+ * ending on a list is: Lexical's own insert over a range whose anchor is the
+ * point before the list inserts the paragraph and removes nothing, and over
+ * the same range made backward removes it but leaves the caret at the
+ * document's end, so the paragraph would not come where the range was. A
+ * list the removal emptied is refilled with one blank item
+ * ({@link $openBlockAtItemCaret}) and Lexical's insert runs there, where
+ * Enter leaves the list for a paragraph, as after Delete. A
+ * caret left between the blocks of a list item gets its paragraph here, as
+ * Lexical gives one to a caret between two blocks of the root: its own
+ * insert finds no block around a point on a list item to split.
  *
  * @returns Whether the paragraph was put in here; otherwise `false`, so the command's own handler still runs.
  */
 function $clearGuardedRangeBeforeParagraph(): boolean {
-    return $removeGuardedRangeForInsert($getSelection());
+    const selection = $getSelection();
+    const isGuarded = $isTableEdgeRange(selection) || $isStaleFocusRange(selection);
+    const removesFirst = !isGuarded && $isRangeStartingBeforeList(selection);
+
+    if (removesFirst) {
+        selection.removeText();
+
+        // A list the range emptied is refilled with one empty item; Lexical's
+        // insert then runs there, and Enter on that blank item leaves the
+        // list for a paragraph, as it does after Delete.
+        $openBlockAtItemCaret(selection);
+
+        return false;
+    }
+
+    return $removeGuardedRangeForInsert(selection);
 }
 
 /**
@@ -2654,8 +2830,8 @@ function $guardedRemovalDeclinesLineBreak(selection: BaseSelection | null): bool
 function $clearGuardedRangeBeforeLineBreak(): boolean {
     const selection = $getSelection();
     // Between the blocks of a list item, or the items of a list, there is no line to break, and Lexical's insert
-    // throws there: for a caret, and for a range that starts there, before anything of it is removed.
-    const declined = $guardedRemovalDeclinesLineBreak(selection) || $startsOnListContainer(selection);
+    // throws there: for a caret, and for a range that starts or ends there, before anything of it is removed.
+    const declined = $guardedRemovalDeclinesLineBreak(selection) || $startsOnListContainer(selection) || $isListContainerRange(selection);
 
     if (!declined) {
         $removeGuardedRange(selection);
@@ -4236,6 +4412,10 @@ function registerTextOnlyBlockRules(editor: LexicalEditor): () => void {
  * stale-focus one ({@link $removeGuardedRange}). All are at
  * {@link COMMAND_PRIORITY_CRITICAL}, ahead of every handler that removes
  * the range and of `@lexical/table`'s own Backspace and Delete handlers.
+ * Each guard first settles a point where no caret can be
+ * ({@link $settleSelectionOffContainers}). The paragraph-break guard also
+ * removes a range that starts just before a list ahead of Lexical's insert,
+ * so the break comes where the range was ({@link $clearGuardedRangeBeforeParagraph}).
  * `DELETE_CHARACTER_COMMAND` alone has its two guards apart, either side of
  * {@link $joinIntoTextOnlyBlock} at {@link COMMAND_PRIORITY_HIGH}. The
  * table-edge guard runs ahead of it, at CRITICAL: that handler would join a
@@ -4252,7 +4432,11 @@ function registerTextOnlyBlockRules(editor: LexicalEditor): () => void {
  */
 function registerRangeGuards(editor: LexicalEditor): () => void {
     const guard = <P>(command: LexicalCommand<P>, listener: CommandListener<P>): (() => void) =>
-        editor.registerCommand(command, listener, COMMAND_PRIORITY_CRITICAL);
+        editor.registerCommand(command, (payload, target) => {
+            $settleSelectionOffContainers($getSelection());
+
+            return listener(payload, target);
+        }, COMMAND_PRIORITY_CRITICAL);
 
     return mergeRegister(
         guard(KEY_BACKSPACE_COMMAND, $backspaceOverTableEdgeRange),
@@ -8209,6 +8393,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             if ($isRangeSelection(selection)) {
+                // A point moved off a `:::` block, or between two blocks, may have settled where no image goes (a code block).
+                const moved = $settleSelectionOffContainers(selection);
+                const declinedOnceSettled = moved && !$imageInsertApplies($selectionTouchesTextOnlyBlock());
+
+                if (declinedOnceSettled) {
+                    return;
+                }
+
                 $removeRangeBeforeImage(selection);
                 selection.insertNodes([$createMarkdownImageNode(spec)]);
             }

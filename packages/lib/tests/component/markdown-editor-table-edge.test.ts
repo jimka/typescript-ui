@@ -1510,21 +1510,38 @@ describe('every route removing a range across a table\'s edge takes the whole ta
             return editor;
         }
 
-        it.each([
-            ['a list', 'Above para\n\n- one\n- two'],
-            ['a nested list', 'Above para\n\n- one\n  - two'],
-            ['a list alone', '- one\n- two'],
-            ['a table then a list', `${T}\n\n- one\n- two`],
-            ['a fence', 'Above para\n\n::: x\nA\n:::'],
-            ['a fence whose last column ends in a list', 'Above para\n\n::: columns\nA\n|||\n- one\n- two\n:::'],
-        ])('ending in %s: the image is all that is left', (_name, source) => {
+        /**
+         * Inserts an image over the range from the root's start to the end of the last text, both directions.
+         *
+         * @param source - The Markdown to load.
+         * @param saved - What the editor saves.
+         */
+        function expectImageOverRootRange(source: string, saved: string): void {
             for (const isBackward of [false, true]) {
                 const editor = loadSelectedFromRoot(source, isBackward);
 
                 expect(() => editor.insertImage('/i.png', { alt: 'i' })).not.toThrow();
-                expect(editor.getValue()).toBe('![i](/i.png)');
+                expect(editor.getValue()).toBe(saved);
                 expect(editorSurfaceModel(editor)).toEqual(viewerModel(editor.getValue()).blocks);
             }
+        }
+
+        // The range starts in the first paragraph or the fence, so the image ends up in what is left of that block.
+        it.each([
+            ['a list', 'Above para\n\n- one\n- two'],
+            ['a nested list', 'Above para\n\n- one\n  - two'],
+            ['a fence', 'Above para\n\n::: x\nA\n:::'],
+            ['a fence whose last column ends in a list', 'Above para\n\n::: columns\nA\n|||\n- one\n- two\n:::'],
+        ])('ending in %s: the image is all that is left', (_name, source) => {
+            expectImageOverRootRange(source, '![i](/i.png)');
+        });
+
+        // The range starts on the list or the table, so what is left of the list's last item holds the image.
+        it.each([
+            ['a list alone', '- one\n- two'],
+            ['a table then a list', `${T}\n\n- one\n- two`],
+        ])('ending in %s: the image goes into the item that is left', (_name, source) => {
+            expectImageOverRootRange(source, '- ![i](/i.png)');
         });
 
         /**
@@ -1551,12 +1568,13 @@ describe('every route removing a range across a table\'s edge takes the whole ta
             return editor;
         }
 
-        // The removal empties the list or `:::` block and leaves the caret on the root, just before it.
+        // A range from just before a list to its end selects the whole list, which goes: the image takes its place.
+        // A range into a `:::` block is read as the text it covers: the image goes into what is left of its column.
         it.each([
             ['a list', 'Above para\n\n- one\n- two', ['paragraph:Above para', 'paragraph:'], 'Above para\n\n![i](/i.png)'],
             ['a list with a block after it', 'Above para\n\n- one\n- two\n\nafter', ['paragraph:Above para', 'paragraph:', 'paragraph:after'], 'Above para\n\n![i](/i.png)\n\nafter'],
-            ['a fence', 'Above para\n\n::: columns\nA\n|||\nB\n:::', ['paragraph:Above para', 'paragraph:'], 'Above para\n\n![i](/i.png)'],
-        ])('from a point on the root to the end of %s, on the list or fence itself: the emptied one is not left behind', (_name, source, children, saved) => {
+            ['a fence', 'Above para\n\n::: columns\nA\n|||\nB\n:::', ['paragraph:Above para', 'markdown-block:'], 'Above para\n\n::: {}\n![i](/i.png)\n:::'],
+        ])('from a point on the root to the end of %s, on the list or fence itself: the range is removed and the image takes its place', (_name, source, children, saved) => {
             for (const isBackward of [false, true]) {
                 const editor = loadSelectedFromRootOntoSecondBlock(source, 2, isBackward);
 
