@@ -1695,6 +1695,10 @@ page resets to empty.
   rejection with `DOM handle … is not registered`. No consumer action is
   needed.
 
+- **A reference keeps its form when its label and its definition's differ
+  in case folding or outer spaces.** `[ẞ]` with the definition `[SS]: /url`
+  was written `[ẞ](/url)` once its block was edited; it stays `[ẞ]`.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
