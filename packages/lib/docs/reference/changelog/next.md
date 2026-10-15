@@ -518,6 +518,16 @@ page resets to empty.
   is tested on. An application that depends on `marked` itself at another
   version gets a second copy beside the library's.
 
+- **`MarkdownEditor` saves fewer backslashes.** An edited block's Markdown
+  drops a backslash from a line-start marker character, and from a `*`, `_`,
+  `~`, backtick or `++` that could not pair with another, where it starts
+  nothing: `--- tail`, `===`, `#tag`, `| a |` and `a * b` save bare. Brackets
+  (`\[a\]`), `<`, `&`, `\`, table pipes, the text of links and spans, and
+  the paragraphs of a table cell that holds several keep theirs, so a link
+  reference definition added later can neither turn text into a link nor
+  hide the emphasis around it. What the viewer shows for a save does not
+  change. No consumer action is needed.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
