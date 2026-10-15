@@ -62,7 +62,7 @@ The factory **must return the same `Component` instance** for a given `panelId` 
 2. **Dispose** all `Split`/`Tab` containers under `root` and close all open windows.
 3. **Rebuild** the container tree from the target state.
 4. **Re-home** the parked leaves into it via [`moveComponent`](/api/core/classes/Component).
-5. **Apply geometry** — pane ratios, active tab, window rects.
+5. **Apply geometry** — pane ratios, active tab, window rects. A floating window rebuilt here is built with `autoFocus: false`, so a restore never takes focus from what the user is working in; a float torn off a tab strip does take focus.
 
 Because the container tree is rebuilt from scratch each call, switching A→B→A reproduces A exactly with no residue from B, and no orphaned containers accumulate across switches. Restore runs as a discrete user action (typically behind a loading indicator), not on a hot path.
 

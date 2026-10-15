@@ -90,6 +90,13 @@ page resets to empty.
 
 ### Overlay
 
+- **A `Window` and a `TabWindow` take keyboard focus when shown.** `show()`
+  moves focus to the window once it has laid out, `bringToFront()` moves it at
+  once, also when the window is already the active one, and closing a window
+  that holds focus returns focus to where it came from. Pass
+  `autoFocus: false` to keep a window out of the way. See
+  [Migration](/reference/migration/next) for the full note.
+
 - **A restore that interrupts a rail minimize now announces `['minimize',
   'restore']` rather than `"restore"` alone.** The `"minimize"` a rail-bound
   window owes is deferred to the end of the 150 ms shrink-into-the-rail
@@ -249,6 +256,14 @@ page resets to empty.
   `FocusReveal.afterReveal(callback)` instead: the callback runs once the
   scroll is over, whether it ran or was dropped, and at once when no scroll
   is waiting.
+
+### Layouts
+
+- **A floating window rebuilt by `restoreLayout` is built with
+  `autoFocus: false`.** A layout restore shows its windows from code, so none
+  of them takes focus from what the user is working in. A float torn off a
+  tab strip still takes focus. `Dock.focusPanel()` on a float rebuilt this way
+  no longer moves focus into it.
 
 ### Overlay
 
@@ -522,6 +537,10 @@ page resets to empty.
   therefore now read by two managers rather than one.
 
 ### Overlay
+
+- **`WindowOptions.autoFocus`, `setAutoFocus` and `isAutoFocus`** choose
+  whether a window takes keyboard focus when code shows or raises it. The
+  default is `true`.
 
 - **`DockCloseController`** types the controller a `Dock` `"beforeclose"`
   listener receives. `Dock.on("beforeclose")`, `off` and
