@@ -505,8 +505,18 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * @returns This popover, for method chaining.
      */
     show(): this {
-        if (!this._anchorElement) {
+        const anchor = this._anchorElement;
+
+        if (anchor === null) {
             console.warn("Popover.show(): no anchor attached; call attachToComponent first.");
+            return this;
+        }
+
+        const anchorLive = DOM.source.isRegistered(anchor);
+
+        if (!anchorLive) {
+            console.warn("Popover.show(): the anchor was disposed; call attachToComponent again.");
+
             return this;
         }
 
@@ -627,10 +637,17 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
      * Returns the anchor element excluded from outside-interaction tests so a
      * click on the trigger does not immediately re-close the popover.
      *
-     * @returns The anchor element, or null when none is attached.
+     * @returns The anchor element, or null when none is attached or the
+     *   attached one has been disposed.
      */
     getAnchorElement(): Handle | null {
-        return this._anchorElement;
+        const anchor = this._anchorElement;
+
+        // The layer manager tests pointer targets against this handle on every
+        // outside press; a released one makes that test throw.
+        const anchorLive = anchor !== null && DOM.source.isRegistered(anchor);
+
+        return anchorLive ? anchor : null;
     }
 
     /**
@@ -719,12 +736,48 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
     }
 
     /**
+     * Closes an open popover whose anchor was disposed since it was attached.
+     * The anchor handle was stored at attach time; a released one makes every
+     * read through it throw, so each reader asks here first.
+     *
+     * @returns `true` when the anchor is gone, so the caller must not read it.
+     */
+    private closeIfAnchorDisposed(): boolean {
+        const anchor = this._anchorElement;
+
+        if (anchor === null) {
+            return false;
+        }
+
+        const anchorLive = DOM.source.isRegistered(anchor);
+
+        if (anchorLive) {
+            return false;
+        }
+
+        // A closed popover keeps the handle, so a later show() can say why it
+        // cannot open; only an open one closes.
+        if (this._isOpen) {
+            this._anchorElement = null;
+            this.hide();
+        }
+
+        return true;
+    }
+
+    /**
      * Resolves the requested placement against the viewport, anchor rect, and
      * own preferred size; updates the popover's `setX` / `setY` and the
      * resolved-placement field.
      */
     private _reposition(): void {
         if (!this._anchorElement) {
+            return;
+        }
+
+        const anchorGone = this.closeIfAnchorDisposed();
+
+        if (anchorGone) {
             return;
         }
 
@@ -909,6 +962,12 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
             return;
         }
 
+        const anchorGone = this.closeIfAnchorDisposed();
+
+        if (anchorGone) {
+            return;
+        }
+
         const anchorRect = DOM.source.getElementRect(this._anchorElement);
         const size       = DEFAULT_ARROW_SIZE_PX;
         const half       = size / 2;
@@ -1015,7 +1074,13 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
         Event.removeViewportListener(this, "resize", this._onWindowResize);
 
         for (const ancestor of this._scrollAncestors) {
-            DOM.sink.removeListener(ancestor, "scroll", this._onScroll);
+            // An ancestor disposed while the popover was open took its
+            // listener with it; removing through its released handle throws.
+            const live = DOM.source.isRegistered(ancestor);
+
+            if (live) {
+                DOM.sink.removeListener(ancestor, "scroll", this._onScroll);
+            }
         }
 
         this._scrollAncestors = [];
