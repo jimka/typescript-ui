@@ -915,12 +915,35 @@ export function $serializeBlock(node: LexicalNode): string {
  * another block. Must run inside an `editor.read` or `editor.update`.
  *
  * @param nodes - The inline nodes.
- * @param inListItem - Whether the nodes are a list item's text, whose first
- *   line may open with a task marker.
  * @returns Their Markdown, lines separated by `\n`.
  */
-export function $serializeInlineNodes(nodes: LexicalNode[], inListItem: boolean = false): string {
-    return serializeInlineNodes(nodes, { ...MULTI_LINE, definitions: $collectDefinitions(), inListItem });
+export function $serializeInlineNodes(nodes: LexicalNode[]): string {
+    return serializeInlineNodes(nodes, { ...MULTI_LINE, definitions: $collectDefinitions() });
+}
+
+/**
+ * Serializes a block's inline content as the block's own save writes it —
+ * the Markdown a code block holds for a block converted to one. A heading's
+ * content is written as the heading's save writes it, without its `#`s or
+ * underline: an ATX heading's line, with no escape a paragraph's line start
+ * needs (`+alpha`, not `\+alpha`) and its trailing `#` run escaped
+ * (`alpha \#`), or the lines of its setext form. A paragraph's or quote's
+ * content is its lines, a list item's text its lines with a task marker as
+ * written. Must run inside an `editor.read` or `editor.update`.
+ *
+ * @param block - A paragraph, heading, quote or list item's text.
+ * @returns Its content's Markdown, lines separated by `\n`.
+ */
+export function $serializeBlockContent(block: ElementNode): string {
+    const definitions = $collectDefinitions();
+
+    if ($isHeadingNode(block)) {
+        const written = writtenHeadingContent(block, definitions);
+
+        return written.content;
+    }
+
+    return serializeInline(block, { ...MULTI_LINE, definitions, inListItem: $isMarkdownListItemTextNode(block) });
 }
 
 /**
@@ -2297,18 +2320,38 @@ function takesInProbe(markdown: string, separator: string): boolean {
  */
 function serializeHeading(node: HeadingNode, definitions: Links | null): string {
     const level = Number(node.getTag().slice(1));
+    const { content, setext } = writtenHeadingContent(node, definitions);
+
+    if (setext) {
+        return `${content}\n${level === 1 ? SETEXT_H1_UNDERLINE : SETEXT_H2_UNDERLINE}`;
+    }
+
+    return "#".repeat(level) + (content === "" ? "" : " " + content);
+}
+
+/**
+ * The content {@link serializeHeading} writes for a heading, without its
+ * `#`s or underline: the lines of its setext form, or the one line of its ATX
+ * form, whose trailing `#` run has its first `#` escaped.
+ *
+ * @param node - The heading.
+ * @param definitions - The saved document's link reference definitions, or `null`.
+ * @returns The content, and whether it is written setext.
+ */
+function writtenHeadingContent(node: HeadingNode, definitions: Links | null): { content: string; setext: boolean } {
+    const level = Number(node.getTag().slice(1));
 
     if (level <= SETEXT_MAX_LEVEL) {
         const lines = serializeInline(node, { ...MULTI_LINE, definitions });
 
         if (lines.includes("\n") && !lines.split("\n").some((line) => SETEXT_INTERRUPTING_LINE.test(line))) {
-            return `${lines}\n${level === 1 ? SETEXT_H1_UNDERLINE : SETEXT_H2_UNDERLINE}`;
+            return { content: lines, setext: true };
         }
     }
 
     const content = serializeInline(node, { ...HEADING_LINE, definitions }).replace(/(^|[ \t])(#+)$/, "$1\\$2");
 
-    return "#".repeat(level) + (content === "" ? "" : " " + content);
+    return { content, setext: false };
 }
 
 /**

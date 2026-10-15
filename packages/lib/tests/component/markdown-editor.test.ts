@@ -4,7 +4,7 @@ import {
     MarkdownEditor, $adoptDomSelection, $classifyContextMenuTarget, $contextMenuNodeFor, $selectEnclosingWordIfCollapsed,
 } from '~/component/editor/MarkdownEditor';
 import type {
-    MarkdownEditorChange, MarkdownEditorSelectionState, ContextMenuTarget, CommandAvailability,
+    MarkdownBlockType, MarkdownEditorChange, MarkdownEditorSelectionState, ContextMenuTarget, CommandAvailability,
 } from '~/component/editor/MarkdownEditor';
 import type { MenuItemConfig } from '~/component/container/MenuItem';
 import type { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
@@ -1245,6 +1245,34 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['Z1', '- one\n-\n- three', 'one', null, 'OL', '1. one\n\n-\n- three', '1. one\n-\n- three'],
         // A tab in an item's text is content: both surfaces keep it.
         ['E19', '- one\ttab\n- z', 'one', null, 'h2', '## one\ttab\n\n- z', '## one\ttab\n- z'],
+        // A code block made from a heading holds the heading's text as the heading's own line holds it: none of the
+        // escapes a paragraph's line needs at its start, and the escape of a last `#` run, which the line needs.
+        ['E41', '### +alpha', 'alpha', null, 'code', '```\n+alpha\n```', '```\n+alpha\n```'],
+        ['E41', '# alpha \\#', 'alpha', null, 'code', '```\nalpha \\#\n```', '```\nalpha \\#\n```'],
+        ['H1', '### #alpha', 'alpha', null, 'code', '```\n#alpha\n```', '```\n#alpha\n```'],
+        ['H2', '### > alpha', 'alpha', null, 'code', '```\n> alpha\n```', '```\n> alpha\n```'],
+        ['H3', '### - alpha', 'alpha', null, 'code', '```\n- alpha\n```', '```\n- alpha\n```'],
+        ['H4', '### =alpha', 'alpha', null, 'code', '```\n=alpha\n```', '```\n=alpha\n```'],
+        ['H5', '### |alpha', 'alpha', null, 'code', '```\n|alpha\n```', '```\n|alpha\n```'],
+        ['H6', '### :alpha', 'alpha', null, 'code', '```\n:alpha\n```', '```\n:alpha\n```'],
+        ['H7', '### 1. alpha', 'alpha', null, 'code', '```\n1. alpha\n```', '```\n1. alpha\n```'],
+        ['H8', '### 1) alpha', 'alpha', null, 'code', '```\n1) alpha\n```', '```\n1) alpha\n```'],
+        ['H9', '### <div> alpha', 'alpha', null, 'code', '```\n<div> alpha\n```', '```\n<div> alpha\n```'],
+        ['H10', '# +alpha', 'alpha', null, 'code', '```\n+alpha\n```', '```\n+alpha\n```'],
+        ['H11', '## +alpha', 'alpha', null, 'code', '```\n+alpha\n```', '```\n+alpha\n```'],
+        ['H12', '### alpha \\##', 'alpha', null, 'code', '```\nalpha \\##\n```', '```\nalpha \\##\n```'],
+        ['H13', '## +**bold** alpha', 'alpha', null, 'code', '```\n+**bold** alpha\n```', '```\n+**bold** alpha\n```'],
+        ['H14', '### *alpha* \\#', 'alpha', null, 'code', '```\n*alpha* \\#\n```', '```\n*alpha* \\#\n```'],
+        ['H15', '### +[alpha](/u)', 'alpha', null, 'code', '```\n+[alpha](/u)\n```', '```\n+[alpha](/u)\n```'],
+        ['H16', '::: columns\n### +one\n|||\nRight\n:::', 'one', null, 'code', '::: columns\n```\n+one\n```\n|||\nRight\n:::', '::: columns\n```\n+one\n```\n|||\nRight\n:::'],
+        // An escape the block's own Markdown holds stays: an always-escaped character, a setext heading's lines, which
+        // are a paragraph's lines, and a paragraph, a quote and a list item's text.
+        ['H17', '### \\* alpha', 'alpha', null, 'code', '```\n\\* alpha\n```', '```\n\\* alpha\n```'],
+        ['H18', '## **bold** +alpha', 'alpha', null, 'code', '```\n**bold** +alpha\n```', '```\n**bold** +alpha\n```'],
+        ['H19', '\\+one\nmore\n---', 'one', null, 'code', '```\n\\+one\nmore\n```', '```\n\\+one\nmore\n```'],
+        ['H20', '\\+alpha', 'alpha', null, 'code', '```\n\\+alpha\n```', '```\n\\+alpha\n```'],
+        ['H21', '> \\+alpha', 'alpha', null, 'code', '```\n\\+alpha\n```', '```\n\\+alpha\n```'],
+        ['H22', '- \\+alpha', 'alpha', null, 'code', '```\n\\+alpha\n```', '```\n\\+alpha\n```'],
     ];
 
     const DIFFERS: ParityRow[] = [
@@ -1472,6 +1500,72 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         expect(wysiwygAfter(row).getValue()).toBe('one\n\n- ## Foo\n  - inner\n\n1. two');
         // Source mode reads a nested list, which stays in the list, in an item the marker re-opens.
         expect(sourceAfter(row)).toBe('one\n\n1. - ## Foo\n     - inner\n\n2. two');
+    });
+
+    // A code block made from a block holds that block's text as the block's own Markdown writes it, on every route
+    // `setBlockType("code")` takes. Source mode makes one code block of several blocks (row E5) and takes a block out
+    // of its list item (row E12), so these two shapes are no parity rows.
+    it('a code block made from each of several blocks holds each block\'s text as that block writes it', () => {
+        const editor = editorOf('### +one\n\n\\+two');
+
+        selectWords(editor, 'one', 'two');
+        editor.setBlockType('code');
+
+        const value = editor.getValue();
+
+        expect(value).toBe('```\n+one\n```\n\n```\n\\+two\n```');
+        expect(editorOf(value).getValue()).toBe(value);
+        expect(editorSurfaceModel(editor)).toEqual(viewerModel(value).blocks);
+    });
+
+    it('a code block made from a heading a list item holds keeps the heading\'s text as its line holds it', () => {
+        const editor = editorOf('- ### +one\n- two');
+
+        selectWords(editor, 'one', 'one');
+        editor.setBlockType('code');
+
+        expect(editor.getValue()).toBe('- ```\n  +one\n  ```\n- two');
+    });
+
+    // A block made from a code block shows the code's text as it stands, so a heading made back from the code block
+    // shows what the heading showed only where its line held no escape.
+    it('a heading made back from a code block made from it shows the code block\'s text', () => {
+        const cases: Array<[doc: string, back: MarkdownBlockType, code: string, after: string]> = [
+            ['### +alpha', 'h3', '```\n+alpha\n```', '### +alpha'],
+            ['# alpha \\#', 'h1', '```\nalpha \\#\n```', '# alpha \\\\#'],
+        ];
+
+        for (const [doc, back, code, after] of cases) {
+            const editor = editorOf(doc);
+
+            selectWords(editor, 'alpha', 'alpha');
+            editor.setBlockType('code');
+
+            expect(editor.getValue(), doc).toBe(code);
+
+            selectWords(editor, 'alpha', 'alpha');
+            editor.setBlockType(back);
+
+            expect(editor.getValue(), doc).toBe(after);
+        }
+    });
+
+    it('a block made from a code block shows the code\'s text as it stands, its save escaping what it must', () => {
+        const cases: Array<[doc: string, type: MarkdownBlockType, after: string]> = [
+            ['```\n\\+alpha\n```', 'paragraph', '\\\\+alpha'],
+            ['```\n+alpha\n```', 'h3', '### +alpha'],
+            ['```\n**b** alpha\n```', 'paragraph', '\\*\\*b\\*\\* alpha'],
+        ];
+
+        for (const [doc, type, after] of cases) {
+            const editor = editorOf(doc);
+
+            selectWords(editor, 'alpha', 'alpha');
+            editor.setBlockType(type);
+
+            expect(editor.getValue(), doc).toBe(after);
+            expect(editorSurfaceModel(editor), doc).toEqual(viewerModel(after).blocks);
+        }
     });
 });
 
@@ -4909,6 +5003,20 @@ describe('MarkdownEditor context menu', () => {
         blockStyleItems?.find((item) => item.text === 'Quote')?.action?.();
 
         expect(lexMarkdown(editor.getValue()).some((token) => token.type === 'blockquote')).toBe(true);
+    });
+
+    it('the block-style submenu\'s Code block item makes a heading\'s text the code as the heading\'s line holds it', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('### +alpha');
+        lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true });
+
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE,
+        });
+
+        submenuItemsOf(findItem(items, 'Block style'))?.find((item) => item.text === 'Code block')?.action?.();
+
+        expect(editor.getValue()).toBe('```\n+alpha\n```');
     });
 
     it('the "Text style" submenu\'s Colour ▸ Red item reaches setTextColor, and Colour ▸ Default clears it', () => {
