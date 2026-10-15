@@ -1033,3 +1033,12 @@ page resets to empty.
   warns and does nothing. `getAnchorElement()` now returns `null` for a
   disposed anchor instead of its released handle. No other consumer action
   is needed.
+
+- **Disposing a component in the middle of a drag from it ends the drag.**
+  The drag used to stay open for the life of the page: its ghost stayed on
+  screen and no other drag could start. The drag is abandoned: its source
+  hears neither `"dragend"` nor `onDragEnd`. A drop handler that disposes
+  the source no longer throws. A drag is also no longer in progress
+  (`DragManager.isDragging()` is `false`) by the time the source's
+  `onDragEnd` runs; it used to end afterwards. No consumer action is
+  needed.
