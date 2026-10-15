@@ -9,6 +9,7 @@ import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
 import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
+import { TypeAheadSearch, isTypeAheadKey } from "~/component/shared/TypeAheadSearch.js";
 import { resolveContextMenuTarget, watchContextMenuInput } from "~/component/shared/resolveContextMenuTarget.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
 import { TreeRow } from "~/component/tree/TreeRow.js";
@@ -291,6 +292,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     private _focusNode          : TreeNode | null                                         = null;
     private _listeners          : ListenerBag<TreeEvent>                                  = this.registerListenerBag(new ListenerBag<TreeEvent>());
     private _rendererFactory    : () => TreeNodeRenderer                                  = () => new LabelTreeNodeRenderer();
+    // The type-ahead buffer. Framework-managed bookkeeping, so it gets no
+    // `TreeOptions` field and no setter. A plain initializer is safe: only a
+    // key press writes it, and no key arrives during `super()`.
+    private _typeAhead          : TypeAheadSearch                                         = new TypeAheadSearch();
 
     constructor(options?: TreeOptions, subclassDefaults?: Partial<TreeOptions>) {
         super(options, { ..._defaultTreeOptions, ...(subclassDefaults ?? {}) });
@@ -1936,11 +1941,21 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * - `Home` / `End` — jump to first/last visible row (plain) or extend range to edge (Shift)
      * - `PageDown` / `PageUp` — move down/up by one page of rows (plain) or extend range by a
      *   page (Shift); not part of the ARIA pattern, they follow `List` and the table body
+     * - a printable character — type-ahead to the next visible row whose label starts with
+     *   what was typed; `Escape` clears the buffer
      *
      * @param e - The keyboard event fired on the tree element.
      */
     private _onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (SpatialNavigation.claimsKey(e)) { return; }
+
+        // Enter, `*`, Escape and type-ahead act on the current row without
+        // moving it by position; the navigation keys below do the rest.
+        const handled = this._handleActionKey(e);
+
+        if (handled) {
+            return { prevent: true };
+        }
 
         const navigable = new Set(['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageDown', 'PageUp']);
         if (!navigable.has(e.key)) {
@@ -2029,6 +2044,77 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         }
 
         return { prevent: true };
+    }
+
+    /**
+     * Finds the current row among the visible rows.
+     *
+     * @returns Zero-based index into `_flatRows` of the focus node's row, or
+     *   -1 when there is no focus node, its node was removed, or it is hidden
+     *   under a collapsed node.
+     */
+    private _currentRowIndex(): number {
+        const focusNode = this._focusNode;
+
+        return focusNode === null ? -1 : this._flatRows.findIndex(r => r.node === focusNode);
+    }
+
+    /**
+     * Handles the keys that act on the current row without moving it by
+     * position: a printable character feeds type-ahead, and `Escape` clears
+     * the type-ahead buffer. A chord with `Control`, `Meta` or `Alt` belongs
+     * to the browser or the application.
+     *
+     * @param e - The keydown on the tree element.
+     * @returns `true` when the key was the tree's own, so the caller
+     *   prevents it. `Escape` is never the tree's own.
+     */
+    private _handleActionKey(e: KeyboardEvent): boolean {
+        if (this._flatRows.length === 0) {
+            return false;
+        }
+
+        if (e.key === 'Escape') {
+            this._typeAhead.clear();
+
+            return false;
+        }
+
+        const chord = e.ctrlKey || e.metaKey || e.altKey;
+
+        if (chord) {
+            return false;
+        }
+
+        const typed = isTypeAheadKey(e);
+
+        if (typed) {
+            this._typeAheadTo(e.key);
+        }
+
+        return typed;
+    }
+
+    /**
+     * Type-ahead: feeds one typed character to the buffer and, on a match,
+     * moves the current row there as a plain key does: it selects the row,
+     * scrolls it into view and fires `"selection"`. Only the visible rows
+     * are searched, by `TreeNode.label`; nothing is expanded or loaded.
+     *
+     * @param ch - The character typed.
+     */
+    private _typeAheadTo(ch: string): void {
+        const rows  = this._flatRows;
+        const index = this._typeAhead.type(ch, {
+            count:      rows.length,
+            current:    this._currentRowIndex(),
+            labelAt:    (i: number): string => rows[i].node.label,
+            isEligible: (): boolean => true,
+        });
+
+        if (index >= 0) {
+            this._selectAtIndex(index, true);
+        }
     }
 
     /**

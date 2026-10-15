@@ -21,8 +21,14 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Menu } from '~/overlay/Menu';
 import { Tooltip } from '~/overlay/Tooltip';
 import { Component } from '~/core/Component';
+import { Container } from '~/core/Container';
+import { Event } from '~/core/Event';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
+import { SpatialNavigation } from '~/core/SpatialNavigation';
+import { _Tree } from '~/component/tree/Tree';
+import type { TreeOptions } from '~/component/tree/Tree';
+import type { TreeNode } from '~/component/tree/TreeNode';
 import { _List } from '~/component/list/List';
 import type { SelectableListItem } from '~/component/list/AbstractSelectableList';
 import { installTestDOM, makeEvent, setConnected } from '../../dom/TestDOM';
@@ -176,5 +182,411 @@ describe('Keyboard row actions — List type-ahead', () => {
 
         expect(list.handleKey({ key: 'b', preventDefault() {} } as unknown as KeyboardEvent)).toBe(true);
         expect(list.handleKey({ key: 'b', ctrlKey: true, preventDefault() {} } as unknown as KeyboardEvent)).toBe(false);
+    });
+});
+
+describe('Keyboard row actions — Tree', () => {
+    // The tree's width and height, and its row height (`Tree`'s own default,
+    // restated so every expected scroll position is derived from the
+    // contract): five rows fit.
+    const TREE_WIDTH  = 200;
+    const TREE_HEIGHT = 120;
+    const ROW_HEIGHT  = 24;
+
+    /** A mounted tree and its element. */
+    interface MountedTree {
+        tree: _Tree;
+        el:   Handle;
+    }
+
+    /** How {@link mountTree} builds its tree; every member is optional. */
+    interface TreeSetup {
+        /** The tree's height. Five rows by default. */
+        height?:   number;
+        /** Nodes to expand before the first render. */
+        expanded?: TreeNode[];
+        /** A container to add the tree to; the caller tracks it. */
+        parent?:   Container;
+        /** Options for the tree's constructor. */
+        options?:  TreeOptions;
+    }
+
+    /**
+     * Builds a tree, gives it a committed size, renders it and focuses it.
+     *
+     * @param nodes - The root nodes.
+     * @param setup - How to build the tree.
+     * @returns The tree and its element.
+     */
+    function mountTree(nodes: TreeNode[], setup: TreeSetup = {}): MountedTree {
+        const { height = TREE_HEIGHT, expanded = [], parent, options } = setup;
+        const tree = parent ? new _Tree(options) : track(new _Tree(options));
+
+        if (parent) {
+            parent.addComponent(tree);
+            setConnected(parent.getElement(true)!, true);
+        }
+
+        const el = tree.getElement(true)!;
+
+        setConnected(el, true);
+
+        tree.setWidth(TREE_WIDTH);
+        tree.setHeight(height);
+        tree.setNodes(nodes);
+
+        for (const node of expanded) {
+            tree.expandNode(node);
+        }
+
+        (tree as any).renderWindow();
+
+        DOM.sink.focus(el);
+
+        return { tree, el };
+    }
+
+    /**
+     * Leaf root nodes with the given labels.
+     *
+     * @param labels - The labels, in order.
+     * @returns The nodes.
+     */
+    function leaves(labels: string[]): TreeNode[] {
+        return labels.map(label => ({ label }));
+    }
+
+    /**
+     * The label of the tree's current row.
+     *
+     * @param tree - The tree.
+     * @returns The label, or `null` when the tree has no current row.
+     */
+    function current(tree: _Tree): string | null {
+        return ((tree as any)._focusNode as TreeNode | null)?.label ?? null;
+    }
+
+    /**
+     * The labels of the visible rows, in order.
+     *
+     * @param tree - The tree.
+     * @returns The labels.
+     */
+    function rows(tree: _Tree): string[] {
+        return (tree as any)._flatRows.map((row: { node: TreeNode }) => row.node.label);
+    }
+
+    /**
+     * The labels of the selected nodes.
+     *
+     * @param tree - The tree.
+     * @returns The labels.
+     */
+    function selected(tree: _Tree): string[] {
+        return tree.getSelectedNodes().map(node => node.label);
+    }
+
+    /**
+     * The scroller's vertical scroll position.
+     *
+     * @param tree - The tree.
+     * @returns The position in px.
+     */
+    function scrollY(tree: _Tree): number {
+        return (tree as any)._scroller.getScrollY();
+    }
+
+    /**
+     * Counts a tree event.
+     *
+     * @param tree - The tree.
+     * @param event - The event to count.
+     * @returns A function reading the count.
+     */
+    function counter(tree: _Tree, event: 'selection'): () => number {
+        let count = 0;
+
+        tree.on(event, () => { count += 1; });
+
+        return () => count;
+    }
+
+    // Seventeen leaf roots; `Aardvark` is last, so a wrap is observable.
+    const FRUIT = [
+        'Apple', 'Apricot', 'Banana', 'Blueberry', 'Cherry', 'Date', 'Elderberry', 'Fig',
+        'Grape', 'Honeydew', 'Kiwi', 'Lemon', 'Mango', 'Nectarine', 'Orange', 'Papaya', 'Aardvark',
+    ];
+
+    describe('type-ahead', () => {
+        it('T1: a letter selects the next matching row, is prevented and fires "selection"', () => {
+            const t         = mountTree(leaves(FRUIT));
+            const selection = counter(t.tree, 'selection');
+
+            clock(1000);
+
+            expect(press(t.el, 'b')).toBe(1);
+            expect(current(t.tree)).toBe('Banana');
+            expect(selected(t.tree)).toEqual(['Banana']);
+            expect(scrollY(t.tree)).toBe(0);
+            expect(selection()).toBe(1);
+            expect(t.tree.getAria().getActiveDescendant()).toBe((t.tree as any)._focusPoolRow().getId());
+        });
+
+        it('T2: the same letter again steps through the matches', () => {
+            const t = mountTree(leaves(FRUIT));
+
+            clock(1000);
+            press(t.el, 'b');
+            clock(1100);
+            press(t.el, 'b');
+
+            expect(current(t.tree)).toBe('Blueberry');
+
+            clock(1200);
+            press(t.el, 'b');
+
+            expect(current(t.tree)).toBe('Banana');
+        });
+
+        it('T3: two different letters match as a prefix', () => {
+            const t = mountTree(leaves(FRUIT));
+
+            clock(1000);
+            press(t.el, 'b');
+
+            expect(current(t.tree)).toBe('Banana');
+
+            clock(1100);
+            press(t.el, 'l');
+
+            expect(current(t.tree)).toBe('Blueberry');
+        });
+
+        it('T4: a match below the view scrolls to show it', () => {
+            const t = mountTree(leaves(FRUIT));
+
+            clock(1000);
+            press(t.el, 'm');
+
+            expect(current(t.tree)).toBe('Mango');
+            expect(scrollY(t.tree)).toBe(13 * ROW_HEIGHT - TREE_HEIGHT);
+        });
+
+        it('T5: a pause longer than the window starts a new search', () => {
+            const t = mountTree(leaves(FRUIT));
+
+            clock(1000);
+            press(t.el, 'b');
+            clock(1700);
+            press(t.el, 'c');
+
+            expect(current(t.tree)).toBe('Banana');
+
+            clock(2401);
+            press(t.el, 'c');
+
+            expect(current(t.tree)).toBe('Cherry');
+        });
+
+        it('T6: a letter with no match is prevented and moves nothing', () => {
+            const t         = mountTree(leaves(FRUIT));
+            const selection = counter(t.tree, 'selection');
+
+            clock(1000);
+
+            expect(press(t.el, 'z')).toBe(1);
+
+            clock(1100);
+
+            expect(press(t.el, 'a')).toBe(1);
+            expect(current(t.tree)).toBeNull();
+            expect(selection()).toBe(0);
+        });
+
+        it('T7: a repeated letter wraps past the last row', () => {
+            const t = mountTree(leaves(FRUIT));
+            const landed: string[] = [];
+            const scrolls: number[] = [];
+
+            for (const ms of [3000, 3100, 3200, 3300]) {
+                clock(ms);
+                press(t.el, 'a');
+                landed.push(current(t.tree)!);
+                scrolls.push(scrollY(t.tree));
+            }
+
+            expect(landed).toEqual(['Apple', 'Apricot', 'Aardvark', 'Apple']);
+            expect(scrolls).toEqual([0, 0, 17 * ROW_HEIGHT - TREE_HEIGHT, 0]);
+        });
+
+        it('T8: Shift types a capital', () => {
+            const t = mountTree(leaves(FRUIT));
+
+            clock(1000);
+
+            expect(press(t.el, 'B', { shiftKey: true })).toBe(1);
+            expect(current(t.tree)).toBe('Banana');
+        });
+
+        it('T9: Space is not type-ahead', () => {
+            const t = mountTree(leaves(FRUIT));
+
+            clock(1000);
+            press(t.el, 'B', { shiftKey: true });
+
+            expect(press(t.el, ' ')).toBe(0);
+            expect(current(t.tree)).toBe('Banana');
+        });
+
+        it('T10: a chord with Ctrl, Alt or Meta is not type-ahead', () => {
+            const t = mountTree(leaves(FRUIT));
+
+            clock(1000);
+            press(t.el, 'B', { shiftKey: true });
+
+            expect(press(t.el, 'c', { ctrlKey: true })).toBe(0);
+            expect(press(t.el, 'c', { altKey: true })).toBe(0);
+            expect(press(t.el, 'c', { metaKey: true })).toBe(0);
+            expect(current(t.tree)).toBe('Banana');
+        });
+
+        it('T11: Escape clears the buffer and is not prevented', () => {
+            const t = mountTree(leaves(FRUIT));
+
+            clock(1000);
+            press(t.el, 'b');
+
+            expect(current(t.tree)).toBe('Banana');
+
+            expect(press(t.el, 'Escape')).toBe(0);
+
+            clock(1100);
+            press(t.el, 'l');
+
+            expect(current(t.tree)).toBe('Lemon');
+        });
+
+        it('T12: only visible rows are searched', () => {
+            const alpha = { label: 'Alpha', children: leaves(['Zed']) };
+            const t     = mountTree([alpha, { label: 'Lazy' }, { label: 'Beta' }]);
+
+            clock(1000);
+            press(t.el, 'z');
+
+            expect(current(t.tree)).toBeNull();
+
+            t.tree.expandNode(alpha);
+            (t.tree as any).renderWindow();
+            clock(3000);
+            press(t.el, 'z');
+
+            expect(current(t.tree)).toBe('Zed');
+        });
+
+        it('T13: a lazy node that has not loaded is not loaded by type-ahead', () => {
+            const loadChildren = vi.fn(async () => leaves(['Xenon']));
+            const t            = mountTree([{ label: 'Alpha' }, { label: 'Lazy', hasChildren: true, loadChildren }]);
+
+            clock(1000);
+            press(t.el, 'x');
+
+            expect(current(t.tree)).toBeNull();
+            expect(loadChildren).not.toHaveBeenCalled();
+        });
+
+        it('T14: a key typed into a control inside a row never reaches the tree', () => {
+            const t     = mountTree(leaves(FRUIT));
+            const rowEl = (t.tree as any)._rowPool[0].getElement();
+
+            clock(1000);
+
+            expect(press(rowEl, 'b')).toBe(0);
+            expect(current(t.tree)).toBeNull();
+        });
+
+        it('T15: a letter replaces a multi-selection with the one row', () => {
+            const t = mountTree(leaves(FRUIT));
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown', { shiftKey: true });
+            press(t.el, 'ArrowDown', { shiftKey: true });
+
+            expect(selected(t.tree)).toEqual(expect.arrayContaining(['Apple', 'Apricot', 'Banana']));
+
+            clock(1000);
+            press(t.el, 'c');
+
+            expect(selected(t.tree)).toEqual(['Cherry']);
+            expect(t.tree.getSelectedNode()?.label).toBe('Cherry');
+        });
+
+        it('T16: the key is prevented, not stopped: an ancestor still hears it', () => {
+            const parent          = track(new Container());
+            const t               = mountTree(leaves(FRUIT), { parent });
+            const heard: string[] = [];
+            const spy             = (e: KeyboardEvent): void => { heard.push(e.key); };
+
+            Event.addSubtreeListener(parent, 'keydown', spy);
+
+            try {
+                clock(1000);
+
+                expect(press(t.el, 'b')).toBe(1);
+                expect(heard).toEqual(['b']);
+            } finally {
+                Event.removeSubtreeListener(parent, 'keydown', spy);
+            }
+        });
+
+        it('T17: an empty tree handles none of the keys', () => {
+            const t = mountTree([]);
+
+            clock(1000);
+
+            expect(press(t.el, 'b')).toBe(0);
+            expect(press(t.el, 'Enter')).toBe(0);
+            expect(press(t.el, '*')).toBe(0);
+        });
+
+        it('T18: a key SpatialNavigation claims is left alone', () => {
+            const t = mountTree(leaves(FRUIT));
+
+            vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+            clock(1000);
+
+            expect(press(t.el, 'd')).toBe(0);
+            expect(current(t.tree)).toBeNull();
+        });
+
+        it('T19: a one-row tree lands on its row', () => {
+            const t         = mountTree(leaves(['Apple']));
+            const selection = counter(t.tree, 'selection');
+
+            press(t.el, 'ArrowDown');
+            clock(1000);
+
+            expect(press(t.el, 'a')).toBe(1);
+            expect(current(t.tree)).toBe('Apple');
+            expect(selection()).toBe(1);
+        });
+
+        it('T20: with the current row hidden the search starts at the first row', () => {
+            const a = { label: 'A', children: leaves(['a0']) };
+            const t = mountTree([a, { label: 'B' }], { expanded: [a] });
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown');
+
+            expect(current(t.tree)).toBe('a0');
+
+            (t.tree as any)._onToggle(a);
+
+            expect(rows(t.tree)).toEqual(['A', 'B']);
+
+            clock(1000);
+            press(t.el, 'b');
+
+            expect(current(t.tree)).toBe('B');
+        });
     });
 });

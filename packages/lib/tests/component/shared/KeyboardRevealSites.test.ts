@@ -400,6 +400,8 @@ const SITES: Site[] = [
     { file: TREE, site: 'ArrowRight, expanded: _selectAtIndex(focusIdx + 1, true)',     move: 'ArrowRight into the first child',      axis: 'y', run: treeKey('parent', 'ArrowRight') },
     { file: TREE, site: 'ArrowLeft, child: _selectAtIndex(i, true)',                    move: 'ArrowLeft to the parent',              axis: 'y', run: treeKey('firstChild', 'ArrowLeft') },
     { file: TREE, site: 'ArrowLeft, expanded: _scrollIntoView(newIdx, true)',           move: 'ArrowLeft that collapses the node',    axis: 'y', run: treeKey('parent', 'ArrowLeft') },
+    // Tree._typeAheadTo: a letter moves the current row like a plain arrow key.
+    { file: TREE, site: '_typeAheadTo: _selectAtIndex(index, true)',        move: 'type-ahead',                         axis: 'y', run: treeKey('parent', 'h') },
     // Tree._revealFocusRow: the keyboard context menu.
     { file: TREE, site: '_revealFocusRow: _scrollIntoView(index, true)',  move: 'Shift+F10',                          axis: 'y', run: treeKey('middle', 'F10') },
 
