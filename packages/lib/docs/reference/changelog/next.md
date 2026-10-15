@@ -962,6 +962,23 @@ page resets to empty.
   the field, and focus was then lost as the list closed. No consumer action
   is needed.
 
+- **`insertImage()` no longer throws, and Delete, Enter, typing and
+  `insertTable()` no longer leave an emptied `:::` block,** for a selection
+  made in code with a point on a `:::` block, or a range with a point
+  between two blocks. Such a point is moved to the caret position it names
+  before the command acts.
+
+- **Enter over a range that starts just before a list removes the range
+  whichever way it was made, and Shift+Enter over a range that ends on a
+  list no longer throws.** A paragraph break over a range from a point on
+  the root or a column before a list to the end of its text, with the anchor
+  at the start, inserted the paragraph and removed nothing; with the anchor
+  at the end it left the caret at the document's end. The range is now
+  removed first and the break comes where it was, as after Delete.
+  Shift+Enter over a range ending between a list's items is declined, and
+  changes nothing. A range that ends at the end of a list in a `:::` column
+  no longer leaves the column empty when it is deleted or replaced.
+
 - **`MarkdownEditor` keeps a `:::` fence's opening line.** Editing anything
   inside a fence whose opening line carried more than its attributes —
   `::: tip Title`, `::: tip {align=right}`, `::: {align=right} more words` —
