@@ -1807,6 +1807,15 @@ page resets to empty.
   heading that ends in an escaped `#` (`# alpha \#`) now gives
   `alpha \#`, as in source mode, where it gave `alpha #`.
 
+- **`MarkdownEditor` no longer throws on Tab, or on a paste or drop, over
+  a selection that starts just before a list.** A selection from the very
+  start of a document that opens with a list (as code can set one) made
+  Tab and a pasted or dropped word throw, and a pasted paragraph replaced
+  the list with a paragraph. They now remove the selection first, as
+  Delete does, and insert where it leaves the caret. Enter over a
+  selection that empties a list leaves the list, as Delete then Enter
+  does. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
