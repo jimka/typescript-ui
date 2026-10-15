@@ -10,6 +10,8 @@ import type { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import type { LayoutManager } from "~/layout/LayoutManager.js";
 import { getAppResizeMode, setAppResizeMode } from "~/core/ResizeDrag.js";
 import type { ResizeMode } from "~/core/ResizeDrag.js";
+import { getAppBuiltInStrings, setAppBuiltInStrings } from "~/core/BuiltInStrings.js";
+import type { BuiltInStrings } from "~/core/BuiltInStrings.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { whenFontActivated } from "~/core/FontActivation.js";
 
@@ -43,6 +45,14 @@ export interface BodyOptions extends Omit<ComponentOptions, "components"> {
      * Defaults to `"live"`. See {@link Body.setResizeMode}.
      */
     resizeMode?: ResizeMode;
+
+    /**
+     * Replacements for the library's built-in strings, used by every component
+     * that has none of its own — including the dialogs `Dialog.show` and the
+     * dialog shortcuts build. Omitted keys keep the library's English default.
+     * See {@link Body.setStrings}.
+     */
+    strings?: Partial<BuiltInStrings>;
 }
 
 /**
@@ -116,7 +126,7 @@ export class Body extends Component<BodyOptions> implements BackgroundSurface {
      * suppresses the browser's native right-click menu page-wide, unless
      * `options.nativeContextMenu` is `true`. `options.resizeMode` sets the
      * app-wide gutter-, table-column- and window-edge-drag mode at the same
-     * time.
+     * time, and `options.strings` the app-wide table of built-in strings.
      *
      * @param options - Component options to apply (layout manager, background,
      *   …); `components` is not a field — see {@link BodyOptions}.
@@ -168,6 +178,7 @@ export class Body extends Component<BodyOptions> implements BackgroundSurface {
         if (options.favicon !== undefined) this.setFavicon(options.favicon);
         if (options.nativeContextMenu !== undefined) this.setNativeContextMenu(options.nativeContextMenu);
         if (options.resizeMode !== undefined) this.setResizeMode(options.resizeMode);
+        if (options.strings !== undefined) this.setStrings(options.strings);
 
         return this;
     }
@@ -267,6 +278,37 @@ export class Body extends Component<BodyOptions> implements BackgroundSurface {
      */
     getResizeMode(): ResizeMode {
         return getAppResizeMode();
+    }
+
+    /**
+     * Sets the app-wide table of the library's built-in strings, such as the
+     * name of a dialog's title-bar close button. Replaces every override set
+     * earlier; keys left out keep the library's English default.
+     *
+     * @param strings - The overrides; takes effect for the next dialog
+     *   constructed. A dialog that is already open keeps its name.
+     *
+     * @returns This component, for method chaining.
+     *
+     * @remarks The table is page-wide rather than per-body state, so it is
+     * held in the module `Dialog` reads at construction — reaching it through
+     * the `Body` singleton would construct the whole page bootstrap from
+     * inside a dialog.
+     */
+    setStrings(strings: Partial<BuiltInStrings>): this {
+        setAppBuiltInStrings(strings);
+
+        return this;
+    }
+
+    /**
+     * Returns the built-in strings in effect.
+     *
+     * @returns The library's defaults with the application's overrides
+     *   applied.
+     */
+    getStrings(): BuiltInStrings {
+        return getAppBuiltInStrings();
     }
 
     private constructor() {

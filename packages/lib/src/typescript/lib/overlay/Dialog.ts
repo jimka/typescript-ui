@@ -5,6 +5,7 @@ import { Panel } from "~/core/Panel.js";
 import { Animation } from "~/core/Animation.js";
 import { Event } from "~/core/Event.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
+import { getBuiltInString } from "~/core/BuiltInStrings.js";
 import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
 import { Position } from "~/primitive/Position.js";
 import { Text } from "~/component/input/Text.js";
@@ -169,6 +170,14 @@ export interface DialogConfig {
      * not set. Read once, at construction.
      */
     ariaLabel?       : string;
+    /**
+     * Accessible name and tooltip of the title-bar close button, for this
+     * dialog only. Defaults to the application-wide `strings.dialogClose` set
+     * through `Body`, which is `"Close"` unless changed. An empty string
+     * counts as not set. Read once, at construction; change it afterwards
+     * through `dialog.getTitleBar().getCloseButton()?.setText(…)`.
+     */
+    closeButtonLabel?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -188,9 +197,6 @@ const MIN_CONTENT_HEIGHT: number = 80;
 // Minimum gap kept between a content-resized dialog and each viewport edge, so a
 // dialog grown to tall content never runs flush to the top/bottom of the screen.
 const DIALOG_VIEWPORT_MARGIN: number = 24;
-
-/** Accessible name and hover text of the title-bar close button. */
-const CLOSE_BUTTON_LABEL: string = "Close";
 
 // Leading title-bar glyph per severity tone, mirroring Notification's badges.
 const SEVERITY_GLYPH: Record<DialogSeverity, string> = {
@@ -279,8 +285,9 @@ function lastStopOutside(stops: Handle[], owner: Handle): Handle | null {
  * Reach this instance via [`Dialog.getTitleBar()`](/api/overlay/classes/Dialog#gettitlebar) — there is no public
  * constructor. The supported surface is `getTitleText()` (for tinting the
  * title text colour), `setGlyph()` / `getGlyph()` (for the optional leading
- * icon), `getCloseButton()` (for renaming the close button with `setText`),
- * and any inherited [`Component`](/api/core/classes/Component) setter
+ * icon), `getCloseButton()` (for renaming the close button with `setText`;
+ * its initial name comes from the dialog's `closeButtonLabel` or the
+ * application's `strings.dialogClose`), and any inherited [`Component`](/api/core/classes/Component) setter
  * (e.g. `setBackgroundColor`).
  *
  * @category Core
@@ -296,8 +303,10 @@ class DialogTitleBar extends Component {
      * @param onClose - Called when the user clicks the close button.
      * @param dismissable - When `false`, the close button is not built at all
      *   (mandatory-modal title bar).
+     * @param closeLabel - Accessible name and tooltip of the close button,
+     *   already resolved by the dialog.
      */
-    constructor(title: string, onClose: () => void, dismissable: boolean) {
+    constructor(title: string, onClose: () => void, dismissable: boolean, closeLabel: string) {
         super();
 
         this.setBackgroundColor("var(--ts-ui-body-bg)");
@@ -318,7 +327,7 @@ class DialogTitleBar extends Component {
         this.addComponent(this._titleText);
 
         if (dismissable) {
-            this._closeButton = new Button({ glyph: "xmark", text: CLOSE_BUTTON_LABEL, showText: false });
+            this._closeButton = new Button({ glyph: "xmark", text: closeLabel, showText: false });
             this._closeButton.setInsets(new Insets(0, 0, 0, 0));
             this._closeButton.setBorder("none");
             this._closeButton.clearBackgroundImage();
@@ -783,7 +792,11 @@ class Dialog extends Component implements DismissableLayer {
         layout.setComponentSpacing(0);
         this.setLayoutManager(layout);
 
-        this._titleBar = new DialogTitleBar(config.title, () => this.hide('close'), config.dismissable !== false);
+        // The config's own name first, then the application-wide one; an empty
+        // string counts as not set.
+        const closeLabel = config.closeButtonLabel ? config.closeButtonLabel : getBuiltInString("dialogClose");
+
+        this._titleBar = new DialogTitleBar(config.title, () => this.hide('close'), config.dismissable !== false, closeLabel);
         this.addComponent(this._titleBar, { placement: Placement.NORTH });
 
         // An explicit severity tone wins over the tone derived from the buttons,
