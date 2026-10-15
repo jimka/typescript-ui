@@ -1735,6 +1735,15 @@ page resets to empty.
   follow `canLink`.** Both also asked for selected text, so with an image
   alone selected they were disabled though `toggleLink` wraps the image.
 
+- **`MarkdownEditor` takes text composed at a link's edge.** Text entered
+  with an input method, a dead key or a mobile keyboard at the start of a
+  block that begins with a link was dropped, and the editor then ignored
+  typed keys at that caret; right after a link the first step of the
+  composition was cut off; at the end of a block that ends with a link the
+  text joined the link. It is now ordinary text outside the link in all
+  three places, as a typed character already was. No consumer action is
+  needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
