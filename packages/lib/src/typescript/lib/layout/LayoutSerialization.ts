@@ -667,7 +667,9 @@ function applyWindow(node: WindowNode, parked: Map<string, Component>, factory: 
         return;
     }
 
-    const win = new Window(node.header);
+    // A restored layout shows its windows from code, not from a gesture on any
+    // one of them, so none takes focus.
+    const win = new Window(node.header, { autoFocus: false });
 
     // Carry the leaf's glyph (single-panel content only) through the re-home, as
     // for any split/tab pane. The frame's id is its own identity channel, so a
