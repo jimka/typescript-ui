@@ -21,7 +21,7 @@ export interface DiagnosticsCounters {
     layoutFlushes:         number;
     layoutFlushTotalMs:    number;
     layoutFlushMaxMs:      number;
-    /** Cumulative count of throws the batched layout flush isolated. */
+    /** Cumulative count of throws the batched layout flush and the visibility and first-layout loops isolated. */
     layoutErrors:          number;
 }
 
@@ -89,7 +89,8 @@ export namespace Diagnostics {
 
     /**
      * Increments the count of throws the batched layout flush isolated — one
-     * per failing component layout or post-layout callback, per frame.
+     * per failing component layout, post-layout callback, `onFirstLayout`
+     * callback or `onEffectiveVisibilityChange` hook, per frame.
      */
     export function noteLayoutError(): void {
         layoutErrors++;

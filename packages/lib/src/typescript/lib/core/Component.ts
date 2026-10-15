@@ -260,7 +260,7 @@ function ensureFlushScheduled(): void {
  * the isolation buys a rendered frame, not silence, and the fix is the
  * underlying throw rather than a rate limiter.
  *
- * @param stage - The flush stage that failed, `"doLayout"` or `"afterNextLayout"`.
+ * @param stage - The stage that failed: "doLayout", "afterNextLayout", "onFirstLayout" or "onEffectiveVisibilityChange".
  * @param componentId - The failing component's id, or `null` for an entry that
  *   belongs to no single component.
  * @param error - The value that was thrown.
@@ -2735,7 +2735,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return;
         }
         this._lastEffectiveVisible = effective;
-        this.onEffectiveVisibilityChange(effective);
+
+        // Isolated: one hook that throws would otherwise leave this node's
+        // children, and every root queued behind it, unreconciled.
+        try {
+            this.onEffectiveVisibilityChange(effective);
+        } catch (error) {
+            reportFlushFailure("onEffectiveVisibilityChange", this.getId(), error);
+        }
 
         for (const child of this.getComponents()) {
             const childEffective =
@@ -8298,7 +8305,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._firstLayoutCallbacks = null;
 
         for (const callback of callbacks) {
-            callback();
+            // Isolated: the queue was emptied above, so a throw would lose
+            // every callback behind this one and abort the enclosing layout.
+            try {
+                callback();
+            } catch (error) {
+                reportFlushFailure("onFirstLayout", this.getId(), error);
+            }
         }
 
         return true;
