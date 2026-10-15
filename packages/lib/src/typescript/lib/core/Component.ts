@@ -1261,6 +1261,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // beside the purge that strands the drag.
         endPointerDragFor(this.getId());
 
+        // The purge above removed the wheel listener; the ease it started is a
+        // bare animation frame and would keep stepping for a few hundred
+        // milliseconds against an element that is gone.
+        this._wheelScroller?.stop();
+        this._wheelScroller = null;
+
         // Tear any active clip frame down, then remove this component's own
         // element — before recursing into children below, rather than after.
         // A still-connected element's removal here is the one call in this

@@ -780,7 +780,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *   tree: one that removes the node it matched leaves the reveal with no
      *   path to expand, and throws.
      *
-     * @returns A promise resolving to the revealed {@link TreeNode}, or `null`.
+     * @returns A promise resolving to the revealed {@link TreeNode}, or `null` when
+     *   nothing matches or the tree is disposed before the walk ends.
      */
     async revealByPredicate(predicate: (data: unknown, node: TreeNode) => boolean): Promise<TreeNode | null> {
         return this._revealFirstMatch(null, { predicate, visited: new Set(), ownCommits: 0 });
@@ -824,6 +825,13 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         let index      = 0;
 
         for (;;) {
+            // Checked on every turn: each `await` below can resume after a dispose.
+            const destroyed = this.isDestroyed();
+
+            if (destroyed) {
+                return null;
+            }
+
             if (generation !== externalGeneration()) {
                 if (parent !== null && this._locate(parent) === null) {
                     return null;
@@ -969,6 +977,16 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         }
 
         return outcome !== "dropped" || this._loadedNodes.has(node);
+    }
+
+    /**
+     * Drops every lazy load still in flight, as `setNodes` does, so one that
+     * settles later commits nothing to a tree that is gone.
+     */
+    protected destructor(): void {
+        this._pendingLoads.clear();
+
+        super.destructor();
     }
 
     /**
@@ -1494,11 +1512,12 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *
      * {@link setNodes}, and an {@link insertNode}, {@link removeNode} or
      * {@link setChildren} that takes over the node's children or drops the
-     * node, drops its load: it commits nothing, and every call waiting on it
-     * resolves `false` once the dropped `loadChildren` call settles — the
-     * tree stops acting on that call, not waiting on it. A loader that makes
-     * one of those calls itself drops its own load the same way. A node removed while its load
-     * was in flight and then inserted again, or handed back to `setNodes`, is
+     * node, drops its load, and so does disposing the tree. A dropped load
+     * commits nothing, and every call waiting on it resolves `false` once the
+     * dropped `loadChildren` call settles — the tree stops acting on that
+     * call, not waiting on it. A loader that makes one of those calls itself
+     * drops its own load the same way. A node removed while its load was in
+     * flight and then inserted again, or handed back to `setNodes`, is
      * a new node: its next expand starts a fresh load.
      *
      * The row animation follows the commit and does not delay this promise's

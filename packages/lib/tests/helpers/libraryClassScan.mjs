@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-// Scans the library source for classes matching the four registry tests'
-// patterns, so `dispose-full-teardown.test.ts`,
-// `dispose-listener-teardown.test.ts`, `dispose-drag-teardown.test.ts` and
-// `dispose-pointer-drag-teardown.test.ts` derive their expected class lists at
-// run time instead of carrying a hand-written count that can drift silently.
+// Scans the library source for classes matching the registry tests' patterns,
+// so `dispose-full-teardown.test.ts`, `dispose-listener-teardown.test.ts`,
+// `dispose-drag-teardown.test.ts` and `dispose-pointer-drag-teardown.test.ts`
+// derive their expected class lists at run time. A fifth registry,
+// `dispose-deferred-work.test.ts`, derives a list of files instead of classes,
+// through `filesSchedulingDeferredWork()`, because several scheduling sites
+// sit in module-level functions that belong to no class. None of them carries
+// a hand-written count that can drift silently.
 // This lives in a plain-ESM module rather than in the tests themselves
 // because `tsconfig.test.json` builds a deliberately Node-types-free
 // program — its `include` omits `vite.config.ts` and `scripts/`, which are
@@ -18,7 +21,7 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 
 /** `packages/lib/tests/helpers/` -> the library source root. */
 const SOURCE_ROOT = fileURLToPath(new URL('../../src/typescript/lib/', import.meta.url));
@@ -34,6 +37,10 @@ const DESTRUCTOR_DECLARATION = /^\s*protected destructor\(/;
 
 /** The listener registry's source of truth. */
 const SELF_LISTENER_REGISTRATION = /Event\.add(Listener|SubtreeListener|ViewportListener)\(\s*this\s*,/;
+
+/** The deferred-work registry's source of truth: a line that schedules a frame,
+ *  a timer or a loop, or waits on a promise. The lookahead skips comment lines. */
+const DEFERRED_WORK = /^(?!\s*(?:\*|\/\/|\/\*)).*(?:\brequestAnimationFrame\(|\bsetTimeout\(|\bsetInterval\(|\bnew (?:AutoRepeat|SmoothScroller|PerFrameCoalescer)\b|\bawait\s|\.then\(|\bAnimation\.tween\b)/;
 
 /** The drag-teardown registry's source of truth. The lookahead skips JSDoc
  *  continuation lines, so `DragManager.ts`'s own `@example` block and the
@@ -108,6 +115,29 @@ export function classesDeclaringDestructor() {
 /** Class names calling `Event.addListener(this, ...)` / `addSubtreeListener` / `addViewportListener` — the listener registry's source of truth. */
 export function classesRegisteringEventListeners() {
     return classesMatching(SELF_LISTENER_REGISTRATION);
+}
+
+/**
+ * Library source files that schedule deferred work, as paths relative to the
+ * library source root with forward slashes — the deferred-work registry's
+ * source of truth. A file, not a class: several scheduling sites sit in
+ * module-level functions that belong to no class.
+ *
+ * @returns Sorted relative paths of the files holding a line matching `DEFERRED_WORK`.
+ */
+export function filesSchedulingDeferredWork() {
+    const matched = [];
+
+    for (const file of listSourceFiles(SOURCE_ROOT)) {
+        const lines = readFileSync(file, 'utf8').split('\n');
+        const schedules = lines.some((line) => DEFERRED_WORK.test(line));
+
+        if (schedules) {
+            matched.push(relative(SOURCE_ROOT, file).replace(/\\/g, '/'));
+        }
+    }
+
+    return matched.sort();
 }
 
 /** Class names calling `DragManager.makeDragSource(` / `makeDropTarget(` — the drag-teardown registry's source of truth. */

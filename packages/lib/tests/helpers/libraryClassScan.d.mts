@@ -10,6 +10,9 @@ export function classesDeclaringDestructor(): string[];
 /** Class names calling `Event.addListener(this, ...)` / `addSubtreeListener` / `addViewportListener` — the listener registry's source of truth. */
 export function classesRegisteringEventListeners(): string[];
 
+/** Relative paths of the library source files that schedule deferred work — the deferred-work registry's source of truth. */
+export function filesSchedulingDeferredWork(): string[];
+
 /** Class names calling `DragManager.makeDragSource(` / `makeDropTarget(` — the drag-teardown registry's source of truth. */
 export function classesRegisteringDragTargets(): string[];
 
