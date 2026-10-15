@@ -276,6 +276,15 @@ page resets to empty.
   component whose teardown writes an attribute — a `Dialog` that had already
   closed threw there. Reading or writing through a raw handle still throws.
 
+- **One throwing visibility hook or first-layout callback no longer takes the
+  rest with it.** A throw from `onEffectiveVisibilityChange` used to escape
+  `Component.flushEffectiveVisibility()` and leave every component queued
+  behind it unreconciled; a throw from an `onFirstLayout` callback used to
+  abort that component's `doLayout()` and drop the callbacks behind it. Both
+  are now caught per entry, logged with `console.error` and counted on the
+  diagnostics overlay's "Layout errors" row, as a throwing layout pass
+  already was.
+
 ### Layouts
 
 - **A floating window rebuilt by `restoreLayout` is built with
