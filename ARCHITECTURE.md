@@ -357,6 +357,18 @@ Construction must stay JS-only. Every framework primitive buffers DOM writes unt
 - **Measurement**: never read layout (`getBoundingClientRect`, `getComputedStyle`) during construction. Defer to a layout pass or theme-change callback.
 - **Children**: build child Components in the constructor; their DOM is realised when the parent renders. Don't `getElement(true)` during construction.
 
+## Deferred work ends with its owner
+
+*Deferred work* is anything a component asks to run later: an animation frame, a timer, a loop built on either, the code after an `await`, a callback handed to a promise. The component can be disposed first, and the work then runs against handles that have been released. Three rules keep that from happening.
+
+1. **A frame, a timer or a loop is cancelled in `destructor`.** Keep what the scheduling call returned in a field and cancel it before `super.destructor()`. A helper object that schedules for its owner (`SmoothScroller`, `AutoRepeat`, `PerFrameCoalescer`, `ResizeDrag`) offers a stop or cancel method, and the owner calls it there.
+2. **Code after an `await` asks `this.isDestroyed()` first** and returns when it is true, before it touches the component, calls a consumer callback or writes caller-owned data. A promise the library handed out still settles: with the value that means "nothing happened".
+3. **Work that belongs to one state of a component carries a token** — a generation number or a sequence number taken when the work starts — and does nothing when the token is no longer current. `destructor` invalidates the token. `DiagramView.relayout`, `Markdown`'s render generation and `Tree`'s lazy loads are the worked cases.
+
+A destroyed component's own setters write nothing: `destructor` detaches its style and attribute buffers. That makes a late call harmless, not correct — the three rules still apply, because a loop left running wastes frames for ever and a consumer callback still fires. A raw `Handle` is different: reading or writing through a released one throws, on purpose. Code that keeps a handle it does not own asks `DOM.source.isRegistered(handle)` first.
+
+`tests/component/dispose-deferred-work.test.ts` guards the rules. It disposes a component at every step of its deferred work, through `tests/helpers/disposeAtEveryBoundary.ts`, and fails when a source file gains its first scheduling call without a row there or an entry in its baseline list; a baseline entry also satisfies the registry, so it is only for a file whose deferred work was read and found safe. The scan is per file, so a second site in a file that already has a row is not caught by it: add a row for the new site.
+
 ## Components are exported through `callable()`
 
 Every `Component` subclass must be wrapped with `callable()` before export. The raw class stays available behind an underscored alias purely as a typing escape hatch; the callable form is the public name.
