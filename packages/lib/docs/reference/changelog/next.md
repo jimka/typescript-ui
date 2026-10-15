@@ -181,6 +181,18 @@ page resets to empty.
   `FocusReveal.reveal(component.getElement())` after the setter. No
   consumer action is needed.
 
+- **`List` type-ahead moves to the next match and steps on a repeated
+  letter.** A letter used to focus the first row from the top whose label
+  starts with the buffer, so a repeated letter did nothing. It now focuses
+  the next matching row after the focused one, wrapping, and typing the same
+  letter again steps through the matches. Several different letters still
+  match as a prefix, now starting from the focused row. The key is now
+  prevented on the list's own element, as it already was in an open
+  `ComboBox`. `MultiSelectList` and the `ComboBox` dropdown change with it.
+  The `protected` fields `_typeAheadBuf` and `_typeAheadAt` of
+  `AbstractSelectableList` are gone. No consumer action is needed unless a
+  subclass read those two fields.
+
 ### Core
 
 - **`FocusHistory` records places, not popups.** A control inside a context
