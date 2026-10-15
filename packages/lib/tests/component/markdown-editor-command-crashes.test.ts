@@ -11,10 +11,11 @@ import {
     $createParagraphNode, $createRangeSelection, $createTextNode, $getRoot, $getSelection, $isRangeSelection, $isTextNode,
     $setSelection, CONTROLLED_TEXT_INSERTION_COMMAND, CUT_COMMAND, DELETE_CHARACTER_COMMAND, INSERT_LINE_BREAK_COMMAND,
     INSERT_PARAGRAPH_COMMAND, INTERNAL_$isBlock, KEY_ENTER_COMMAND, PASTE_COMMAND, SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, createEditor,
+    COMPOSITION_START_COMMAND, COMPOSITION_END_TAG, $setCompositionKey, $findMatchingParent, UNDO_COMMAND, CAN_UNDO_COMMAND, COMMAND_PRIORITY_LOW,
 } from 'lexical';
 import type { ElementNode, Klass, LexicalEditor, LexicalNode, PointType, RangeSelection, TextNode } from 'lexical';
 import { $createListItemNode, $createListNode, $isListNode, ListItemNode, ListNode } from '@lexical/list';
-import { $createLinkNode, $toggleLink, LinkNode } from '@lexical/link';
+import { $createLinkNode, $isLinkNode, $toggleLink, LinkNode } from '@lexical/link';
 import { copyToClipboard } from '@lexical/clipboard';
 import type { TableCellNode } from '@lexical/table';
 import { $dfs } from '@lexical/utils';
@@ -1039,6 +1040,170 @@ function recordingEditor(nodes: Array<Klass<LexicalNode>> = []): { editor: Lexic
     return { editor, errors };
 }
 
+/**
+ * Stands in for a `compositionstart` event. Its time stamp is far past the
+ * 30 ms after the last key press inside which Lexical opens a text node for
+ * every composition, so the rows see the rule and not that timing path.
+ *
+ * @returns The event.
+ */
+function compositionStartEvent(): CompositionEvent {
+    return { type: 'compositionstart', data: '', timeStamp: 1_000_000_000 } as unknown as CompositionEvent;
+}
+
+/**
+ * Where the text node a composition runs in sits. Read inside an update:
+ * Lexical reports no node as composing while it only reads.
+ *
+ * @param lexical - The Lexical editor, with a composition started.
+ * @returns `'in the link'`, `'before the link'`, `'after the link'`, `'in plain text'`, or `'none'` when no node is composing.
+ */
+function composingPlace(lexical: LexicalEditor): string {
+    let place = 'none';
+
+    lexical.update(() => {
+        const node = $dfs().map((entry) => entry.node).find((found) => $isTextNode(found) && found.isComposing());
+
+        if (node === undefined) {
+            return;
+        }
+
+        const link = $findMatchingParent(node, $isLinkNode);
+        const followsLink = $isLinkNode(node.getPreviousSibling());
+        const precedesLink = $isLinkNode(node.getNextSibling());
+
+        place = link !== null ? 'in the link' : followsLink ? 'after the link' : precedesLink ? 'before the link' : 'in plain text';
+    }, { discrete: true });
+
+    return place;
+}
+
+/**
+ * Ends a composition the way a browser does: the composed text replaces
+ * what the selection covers in the composing node, the caret goes after it,
+ * and the update carries Lexical's composition-end tag.
+ *
+ * @param lexical - The Lexical editor, with a composition started.
+ * @param text - The composed text.
+ */
+function commitComposition(lexical: LexicalEditor, text: string): void {
+    lexical.update(() => {
+        const selection = $getSelection() as RangeSelection;
+        const node = selection.anchor.getNode() as TextNode;
+        const from = Math.min(selection.anchor.offset, selection.focus.offset);
+        const to = Math.max(selection.anchor.offset, selection.focus.offset);
+        const shown = node.getTextContent();
+
+        node.setTextContent(shown.slice(0, from) + text + shown.slice(to));
+        node.select(from + text.length, from + text.length);
+        $setCompositionKey(null);
+    }, { discrete: true, tag: COMPOSITION_END_TAG });
+}
+
+/** A row: its name, the Markdown loaded, the caret, where the composition must run, and the save once `日本` is composed. */
+type CompositionRow = readonly [row: string, source: string, caret: TextPoint, place: string, saved: string];
+
+const TABLE_REST = ' | b |\n| --- | --- |\n| c | d |';
+
+const I_ROWS: readonly CompositionRow[] = [
+    ['I1: a paragraph that begins with a link', '[the docs](u) now', ['the docs', 0], 'before the link', '日本[the docs](u) now'],
+    ['I2: a heading that begins with a link', '## [the docs](u) now', ['the docs', 0], 'before the link', '## 日本[the docs](u) now'],
+    ['I3: a list item that begins with a link', '- [the docs](u) now', ['the docs', 0], 'before the link', '- 日本[the docs](u) now'],
+    ['I4: a table cell that begins with a link', `| [the docs](u) now${TABLE_REST}`, ['the docs', 0], 'before the link', `| 日本[the docs](u) now${TABLE_REST}`],
+    ['I5: a quote that begins with a link', '> [the docs](u) now', ['the docs', 0], 'before the link', '> 日本[the docs](u) now'],
+    ['I6: a reference link at a block\'s start', '[the docs][r] now\n\n[r]: u', ['the docs', 0], 'before the link', '日本[the docs][r] now\n\n[r]: u'],
+    ['I7: an autolink at a block\'s start', '<https://e.com/d> now', ['https://e.com/d', 0], 'before the link', '日本<https://e.com/d> now'],
+    ['I8: a link after a hard line break', 'zero\\\n[the docs](u) now', ['the docs', 0], 'before the link', 'zero\\\n日本[the docs](u) now'],
+    ['I9: a link alone in its block, at its start', '[the docs](u)', ['the docs', 0], 'before the link', '日本[the docs](u)'],
+    ['I10: the start of a link that has text before it', 'see [the docs](u) now', ['the docs', 0], 'before the link', 'see 日本[the docs](u) now'],
+    ['I11: a paragraph that ends with a link', 'see [the docs](u)', ['the docs', 8], 'after the link', 'see [the docs](u)日本'],
+    ['I12: a link alone in its block, at its end', '[the docs](u)', ['the docs', 8], 'after the link', '[the docs](u)日本'],
+    ['I13: a list item that ends with a link', '- see [the docs](u)', ['the docs', 8], 'after the link', '- see [the docs](u)日本'],
+    ['I14: a reference link at a block\'s end', 'see [the docs][r]\n\n[r]: u', ['the docs', 8], 'after the link', 'see [the docs][r]日本\n\n[r]: u'],
+    ['I15: the start of the text right after a link', 'see [the docs](u) now', [' now', 0], 'after the link', 'see [the docs](u)日本 now'],
+    ['I16: inside a link (control)', 'see [the docs](u)', ['the docs', 3], 'in the link', 'see [the日本 docs](u)'],
+    ['I17: the end of the text right before a link (control)', 'see [the docs](u) now', ['see ', 4], 'before the link', 'see 日本[the docs](u) now'],
+    ['I18: plain text at a block\'s start (control)', 'plain now', ['plain now', 0], 'in plain text', '日本plain now'],
+];
+
+describe('a composition at a link\'s edge runs in text outside the link (I rows)', () => {
+    it.each(I_ROWS)('%s', (_row, source, caret, place, saved) => {
+        for (const inUpdate of [true, false]) {
+            const editor = load(source);
+            const lexical = lexicalOf(editor);
+            const loaded = editor.getValue();
+
+            selectText(editor, caret, caret);
+
+            if (inUpdate) {
+                lexical.update(() => { lexical.dispatchCommand(COMPOSITION_START_COMMAND, compositionStartEvent()); }, { discrete: true });
+            } else {
+                lexical.dispatchCommand(COMPOSITION_START_COMMAND, compositionStartEvent());
+            }
+
+            expect(composingPlace(lexical), `in an update ${inUpdate}`).toBe(place);
+
+            commitComposition(lexical, '日本');
+            expect(editor.getValue(), `in an update ${inUpdate}`).toBe(saved);
+            expect(load(saved).getValue()).toBe(saved);
+
+            let canUndo = true;
+            const stopWatching = lexical.registerCommand(CAN_UNDO_COMMAND, (can) => { canUndo = can; return false; }, COMMAND_PRIORITY_LOW);
+
+            lexical.dispatchCommand(UNDO_COMMAND, undefined);
+            stopWatching();
+            expect(editor.getValue(), `in an update ${inUpdate}, undone`).toBe(loaded);
+            expect(canUndo, `in an update ${inUpdate}, one undo is all there was`).toBe(false);
+
+            editor.dispose();
+        }
+    });
+});
+
+describe('a composition start at a link\'s edge: guard limits (I rows)', () => {
+    it('I19: a composition already running leaves the caret where it is', () => {
+        const editor = load('[the docs](u) now');
+        const lexical = lexicalOf(editor);
+
+        selectText(editor, ['the docs', 0], ['the docs', 0]);
+        lexical.update(() => { $setCompositionKey(($getSelection() as RangeSelection).anchor.key); }, { discrete: true });
+        const running = lexical.isComposing();
+
+        lexical.dispatchCommand(COMPOSITION_START_COMMAND, compositionStartEvent());
+
+        const anchorType = lexical.read(() => ($getSelection() as RangeSelection).anchor.type);
+
+        expect(running).toBe(true);
+        expect(anchorType).toBe('text');
+        editor.dispose();
+    });
+
+    it('I20: the composition-start update applies no Markdown shortcut', () => {
+        const editor = load('see `ab[the docs](u)');
+        const lexical = lexicalOf(editor);
+
+        selectText(editor, ['the docs', 0], ['the docs', 0]);
+        lexical.dispatchCommand(COMPOSITION_START_COMMAND, compositionStartEvent());
+
+        const formatted = lexical.read(() => $dfs().some((entry) => $isTextNode(entry.node) && entry.node.hasFormat('code')));
+
+        expect(formatted).toBe(false);
+        editor.dispose();
+    });
+
+    it('I21: a backtick composed at a link\'s start stays before the link', () => {
+        const editor = load('see `ab[the docs](u)');
+        const lexical = lexicalOf(editor);
+
+        selectText(editor, ['the docs', 0], ['the docs', 0]);
+        lexical.dispatchCommand(COMPOSITION_START_COMMAND, compositionStartEvent());
+        commitComposition(lexical, '`');
+
+        expect(editor.getValue()).toBe('see `ab`[the docs](u)');
+        editor.dispose();
+    });
+});
+
 describe('upstream canaries: the Lexical bugs the guards work around still reproduce (U rows)', () => {
     // When this fails after a Lexical upgrade, the upstream bug is fixed —
     // delete the matching guard in `MarkdownEditor.ts` (the stale-focus range
@@ -1110,5 +1275,33 @@ describe('upstream canaries: the Lexical bugs the guards work around still repro
 
         expect(errors).toEqual([]);
         expect(matched).toEqual([true, true, true, false, false, false, false]);
+    });
+
+    // When this fails after a Lexical upgrade, Lexical opens a text node for a composition that starts at a
+    // link's edge by itself — delete `$moveCaretOutOfLinkEdge` and `$pointOutsideLinkEdge` in `MarkdownEditor.ts`,
+    // their registration and this canary, then run the browser check of
+    // `plans/implemented/markdown-editor-typing-at-link-start-swallowed.md` again.
+    it('U4: a composition that starts at a link\'s start is left to run in the link\'s own text', () => {
+        const { editor, errors } = recordingEditor([LinkNode]);
+        let composesInLink = false;
+
+        editor.update(() => {
+            const linked = $createTextNode('b');
+
+            $getRoot().append($createParagraphNode().append($createLinkNode('u').append(linked), $createTextNode(' c')));
+            linked.select(0, 0);
+        }, { discrete: true });
+
+        editor.dispatchCommand(COMPOSITION_START_COMMAND, compositionStartEvent());
+
+        // Inside an update: Lexical reports no node as composing while it only reads.
+        editor.update(() => {
+            const composing = $dfs().map((entry) => entry.node).find((found) => $isTextNode(found) && found.isComposing());
+
+            composesInLink = composing !== undefined && $isLinkNode(composing.getParent());
+        }, { discrete: true });
+
+        expect(errors).toEqual([]);
+        expect(composesInLink).toBe(true);
     });
 });
