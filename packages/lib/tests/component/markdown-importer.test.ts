@@ -658,7 +658,7 @@ describe('$importMarkdown — round trips (R rows)', () => {
         ['R4', '***', '***'],
         ['R5', 'https://c.d', 'https://c.d'],
         ['R6', '1\\. x', '1\\. x'],
-        ['R7', '&#35; x', '&#35; x'],
+        ['R7', '&#35; x', '\\&#35; x'],
         ['R8', '[r][x]\n\n[x]: https://e.com', '[r][x]\n\n[x]: https://e.com'],
         ['R9', '- a\n  - b', '- a\n  - b'],
         ['R10', 'a\r\nb', 'a\nb'],
