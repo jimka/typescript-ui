@@ -1024,3 +1024,12 @@ page resets to empty.
   the state the window starts in, and so do the button names: "Restore" on
   the matching button of a `Window` or a `TabWindow`. No consumer action is
   needed.
+
+- **A `Popover` whose anchor is disposed closes without an error.** Closing
+  the panel that held the anchor while the popover was open made the next
+  window resize, a `setTitle`, `setBody` or other relayout, an outside press
+  and the popover's own close throw `DOM handle … is not registered`. The
+  popover now closes and fires `onClose`; `show()` with a disposed anchor
+  warns and does nothing. `getAnchorElement()` now returns `null` for a
+  disposed anchor instead of its released handle. No other consumer action
+  is needed.
