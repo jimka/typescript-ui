@@ -175,16 +175,17 @@ export interface MarkdownEditorSelectionState {
     canStyle: boolean;
     /**
      * Whether `toggleLink` with a URL would apply at the selection: link
-     * its text or its image, or re-point the link it is in. `false` with no
-     * selection, while table cells are selected, when the selection touches
-     * a raw Markdown block or a code block or holds (or a collapsed caret
-     * would expand into) a run kept as Markdown source, when either end is
-     * in an autolink nested in another link, and when there is nothing a link
-     * could hold: a caret in an empty block, or a selection holding neither
-     * text nor an image. A caret in text links the run it is in, so the
-     * field does not say whether a word is selected: a toolbar's Link
-     * control pairs it with {@link hasSelectedText} and {@link linkUrl}.
-     * Always `true` in `"source"` mode.
+     * its text or its image, or re-point the link it is in. A caret links the
+     * word or formatted run it would expand to, as the format toggles format
+     * it, and inside a link re-points that link. `false` with no selection,
+     * while table cells are selected, when the selection touches a raw
+     * Markdown block or a code block or holds (or a collapsed caret would
+     * expand into) a run kept as Markdown source, when either end is in a
+     * link nested in another link, and when there is nothing to link: a
+     * caret with no word under it and outside a link, or a selection holding
+     * neither text nor an image. A toolbar's Link control is enabled on this
+     * field, or on {@link canRemoveLink} for its Remove action. Always
+     * `true` in `"source"` mode.
      */
     canLink: boolean;
     /**
@@ -3439,8 +3440,8 @@ function $isFormatBlockingSourceRun(node: LexicalNode): boolean {
  * the selected cells one at a time, each over its whole content, so a cell
  * takes the format when it holds text to carry it and no run the formats
  * decline to touch ({@link $isFormatBlockingSourceRun}) — what
- * {@link $declinesFormat} rules out for a range over that content. An empty
- * cell, and one holding an image alone, takes none.
+ * {@link $selectionCoversSourceRun} rules out for a range over that content.
+ * An empty cell, and one holding an image alone, takes none.
  *
  * @param cell - The cell.
  * @returns `true` when a format toggle would format the cell.
@@ -3517,19 +3518,6 @@ function $selectionInNestedLinkRun(): boolean {
 
         return link !== null && link.getChildren().some((child) => $isMarkdownSourceTextNode(child) && $getState(child, nestedLinkState) !== -1);
     });
-}
-
-/**
- * `FORMAT_TEXT_COMMAND` handler declining a format the selection could not
- * save as shown: one touching a raw Markdown block or a code block, or
- * holding a run kept as Markdown source. Registered at
- * {@link COMMAND_PRIORITY_HIGH}, ahead of `registerRichText`'s own handler,
- * so the keyboard shortcuts decline as the toggles do.
- *
- * @returns Whether the format was declined.
- */
-function $declinesFormat(): boolean {
-    return $selectionTouchesTextOnlyBlock() || $selectionCoversSourceRun();
 }
 
 /**
@@ -4152,25 +4140,6 @@ function registerTextOnlyBlockRules(editor: LexicalEditor): () => void {
         editor.registerNodeTransform(MarkdownRawBlockNode, $keepTextOnly),
         editor.registerNodeTransform(CodeNode, $keepTextOnly),
     );
-}
-
-/**
- * Registers the format command's handler, which formats a selection only as
- * far as the save can write it and declines where {@link $declinesFormat}
- * rules a format out.
- *
- * @remarks
- * Registered at {@link COMMAND_PRIORITY_HIGH}, ahead of `registerRichText`'s
- * own handler. Lexical's table selection observer registers a handler of its
- * own at that priority, which formats selected cells unchecked; it is
- * registered when the view mounts, so this one, registered when the editor is
- * built, runs first and takes a table selection before it.
- *
- * @param editor - The editor.
- * @returns The unregister function.
- */
-function registerWritableFormatCommand(editor: LexicalEditor): () => void {
-    return editor.registerCommand(FORMAT_TEXT_COMMAND, (format) => $formatWritably(format, $declinesFormat, $cellTakesFormat), COMMAND_PRIORITY_HIGH);
 }
 
 /**
@@ -4980,26 +4949,30 @@ function $selectionStandsOnTablesAlone(): boolean {
 }
 
 /**
- * Whether a link put on a range selection would have something to hold:
- * text, or an image, which a link wraps as it wraps text. A caret in text
- * has the run it sits in, which `toggleLink` links whole; a caret in an
- * empty block has nothing, and neither has a range holding no more than a
- * line break or the gap between two blocks.
+ * Whether a link put on a range selection would have something to hold.
+ * A caret links the word or formatted run it would widen to
+ * ({@link $computeWordExpansion}), as the format toggles format it, and
+ * inside a link it re-points that link; with neither it has nothing to
+ * link. A range needs text or an image, which a link wraps as it wraps
+ * text; a range holding no more than a line break or the gap between two
+ * blocks has neither.
  *
  * @param selection - The selection.
+ * @param expansion - The word or run a collapsed caret would widen to, or
+ *   `null` when there is none.
+ * @param inLink - Whether the selection's anchor sits inside a link.
  * @returns `true` when `toggleLink` with a URL would make or re-point a link.
  */
-function $selectionHoldsLinkable(selection: RangeSelection): boolean {
-    const holdsImage = selection.getNodes().some($isMarkdownImageNode);
+function $selectionHoldsLinkable(selection: RangeSelection, expansion: WordExpansion | null, inLink: boolean): boolean {
     const isCollapsed = selection.isCollapsed();
 
-    if (holdsImage || !isCollapsed) {
-        return holdsImage || $rangeHoldsText(selection);
+    if (isCollapsed) {
+        return expansion !== null || inLink;
     }
 
-    const anchorNode = selection.anchor.getNode();
+    const holdsImage = selection.getNodes().some($isMarkdownImageNode);
 
-    return $isTextNode(anchorNode) && anchorNode.getTextContentSize() > 0;
+    return holdsImage || $rangeHoldsText(selection);
 }
 
 /**
@@ -5012,7 +4985,8 @@ function $selectionHoldsLinkable(selection: RangeSelection): boolean {
  * The style and link commands act on a range selection only. A caret takes
  * a format or a style as pending, for the text typed next; a range must
  * hold text to carry either ({@link $rangeHoldsText}), and a link needs
- * text or an image to hold ({@link $selectionHoldsLinkable}). The format
+ * text or an image to hold, and a caret needs a word under it or a link
+ * around it ({@link $selectionHoldsLinkable}). The format
  * toggles also format the cells of a table selection, one by one
  * ({@link $someCellTakesFormat}). `removeLink` needs a link around the
  * anchor, and `clearFormatting` a selected text node carrying a format it
@@ -5036,7 +5010,7 @@ function $readInlineAvailability(
     const writesInline = isRange && !touchesTextOnlyBlock && !coversSourceRun;
     const formatsRange = writesInline && (selection.isCollapsed() || $rangeHoldsText(selection));
     const formatsCells = $isTableSelection(selection) && $someCellTakesFormat(selection);
-    const linksRange = writesInline && !inNestedLinkRun && $selectionHoldsLinkable(selection);
+    const linksRange = writesInline && !inNestedLinkRun && $selectionHoldsLinkable(selection, expansion, inLink);
     const holdsClearableFormat = isRange
         && selection.getNodes().some((node) => $isTextNode(node) && $formatOnceCleared(node) !== node.getFormat());
 
@@ -5075,7 +5049,8 @@ function $readTableAvailability(): Pick<CommandAvailability, "canEditTable" | "c
  * says what the commands do: a field is `false` wherever its commands would
  * leave the document and the selection as they are. What it does not
  * foresee is a format, style or link the save could not write as shown,
- * which those commands still decline after trying it.
+ * which those commands still decline after trying it, and then leave the
+ * document and the selection as they were.
  *
  * The block conversions, alignment and columns act on a range selection
  * only; the conversions also decline in a table cell. A line is inserted
@@ -5103,6 +5078,51 @@ function $readCommandAvailability(expansion: WordExpansion | null): CommandAvail
         canInsertImage:                $imageInsertApplies(touchesTextOnlyBlock),
         ...$readTableAvailability(),
     };
+}
+
+/**
+ * `FORMAT_TEXT_COMMAND` handler formatting the selection as far as the save
+ * can write it, and only where `canFormat` is `true` ({@link CommandAvailability}),
+ * the field the format toggles read: the keyboard shortcuts and a browser's
+ * own format commands decline wherever the toggles do. Where the field is
+ * `false` the command is swallowed and nothing changes. A caret is not
+ * widened: the format stays pending for the text typed next.
+ *
+ * A read-only editor never reaches this handler: `registerReadOnlyGuard`
+ * refuses every `FORMAT_TEXT_COMMAND` first.
+ *
+ * @param format - The format the command toggles.
+ * @returns `true`: the command is handled either way, so no handler below
+ *   this one formats the selection unchecked.
+ */
+function $handleFormatCommand(format: TextFormatType): boolean {
+    const applies = $readCommandAvailability($computeWordExpansion()).canFormat;
+
+    if (applies) {
+        $formatWritably(format, $cellTakesFormat);
+    }
+
+    // Handled either way: where the field is false, no handler below this one may format the selection.
+    return true;
+}
+
+/**
+ * Registers the format command's handler ({@link $handleFormatCommand}),
+ * which formats a selection only as far as the save can write it and
+ * declines where `canFormat` is `false`.
+ *
+ * @remarks
+ * Registered at {@link COMMAND_PRIORITY_HIGH}, ahead of `registerRichText`'s
+ * own handler. Lexical's table selection observer registers a handler of its
+ * own at that priority, which formats selected cells unchecked; it is
+ * registered when the view mounts, so this one, registered when the editor is
+ * built, runs first and takes a table selection before it.
+ *
+ * @param editor - The editor.
+ * @returns The unregister function.
+ */
+function registerWritableFormatCommand(editor: LexicalEditor): () => void {
+    return editor.registerCommand(FORMAT_TEXT_COMMAND, $handleFormatCommand, COMMAND_PRIORITY_HIGH);
 }
 
 /**
@@ -6348,7 +6368,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * touches the document or the selection, and it is the field the context
      * menu and the selection state report ({@link $readCommandAvailability}),
      * so what is dimmed and what a command does cannot come apart: a command
-     * whose field is `false` changes nothing and reports nothing. No command
+     * whose field is `false` changes nothing and reports nothing. A format, style
+     * or link the save could not write is still declined when tried, and then
+     * leaves the document and the selection as they were. No command
      * applies on a read-only editor, which is refused here for all of them,
      * before the Lexical editor is so much as built, and reported
      * ({@link refuseIfReadOnly}).
@@ -7042,6 +7064,30 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Shared body of the five format toggles on the WYSIWYG surface: reads
+     * `canFormat`, then, in one discrete update, widens a collapsed caret to
+     * its enclosing word and formats it ({@link $formatWritably}). The
+     * keyboard shortcuts reach the same formatting through the command
+     * handler instead, which does not widen. A format the save cannot write
+     * is declined after trying, and the caret is put back as it was. No-op
+     * where `canFormat` is `false`.
+     *
+     * @param format - The format to toggle.
+     * @returns This component, for method chaining.
+     */
+    private toggleFormat(format: TextFormatType): this {
+        const applies = this.commandApplies("canFormat");
+
+        if (!applies) { return this; }
+
+        this.ensureEditor().update(() => {
+            $formatWritably(format, $cellTakesFormat, $selectEnclosingWordIfCollapsed);
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
      * Toggles bold on the current selection, first expanding a collapsed
      * caret to its enclosing word so the toggle has more than an empty span
      * to act on. No-op (without throwing) when there is no range selection,
@@ -7065,16 +7111,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const applies = this.commandApplies("canFormat");
-
-        if (!applies) { return this; }
-
-        const editor = this.ensureEditor();
-
-        editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold");
-
-        return this;
+        return this.toggleFormat("bold");
     }
 
     /**
@@ -7099,16 +7136,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const applies = this.commandApplies("canFormat");
-
-        if (!applies) { return this; }
-
-        const editor = this.ensureEditor();
-
-        editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic");
-
-        return this;
+        return this.toggleFormat("italic");
     }
 
     /**
@@ -7132,16 +7160,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const applies = this.commandApplies("canFormat");
-
-        if (!applies) { return this; }
-
-        const editor = this.ensureEditor();
-
-        editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "code");
-
-        return this;
+        return this.toggleFormat("code");
     }
 
     /**
@@ -7166,16 +7185,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const applies = this.commandApplies("canFormat");
-
-        if (!applies) { return this; }
-
-        const editor = this.ensureEditor();
-
-        editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough");
-
-        return this;
+        return this.toggleFormat("strikethrough");
     }
 
     /**
@@ -7199,16 +7209,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const applies = this.commandApplies("canFormat");
-
-        if (!applies) { return this; }
-
-        const editor = this.ensureEditor();
-
-        editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline");
-
-        return this;
+        return this.toggleFormat("underline");
     }
 
     /**
@@ -7246,27 +7247,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (!applies) { return this; }
 
-        const editor = this.ensureEditor();
+        this.ensureEditor().update(() => {
+            $editWritably(() => {
+                $selectEnclosingWordIfCollapsed();
 
-        editor.update(() => {
-            const selection = $getSelection();
-            const inLink = $isRangeSelection(selection) && $findEnclosingLinkNode(selection.anchor.getNode()) !== null;
+                const selection = $getSelection();
 
-            if (!$isRangeSelection(selection) || inLink) {
-                return;
-            }
-
-            $selectEnclosingWordIfCollapsed();
-
-            // Re-read: the expansion above replaces the selection object.
-            const expanded = $getSelection();
-            const coversSourceRun = $selectionCoversSourceRun();
-
-            if ($isRangeSelection(expanded) && !coversSourceRun) {
-                $editWritably(() => {
-                    $patchStyleText(expanded, patch);
-                });
-            }
+                if ($isRangeSelection(selection)) {
+                    $patchStyleText(selection, patch);
+                }
+            });
         }, { discrete: true });
 
         return this;
@@ -7422,7 +7412,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * link's URL in place instead of double-wrapping (Lexical's own `$toggleLink`
      * behavior). No-op without a range selection, when the selection touches
      * a raw Markdown block or a code block, or when it holds a run kept as
-     * Markdown source.
+     * Markdown source. With a URL, a caret with no word under it and outside
+     * a link is a no-op too, as there is nothing to link.
      *
      * In `"source"` mode, wraps the raw-Markdown selection in `[text](url)`,
      * or re-points the link of any form enclosing it instead — an inline link
@@ -7439,43 +7430,63 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const refused = this.refuseIfReadOnly();
+        if (url === null) {
+            this.unlinkSelection();
 
-        if (refused) { return this; }
+            return this;
+        }
 
-        // Unlinking has no field of its own: it declines where the selection touches a block holding text only.
-        const applies = url === null ? !this.declinesInTextOnlyBlock() : this.commandApplies("canLink");
+        const applies = this.commandApplies("canLink");
 
         if (!applies) { return this; }
 
-        const editor = this.ensureEditor();
+        this.ensureEditor().update(() => {
+            $editWritably(() => {
+                $selectEnclosingWordIfCollapsed();
+                $toggleLink(url);
+            });
+        }, { discrete: true });
 
-        editor.update(() => {
+        return this;
+    }
+
+    /**
+     * The `toggleLink(null)` path on the WYSIWYG surface. Unlinking has no
+     * field of its own: it declines where the selection touches a block
+     * holding text only, and, found inside the update, where it covers a
+     * run kept as Markdown source or sits in a link nested in another link.
+     * No-op on a read-only editor, which is refused and reported.
+     */
+    private unlinkSelection(): void {
+        const refused = this.refuseIfReadOnly();
+
+        if (refused) { return; }
+
+        const declinedInTextOnlyBlock = this.declinesInTextOnlyBlock();
+
+        if (declinedInTextOnlyBlock) { return; }
+
+        this.ensureEditor().update(() => {
             const selection = $getSelection();
 
             if (!$isRangeSelection(selection)) {
                 return;
             }
 
-            if (url !== null) {
-                $selectEnclosingWordIfCollapsed();
-            } else {
-                // `$toggleLink(null)`'s `$splitLinkAtSelection` throws when an end only touches a link's edge.
-                $moveRangeEdgesOutOfLinks(selection);
-            }
+            // `$toggleLink(null)`'s `$splitLinkAtSelection` throws when an end only touches a link's edge.
+            $moveRangeEdgesOutOfLinks(selection);
 
-            const declined = $selectionCoversSourceRun() || $selectionInNestedLinkRun();
+            const coversSourceRun = $selectionCoversSourceRun();
+            const inNestedLinkRun = $selectionInNestedLinkRun();
 
-            if (declined) {
+            if (coversSourceRun || inNestedLinkRun) {
                 return;
             }
 
             $editWritably(() => {
-                $toggleLink(url);
+                $toggleLink(null);
             });
         }, { discrete: true });
-
-        return this;
     }
 
     /**
@@ -7695,8 +7706,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Reads the system clipboard and inserts the text at the caret, replacing
-     * any current selection. No-op (without throwing) when there is no range
-     * selection.
+     * any current selection; into the selected table cells, starting at the
+     * cell the selection began in, as Ctrl/Cmd+V does; and at the document's
+     * end with no selection.
      *
      * In `"source"` mode, delegates to the source editor's own `paste()`
      * instead, which refuses a read-only editor with its rejection flash.
@@ -7729,12 +7741,20 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (text !== "") {
             this.ensureEditor().update(() => {
-                const selection = $getSelection();
+                let selection = $getSelection();
+
+                // With no selection the text goes in at the document's end, as insertTable() and insertImage() put theirs.
+                if (selection === null) {
+                    $getRoot().selectEnd();
+                    selection = $getSelection();
+                }
 
                 if ($isRangeSelection(selection)) {
                     $removeGuardedRangeForInsert(selection);
-                    selection.insertRawText(text);
                 }
+
+                // A table selection takes the text into its cells from the one it began in, as Ctrl/Cmd+V does.
+                selection?.insertRawText(text);
             }, { discrete: true, tag: PASTE_TAG });
         }
 
@@ -8961,7 +8981,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * current selection, or (collapsed) what {@link $selectEnclosingWordIfCollapsed}
      * would expand into, which `cut()`/`copy()` themselves perform when
      * invoked, so the enabled state always matches what activating the item
-     * actually does. Paste is always enabled and acts on the live selection.
+     * actually does. Paste is always enabled: `paste()` has somewhere to paste at every selection.
      */
     private clipboardMenuItems(hasSelectedText: boolean): MenuItemConfig[] {
         return buildClipboardMenuItems({
@@ -8974,27 +8994,27 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Builds the link item(s) shared by the text and table-cell context menus:
-     * "Insert link…" when the click is not inside a link (dimmed unless there
-     * is a selection or expandable word to wrap), or "Edit link…" plus "Remove
-     * link" when it is. The two states are mutually exclusive, so exactly one
+     * "Insert link…" when the click is not inside a link (dimmed where there
+     * is nothing to link), or "Edit link…" plus "Remove link"
+     * when it is. The two states are mutually exclusive, so exactly one
      * of these shapes is ever shown — never a permanently-disabled item. Each
      * item is also dimmed where its command would do nothing at the
      * selection.
      *
      * @param context - Carries `linkUrl` (`undefined`/`null` outside a link, the
-     *   URL inside one) and `hasSelectedText`.
+     *   URL inside one).
      * @param availability - Which commands would apply at the selection.
      * @returns One or two `MenuItemConfig` entries.
      */
     private buildLinkMenuItems(
-        context: { linkUrl?: string | null; hasSelectedText: boolean },
+        context: { linkUrl?: string | null },
         availability: CommandAvailability,
     ): MenuItemConfig[] {
         const linkUrl = context.linkUrl ?? null;
 
         if (linkUrl === null) {
             return [{
-                text: "Insert link…", enabled: context.hasSelectedText && availability.canLink,
+                text: "Insert link…", enabled: availability.canLink,
                 action: () => void this.promptAndApplyLink("Insert link", ""),
             }];
         }

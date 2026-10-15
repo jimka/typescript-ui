@@ -2423,7 +2423,8 @@ interface PointPath {
  * starts with punctuation right after a letter or ends with it right before
  * one (`x**(a)**b`), underline over a `+`, a styled span holding a bracket —
  * the edit is declined: those blocks get their content back as it was
- * (their own nodes kept), and the selection where it was. The declining
+ * (their own nodes kept), and the selection where it was, with the format
+ * and style pending at it. The declining
  * update is tagged historic, so it adds no undo step and the typing
  * shortcuts do not run on it.
  *
@@ -2468,6 +2469,9 @@ function $editOrRestore(edit: () => void, applies: () => boolean): boolean {
         json: $exportTree(container) as SerializedElementNode,
     }));
     const points = [$pointPath(selection.anchor), $pointPath(selection.focus)] as const;
+    // Read before the edit, which may change both: what the selection carries for the text typed next.
+    const format = selection.format;
+    const style = selection.style;
 
     edit();
 
@@ -2492,18 +2496,17 @@ function $editOrRestore(edit: () => void, applies: () => boolean): boolean {
         node.splice(0, node.getChildrenSize(), json.children.map($parseSerializedNode));
     }
 
-    $restoreSelection(points[0], points[1]);
+    $restoreSelection(points[0], points[1], format, style);
 
     return false;
 }
 
 /**
- * `FORMAT_TEXT_COMMAND` handler formatting a range selection through
- * {@link $editWritably}, so the keyboard shortcuts and the toggles alike
- * leave no format the save cannot write. A selection a format must not
- * touch at all is left to `declines` (the raw-block and source-run rules),
- * which swallows the command. Registered at {@link COMMAND_PRIORITY_HIGH},
- * ahead of `registerRichText`'s own handler, which formats the same way.
+ * Formats a range or table selection through {@link $editWritably}, so the
+ * keyboard shortcuts and the toggles alike leave no format the save cannot
+ * write. Whether a format applies at all is decided by the caller, which
+ * reads `canFormat` first; a format the save cannot write after all is
+ * declined here, the blocks and the selection put back as they were.
  * Whether the toggle puts the format on or takes it off is read by
  * {@link $selectionHasFormat}, not from the formats Lexical caches on the
  * selection: those count the spaces at the selection's edges, which the
@@ -2515,39 +2518,40 @@ function $editOrRestore(edit: () => void, applies: () => boolean): boolean {
  * table plugin, whose own handler formats the cells with neither check.
  *
  * @param format - The format to toggle.
- * @param declines - Whether a range selection declines formatting outright.
  * @param takesFormat - Whether a cell of a table selection is formatted: one
- *   holding text to carry a format, and nothing `declines` would rule out
- *   for a range over its content.
- * @returns Whether the command was handled.
+ *   holding text to carry a format, and nothing a range over its content
+ *   would decline.
+ * @param widen - Run first, inside the checked edit, on a range selection:
+ *   widens a collapsed caret to its word, so that a declined format puts the
+ *   caret itself back. Omitted, a caret takes the format as pending.
  */
-export function $formatWritably(format: TextFormatType, declines: () => boolean, takesFormat: (cell: TableCellNode) => boolean): boolean {
+export function $formatWritably(format: TextFormatType, takesFormat: (cell: TableCellNode) => boolean, widen?: () => void): void {
     const selection = $getSelection();
 
     if ($isTableSelection(selection)) {
         $formatCellsWritably(selection, format, takesFormat);
 
-        return true;
-    }
-
-    const declined = declines();
-
-    if (declined) {
-        return true;
+        return;
     }
 
     if (!$isRangeSelection(selection)) {
-        return false;
+        return;
     }
 
-    const on = $selectionHasFormat(selection, format);
-
     $editWritably(() => {
-        // The format to align every selected node to: off where it is on, on where it is not.
-        $formatText(selection, format, on ? 0 : TEXT_TYPE_TO_FORMAT[format]);
-    });
+        widen?.();
 
-    return true;
+        const widened = $getSelection();
+
+        if (!$isRangeSelection(widened)) {
+            return;
+        }
+
+        // The format to align every selected node to: off where it is on, on where it is not. Read once widened.
+        const on = $selectionHasFormat(widened, format);
+
+        $formatText(widened, format, on ? 0 : TEXT_TYPE_TO_FORMAT[format]);
+    });
 }
 
 /**
@@ -2665,27 +2669,29 @@ interface SelectedStretch {
 
 /**
  * Whether a selection has a format on, as the format toggles, the toolbar
- * and the context menu read it. Bold, italic and strikethrough never stay on
- * whitespace at a run's edge ({@link $keepMarksOffEdgeWhitespace}), so
- * whitespace where the run the toggle would make could end does not count:
- * at either end of each stretch of selected text that run cannot end inside
- * ({@link $selectedStretches}). The format is on when every character left
- * carries it. A selection of such whitespace alone, or a collapsed one,
- * reads the formats Lexical keeps on the selection, as do code and
- * underline, which are never trimmed. So on a selection holding text other
- * than such whitespace, a press the writing rules do not decline always
- * changes something: putting the format on lands on a character the
- * trimming keeps it on, and taking it off finds a character to take it from.
+ * and the context menu read it. A range is read from its text, whichever way
+ * it was made, for all five formats: the format is on when every counted
+ * character carries it. Underline and code count every selected character;
+ * bold, italic and strikethrough never stay on whitespace at a run's edge
+ * ({@link $keepMarksOffEdgeWhitespace}), so whitespace where the run the
+ * toggle would make could end does not count: at either end of each stretch
+ * of selected text that run cannot end inside ({@link $selectedStretches}).
+ * A collapsed selection, and a range holding no counted character (such
+ * whitespace alone), read the formats Lexical keeps on the selection, which
+ * a browser's selection change fills and a selection made from code lacks.
+ * So on a selection holding a counted character, a press the writing rules
+ * do not decline always changes something: putting the format on lands on a
+ * character the trimming keeps it on, and taking it off finds a character to
+ * take it from.
  *
  * @param selection - The selection.
  * @param format - The format.
  * @returns `true` when the format is on.
  */
 export function $selectionHasFormat(selection: RangeSelection, format: TextFormatType): boolean {
-    const trimmed = FLANKED_FORMATS.includes(format);
     const collapsed = selection.isCollapsed();
 
-    if (collapsed || !trimmed) {
+    if (collapsed) {
         return selection.hasFormat(format);
     }
 
@@ -2870,18 +2876,23 @@ function $pointPath(point: PointType): PointPath {
 }
 
 /**
- * Sets the selection to two recorded points.
+ * Sets the selection to two recorded points, carrying the format and style
+ * it had, which a new selection would lose.
  *
  * @param anchor - The anchor's path.
  * @param focus - The focus's path.
+ * @param format - The format pending at the selection.
+ * @param style - The style pending at the selection.
  */
-function $restoreSelection(anchor: PointPath, focus: PointPath): void {
+function $restoreSelection(anchor: PointPath, focus: PointPath, format: number, style: string): void {
     const node = (point: PointPath): LexicalNode => point.path.reduce<LexicalNode>(
         (parent, index) => (parent as ElementNode).getChildAtIndex(index) ?? parent, $getRoot());
     const selection = $createRangeSelection();
 
     selection.anchor.set(node(anchor).getKey(), anchor.offset, anchor.type);
     selection.focus.set(node(focus).getKey(), focus.offset, focus.type);
+    selection.setFormat(format);
+    selection.setStyle(style);
     $setSelection(selection);
 }
 

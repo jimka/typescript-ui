@@ -516,8 +516,8 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
      * dropdown only where its own commands would (`canStyle`), and the
      * Alignment and Columns dropdowns only where theirs would
      * (`canSetBlockLayout`); enables the Link button where one of its
-     * popup's two actions would apply — linking text there is to link or
-     * re-pointing the enclosing link (`canLink`), or removing that link
+     * popup's two actions would apply — linking the text or image there is to
+     * link or re-pointing the enclosing link (`canLink`), or removing that link
      * (`canRemoveLink`); and enables the Table button where one of its
      * dropdown's commands would apply — those acting on the table the caret
      * is in (`canEditTable`), merging the selected cells (`canMergeCells`)
@@ -546,7 +546,7 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
         this._textStyleBtn.setEnabled(state.canStyle);
         this._alignmentBtn.setEnabled(state.canSetBlockLayout);
         this._columnsBtn.setEnabled(state.canSetBlockLayout);
-        this._linkBtn.setEnabled((state.canLink && (state.hasSelectedText || state.linkUrl !== null)) || state.canRemoveLink);
+        this._linkBtn.setEnabled(state.canLink || state.canRemoveLink);
         this._tableBtn.setEnabled(state.canEditTable || state.canMergeCells || state.canUnmergeCell);
     }
 
