@@ -89,6 +89,16 @@ await Body.init({ layoutManager: Fit(), resizeMode: 'outline' });
 
 Every such drag then moves a thin outline to where the edge will land and lays the content out once, on release — including the splits and float windows a [`Dock`](/components/Dock) builds, which an app cannot reach to configure one by one. A manager or window that sets its own `resizeMode`, and a table that sets its own through `Table.setResizeMode`, keeps it. `Body.getInstance().setResizeMode(mode)` changes the app-wide mode later; either way it takes effect from the next drag. The default is `'live'`, today's behaviour.
 
+## Built-in strings
+
+`Body.init` also sets the app-wide table of the library's **built-in strings**, the wording the library shows or announces itself:
+
+```typescript
+await Body.init({ layoutManager: Fit(), strings: { dialogClose: 'Stäng' } });
+```
+
+The table reaches dialogs the application never constructs, such as the ones `Dialog.confirm`, `info`, `success`, `warning`, `error` and `Dialog.show` build. `Body.getInstance().setStrings(strings)` replaces the earlier overrides; `getStrings()` returns the table in effect. A change takes effect for the next dialog constructed, and a dialog already open keeps its name. The table holds one entry today, `dialogClose`, the name of a dialog's title-bar close button; the library's other strings are still English.
+
 ## Notes
 
 - **Singleton** — constructed on the first `Body.init()` or `Body.getInstance()` call, not when the `Body` module is imported. Both hand back that same instance for the rest of the page's life. Do not `Body()` yourself. `Body.init` resolves once the theme's web font is active or a 50 ms deadline expires, so text built after it is measured against the face the page keeps.
@@ -96,6 +106,7 @@ Every such drag then moves a thin outline to where the edge will land and lays t
 - **Theme bootstrap** — call `ThemeManager.setTheme(ClassicTheme)` (or any theme) before adding components, so style rules pick up the right CSS variables. A theme chosen before the body is first reached is kept — `Body` applies `ModernTheme` only when no theme has been set.
 - **Context menu** — the browser's native right-click menu is suppressed page-wide by default; pass `nativeContextMenu: true` to restore it, including on text inputs.
 - **Resize mode** — gutter, table-column and window-edge drags lay out live by default; pass `resizeMode: 'outline'` for an outline and one layout on release.
+- **Built-in strings** — `strings: { dialogClose: … }` renames the title-bar close button of every dialog constructed afterwards; it is the only string in the table so far.
 - **Inert behind a modal** — while a modal [`Dialog`](/components/Dialog) or modal [`Drawer`](/components/Drawer) is open, every component added to `Body` carries the HTML `inert` attribute, and so does what the body's layout manager mounts beside them, such as a [`Tab`](/layouts/Tab) manager's tab strip. A component added meanwhile comes up inert. The `<body>` element itself is never marked, so an element that is not one of these — a browser extension's menu, or one your own code appends to `<body>` — stays usable. See [Modal scope](/concepts/layering#modal-scope).
 
 ## See also
