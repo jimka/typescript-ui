@@ -18,6 +18,7 @@ import { Size } from "~/primitive/Size.js";
 import { AbstractStore } from "~/data/AbstractStore.js";
 import { ModelRecord } from "~/data/ModelRecord.js";
 import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
+import { TypeAheadSearch, isTypeAheadKey } from "~/component/shared/TypeAheadSearch.js";
 import { resolveContextMenuTarget, watchContextMenuInput } from "~/component/shared/resolveContextMenuTarget.js";
 import { ListItemRenderer } from "~/component/list/ListItemRenderer.js";
 import { LabelListItemRenderer } from "~/component/list/renderer/Label.js";
@@ -89,15 +90,6 @@ const ROW_HEIGHT_PX = 22;
  * with the row's `setPadding` call.
  */
 const ROW_PADDING_X_PX = 8;
-
-/**
- * Maximum time (in milliseconds) between successive printable-character
- * keypresses before the type-ahead search buffer resets. Picked to match
- * the native `<select>` type-ahead window the custom list replaces — a
- * burst of letters within this window builds a single search prefix; a
- * pause longer than this starts a fresh search.
- */
-const TYPE_AHEAD_TIMEOUT_MS = 700;
 
 /**
  * Construction-time options for {@link AbstractSelectableList}.
@@ -808,10 +800,8 @@ abstract class AbstractSelectableList<
     protected _selectedSet:  Set<number>           = new Set();
     protected _anchorIndex:  number | null         = null;
     protected _focusedIndex: number                = -1;
-    /** Lower-cased type-ahead buffer; cleared on Escape or timeout. */
-    protected _typeAheadBuf: string                = "";
-    /** Timestamp (ms) of the last printable keypress; used to time out the buffer. */
-    protected _typeAheadAt:  number                = 0;
+    /** The type-ahead buffer; cleared on Escape, and by a pause between keys. */
+    private _typeAhead:      TypeAheadSearch       = new TypeAheadSearch();
     /**
      * When true, {@link handleRowClick} pulls DOM focus to the list root
      * after the gesture commits so subsequent keystrokes route through
@@ -2073,7 +2063,9 @@ abstract class AbstractSelectableList<
             return true;
         }
 
-        if (!ctrl && !e.altKey && e.key.length === 1) {
+        const typed = isTypeAheadKey(e);
+
+        if (typed) {
             this.handleTypeAhead(e.key);
 
             return true;
@@ -2104,7 +2096,7 @@ abstract class AbstractSelectableList<
         const ctrl = e.ctrlKey || e.metaKey;
 
         if (e.key === "Escape") {
-            this._typeAheadBuf = "";
+            this._typeAhead.clear();
 
             return;
         }
@@ -2119,11 +2111,14 @@ abstract class AbstractSelectableList<
             return { prevent: true };
         }
 
-        // Printable single-character key — feed the type-ahead buffer.
-        // `key.length === 1` filters out named keys (`"Tab"`, `"Shift"`,
-        // `"ArrowDown"`, …) without an explicit allow-list.
-        if (!ctrl && !e.altKey && e.key.length === 1) {
+        // A printable character feeds the type-ahead buffer. The key is the
+        // list's own whether or not a row matched.
+        const typed = isTypeAheadKey(e);
+
+        if (typed) {
             this.handleTypeAhead(e.key);
+
+            return { prevent: true };
         }
     }
 
@@ -2303,27 +2298,22 @@ abstract class AbstractSelectableList<
     }
 
     /**
-     * Appends `ch` to the type-ahead buffer (after timing out the
-     * previous buffer when more than {@link TYPE_AHEAD_TIMEOUT_MS}
-     * elapsed since the last key) and jumps the focus to the first item
-     * whose lower-cased label starts with the buffer.
+     * Feeds `ch` to the type-ahead buffer and moves the focus mark to the
+     * row it finds: the next enabled row after the focused one whose label
+     * starts with the typed letter, or, once several different letters were
+     * typed, the first enabled row, from the focused row itself on, whose
+     * label starts with all of them. The buffer starts again after a 700 ms
+     * pause.
      *
      * @param ch - The character key pressed.
      */
     protected handleTypeAhead(ch: string): void {
-        const now = Date.now();
-
-        if (now - this._typeAheadAt > TYPE_AHEAD_TIMEOUT_MS) {
-            this._typeAheadBuf = "";
-        }
-
-        this._typeAheadBuf += ch.toLowerCase();
-        this._typeAheadAt   = now;
-
-        const buf = this._typeAheadBuf;
-        const idx = this._items.findIndex(
-            (item, i) => this.isItemEnabled(i) && item.label.toLowerCase().startsWith(buf),
-        );
+        const idx = this._typeAhead.type(ch, {
+            count:      this._items.length,
+            current:    this._focusedIndex,
+            labelAt:    (i: number): string => this._items[i].label,
+            isEligible: (i: number): boolean => this.isItemEnabled(i),
+        });
 
         if (idx < 0) {
             return;

@@ -387,6 +387,79 @@ describe('AbstractSelectableList (via List) — type-ahead with a deterministic 
         expect(list.getSelectedIndex()).toBe(0);
         expect(list.getValue()).toBe('Apple');
     });
+
+    // The shared rule (plan collection-widget-keyboard-gaps, L1-L5): one letter
+    // looks for the next match after the focused row, and typing it again steps.
+    const LIST4 = ['Apple', 'Banana', 'Blueberry', 'Cherry'];
+
+    it('L1: the same letter typed again steps through the matches and wraps', () => {
+        const list = new TestList({ items: LIST4 });
+        const now = vi.spyOn(Date, 'now');
+        const focused: number[] = [];
+
+        for (const ms of [1000, 1100, 1200]) {
+            now.mockReturnValue(ms);
+            list.typeAhead('b');
+            focused.push(list.getFocusedIndex());
+        }
+
+        expect(focused).toEqual([1, 2, 1]);
+    });
+
+    it('L2: a letter typed from a row past the matches wraps to the first one', () => {
+        const list = new TestList({ items: LIST4 });
+
+        vi.spyOn(Date, 'now').mockReturnValue(1000);
+        list.setFocusedIndex(3);
+        list.typeAhead('b');
+
+        expect(list.getFocusedIndex()).toBe(1);
+    });
+
+    it('L3: a letter starts after the focused row, not at the top', () => {
+        const list = new TestList({ items: LIST4 });
+
+        vi.spyOn(Date, 'now').mockReturnValue(1000);
+        list.setFocusedIndex(1);
+        list.typeAhead('b');
+
+        expect(list.getFocusedIndex()).toBe(2);
+    });
+
+    it('L4: a prefix keeps the matching row and the selection does not move', () => {
+        const list = new TestList({ items: LIST4 });
+        const now = vi.spyOn(Date, 'now');
+
+        list.setSelectedIndex(0, false);
+        now.mockReturnValue(1000);
+        list.typeAhead('c');
+
+        expect(list.getFocusedIndex()).toBe(3);
+
+        now.mockReturnValue(1100);
+        list.typeAhead('h');
+
+        expect(list.getFocusedIndex()).toBe(3);
+        expect(list.getSelectedIndex()).toBe(0);
+    });
+
+    it('L5: a disabled row is never landed on', () => {
+        const list = new TestList({ items: [
+            { key: 'a', label: 'Apple', enabled: false },
+            { key: 'v', label: 'Avocado' },
+            { key: 'r', label: 'Apricot' },
+        ] });
+        const now = vi.spyOn(Date, 'now');
+        const focused: number[] = [];
+
+        for (const ms of [1000, 1100]) {
+            now.mockReturnValue(ms);
+            list.typeAhead('a');
+            focused.push(list.getFocusedIndex());
+        }
+
+        expect(focused).toEqual([1, 2]);
+    });
 });
 
 describe('AbstractSelectableList (via List) — store binding', () => {
