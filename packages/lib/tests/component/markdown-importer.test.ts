@@ -515,15 +515,15 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
         expectSurface(editor, '[x **b**]{color=red}');
     });
 
-    it('I26: a link nested in a link wins, and the outer link reopens after it', () => {
-        const editor = load('[a [b](/2) c](/1)');
+    it('I26: an autolink nested in a link wins, and the outer link reopens after it', () => {
+        const editor = load('[a <https://b.test/2> c](/1)');
 
         expect(firstBlockInline(editor)).toEqual([
             { link: '/1', children: [{ text: 'a ' }] },
-            { link: '/2', children: [{ text: 'b' }] },
+            { link: 'https://b.test/2', children: [{ text: 'https://b.test/2' }] },
             { link: '/1', children: [{ text: ' c' }] },
         ]);
-        expectSurface(editor, '[a [b](/2) c](/1)');
+        expectSurface(editor, '[a <https://b.test/2> c](/1)');
     });
 
     it('I27: the empty string is one empty paragraph, and CRLF reads as LF', () => {
@@ -1259,8 +1259,8 @@ describe('$importMarkdown — whole-stack review fixes: no source dropped', () =
         ['at the start of a paragraph', '[ ](u) a', '[ ](u)'],
         ['around a soft break, in emphasis, at the end of a paragraph', '4\n*[  \n]()*', '*[  \n]()*'],
         ['around a soft break, before a code block', '4\n*[  \n]()* \n\n```\ncode\n```', '*[  \n]()*'],
-        ['beside links nested in it, at the end of a paragraph', '[[a](/1)[b](/2)    ](/o)', '[[a](/1)[b](/2)    ](/o)'],
-        ['beside a link nested in it, at the start of a paragraph', 'x\n\n[  [a](/1)](/o) b', '[  [a](/1)](/o)'],
+        ['beside links nested in it, at the end of a paragraph', '[<https://a.test/1><https://b.test/2>    ](/o)', '[<https://a.test/1><https://b.test/2>    ](/o)'],
+        ['beside a link nested in it, at the start of a paragraph', 'x\n\n[  <https://a.test/1>](/o) b', '[  <https://a.test/1>](/o)'],
     ];
 
     for (const [name, source, link] of blankLinks) {
@@ -1274,12 +1274,13 @@ describe('$importMarkdown — whole-stack review fixes: no source dropped', () =
     }
 
     it('a link with whitespace between the links nested in it, at a paragraph\'s start, keeps its link node', () => {
-        // Only whitespace at the link's own edge is trimmed there; an empty link beside the space stays its own source node.
-        const editor = load('[<https://a.test/x> [](https://e.test/y)](/o) z');
+        // Only whitespace at the link's own edge is trimmed there; the space between the two nested links keeps the outer link's node.
+        const editor = load('[<https://a.test/x> <https://e.test/y>](/o) z');
 
         expect(firstBlockInline(editor)).toEqual([
             { link: 'https://a.test/x', children: [{ text: 'https://a.test/x' }] },
-            { link: '/o', children: [{ text: ' ' }, { source: '[](https://e.test/y)', display: '' }] },
+            { link: '/o', children: [{ text: ' ' }] },
+            { link: 'https://e.test/y', children: [{ text: 'https://e.test/y' }] },
             { text: ' z' },
         ]);
     });
@@ -1303,8 +1304,7 @@ describe('$importMarkdown — whole-stack review fixes: no source dropped', () =
 
     const nested: Array<[string, string, string, string, number | undefined]> = [
         ['an autolink inside a link', '[<https://a/x>](/p/y) z', 'https://a/x', 'https://a/x', undefined],
-        ['a link inside a link', '[[a](/in)](/out) z', 'a', '/in', undefined],
-        ['a link inside emphasis inside a link', '[**[a](/in)**](/out) z', 'a', '/in', BOLD],
+        ['an autolink inside emphasis inside a link', '[**<https://a/x>**](/p/y) z', 'https://a/x', 'https://a/x', BOLD],
     ];
 
     for (const [name, source, display, href, format] of nested) {
@@ -1944,17 +1944,15 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         }
 
         const sources = [
-            'x [[a](/in)](/out) y',
-            '[[2]()]()',
+            'x [<https://a.test/in>](/out) y',
             '[<ps:>]()',
             '[<4@x.t>]()',
-            '[~~[6]()~~]()',
-            '[***[0]()***]()',
-            '[++[1]()++]()',
-            '**[[a](/in)](/out)** y',
-            '[[a](/1)[b](/2)](/o)',
-            '[**[a](/1)**[b](/2)](/o) z',
-            'x [[\\[a \\]b](/p)](/q)',
+            '[~~<https://6.test>~~]()',
+            '[***<https://0.test>***]()',
+            '[++<https://1.test>++]()',
+            '**[<https://a.test/in>](/out)** y',
+            '[<https://a.test/1><https://b.test/2>](/o)',
+            '[**<https://a.test/1>**<https://b.test/2>](/o) z',
         ];
 
         for (const source of sources) {
@@ -1969,15 +1967,15 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         }
 
         const breaks: Array<[string, string, (editor: MarkdownEditor) => void]> = [
-            ['deleting the second run of a split nested link', '[[**a**, b](/in)](/out) z', (editor) => {
-                select(editor, [', b', 0], [' z', 0]);
+            ['deleting the second of two nested links', '[<https://a.test/1><https://b.test/2>](/o) z', (editor) => {
+                select(editor, ['https://b.test/2', 0], [' z', 0]);
                 edit(editor, () => {
                     lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
                 });
             }],
-            ['typing between the runs of a split nested link', '[[a](/1)[b](/2)](/o) z', (editor) => {
+            ['typing between two nested links', '[<https://a.test/1><https://b.test/2>](/o) z', (editor) => {
                 edit(editor, () => {
-                    const [node] = $textNodeHolding('a');
+                    const [node] = $textNodeHolding('https://a.test/1');
 
                     node.selectNext(0, 0);
 
@@ -1988,8 +1986,8 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
                     }
                 });
             }],
-            ['splitting a nested link\'s paragraph inside it', '[[x y _w_](/in)](/out) **q**', (editor) => {
-                select(editor, ['w', 0]);
+            ['splitting a nested link\'s paragraph inside it', '[<https://a.test/in>](/out) **q**', (editor) => {
+                select(editor, ['https://a.test/in', 8]);
                 edit(editor, () => {
                     const selection = $getSelection();
 
@@ -2012,10 +2010,10 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         }
 
         it('removing, re-pointing or clearing the link of a nested link\'s text is declined', () => {
-            const source = 'x [~~[a](/in)~~](/out) y';
+            const source = 'x [~~<https://a.test/in>~~](/out) y';
             const editor = load(source);
 
-            select(editor, ['a', 0]);
+            select(editor, ['https://a.test/in', 0]);
             editor.removeLink();
             editor.toggleLink('https://n.test');
             editor.toggleLink(null);
@@ -2127,7 +2125,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             ['colour on a task marker', '- [ ] a', ['[ ]', 0], ['[ ]', 4], (editor) => editor.setTextColor('#cc0000')],
             ['bold over a task marker and its text', '- [ ] a', ['[ ]', 0], ['a', 1], (editor) => editor.toggleBold()],
             ['inline code on inline HTML', 'x <b> y', ['<b>', 0], ['<b>', 3], (editor) => editor.toggleInlineCode()],
-            ['colour on a link nested in a link', 'x [[a](/in)](/out) y', ['a', 0], ['a', 1], (editor) => editor.setTextColor('#cc0000')],
+            ['colour on a link nested in a link', 'x [<https://a.test/in>](/out) y', ['https://a.test/in', 0], ['https://a.test/in', 1], (editor) => editor.setTextColor('#cc0000')],
             ['a link over inline HTML', 'x <b> y', ['x', 0], [' y', 2], (editor) => editor.toggleLink('https://u.test')],
         ];
 
@@ -3338,9 +3336,9 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         });
 
         it('a run of a link nested in a link keeps the strikethrough its source writes, joined after a letter', () => {
-            const editor = load('a\n\n[~~[6]()~~]() x');
+            const editor = load('a\n\n[~~<https://6.test>~~]() x');
 
-            select(editor, ['6', 0]);
+            select(editor, ['https://6.test', 0]);
             edit(editor, () => {
                 const selection = $getSelection() as RangeSelection;
                 const paragraph = $getRoot().getLastChildOrThrow<ElementNode>();
@@ -3350,7 +3348,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
                 lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
             });
 
-            expect(editor.getValue()).toBe('a[~~[6]()~~]() x');
+            expect(editor.getValue()).toBe('a[~~<https://6.test>~~]() x');
             expectSaveShowsSurface(editor);
         });
 
@@ -3471,10 +3469,10 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         });
 
         it('text typed over the rest of a line after a run whose source writes its own strikethrough keeps no struck edge space', () => {
-            const editor = load('[~~[6]()~~]() x');
+            const editor = load('[~~<https://6.test>~~]() x');
 
             // The selection opens at the end of the run, so the typed text takes its strikethrough.
-            select(editor, ['6', 1], [' x', 2]);
+            select(editor, ['https://6.test', 14], [' x', 2]);
             edit(editor, () => ($getSelection() as RangeSelection).insertText(' w'));
 
             expect(runs(editor).slice(1)).toEqual([[' ', 0], ['w', STRIKETHROUGH]]);
@@ -3903,10 +3901,9 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             ['strikethrough over a space before a linked image', '~~5 [![](g)]()~~', '~~5 [![](g)]()~~ w'],
             ['a bare URL right after a word, in a heading whose id it is part of', '# 1http://3', '# 1http://3 w'],
             ['a styled span with an attribute the editor drops, in a heading', '## [http://2]{m}', '## [http://2]{m} w'],
-            ['a link holding a link, in a heading', '# [0[3]()](p)', '# [0[3]()](p) w'],
+            ['a link holding an autolink, in a heading', '# [0<http://3.test>](p)', '# [0<http://3.test>](p) w'],
             ['a bare URL and the punctuation after it, which keeping it alone would read into it, in a heading', '## http://t>*', '## http://t>* w'],
-            ['a link holding a link whose text escapes a bracket, in a heading', '# [`9`[\\[4]()](9)', '# [`9`[\\[4]()](9) w'],
-            ['a struck link holding a link, its text escaping a bracket', '[~[a](/b) \\]~)]()', '[~[a](/b) \\]~)]() w'],
+            ['a struck link holding an autolink, its text escaping a bracket', '[~<https://a.test/b> \\]~)]()', '[~<https://a.test/b> \\]~)]() w'],
         ];
 
         for (const [name, source, saved] of cases) {
@@ -4336,7 +4333,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         });
 
         it('a run holding a link nested in a link is read back, so a paste breaking its emphasis shows as saved', () => {
-            const editor = load('***[ab]{font=Georgia} [[c](/x)](/y)***');
+            const editor = load('***[ab]{font=Georgia} [<https://c.test/x>](/y)***');
 
             select(editor, ['ab', 1]);
             pasteAt(editor, () => [$createTextNode('Q')]);
@@ -4392,7 +4389,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         });
 
         it('a level 2 heading whose continuation line keeps an indent before a source run is written on one line', () => {
-            const editor = load('x\n    [[a](/1)[b](/2)](/o)');
+            const editor = load('x\n    [<https://a.test/1><https://b.test/2>](/o)');
 
             select(editor, ['x', 1]);
             editor.setBlockType('h2');
@@ -4517,13 +4514,13 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
 
         it('a format a selection from a list into the next paragraph cannot apply keeps a construct kept as written in the list', () => {
             // The declined edit puts the list back from its JSON: the image's place in the kept construct must survive it.
-            const source = '- ~[![a](/i.png)](/p) [[b c](/p_(q))](/out)~\n- [[e &#35;](/x)]\n\nf';
+            const source = '- ~[![a](/i.png)](/p) [<https://b.test/p_(q)>](/out)~\n- [[e &amp;](/x)]\n\nf';
             const editor = load(source);
 
-            select(editor, ['e &#35;', 6], ['f', 1]);
+            select(editor, ['e &amp;', 6], ['f', 1]);
             editor.toggleStrikethrough();
 
-            expect(editor.getValue()).toContain('~[![a](/i.png)](/p) [[b c](/p_(q))](/out)~');
+            expect(editor.getValue()).toContain('~[![a](/i.png)](/p) [<https://b.test/p_(q)>](/out)~');
             expectSaveShowsSurface(editor);
         });
 

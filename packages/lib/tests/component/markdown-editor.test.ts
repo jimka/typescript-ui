@@ -5310,7 +5310,7 @@ describe('MarkdownEditor context menu — caret and availability', () => {
     const CODE_BLOCK = '```\ncode\n```';
     const LINK_PROSE = 'A [text](https://x) link.';
     const SOURCE_RUN = 'a <span>x</span> b';
-    const NESTED_LINK = '[[b - c](https://y)](https://x)';
+    const NESTED_LINK = '[<https://y.test/b-c>](https://x)';
     const PROSE_AND_TABLE = 'para\n\n| a |\n| - |\n| c |';
 
     /** Builds an editor showing `markdown`. */
@@ -5957,14 +5957,14 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                 available: ['canFormat', 'canLink', 'canRemoveLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
             },
             {
-                // Offset 2 of "b - c" has no word character on either side, so the caret expands to nothing.
+                // Offset 6 of "https://y.test/b-c" stands between `:` and `/`, no word character on either side, so the caret expands to nothing.
                 name: 'A7: a bare caret in a link nested in a link', markdown: NESTED_LINK,
-                select: (editor) => caretIn(editor, 'b - c', 2),
+                select: (editor) => caretIn(editor, 'https://y.test/b-c', 6),
                 available: ['canFormat', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
             },
             {
                 name: 'A7: a caret inside a word of a link nested in a link', markdown: NESTED_LINK,
-                select: (editor) => caretIn(editor, 'b - c', 5),
+                select: (editor) => caretIn(editor, 'https://y.test/b-c', 2),
                 available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
             },
             {

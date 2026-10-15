@@ -390,7 +390,7 @@ describe('reference links: cases beyond the plan', () => {
     });
 
     it('a link split by a nested link writes each part in the full form', () => {
-        const source = '[see [x](https://u) y][ref]\n\n[ref]: https://e.com';
+        const source = '[see <https://u.test/x> y][ref]\n\n[ref]: https://e.com';
         const saved = load(source).getValue();
 
         expect(viewerModel(saved)).toEqual(viewerModel(source));
@@ -487,6 +487,21 @@ function $firstSourceRunKey(): string {
     return $dfs().map(({ node }) => node).find($isMarkdownSourceTextNode)!.getKey();
 }
 
+/** A link written around an autolink, which `marked` 18.1.0 still nests, so the block keeps it as written. */
+const KEPT_SOURCE = '[<https://a.test>][r]';
+const KEPT = `x ${KEPT_SOURCE} tail`;
+const KEPT_C_SOURCE = '[<https://a.test>][c]';
+const KEPT_C = `x ${KEPT_C_SOURCE}`;
+
+/**
+ * The sources of the document's source runs, in document order. Must run inside a read or update.
+ *
+ * @returns The sources.
+ */
+function $keptRunSources(): string[] {
+    return $dfs().map(({ node }) => node).filter($isMarkdownSourceTextNode).map((node) => node.getSource());
+}
+
 describe('definitions edited after load: the editor shows what the save reads as (DEF rows)', () => {
     it('DEF1: an empty reference whose definition is removed shows its text, as the viewer reads it, and saves as that text', () => {
         const editor = load('a [][ref] b\n\n[ref]: https://e.com');
@@ -506,33 +521,48 @@ describe('definitions edited after load: the editor shows what the save reads as
         expect(expectShownAsSaved(editor)).toBe('!\\[foo\\]\\[bar\\] y');
     });
 
-    it('DEF3: a reference kept as written follows its edited definition, as the viewer reads it', () => {
-        const editor = load('[[x][r]](u)\n\n[r]: /r');
+    it('DEF3: a reference kept as written is shown anew when its definition stops naming its label, as the viewer reads it', () => {
+        const editor = load(`${KEPT}\n\n[r]: /r`);
 
-        retypeRawBlock(editor, '[r]: /s');
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual([KEPT_SOURCE]);
 
-        expect(expectShownAsSaved(editor)).toBe('[[x][r]](u)\n\n[r]: /s');
-        expect(lexicalOf(editor).read(() => $dfs().map(({ node }) => node).filter($isLinkNode).map((link) => link.getURL()))).toEqual(['/s']);
+        retypeRawBlock(editor, '[q]: /s');
+
+        // The label no longer resolves: the viewer reads text around the autolink, and so does the block.
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual([]);
+        expect(expectShownAsSaved(editor)).toBe('x \\[<https://a.test>\\]\\[r\\] tail\n\n[q]: /s');
     });
 
-    it('DEF4: a definition added before the one in force takes over a reference kept as written', () => {
-        const editor = load('[[x][r]](u)\n\n[r]: /r');
+    it('DEF4: a definition added before the one in force shows a reference kept as written anew', () => {
+        const editor = load(`${KEPT}\n\n[r]: /r`);
+
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual([KEPT_SOURCE]);
+
+        const key = lexicalOf(editor).read($firstSourceRunKey);
 
         update(editor, () => $getRoot().getFirstChildOrThrow().insertBefore($createMarkdownRawBlockNode('[r]: /first')));
 
-        expect(expectShownAsSaved(editor)).toBe('[r]: /first\n\n[[x][r]](u)\n\n[r]: /r');
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual([KEPT_SOURCE]);
+        expect(lexicalOf(editor).read($firstSourceRunKey)).not.toBe(key);
+        expect(expectShownAsSaved(editor)).toBe(`[r]: /first\n\n${KEPT}\n\n[r]: /r`);
     });
 
     it('DEF5: a reference link beside a kept one keeps its own URL and saves inline', () => {
-        const editor = load('See [text][ref] and [[x][ref]](u).\n\n[ref]: https://e.com');
+        const editor = load('See [text][ref] and x [<https://a.test>][ref].\n\n[ref]: https://e.com');
+
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual(['[<https://a.test>][ref]']);
+
+        const key = lexicalOf(editor).read($firstSourceRunKey);
 
         retypeRawBlock(editor, '[ref]: https://f.com');
 
+        expect(lexicalOf(editor).read($firstSourceRunKey)).not.toBe(key);
+
         const saved = expectShownAsSaved(editor);
 
-        expect(saved).toBe('See [text](https://e.com) and [[x][ref]](u).\n\n[ref]: https://f.com');
+        expect(saved).toBe('See [text](https://e.com) and x [<https://a.test>][ref].\n\n[ref]: https://f.com');
         expect(viewerModel(saved).blocks[0]).toMatchObject({
-            runs: [{ text: 'See ' }, { text: 'text', link: { href: 'https://e.com' } }, { text: ' and ' }, { text: 'x', link: { href: 'https://f.com' } }, { text: '.' }],
+            runs: [{ text: 'See ' }, { text: 'text', link: { href: 'https://e.com' } }, { text: ' and x ' }, { text: 'https://a.test', link: { href: 'https://a.test' } }, { text: '.' }],
         });
     });
 
@@ -545,23 +575,33 @@ describe('definitions edited after load: the editor shows what the save reads as
     });
 
     it('DEF7: a definition held in a list item is edited', () => {
-        const editor = load('- [l]: /l\n\nx [[l]](u)');
+        const editor = load('- [l]: /l\n\nx [<https://a.test>][l]');
+
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual(['[<https://a.test>][l]']);
+
+        const key = lexicalOf(editor).read($firstSourceRunKey);
 
         retypeRawBlock(editor, '- [l]: /m');
 
         const saved = editor.getValue();
 
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual(['[<https://a.test>][l]']);
+        expect(lexicalOf(editor).read($firstSourceRunKey)).not.toBe(key);
         // The viewer shows a list holding only a definition as an empty list; compare the paragraph.
         expect(viewerModel(saved).blocks[1]).toEqual(editorSurfaceModel(editor)[1]);
-        expect(editorSurfaceModel(editor)[1]).toMatchObject({ runs: [{ text: 'x ' }, { text: 'l', link: { href: '/m' } }] });
     });
 
     it('DEF8: a definition inside a `:::` fence is edited', () => {
-        const editor = load('[[x][c]](u)\n\n::: columns\n[c]: /c\n|||\nz\n:::');
+        const editor = load(`${KEPT_C}\n\n::: columns\n[c]: /c\n|||\nz\n:::`);
+
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual([KEPT_C_SOURCE]);
+
+        const key = lexicalOf(editor).read($firstSourceRunKey);
 
         retypeRawBlock(editor, '[c]: /d');
 
-        expect(expectShownAsSaved(editor)).toBe('[[x][c]](u)\n\n::: columns\n[c]: /d\n|||\nz\n:::');
+        expect(lexicalOf(editor).read($firstSourceRunKey)).not.toBe(key);
+        expect(expectShownAsSaved(editor)).toBe(`${KEPT_C}\n\n::: columns\n[c]: /d\n|||\nz\n:::`);
     });
 
     it('DEF9: typing in a definition\'s label keeps every step shown as saved; runs it stopped resolving stay text', () => {
@@ -628,19 +668,25 @@ describe('definitions edited after load: the editor shows what the save reads as
     });
 
     it('DEF14: the caret in a block shown anew stays in that block', () => {
-        const editor = load('[[x][r]](u) tail\n\n[r]: /r');
+        const editor = load('x [<https://a.test>][r] tail\n\n[r]: /r');
+
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual(['[<https://a.test>][r]']);
+
+        const key = lexicalOf(editor).read($firstSourceRunKey);
 
         update(editor, () => {
             $getRoot().getFirstChildOrThrow<ElementNode>().selectEnd();
             $rawBlocks()[0]!.getFirstChildOrThrow<TextNode>().setTextContent('[r]: /s');
         });
 
+        // The block was shown anew: its source run is a new node.
+        expect(lexicalOf(editor).read($firstSourceRunKey)).not.toBe(key);
         expectShownAsSaved(editor);
         expect(lexicalOf(editor).read(() => {
             const selection = $getSelection();
 
             return $isRangeSelection(selection) ? selection.anchor.getNode().getTopLevelElement()?.getTextContent() : null;
-        })).toBe('x tail');
+        })).toBe('x https://a.test tail');
     });
 });
 
@@ -672,11 +718,11 @@ describe('stack fuzz round 2: references where the save could read them otherwis
     });
 
     it('a link nested in a link written as a reference keeps all its source when the block is written again', () => {
-        const editor = load('[<https://a.test/q>[](/z)][r] w\n\n[r]: /c');
+        const editor = load('[<https://a.test/q><https://b.test/z>][r] w\n\n[r]: /c');
 
         update(editor, () => $getRoot().getFirstChildOrThrow<ElementNode>().append($createTextNode('!')));
 
-        expect(editor.getValue()).toBe('[<https://a.test/q>[](/z)][r] w!\n\n[r]: /c');
+        expect(editor.getValue()).toBe('[<https://a.test/q><https://b.test/z>][r] w!\n\n[r]: /c');
     });
 
     it('a definition in a list item counts among the document\'s definitions: a link it would re-point is written inline', () => {

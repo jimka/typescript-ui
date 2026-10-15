@@ -1954,15 +1954,15 @@ describe('source mode finds inline text inside containers', () => {
 
 describe('REMOVE_LINK_SOURCE — a link nested in a link (whole-stack review fix #16b)', () => {
     const cases: Array<[string, string, string]> = [
-        ['the nested link opens the outer link\'s text', 'x [[a](/in) b](/out) y', 'x a[ b](/out) y'],
-        ['the nested link sits inside the outer link\'s text', 'x [c [a](/in) b](/out) y', 'x [c ](/out)a[ b](/out) y'],
-        ['the nested link ends the outer link\'s text', 'x [c [a](/in)](/out) y', 'x [c ](/out)a y'],
-        ['the outer link is a reference link', 'x [[a](/in) b][r] y\n\n[r]: /out', 'x a[ b][r] y\n\n[r]: /out'],
+        ['the nested link opens the outer link\'s text', 'x [<https://a.test/in> b](/out) y', 'x https\\://a.test/in[ b](/out) y'],
+        ['the nested link sits inside the outer link\'s text', 'x [c <https://a.test/in> b](/out) y', 'x [c ](/out)https\\://a.test/in[ b](/out) y'],
+        ['the nested link ends the outer link\'s text', 'x [c <https://a.test/in>](/out) y', 'x [c ](/out)https\\://a.test/in y'],
+        ['the outer link is a reference link', 'x [<https://a.test/in> b][r] y\n\n[r]: /out', 'x https\\://a.test/in[ b][r] y\n\n[r]: /out'],
     ];
 
     for (const [name, text, unlinked] of cases) {
         it(`${name}: its text is unlinked and the outer link's text keeps its target`, () => {
-            const [from, to] = rangeOf(text, 'a');
+            const [from, to] = rangeOf(text, 'a.test');
 
             expect(apply(text, REMOVE_LINK_SOURCE(text, from, to)!)).toBe(unlinked);
         });
