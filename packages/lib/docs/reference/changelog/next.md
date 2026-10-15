@@ -210,6 +210,11 @@ page resets to empty.
 
 ### Components
 
+- **`MarkdownEditor.setValue()` and `setMode("wysiwyg")` no longer move
+  keyboard focus into the editor.** Loading a document used to pull the
+  keyboard to the editor, away from a file tree or a button that called
+  it. Call `focus()` to put the caret there after a load.
+
 - **`MarkdownDocumentPanel`'s toolbar starts with its format buttons and
   its Text style, Alignment and Columns dropdowns disabled.** They act on a
   selection, and until someone clicks into the editor there is none, so
@@ -976,6 +981,13 @@ page resets to empty.
   used to be disabled until the next click), and header cells are declined
   (`canMergeCells` is `false`) where the merge used to move their text into
   one cell without merging anything.
+
+- **A toolbar or menu command with table cells selected gives the keyboard
+  back to the editor.** The keyboard used to stay on the button, so Ctrl+Z
+  did nothing until the next click. Every `MarkdownEditor` command that
+  applies now focuses the editor before it acts, which also stops the
+  editor's own commands from raising Lexical's "ran while a read-only
+  context was on the stack" console warning.
 
 - **`insertImage()` no longer throws, and Delete, Enter, typing and
   `insertTable()` no longer leave an emptied `:::` block,** for a selection
