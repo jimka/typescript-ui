@@ -418,3 +418,11 @@ No export changes, so no API page or barrel changes.
 [^trailing-space]: Trailing whitespace on the opening line is invisible and means nothing to the viewer, the editor or the docs app, so dropping it on an edited save changes nothing anyone reads; an unedited fence keeps it anyway through the source map. Leading whitespace after `:::` is kept, because `:::tip` and `::: tip` are both plausible author spellings.
 
 [^keep-labelled]: Before this change, the commands unwrapped any one-column, unaligned fence because such a fence had "nothing left to justify it". A labelled fence has something: words the author wrote, which the docs app renders as a titled callout. `setBlockAlignment(null)` on `::: tip Title` (which has no alignment to clear) removed the fence and its title, and `setColumnCount(1)` on a two-column `::: tip Title` did the same after merging. With `canUnwrap()` false, C8 and C11 become the no-ops the selection-state docs already describe for "a call with what the `:::` block has". The cost is that WYSIWYG mode has no command that removes a labelled fence; the author removes it in source mode. If the owner prefers unwrapping, drop the `!this.hasAuthoredLabel()` condition and rows C8, C9 and C11 change to today's outputs; the save-side fix is unaffected.
+
+---
+
+## Implementation Notes
+
+- **P2 test setup.** None: P2 is a JSON round trip of a labelled fence in `markdown-serializer.test.ts`, as step 8 asks.
+- **Manual demo check not run.** The MD Editor tab check was skipped because no browser was allowed; the headless tests cover the same behaviour.
+- **Review fix.** Dropping an attribute group glued to the next word (`::: tip{align=right}Title`, `::: tip {align=right}Title`) joined the two words as `tipTitle`, and `::: {align=right}Title` lost its space after `:::`. `withAttributeGroup` now puts one space where the dropped group stood when the text before it is non-empty (words, or the whitespace after `:::`) and the text after it starts with a non-space character. `:::{align=right}Title` has nothing before the group, so it saves as `:::Title`. Rows C12, C13 and C14 pin it.
