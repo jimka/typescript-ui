@@ -107,7 +107,9 @@ export interface DragSourceOptions {
      * accepted the drop or refused it — and `false` only on a release over empty
      * space. Lets a source distinguish a release that landed on a target from a
      * fall-through to empty space (e.g. tab tear-off), the signal the `"dragend"`
-     * DOM event alone cannot carry.
+     * DOM event alone cannot carry. Not fired for a source destroyed mid-drag:
+     * that session is abandoned, and the source hears neither this nor
+     * `"dragend"`.
      */
     onDragEnd?   : (detail: DragEventDetail, dropped: boolean) => void;
 }
@@ -193,6 +195,12 @@ const GHOST_OFFSET_Y = 12;
 
 const dragSources = new Map<string, DragSourceRecord>();
 const dropTargets = new Map<string, DropTargetRecord>();
+
+// Components whose teardown already abandons their drag session. `onDestroy`
+// has no matching removal, so each component is wired once however often it
+// is registered — as `Tooltip.attach` does.
+const destroyWired: WeakSet<Component> = new WeakSet<Component>();
+
 let activeSession: DragSession | null = null;
 
 // The pointer position buffered by the most recent mousemove not yet applied
@@ -247,6 +255,13 @@ export namespace DragManager {
     export function makeDragSource(component: Component, options: DragSourceOptions): () => void {
         dragSources.set(component.getId(), { component, options });
         component.addMouseDownSubtreeListener(onSourceMouseDown);
+
+        const wired = destroyWired.has(component);
+
+        if (!wired) {
+            destroyWired.add(component);
+            component.onDestroy(abandonSessionOf.bind(null, component));
+        }
 
         return tearDownDragSource.bind(null, component);
     }
@@ -463,6 +478,37 @@ function leaveCurrentTarget(session: DragSession, detail: DragEventDetail): void
     }
 
     session.currentTarget = null;
+}
+
+/**
+ * Ends the active session without telling its source, for a source that is
+ * being destroyed. The session's own end runs from viewport listeners
+ * registered against the source, which its teardown has just purged, so
+ * without this the session would stay open for the life of the page.
+ *
+ * The source hears neither `"dragend"` nor `onDragEnd`: both report a release,
+ * and a release over empty space is what tears a tab off into a new window.
+ * The current drop target does hear `onDragLeave`, so its highlight clears.
+ *
+ * @param component - The component being destroyed.
+ */
+function abandonSessionOf(component: Component): void {
+    if (activeSession === null || activeSession.source !== component) {
+        return;
+    }
+
+    const session = activeSession;
+
+    leaveCurrentTarget(session, buildDetail(session, 0, 0));
+
+    // A tab drag parks its content in the registry until the gesture ends.
+    const data = session.dragData as Partial<TabDragData>;
+
+    if (data.tabDrag === true && typeof data.componentId === "string") {
+        tabDragRegistry.delete(data.componentId);
+    }
+
+    endSession(false, 0, 0, false);
 }
 
 /**
@@ -699,8 +745,9 @@ function onMouseUp(e: MouseEvent): Event.ListenerResult {
             // target refused it (a rejected self-dock is a no-op, not a detach).
             if (target.options.accepts(detail)) {
                 const onDropResult = target.options.onDrop?.(detail);
+                const sourceGone   = session.source.isDestroyed();
 
-                if (onDropResult !== false) {
+                if (onDropResult !== false && !sourceGone) {
                     Event.fireEvent(session.source, "drop", { detail });
                 }
             }
@@ -717,8 +764,11 @@ function onMouseUp(e: MouseEvent): Event.ListenerResult {
 /**
  * Removes overlays, unwires viewport listeners, restores the body
  * cursor, and fires `dragend` when the session committed.
+ *
+ * @param notifySource - Whether a committed session fires `dragend` and
+ *   `onDragEnd` on its source; `false` for a source being destroyed.
  */
-function endSession(dropped: boolean, clientX: number, clientY: number): void {
+function endSession(dropped: boolean, clientX: number, clientY: number, notifySource: boolean = true): void {
     if (activeSession === null) {
         return;
     }
@@ -776,12 +826,16 @@ function endSession(dropped: boolean, clientX: number, clientY: number): void {
         DOM.sink.apply(DOM.source.getBody(), { style: { cursor: session.previousBodyCursor } });
     }
 
-    if (session.committed) {
+    // Cleared before the source is told: a source disposed inside its own
+    // `dragend` / `onDragEnd` (a tab docked into another strip removes its
+    // button) reaches `abandonSessionOf`, which must find no session left to
+    // end a second time.
+    activeSession = null;
+
+    if (session.committed && notifySource) {
         const detail = buildDetail(session, clientX, clientY);
 
         Event.fireEvent(session.source, "dragend", { detail });
         session.sourceOptions.onDragEnd?.(detail, dropped);
     }
-
-    activeSession = null;
 }
