@@ -23,7 +23,7 @@ import {
 import type { TableSelection } from "@lexical/table";
 import { $isLinkNode, LinkNode } from "@lexical/link";
 import { $dfs, $unwrapAndFilterDescendants, $unwrapNode, mergeRegister } from "@lexical/utils";
-import { lexMarkdownWithDefinitions } from "~/component/display/markdownExtensions.js";
+import { lexMarkdownWithDefinitions, linkLabelKey } from "~/component/display/markdownExtensions.js";
 import {
     $definitionsSource, $documentDefinitions, $headingWritesOneLine, $itemReadsLoose, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown,
     $runsReadingOtherwise, $serializeBlock, $writtenListMarker, definitionsOfSource, keptImageShown, NO_DEFINITIONS_SOURCE, rawBlockStandsInItem,
@@ -1310,7 +1310,7 @@ function $adoptDefinitionTitles(block: ElementNode, definitions: Links): void {
             continue;
         }
 
-        const definition = definitions[node.getReference().label.replace(/\s+/g, " ").toLowerCase()];
+        const definition = definitions[linkLabelKey(node.getReference().label)];
 
         if (definition !== undefined && definition.href === node.getURL() && (definition.title || null) !== node.getTitle()) {
             node.setTitle(definition.title || null);
@@ -1342,12 +1342,17 @@ function shownReading(markdown: string, definitions: Links): string {
     });
 }
 
+/** The text between one pair of brackets, an escaped bracket allowed in it, which a label's key is read from. */
+const BRACKETED_TEXT = /\[((?:\\.|[^[\]\\])*)\]/g;
+
 /**
  * Tells whether a block's runs kept as written — the only content whose
  * reading a definition can change — name one of the labels in brackets, as
- * `marked` keys them (whitespace runs one space, lowercased). The runs'
+ * `marked` keys them ({@link linkLabelKey}). The runs'
  * sources are read joined, since a construct kept as written spreads its
- * source over its runs.
+ * source over its runs; each pair of brackets, an escaped bracket allowed
+ * in it, is keyed on its own text, so outer spaces inside it do not hide the
+ * label.
  *
  * @param block - The block.
  * @param labels - The labels.
@@ -1359,9 +1364,9 @@ function $namesLabel(block: LexicalNode, labels: readonly string[]): boolean {
     }
 
     const sources = $dfs(block).map(({ node }) => ($isMarkdownSourceTextNode(node) ? node.getSource() : "")).join("");
-    const keyed = sources.replace(/\s+/g, " ").toLowerCase();
+    const bracketed = [...sources.matchAll(BRACKETED_TEXT)].map((match) => linkLabelKey(match[1]!));
 
-    return sources.includes("[") && labels.some((label) => keyed.includes(`[${label}]`));
+    return labels.some((label) => bracketed.includes(label));
 }
 
 /**

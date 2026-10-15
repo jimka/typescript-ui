@@ -645,6 +645,21 @@ export function lexMarkdown(source: string): Token[] {
 }
 
 /**
+ * The key `marked` files a link reference definition under, and looks a
+ * reference's label up by: the label with its whitespace runs collapsed to
+ * one space, trimmed, and case-folded. The fold goes through upper case, as
+ * `marked`'s own does, so that `ẞ` and `SS` share a key, which
+ * `toLowerCase()` alone does not give. {@link lexMarkdownLinkDefinitions}
+ * returns a map keyed this way.
+ *
+ * @param label - A reference's label or a definition's, as written between its brackets.
+ * @returns The key.
+ */
+export function linkLabelKey(label: string): string {
+    return label.replace(/\s+/g, " ").trim().toLowerCase().toUpperCase().toLowerCase();
+}
+
+/**
  * Lexes Markdown source through the same scoped `marked` instance as
  * {@link lexMarkdown} and returns only its link reference definitions, so a
  * caller resolves a reference label exactly as the viewer does: the first
@@ -652,8 +667,7 @@ export function lexMarkdown(source: string): Token[] {
  * or `:::` fence counts, while a definition-shaped line inside code does not.
  *
  * @param source - The Markdown source to lex.
- * @returns `marked`'s map from normalised label (whitespace runs collapsed to
- *   one space, lowercased) to `{ href, title }`.
+ * @returns `marked`'s map from a label's key ({@link linkLabelKey}) to `{ href, title }`.
  */
 export function lexMarkdownLinkDefinitions(source: string): Links {
     return _marked.lexer(source).links;

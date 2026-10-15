@@ -22,7 +22,7 @@ import {
     resolveImageSpec, resolveSpanStyle, spanStyleToAttributes,
 } from "~/component/display/markdownAttributes.js";
 import {
-    lexMarkdown, lexMarkdownInline, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions,
+    lexMarkdown, lexMarkdownInline, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions, linkLabelKey,
 } from "~/component/display/markdownExtensions.js";
 import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
 import type { MdTableToken } from "~/component/display/markdownTableExtension.js";
@@ -4289,8 +4289,8 @@ function writeBracketed(
 
 /**
  * Tells whether `definitions` resolve `node`'s label to exactly its current
- * URL and title, matching labels as `marked` does: whitespace runs collapsed
- * to one space, then lowercased. An empty title counts as none, as `marked`
+ * URL and title, matching labels as `marked` does ({@link linkLabelKey}).
+ * An empty title counts as none, as `marked`
  * gives a reference link with an empty title none. A title holding a blank
  * line only a definition can write — an inline link's would end its block —
  * so a link with one keeps its reference form while its label resolves to
@@ -4306,7 +4306,7 @@ function resolvesToNode(node: ReferenceLinkNode, definitions: Links | null): boo
         return false;
     }
 
-    const key = node.getReference().label.replace(/\s+/g, " ").toLowerCase();
+    const key = linkLabelKey(node.getReference().label);
 
     if (!Object.hasOwn(definitions, key)) {
         return false;

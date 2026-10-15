@@ -691,6 +691,53 @@ describe('definitions edited after load: the editor shows what the save reads as
 });
 
 describe('stack fuzz round 2: references where the save could read them otherwise', () => {
+    it('a reference kept as written whose label has outer spaces is shown anew when its definition stops naming it', () => {
+        const editor = load('x [<https://a.test>][ r ] tail\n\n[r]: /r');
+
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual(['[<https://a.test>][ r ]']);
+
+        retypeRawBlock(editor, '[q]: /s');
+
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual([]);
+        expectShownAsSaved(editor);
+    });
+
+    it('a reference kept as written whose label escapes a bracket is shown anew when its definition stops naming it', () => {
+        const editor = load('x [<https://a.test>][ r\\]s ] tail\n\n[r\\]s]: /r');
+
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual(['[<https://a.test>][ r\\]s ]']);
+
+        retypeRawBlock(editor, '[q]: /s');
+
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual([]);
+        expectShownAsSaved(editor);
+    });
+
+    it('a reference kept as written whose label folds to its definition\'s is shown anew when the definition stops naming it', () => {
+        const editor = load('x [<https://a.test>][ẞ] tail\n\n[SS]: /r');
+
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual(['[<https://a.test>][ẞ]']);
+
+        retypeRawBlock(editor, '[q]: /s');
+
+        expect(lexicalOf(editor).read($keptRunSources)).toEqual([]);
+        expectShownAsSaved(editor);
+    });
+
+    // `marked` matches a label to its definition after trimming it, collapsing its whitespace and folding its case
+    // (`ẞ` meets `SS`). The save has to find the definition the same way, or it writes the link inline.
+    it.each([
+        '[ẞ]\n\n[SS]: /url',
+        '[text][ẞ] and [Straße][]\n\n[SS]: /url\n[STRASSE]: /street',
+        '[foo ] and [x][ bar]\n\n[foo]: /foo\n[bar]: /bar',
+        '[Foo] and [x][FOO  bar]\n\n[foo]: /foo\n[foo bar]: /bar',
+    ])('%j keeps its reference forms in the standard-form save', (source) => {
+        const editor = load(source);
+
+        expect(references(editor).length).toBeGreaterThan(0);
+        expect(canonicalSave(editor)).toBe(source);
+    });
+
     it('a shortcut reference opening a list item\'s text before a space is written [x][], not read as a task checkbox', () => {
         const editor = load('[x] y\n\n[x]: /a');
 
