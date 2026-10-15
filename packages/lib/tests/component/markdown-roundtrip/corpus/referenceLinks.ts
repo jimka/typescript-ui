@@ -9,7 +9,7 @@ export const REFERENCE_LINK_CASES: readonly CorpusCase[] = [
     { name: 'definition continues a paragraph', source: 'para line\n[ref]: https://e.com\n\n[ref]', links: ['https://e.com'] },
     { name: 'image reference', source: '![alt][ref] here\n\n[ref]: https://e.com', links: [] },
     { name: 'inline link and styled span share a label', source: '[ref](https://inline) and [ref]{color=red}\n\n[ref]: https://e.com', links: ['https://inline'] },
-    { name: 'reference inside a link', source: '[see [ref] here](https://outer)\n\n[ref]: https://e.com', links: ['https://outer', 'https://e.com', 'https://outer'] },
+    { name: 'reference inside brackets with a destination', source: '[see [ref] here](https://outer)\n\n[ref]: https://e.com', links: ['https://e.com', 'https://outer'] },
     { name: 'reference inside code', source: '`[ref]` and more\n\n[ref]: https://e.com', links: [] },
     { name: 'reference in a table cell', source: '| a |\n| --- |\n| [ref] |\n\n[ref]: https://e.com', links: ['https://e.com'] },
     { name: 'reference in a fence', source: '::: {align=center}\n[x] in block\n\n[x]: https://blk\n:::', links: ['https://blk'] },

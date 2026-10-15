@@ -1410,8 +1410,10 @@ describe('line commands act on the blocks the viewer reads', () => {
     it('declines when a tab on an item\'s marker line stands where the command has to read', () => {
         expect(blockPrefixSource('## ')('-\tone\n\n\tsecond\n- two', 2, 2)).toBeNull();
         expect(listSource('unordered')('-\tone\n\n\tsecond\n- two', 2, 2)).toBeNull();
-        expect(blockPrefixSource('## ')('- one\ttab\n- z', 2, 2)).toBeNull();
-        expect(listSource('ordered')('- one\ttab\n- z', 2, 2)).toBeNull();
+
+        // A tab in the item's text is content, and the command reads past it.
+        expect(apply('- one\ttab\n- z', blockPrefixSource('## ')('- one\ttab\n- z', 2, 2)!)).toBe('## one\ttab\n- z');
+        expect(apply('- one\ttab\n- z', listSource('ordered')('- one\ttab\n- z', 2, 2)!)).toBe('1. one\ttab\n- z');
 
         // An item of one line needs neither: the tab after its marker goes with the marker.
         expect(apply('-\tone\n- two', blockPrefixSource('## ')('-\tone\n- two', 2, 2)!)).toBe('## one\n- two');
@@ -1463,16 +1465,23 @@ describe('line commands act on the blocks the viewer reads', () => {
         expect(blockTypes(result)).toEqual(['blockquote']);
     });
 
-    // `marked` reads `b` as part of the outer quote but gives it no token, so
-    // the viewer does not show it: writing block syntax onto it would.
-    it('declines a line the viewer does not show', () => {
+    // A fence closed inside a nested quote ends the lines the quote takes: `b` is a paragraph after the quote.
+    it('acts on the line after a fence closed inside a nested quote', () => {
         const text = '> > ```\n> > a\n> > ```\nb';
+        const at = (command: (text: string, from: number, to: number) => MarkdownSourceEdit | null): string | null => {
+            const edit = command(text, text.length, text.length);
 
-        for (const command of Object.values(lineCommands)) {
-            expect(command(text, text.length, text.length)).toBeNull();
-        }
+            return edit === null ? null : apply(text, edit);
+        };
 
-        expect(tableSource(2, 2)(text, text.length, text.length)).toBeNull();
+        expect(blockTypes(text)).toEqual(['blockquote', 'paragraph']);
+        expect(at(lineCommands.paragraph)).toBeNull();
+        expect(at(lineCommands.heading)).toBe('> > ```\n> > a\n> > ```\n## b');
+        expect(at(lineCommands.quote)).toBe('> > ```\n> > a\n> > ```\n> b');
+        expect(at(lineCommands.bullets)).toBe('> > ```\n> > a\n> > ```\n- b');
+        expect(at(lineCommands.numbers)).toBe('> > ```\n> > a\n> > ```\n1. b');
+        expect(at(lineCommands.code)).toBe('> > ```\n> > a\n> > ```\n```\nb\n```');
+        expect(at(tableSource(2, 2))).toBe('> > ```\n> > a\n> > ```\n\n|  |  |\n| --- | --- |\n|  |  |\n\nb');
     });
 
     it('declines a line of a table, whose cells hold text only', () => {
@@ -1967,4 +1976,17 @@ describe('REMOVE_LINK_SOURCE — a link nested in a link (whole-stack review fix
             expect(apply(text, REMOVE_LINK_SOURCE(text, from, to)!)).toBe(unlinked);
         });
     }
+
+    // A link written around a link is no link: only the inner one is. Taking the inner link's syntax away would
+    // leave `[a b](/out)`, which reads as a link to `/out`, so the command declines.
+    it.each([
+        'x [[a](/in) b](/out) y',
+        'x [c [a](/in) b](/out) y',
+        'x [c [a](/in)](/out) y',
+        'x [[a](/in) b][r] y\n\n[r]: /out',
+    ])('declines on the inner link of %j, whose text would join a link around it', (text) => {
+        const [from, to] = rangeOf(text, 'a');
+
+        expect(REMOVE_LINK_SOURCE(text, from, to)).toBeNull();
+    });
 });

@@ -427,7 +427,7 @@ interface LineTargets {
  * whose source was not found, a block in a `:::` column inside a quote or
  * list item, which it could not leave) or source no block holds — a `:::`
  * fence or `|||` line, or text the viewer does not show, such as a repeated
- * definition or a line after a fence closed inside a nested quote — and when
+ * definition — and when
  * nothing is left to convert. A thematic break is left alone; a task
  * checkbox is no target of its own and goes with its item's text.
  *

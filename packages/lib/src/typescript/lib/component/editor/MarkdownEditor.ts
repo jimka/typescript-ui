@@ -179,7 +179,7 @@ export interface MarkdownEditorSelectionState {
      * selection, while table cells are selected, when the selection touches
      * a raw Markdown block or a code block or holds (or a collapsed caret
      * would expand into) a run kept as Markdown source, when either end is
-     * in a link nested in another link, and when there is nothing a link
+     * in an autolink nested in another link, and when there is nothing a link
      * could hold: a caret in an empty block, or a selection holding neither
      * text nor an image. A caret in text links the run it is in, so the
      * field does not say whether a word is selected: a toolbar's Link

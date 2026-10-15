@@ -526,6 +526,17 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
         expectSurface(editor, '[a <https://b.test/2> c](/1)');
     });
 
+    it('I26b: a link written around a link is no link: its brackets and destination are text around the inner link', () => {
+        const editor = load('[a [b](/2) c](/1)');
+
+        expect(firstBlockInline(editor)).toEqual([
+            { text: '[a ' },
+            { link: '/2', children: [{ text: 'b' }] },
+            { text: ' c](/1)' },
+        ]);
+        expectSurface(editor, '[a [b](/2) c](/1)');
+    });
+
     it('I27: the empty string is one empty paragraph, and CRLF reads as LF', () => {
         const empty = load('');
 
@@ -658,7 +669,7 @@ describe('$importMarkdown — round trips (R rows)', () => {
         ['R4', '***', '***'],
         ['R5', 'https://c.d', 'https://c.d'],
         ['R6', '1\\. x', '1\\. x'],
-        ['R7', '&#35; x', '\\&#35; x'],
+        ['R7', '&#35; x', '\\# x'],
         ['R8', '[r][x]\n\n[x]: https://e.com', '[r][x]\n\n[x]: https://e.com'],
         ['R9', '- a\n  - b', '- a\n  - b'],
         ['R10', 'a\r\nb', 'a\nb'],
@@ -1965,6 +1976,44 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
                 expectSaveShowsSurface(editor);
             });
         }
+
+        // A link written around a link is no link (CommonMark: a link's text holds no link). Its brackets and its
+        // destination are text, which an edited block saves escaped. [source, its save once ' q' is typed at the end]
+        const around: Array<[string, string]> = [
+            ['x [[a](/in)](/out) y', 'x \\[[a](/in)\\]\\(/out) y q'],
+            ['[[2]()]()', '\\[[2]()\\]\\() q'],
+            ['[~~[6]()~~]()', '\\[~~[6]()~~\\]\\() q'],
+            ['[***[0]()***]()', '\\[***[0]()***\\]\\() q'],
+            ['[++[1]()++]()', '\\[++[1]()++\\]\\() q'],
+            ['**[[a](/in)](/out)** y', '**\\[[a](/in)\\]\\(/out)** y q'],
+            ['[[a](/1)[b](/2)](/o)', '\\[[a](/1)[b](/2)\\]\\(/o) q'],
+            ['[**[a](/1)**[b](/2)](/o) z', '\\[**[a](/1)**[b](/2)\\]\\(/o) z q'],
+            ['x [[\\[a \\]b](/p)](/q)', 'x \\[[\\\\[a \\\\]b](/p)\\]\\(/q) q'],
+        ];
+
+        for (const [source, saved] of around) {
+            it(`${JSON.stringify(source)} shows the inner link as the viewer does, and saves the brackets around it as text`, () => {
+                const editor = load(source);
+
+                expectSurface(editor, source);
+                expect(editor.getValue()).toBe(source);
+                typeAtDocumentEnd(editor, ' q');
+                expect(editor.getValue()).toBe(saved);
+                expectSaveShowsSurface(editor);
+                expect(viewerModel(saved).blocks).toEqual(viewerModel(source + ' q').blocks);
+            });
+        }
+
+        it('removing the inner link of a link written around a link leaves its text between the brackets, which stay text', () => {
+            const source = 'x [[a](/in) b](/out) y';
+            const editor = load(source);
+
+            select(editor, ['a', 0]);
+            editor.removeLink();
+
+            expect(editor.getValue()).toBe('x \\[a b\\]\\(/out) y');
+            expectSaveShowsSurface(editor);
+        });
 
         const breaks: Array<[string, string, (editor: MarkdownEditor) => void]> = [
             ['deleting the second of two nested links', '[<https://a.test/1><https://b.test/2>](/o) z', (editor) => {
