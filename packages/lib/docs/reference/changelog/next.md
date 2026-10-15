@@ -767,6 +767,10 @@ page resets to empty.
   consumer action is needed unless a `keydown` handler of your own already
   opens the node on `Enter`: remove it, or it opens the node twice.
 
+- **`*` expands a `Tree` row's siblings.** It opens every sibling of the
+  current row whose children are already loaded, fires `"expand"` for each,
+  and never starts a lazy load. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
