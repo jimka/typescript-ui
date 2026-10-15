@@ -2152,3 +2152,73 @@ describe('Menu keyboard highlight and handleKey', () => {
         expect(menu.getFocusedIndex()).toBe(0);
     });
 });
+
+// An item arms a 150 ms timer on `mouseover` that opens its submenu. The
+// browser sends no `mouseout` for an element removed under a resting pointer,
+// so a menu that closes inside that window has to cancel the timer itself.
+describe('Menu — a submenu hover pending at close', () => {
+    // MenuItem arms its submenu timer with a literal 150 ms; this is that plus headroom.
+    const PAST_HOVER_DELAY_MS = 200;
+
+    afterEach(() => {
+        vi.useRealTimers();
+        DOM.reset();
+    });
+
+    const SUBMENU_ITEMS: MenuItemConfig[] = [
+        { text: 'A', submenu: { label: 'A', items: [{ text: 'A1', action: () => {} }] } },
+        { text: 'B', action: () => {} },
+    ];
+
+    /**
+     * Runs the first item's `mouseover` handler, arming its submenu timer. The
+     * handler is called directly rather than through a dispatched event:
+     * Event.ts installs one window-level listener per event type for the life
+     * of the module, and earlier cases in this file leave it bound to a sink
+     * that no longer exists, so a dispatched `mouseover` would go nowhere.
+     */
+    function hoverFirstItem(menu: Menu): void {
+        (menu as any)._menuItems[0]._onMouseOver();
+    }
+
+    it('M1: close() cancels a pending submenu (persistent mode)', () => {
+        installTestDOM(CONFIG);
+        vi.useFakeTimers();
+
+        const menu = new Menu(SUBMENU_ITEMS, () => {});
+
+        menu.open(DOM.sink.createElement('div'));
+        hoverFirstItem(menu);
+        menu.close();
+        vi.advanceTimersByTime(PAST_HOVER_DELAY_MS);
+
+        expect((menu as any)._openSubmenuPanel).toBeNull();
+    });
+
+    it('M2: hide() cancels a pending submenu (rebuild mode)', () => {
+        installTestDOM(CONFIG);
+        vi.useFakeTimers();
+
+        const menu = new Menu();
+
+        menu.show(0, 0, SUBMENU_ITEMS);
+        hoverFirstItem(menu);
+        menu.hide();
+        vi.advanceTimersByTime(PAST_HOVER_DELAY_MS);
+
+        expect((menu as any)._openSubmenuPanel).toBeNull();
+    });
+
+    it('M3: control: a hover that is not interrupted opens the submenu', () => {
+        installTestDOM(CONFIG);
+        vi.useFakeTimers();
+
+        const menu = new Menu(SUBMENU_ITEMS, () => {});
+
+        menu.open(DOM.sink.createElement('div'));
+        hoverFirstItem(menu);
+        vi.advanceTimersByTime(PAST_HOVER_DELAY_MS);
+
+        expect((menu as any)._openSubmenuPanel).toBeInstanceOf(Menu);
+    });
+});

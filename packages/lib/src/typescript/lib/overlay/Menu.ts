@@ -590,6 +590,7 @@ class Menu extends Component implements DismissableLayer {
 
         this.returnFocusToInvoker();
         this.closeOpenSubmenu();
+        this.cancelPendingSubmenus();
         this.setFocusedIndex(-1);
 
         LayerManager.unregister(this);
@@ -796,6 +797,7 @@ class Menu extends Component implements DismissableLayer {
         this.assertPersistentMode("close");
 
         this.closeOpenSubmenu();
+        this.cancelPendingSubmenus();
 
         this.setFocusedIndex(-1);
         this.clearItemHighlights();
@@ -1236,6 +1238,18 @@ class Menu extends Component implements DismissableLayer {
      */
     private isItemSkipped(index: number): boolean {
         return !this._menuItems[index].isNavigable();
+    }
+
+    /**
+     * Cancels every item's pending submenu timer, so a hover that began just
+     * before this menu closed cannot open a submenu for it afterwards.
+     */
+    private cancelPendingSubmenus(): void {
+        for (const row of this._menuItems) {
+            if (row instanceof MenuItem) {
+                row.cancelPendingSubmenu();
+            }
+        }
     }
 
     /**
