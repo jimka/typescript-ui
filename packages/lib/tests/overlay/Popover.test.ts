@@ -5,6 +5,7 @@ import { Component } from '~/core/Component';
 import { Panel } from '~/core/Panel';
 import { DOM, type Handle, type Rect } from '~/core/DOM';
 import { installTestDOM, makeEvent } from '../dom/TestDOM';
+import { throwOnReleasedHandle } from '../helpers/throwOnReleasedHandle';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -627,19 +628,7 @@ describe('Popover — anchor disposed while open', () => {
     it('L1: a press outside the page after the anchor is disposed does not throw', () => {
         const { panel, popover } = openPopoverInPanel();
 
-        // Production's `contains` resolves both handles and throws on a
-        // released one; the modelled DOM's walks the parent table and answers.
-        const realContains = DOM.source.contains.bind(DOM.source);
-
-        vi.spyOn(DOM.source, 'contains').mockImplementation((ancestor, node) => {
-            const registered = DOM.source.isRegistered(ancestor);
-
-            if (!registered) {
-                throw new Error(`DOM handle ${ancestor} is not registered`);
-            }
-
-            return realContains(ancestor, node);
-        });
+        throwOnReleasedHandle();
 
         const outside = DOM.sink.createElement('div');
 
