@@ -268,6 +268,42 @@ const ALWAYS_ESCAPED: ReadonlySet<string> = new Set(["`", "*", "~", "[", "]"]);
 /** The characters that start a block (heading, quote, list, setext underline, table, fence) at a line start. */
 const LINE_START_ESCAPED: ReadonlySet<string> = new Set(["#", ">", "-", "+", "*", "=", "|", ":", "~", "`"]);
 
+/** The delimiter characters a lean writing leaves bare unless the block holds two runs of one ({@link leanBlock}). */
+const PAIRING_DELIMITERS: readonly string[] = ["*", "_", "~", "`", "+"];
+
+/** A run of each pairing delimiter character; the underline grammar reads only a run of two or more `+`. */
+const DELIMITER_RUN: Readonly<Record<string, RegExp>> = { "*": /\*+/g, "_": /_+/g, "~": /~+/g, "`": /`+/g, "+": /\+{2,}/g };
+
+/** The characters whose run a delimiter run next to it joins, or changes the flanking of. */
+const DELIMITER_CHARACTERS = "*_~`+";
+
+/** An ATX heading's opening: one to six `#`, then whitespace or the line's end. */
+const ATX_HEADING_START = /^#{1,6}(?:[ \t]|$)/;
+
+/** A bullet list item's marker: `-`, `+` or `*`, then whitespace or the line's end. */
+const BULLET_MARKER_START = /^[-+*](?:[ \t]|$)/;
+
+/** An ordered list item's marker: one to nine digits, `.` or `)`, then whitespace or the line's end. */
+const ORDERED_MARKER_START = /^\d{1,9}[.)](?:[ \t]|$)/;
+
+/** A setext heading's underline: a run of `=` or of `-`, then spaces or tabs. */
+const SETEXT_UNDERLINE = /^(?:=+|-+)[ \t]*$/;
+
+/** A GFM table's delimiter row: dash cells with optional alignment colons, pipes between them and optionally around. */
+const TABLE_DELIMITER_ROW = /^\|?[ \t]*:?-+:?[ \t]*(?:\|[ \t]*:?-+:?[ \t]*)*\|?[ \t]*$/;
+
+/** A `:::` fence line: an opener, with anything after it, or a closer. */
+const COLUMN_FENCE_LINE = /^:::/;
+
+/** A column separator line: `|||` alone. */
+const COLUMN_SEPARATOR_LINE = /^\|\|\|[ \t]*$/;
+
+/** A code fence's opening run: three or more backticks or tildes. */
+const CODE_FENCE_START = /^(?:`{3,}|~{3,})/;
+
+/** One whitespace character, as a delimiter run's neighbour. */
+const WHITESPACE = /^\s$/;
+
 /**
  * An ordered-list marker at a line start: one to nine digits (CommonMark's
  * limit for a list number) then `.` or `)`.
@@ -335,6 +371,29 @@ const MAX_READ_BACKS = 64;
 /** Separates the parts of one reading unit's key: no Markdown text holds it. */
 const READING_KEY_SEPARATOR = "\u0000";
 
+/**
+ * How many answers {@link leanReadsAsFull} remembers. The editor saves the
+ * whole document after every update, so it asks again for every block that
+ * leaves out an escape: the memory holds one answer for each such block of
+ * the largest documents the editor's cost measurements use (8,000 blocks),
+ * or it would start over on every save and lex them all again.
+ */
+const LEAN_READING_CACHE_SIZE = 8192;
+
+/** {@link leanReadsAsFull}'s answers, by block kind, definitions and the two writings; cleared when it holds {@link LEAN_READING_CACHE_SIZE} entries. */
+const LEAN_READS = new Map<string, boolean>();
+
+/**
+ * The definitions of the save in progress, which {@link leanReadsAsFull}
+ * lexes with: a block's own definitions are `null` when no reference link
+ * needs them, yet `marked` masks every `[label]` stretch a definition names
+ * before it pairs emphasis, so a lean writing is read under them all. Set by
+ * {@link $serializeTopLevelBlocks}, as the importer sets its own definitions
+ * (`IMPORT_DEFINITIONS`); outside one, the editor state's are read with
+ * {@link $readDefinitions}.
+ */
+const SAVE_DEFINITIONS: { current: DocumentDefinitions | null } = { current: null };
+
 /** The reading unit of a line break. */
 const BREAK_READING = "\u0001break";
 
@@ -395,6 +454,20 @@ interface InlineContext {
      * read-back; never for a writing.
      */
     readonly readsWhitespace?: boolean;
+    /**
+     * Write the lean escapes: an escape {@link needsEscape} or
+     * {@link escapeLineStart} asks for is left out where the character cannot
+     * start anything where it stands ({@link leanKeepsEscape},
+     * {@link leanLineStartEscaped}). Set only for a writing that is then
+     * checked against the writing with every escape ({@link leanOrFull}).
+     */
+    readonly lean?: boolean;
+    /**
+     * The Markdown joins Markdown already written around it — a raw block's
+     * or code block's text — which neither the lean rules nor their check
+     * see: every escape is written.
+     */
+    readonly joinsMarkdown?: boolean;
     /**
      * The saved document's link reference definitions, as the viewer resolves
      * them; `null` when the document holds no reference link to resolve.
@@ -666,8 +739,8 @@ interface InlineWriter {
  * @returns The Markdown.
  */
 export function $serializeMarkdown(sourceMap: MarkdownSourceMap = EMPTY_SOURCE_MAP): string {
-    const definitions = $readDefinitions(sourceMap.blocks.size > 0);
-    const parts = $serializeTopLevelBlocks(definitions.forBlocks);
+    const definitions = $readDefinitions();
+    const parts = $serializeTopLevelBlocks(definitions);
     const load = documentLoad(parts, sourceMap);
     const blocks = writtenBlocks(parts, sourceMap, definitions);
 
@@ -686,25 +759,34 @@ export function $serializeMarkdown(sourceMap: MarkdownSourceMap = EMPTY_SOURCE_M
  * block's fingerprint and a save its standard output from this one function,
  * so the two are computed identically.
  *
- * @param definitions - The definitions the block serializers take
- *   ({@link DocumentDefinitions.forBlocks}).
+ * @param documentDefinitions - The document's definitions
+ *   ({@link $readDefinitions}); the block serializers take their
+ *   {@link DocumentDefinitions.forBlocks}, and a lean writing is read under
+ *   all of them.
  * @returns One entry per root child, in document order.
  */
-export function $serializeTopLevelBlocks(definitions: Links | null): StandardBlock[] {
+export function $serializeTopLevelBlocks(documentDefinitions: DocumentDefinitions): StandardBlock[] {
     const children = $getRoot().getChildren();
+    const definitions = documentDefinitions.forBlocks;
     let previousJoinable: string | undefined;
 
-    return children.map((node, index) => {
-        const text = $isListNode(node)
-            ? serializeListApart(node, previousJoinable, children.slice(index + 1), definitions)
-            : serializeBlock(node, definitions);
+    SAVE_DEFINITIONS.current = documentDefinitions;
 
-        if (text !== "") {
-            previousJoinable = $isMarkdownRawBlockNode(node) || $isListNode(node) ? text : undefined;
-        }
+    try {
+        return children.map((node, index) => {
+            const text = $isListNode(node)
+                ? serializeListApart(node, previousJoinable, children.slice(index + 1), definitions)
+                : serializeBlock(node, definitions);
 
-        return { node, text };
-    });
+            if (text !== "") {
+                previousJoinable = $isMarkdownRawBlockNode(node) || $isListNode(node) ? text : undefined;
+            }
+
+            return { node, text };
+        });
+    } finally {
+        SAVE_DEFINITIONS.current = null;
+    }
 }
 
 /**
@@ -712,13 +794,12 @@ export function $serializeTopLevelBlocks(definitions: Links | null): StandardBlo
  * ({@link $documentDefinitions}), once for both the block serializers and a
  * comparison with the definitions at load.
  *
- * @param compared - Whether the definitions are compared with those at load,
- *   so they are read even when no reference link needs them.
- * @returns The definitions; `all` is empty when neither needs them.
+ * @returns The definitions; `forBlocks` is `null` when no reference link
+ *   needs them. They are always read: a lean writing is checked under them.
  */
-export function $readDefinitions(compared: boolean): DocumentDefinitions {
+export function $readDefinitions(): DocumentDefinitions {
     const needed = $needsDefinitions();
-    const all: Links = needed || compared ? $documentDefinitions() : {};
+    const all = $documentDefinitions();
 
     return { all, key: JSON.stringify(all), forBlocks: needed ? all : null };
 }
@@ -914,11 +995,13 @@ export function $serializeBlock(node: LexicalNode): string {
  * the Markdown a raw block or code block holds for content it takes in from
  * another block. Must run inside an `editor.read` or `editor.update`.
  *
+ * Every escape is written: the Markdown joins text already there.
+ *
  * @param nodes - The inline nodes.
  * @returns Their Markdown, lines separated by `\n`.
  */
 export function $serializeInlineNodes(nodes: LexicalNode[]): string {
-    return serializeInlineNodes(nodes, { ...MULTI_LINE, definitions: $collectDefinitions() });
+    return serializeInlineNodes(nodes, { ...MULTI_LINE, definitions: $collectDefinitions(), joinsMarkdown: true });
 }
 
 /**
@@ -2342,7 +2425,8 @@ function writtenHeadingContent(node: HeadingNode, definitions: Links | null): { 
     const level = Number(node.getTag().slice(1));
 
     if (level <= SETEXT_MAX_LEVEL) {
-        const lines = serializeInline(node, { ...MULTI_LINE, definitions });
+        // The underline is Markdown the lean rules do not see: `|` over `---` is a table.
+        const lines = serializeInline(node, { ...MULTI_LINE, definitions, joinsMarkdown: true });
 
         if (lines.includes("\n") && !lines.split("\n").some((line) => SETEXT_INTERRUPTING_LINE.test(line))) {
             return { content: lines, setext: true };
@@ -2863,8 +2947,14 @@ function writeCellSpans(cell: TableCellNode, column: number, texts: string[], pe
  * @returns The cell's text for its pipe row.
  */
 function serializeTableCell(cell: TableCellNode, definitions: Links | null): string {
-    const text = cell.getChildren()
-        .map((child) => serializeCellChild(child, definitions))
+    const children = cell.getChildren();
+
+    // The paragraphs and list items are written as one run, so a delimiter left bare in two of them can pair
+    // across the break, which no paragraph's own lean check sees: they keep every escape.
+    const joined = children.length > 1 || children.some($isListNode);
+
+    const text = children
+        .map((child) => serializeCellChild(child, definitions, joined))
         .map((paragraph, index) => (index > 0 && /^[*_~]/.test(paragraph) ? " " + paragraph : paragraph))
         .join(CELL_PARAGRAPH_BREAK)
         .trim();
@@ -2882,17 +2972,18 @@ function serializeTableCell(cell: TableCellNode, definitions: Links | null): str
  *
  * @param child - The cell's child.
  * @param definitions - The saved document's link reference definitions, or `null`.
+ * @param joined - Whether the cell's children are written as one run, so each keeps every escape.
  * @returns Its text for the pipe row.
  */
-function serializeCellChild(child: LexicalNode, definitions: Links | null): string {
+function serializeCellChild(child: LexicalNode, definitions: Links | null, joined: boolean): string {
     if (!$isListNode(child)) {
-        return serializeInlineNodes($isElementNode(child) ? child.getChildren() : [child], { ...TABLE_CELL, definitions });
+        return serializeInlineNodes($isElementNode(child) ? child.getChildren() : [child], { ...TABLE_CELL, definitions, joinsMarkdown: joined });
     }
 
     // An item's empty text gives no line, as an item holding nothing gives none.
     return child.getChildren().filter($isListItemNode)
         .flatMap((item) => item.getChildren().filter((block) => !($isMarkdownListItemTextNode(block) && block.isEmpty())))
-        .map((block) => serializeCellChild(block, definitions))
+        .map((block) => serializeCellChild(block, definitions, joined))
         .join(CELL_PARAGRAPH_BREAK);
 }
 
@@ -3027,7 +3118,9 @@ function serializeInline(element: ElementNode, context: InlineContext): string {
  * holding a `<` with every `<` escaped (a `<…>` stretch hides its
  * delimiters from `marked`'s emphasis pairing). Bare
  * autolinks are then written bare wherever that still reads the same, so
- * their source text — and a heading's id — survives.
+ * their source text — and a heading's id — survives. The chosen writing is
+ * then written with lean escapes where that reads as the writing with every
+ * escape ({@link leanOrFull}).
  *
  * @param nodes - The inline nodes.
  * @param context - Where the content is written.
@@ -3039,18 +3132,19 @@ function serializeInlineNodes(nodes: LexicalNode[], context: InlineContext): str
     const tildes = holds("~");
     const written = writeInlinePieces(segments, context, WRITING_POLICIES[0]!);
 
-    if (!tildes && !written.some((piece) => piece.kind === "delimiter" || piece.kind === "autolink")) {
-        return assembleLines(written, context);
+    const plain = !tildes && !written.some((piece) => piece.kind === "delimiter" || piece.kind === "autolink");
+
+    if (plain) {
+        return leanOrFull(written, context, NO_CHOICES);
     }
 
     const intended = withoutTrailingWhitespace(segmentReading(segments, { ...context, readsWhitespace: true }));
 
     if (intended === null) {
-        return assembleLines(written, context);
+        return leanOrFull(written, context, NO_CHOICES);
     }
 
     const readBack = createReadBack(intended, context);
-    let first: string | null = null;
 
     const writings = tildes ? [context, { ...context, looseTildes: true }] : [context];
 
@@ -3059,19 +3153,82 @@ function serializeInlineNodes(nodes: LexicalNode[], context: InlineContext): str
             const pieces = writing === context && policy === WRITING_POLICIES[0] ? written : writeInlinePieces(segments, writing, policy);
             const switched = switchedPairs(pieces, writing, readBack);
 
-            first ??= assembleLines(pieces, writing);
-
             if (switched !== null) {
-                return assembleLines(pieces, writing, { switched, bare: bareAutolinks(pieces, writing, switched, readBack) });
+                return leanOrFull(pieces, writing, { switched, bare: bareAutolinks(pieces, writing, switched, readBack) });
             }
 
-            if (readBack.spent()) {
-                return first;
+            const spent = readBack.spent();
+
+            if (spent) {
+                return leanOrFull(written, context, NO_CHOICES);
             }
         }
     }
 
-    return first!;
+    return leanOrFull(written, context, NO_CHOICES);
+}
+
+/**
+ * Assembles a block's chosen writing with the lean escapes where that reads,
+ * to the viewer, exactly as the writing with every escape does, and with
+ * every escape otherwise. Markdown that joins other Markdown
+ * ({@link InlineContext.joinsMarkdown}) keeps every escape.
+ *
+ * @param pieces - The block's written pieces.
+ * @param context - The chosen writing's context.
+ * @param choices - The chosen writing's assembly choices.
+ * @returns The inline Markdown.
+ */
+function leanOrFull(pieces: Piece[], context: InlineContext, choices: AssemblyChoices): string {
+    if (context.joinsMarkdown === true) {
+        return assembleLines(pieces, context, choices);
+    }
+
+    const drops = { count: 0 };
+    const lean = assembleLines(pieces, { ...context, lean: true }, choices, drops);
+
+    if (drops.count === 0) {
+        return lean;
+    }
+
+    const full = assembleLines(pieces, context, choices);
+    const alike = leanReadsAsFull(lean, full, context);
+
+    return alike ? lean : full;
+}
+
+/**
+ * Tells whether a block's lean writing reads, to the viewer, exactly as its
+ * writing with every escape does — the same characters, whitespace, marks,
+ * links, styles and breaks, in the block it is written for — remembering
+ * each answer.
+ *
+ * @param lean - The lean writing.
+ * @param full - The writing with every escape.
+ * @param context - Where the block is written.
+ * @returns `true` when the two read alike and the full writing reads as one such block.
+ */
+function leanReadsAsFull(lean: string, full: string, context: InlineContext): boolean {
+    const kind = context.inTableCell ? "cell" : context.singleLine ? "line" : "lines";
+    const definitions = SAVE_DEFINITIONS.current ?? $readDefinitions();
+    const key = [kind, definitions.key, full, lean].join(READING_KEY_SEPARATOR);
+    const known = LEAN_READS.get(key);
+
+    if (known !== undefined) {
+        return known;
+    }
+
+    const reading: InlineContext = { ...context, definitions: definitions.all, readsWhitespace: true };
+    const fullReading = markdownReading(full, reading);
+    const alike = fullReading !== null && JSON.stringify(markdownReading(lean, reading)) === JSON.stringify(fullReading);
+
+    if (LEAN_READS.size >= LEAN_READING_CACHE_SIZE) {
+        LEAN_READS.clear();
+    }
+
+    LEAN_READS.set(key, alike);
+
+    return alike;
 }
 
 /**
@@ -5240,9 +5397,12 @@ function imageReading(src: string, link: string): string {
  * @param pieces - The written pieces.
  * @param context - Where they are written.
  * @param choices - The pairs to switch and the autolinks to write bare.
+ * @param drops - Counts the escapes a lean writing ({@link InlineContext.lean}) leaves out.
  * @returns The inline Markdown.
  */
-function assembleLines(pieces: Piece[], context: InlineContext, choices: AssemblyChoices = NO_CHOICES): string {
+function assembleLines(
+    pieces: Piece[], context: InlineContext, choices: AssemblyChoices = NO_CHOICES, drops: { count: number } = { count: 0 },
+): string {
     const lines: Array<{ pieces: LinePiece[]; end: LineEnd | null }> = [{ pieces: [], end: null }];
 
     for (const piece of pieces) {
@@ -5271,8 +5431,15 @@ function assembleLines(pieces: Piece[], context: InlineContext, choices: Assembl
         lineContents[index] = strayTaskMarkersAsText(pieces, context.inListItem === true && index === 0);
     });
 
+    const block = context.lean === true ? leanBlock(lineContents) : null;
+
     return lines.map((line, index) => {
-        const content = escapeHtmlBlockStart(renderLine(lineContents[index]!, context, !written), lineContents[index]!, index === 0, context);
+        const lean = block === null ? null : {
+            pairable: block.pairable, grouped: block.grouped[index]!, continuation: index > 0,
+            afterMarker: context.inListItem === true && index === 0, drops,
+        };
+
+        const content = escapeHtmlBlockStart(renderLine(lineContents[index]!, context, !written, lean), lineContents[index]!, index === 0, context);
 
         written ||= content !== "";
 
@@ -5628,9 +5795,10 @@ function strayTaskMarkersAsText(pieces: LinePiece[], itemFirstLine: boolean): Li
  * @param context - Where the line is written.
  * @param startsBlock - Whether nothing of the block has been written before
  *   this line, so it is where a link reference definition could start.
+ * @param lean - What the lean rules know beyond the line, for a lean writing; `null` for every escape.
  * @returns The line.
  */
-function renderLine(pieces: LinePiece[], context: InlineContext, startsBlock: boolean): string {
+function renderLine(pieces: LinePiece[], context: InlineContext, startsBlock: boolean, lean: LeanLine | null = null): string {
     const rendered = pieces.map((piece, index) => {
         if (piece.kind === "reference" || piece.kind === "source") {
             return piece.shortcut === true && joinsShortcut(pieces, index, startsBlock, context) ? piece.text + "[]" : piece.text;
@@ -5647,10 +5815,79 @@ function renderLine(pieces: LinePiece[], context: InlineContext, startsBlock: bo
         const before = previous === undefined ? "\n" : previous.kind === "reference" ? "" : previous.text.slice(-1);
         const after = pieces[index + 1]?.text[0] ?? "\n";
 
-        return escapeText(piece.text, before, after, context);
+        const leanText = lean === null ? null : { pairable: lean.pairable, grouped: lean.grouped[index] === true, drops: lean.drops };
+
+        return escapeText(piece.text, before, after, context, leanText);
     }).join("");
 
-    return !context.singleLine && pieces[0]?.kind === "text" ? escapeLineStart(rendered) : rendered;
+    return !context.singleLine && pieces[0]?.kind === "text" ? escapeLineStart(rendered, lean) : rendered;
+}
+
+/** What the lean rules know beyond one line: read off the whole block by {@link leanBlock}. */
+interface LeanLine {
+    /** The delimiter characters the block holds two or more runs of, which may pair. */
+    readonly pairable: ReadonlySet<string>;
+    /** For each of the line's pieces, whether it stands inside a link's or styled span's brackets. */
+    readonly grouped: readonly boolean[];
+    /** Whether the line follows another line of the block. */
+    readonly continuation: boolean;
+    /** Whether the line opens a list item's text, right after the item's marker. */
+    readonly afterMarker: boolean;
+    /** Counts the escapes the lean rules leave out, over the whole block. */
+    readonly drops: { count: number };
+}
+
+/** What the lean rules know beyond one text. */
+interface LeanText {
+    /** The delimiter characters the block holds two or more runs of, which may pair. */
+    readonly pairable: ReadonlySet<string>;
+    /** Whether the text stands inside a link's or styled span's brackets. */
+    readonly grouped: boolean;
+    /** Counts the escapes the lean rules leave out, over the whole block. */
+    readonly drops: { count: number };
+}
+
+/**
+ * Reads what the lean rules need off a block's assembled lines: the
+ * delimiter characters it holds two or more runs of, which may pair, and,
+ * for each piece, whether it stands inside a link's or styled span's
+ * brackets, whose text keeps every escape. The pieces are joined with a
+ * space, so a text run next to a delimiter counts as a run of its own.
+ *
+ * @param lines - The block's line pieces.
+ * @returns The pairable characters, and each line's grouped flags.
+ */
+function leanBlock(lines: readonly LinePiece[][]): { pairable: ReadonlySet<string>; grouped: boolean[][] } {
+    const text = lines.map((pieces) => pieces.map((piece) => piece.text).join(" ")).join("\n");
+    const pairable = new Set(PAIRING_DELIMITERS.filter((char) => (text.match(DELIMITER_RUN[char]!) ?? []).length > 1));
+    let depth = 0;
+
+    const grouped = lines.map((pieces) => pieces.map((piece) => {
+        depth = Math.max(0, depth + bracketDepthChange(piece));
+
+        return depth > 0;
+    }));
+
+    return { pairable, grouped };
+}
+
+/**
+ * How a piece changes the depth of link and styled span brackets: a group's
+ * opening `[` opens one, and the syntax from its `]` on closes it.
+ *
+ * @param piece - The piece.
+ * @returns `1`, `-1` or `0`.
+ */
+function bracketDepthChange(piece: LinePiece): number {
+    if (piece.kind !== "syntax") {
+        return 0;
+    }
+
+    if (piece.text === "[") {
+        return 1;
+    }
+
+    return piece.text.startsWith("]") ? -1 : 0;
 }
 
 /**
@@ -5752,21 +5989,29 @@ function joinsShortcut(pieces: LinePiece[], index: number, startsBlock: boolean,
  * @param before - The output character before it (`\n` at a line start).
  * @param after - The output character after it (`\n` at a line end).
  * @param context - Where it is written.
+ * @param lean - What the lean rules know beyond the text, for a lean writing; `null` for every escape.
  * @returns The escaped text.
  */
-function escapeText(text: string, before: string, after: string, context: InlineContext): string {
+function escapeText(text: string, before: string, after: string, context: InlineContext, lean: LeanText | null = null): string {
     let escaped = "";
 
     for (let index = 0; index < text.length; index += 1) {
         const char = text[index]!;
 
         const site: EscapeSite = {
-            text, index, context,
+            text, index, context, before, after,
             previous: index > 0 ? text[index - 1]! : before,
             next:     index < text.length - 1 ? text[index + 1]! : after,
         };
 
-        escaped += needsEscape(char, site) ? "\\" + char : char;
+        const full = needsEscape(char, site);
+        const dropped = full && lean !== null && !leanKeepsEscape(char, site, lean);
+
+        if (dropped) {
+            lean.drops.count += 1;
+        }
+
+        escaped += full && !dropped ? "\\" + char : char;
     }
 
     return escaped;
@@ -5778,7 +6023,95 @@ interface EscapeSite {
     readonly index:    number;
     readonly previous: string;
     readonly next:     string;
+    /** The output character before the whole text (`\n` at a line start). */
+    readonly before:   string;
+    /** The output character after the whole text (`\n` at a line end). */
+    readonly after:    string;
     readonly context:  InlineContext;
+}
+
+/**
+ * Tells whether a lean writing keeps an escape {@link needsEscape} asks for.
+ * Text inside a link's or styled span's brackets keeps every escape. Outside
+ * them a delimiter character follows {@link delimiterKeepsEscape}; every
+ * other character keeps its escape, a `]` included: `marked` masks every
+ * `[label]` stretch a definition names before it pairs emphasis, from any
+ * `[` of the block (in a code span, inline HTML or kept source too), and a
+ * definition may come after the block is written.
+ *
+ * @param char - The character.
+ * @param site - Its surroundings.
+ * @param lean - What the lean rules know beyond the text.
+ * @returns `false` where the character cannot start anything where it stands.
+ */
+function leanKeepsEscape(char: string, site: EscapeSite, lean: LeanText): boolean {
+    if (lean.grouped) {
+        return true;
+    }
+
+    const delimiter = PAIRING_DELIMITERS.includes(char);
+
+    return delimiter ? delimiterKeepsEscape(char, site, lean.pairable) : true;
+}
+
+/**
+ * Tells whether a lean writing keeps the escape of a delimiter character
+ * (`*`, `_`, `~`, `` ` ``, `+`). Its run keeps it when it touches another
+ * delimiter character, whose run it would join or change the flanking of;
+ * otherwise it needs none when the block holds no other run of it, which it
+ * could pair with, nor — for `*`, `_` and `~` — when whitespace stands on
+ * both sides of it, so it can neither open nor close.
+ *
+ * @param char - The character.
+ * @param site - Its surroundings.
+ * @param pairable - The delimiter characters the block holds two or more runs of.
+ * @returns `true` when the escape is kept.
+ */
+function delimiterKeepsEscape(char: string, site: EscapeSite, pairable: ReadonlySet<string>): boolean {
+    const { start, end } = runEdges(site.text, site.index);
+    const before = start > 0 ? site.text[start - 1]! : site.before;
+    const after = end < site.text.length ? site.text[end]! : site.after;
+    const touchesDelimiter = DELIMITER_CHARACTERS.includes(before) || DELIMITER_CHARACTERS.includes(after);
+
+    if (touchesDelimiter) {
+        return true;
+    }
+
+    const canPair = pairable.has(char);
+
+    if (!canPair) {
+        return false;
+    }
+
+    if (char === "`" || char === "+") {
+        return true;
+    }
+
+    const spaced = WHITESPACE.test(before) && WHITESPACE.test(after);
+
+    return !spaced;
+}
+
+/**
+ * The edges of the run of one character that a position of a text stands in.
+ *
+ * @param text - The text.
+ * @param index - The position.
+ * @returns The run's first index, and the index after its last.
+ */
+function runEdges(text: string, index: number): { start: number; end: number } {
+    let start = index;
+    let end = index + 1;
+
+    while (start > 0 && text[start - 1] === text[index]) {
+        start -= 1;
+    }
+
+    while (end < text.length && text[end] === text[index]) {
+        end += 1;
+    }
+
+    return { start, end };
 }
 
 /**
@@ -5826,17 +6159,55 @@ function needsEscape(char: string, site: EscapeSite): boolean {
 
 /**
  * Escapes the block starter a line opens with: one of the block-start
- * characters, or the `.` / `)` of an ordered-list number.
+ * characters, or the `.` / `)` of an ordered-list number — for a lean
+ * writing, only where {@link leanLineStartEscaped} says the line would open
+ * a block.
  *
  * @param line - The rendered line, its text already escaped.
+ * @param lean - What the lean rules know beyond the line, for a lean writing; `null` for every escape.
  * @returns The line, safe at a line start.
  */
-function escapeLineStart(line: string): string {
-    if (LINE_START_ESCAPED.has(line[0] ?? "")) {
-        return "\\" + line;
+function escapeLineStart(line: string, lean: LeanLine | null = null): string {
+    const number = ORDERED_LIST_MARKER.exec(line);
+    const full = LINE_START_ESCAPED.has(line[0] ?? "") || number !== null;
+    const escapes = lean === null ? full : leanLineStartEscaped(line, lean.continuation, lean.afterMarker);
+
+    if (lean !== null && full && !escapes) {
+        lean.drops.count += 1;
     }
 
-    const number = ORDERED_LIST_MARKER.exec(line);
+    if (!escapes) {
+        return line;
+    }
 
-    return number === null ? line : number[1] + "\\" + line.slice(number[1]!.length);
+    return number === null ? "\\" + line : number[1] + "\\" + line.slice(number[1]!.length);
+}
+
+/**
+ * Tells whether a lean writing escapes a line's first character: only where
+ * the line, written as it is, would open a block — an ATX heading, a quote,
+ * a list item, a thematic break, a code fence, and, under another line of
+ * the block, a setext underline or a table delimiter row — or is a `:::`
+ * fence or `|||` separator line, which a column the writer does not see
+ * would read.
+ *
+ * @param line - The rendered line, its text already escaped.
+ * @param continuation - Whether the line follows another line of the block.
+ * @param afterMarker - Whether the line opens a list item's text, where the item's marker and the line may form a thematic break.
+ * @returns `true` when its first character is escaped.
+ */
+function leanLineStartEscaped(line: string, continuation: boolean, afterMarker: boolean): boolean {
+    const underLine = continuation && (SETEXT_UNDERLINE.test(line) || TABLE_DELIMITER_ROW.test(line));
+    const breaksAfterMarker = afterMarker && (THEMATIC_BREAK.test(`- ${line}`) || THEMATIC_BREAK.test(`* ${line}`));
+
+    switch (line[0]) {
+        case "#": return ATX_HEADING_START.test(line);
+        case ">": return true;
+        case "-": case "+": case "*": case "_": case "=":
+            return BULLET_MARKER_START.test(line) || THEMATIC_BREAK.test(line) || underLine || breaksAfterMarker;
+        case "|": return COLUMN_SEPARATOR_LINE.test(line) || underLine;
+        case ":": return COLUMN_FENCE_LINE.test(line) || underLine;
+        case "`": case "~": return CODE_FENCE_START.test(line);
+        default:  return ORDERED_MARKER_START.test(line);
+    }
 }

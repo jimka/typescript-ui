@@ -2086,7 +2086,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
                 }
             });
 
-            expect(editor.getValue()).toBe('\\_1[](),');
+            expect(editor.getValue()).toBe('_1[](),');
             expectSaveShowsSurface(editor);
         });
 
@@ -2453,9 +2453,9 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             }
 
             const ONE_COLUMN = '| h |\n| --- |\n';
-            // `C++` is written as the save writes it (`C\+\+`), so the source is also what the cells save as once the underline is off again.
+            // The source writes `C++` escaped (`C\+\+`), as saves once did; the save writes it bare (`C++`), which reads the same.
             const UNDERLINE_DECLINED_BY_ONE_CELL: ReadonlyArray<[name: string, source: string, from: string, to: string, on: string]> = [
-                ['C++ above Rust', `${ONE_COLUMN}| C\\+\\+ |\n| Rust |`, 'C++', 'Rust', `${ONE_COLUMN}| C\\+\\+ |\n| ++Rust++ |`],
+                ['C++ above Rust', `${ONE_COLUMN}| C\\+\\+ |\n| Rust |`, 'C++', 'Rust', `${ONE_COLUMN}| C++ |\n| ++Rust++ |`],
                 ['a+b beside d', `${HEAD}| a+b | d |`, 'a+b', 'd', `${HEAD}| a+b | ++d++ |`],
                 ['a lone + beside d', `${HEAD}| + | d |`, '+', 'd', `${HEAD}| + | ++d++ |`],
             ];
@@ -3469,7 +3469,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             typeChars(editor, 'fuzz');
 
             expect(runs(editor)).toEqual([['foo fuzz*', 0]]);
-            expect(editor.getValue()).toBe('foo fuzz\\*');
+            expect(editor.getValue()).toBe('foo fuzz*');
             expectSaveShowsSurface(editor);
         });
 

@@ -63,7 +63,7 @@ import { mergeRegister, $getNearestNodeOfType, $handleIndentAndOutdent } from "@
 import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent } from "@lexical/selection";
 import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
-import { $serializeBlock, $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $writtenListMarker } from "~/component/editor/markdownSerializer.js";
+import { $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $writtenListMarker } from "~/component/editor/markdownSerializer.js";
 import {
     $breakRuleContainerOf, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
     $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $selectionHasFormat, $takeBlocksOutOf, RUN_EDGE_TAG,
@@ -3052,7 +3052,7 @@ function $joinIntoTextOnlyBlock(isBackward: boolean): boolean {
 
     const [block, paragraph] = pair;
     const joint = block.getLastChild();
-    const added = $textOnlyChildren($serializeBlock(paragraph));
+    const added = $textOnlyChildren($serializeInlineNodes(paragraph.getChildren()));
 
     block.append(...added);
     paragraph.remove();

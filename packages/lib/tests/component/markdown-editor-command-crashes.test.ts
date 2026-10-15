@@ -858,6 +858,26 @@ describe('a range from a block start into a later block\'s word is removed witho
         expect(editor.getValue()).toBe('```\nh [a](u) \\*x\\* kl\n```');
     });
 
+    // The joined Markdown lands next to text the lean escapes never see: a bare `*` would pair with a `*` of the
+    // raw block, so a join writes every escape.
+    it('R15: Backspace at a paragraph\'s start joins it into a raw block with every escape', () => {
+        const editor = load('<div>\n\na * b');
+
+        selectText(editor, ['a * b', 0], ['a * b', 0]);
+        lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+
+        expect(editor.getValue()).toBe('<div>a \\* b');
+    });
+
+    it('R16: deleting from a code block\'s start into a later block joins the rest with every escape', () => {
+        const editor = load('```\ncode\n```\n\nefgh a * b **c** kl');
+
+        selectText(editor, ['code', 0], ['efgh a * b ', 3]);
+        lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+
+        expect(editor.getValue()).toBe('```\nh a \\* b **c** kl\n```');
+    });
+
     it('R10: a native cut of a range keeping part of the start block is Lexical\'s own', async () => {
         const editor = load(D);
 

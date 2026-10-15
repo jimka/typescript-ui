@@ -48,7 +48,7 @@ export function canonicalSave(editor: MarkdownEditor): string {
 export function editorDefinitions(editor: MarkdownEditor): Links {
     const lexicalEditor = (editor as unknown as { _editor: LexicalEditor })._editor;
 
-    return lexicalEditor.read(() => $readDefinitions(true).all);
+    return lexicalEditor.read(() => $readDefinitions().all);
 }
 
 /**

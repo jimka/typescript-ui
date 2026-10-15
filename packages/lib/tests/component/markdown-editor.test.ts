@@ -1265,14 +1265,14 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['H14', '### *alpha* \\#', 'alpha', null, 'code', '```\n*alpha* \\#\n```', '```\n*alpha* \\#\n```'],
         ['H15', '### +[alpha](/u)', 'alpha', null, 'code', '```\n+[alpha](/u)\n```', '```\n+[alpha](/u)\n```'],
         ['H16', '::: columns\n### +one\n|||\nRight\n:::', 'one', null, 'code', '::: columns\n```\n+one\n```\n|||\nRight\n:::', '::: columns\n```\n+one\n```\n|||\nRight\n:::'],
-        // An escape the block's own Markdown holds stays: an always-escaped character, a setext heading's lines, which
+        // An escape the block's own Markdown holds stays: a `*` that can pair, a setext heading's lines, which
         // are a paragraph's lines, and a paragraph, a quote and a list item's text.
-        ['H17', '### \\* alpha', 'alpha', null, 'code', '```\n\\* alpha\n```', '```\n\\* alpha\n```'],
+        ['H17', '### \\*alpha\\*', 'alpha', null, 'code', '```\n\\*alpha\\*\n```', '```\n\\*alpha\\*\n```'],
         ['H18', '## **bold** +alpha', 'alpha', null, 'code', '```\n**bold** +alpha\n```', '```\n**bold** +alpha\n```'],
         ['H19', '\\+one\nmore\n---', 'one', null, 'code', '```\n\\+one\nmore\n```', '```\n\\+one\nmore\n```'],
-        ['H20', '\\+alpha', 'alpha', null, 'code', '```\n\\+alpha\n```', '```\n\\+alpha\n```'],
-        ['H21', '> \\+alpha', 'alpha', null, 'code', '```\n\\+alpha\n```', '```\n\\+alpha\n```'],
-        ['H22', '- \\+alpha', 'alpha', null, 'code', '```\n\\+alpha\n```', '```\n\\+alpha\n```'],
+        ['H20', '\\- alpha', 'alpha', null, 'code', '```\n\\- alpha\n```', '```\n\\- alpha\n```'],
+        ['H21', '> \\- alpha', 'alpha', null, 'code', '```\n\\- alpha\n```', '```\n\\- alpha\n```'],
+        ['H22', '- \\- alpha', 'alpha', null, 'code', '```\n\\- alpha\n```', '```\n\\- alpha\n```'],
     ];
 
     const DIFFERS: ParityRow[] = [
@@ -1506,14 +1506,14 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
     // `setBlockType("code")` takes. Source mode makes one code block of several blocks (row E5) and takes a block out
     // of its list item (row E12), so these two shapes are no parity rows.
     it('a code block made from each of several blocks holds each block\'s text as that block writes it', () => {
-        const editor = editorOf('### +one\n\n\\+two');
+        const editor = editorOf('### +one\n\n\\- two');
 
         selectWords(editor, 'one', 'two');
         editor.setBlockType('code');
 
         const value = editor.getValue();
 
-        expect(value).toBe('```\n+one\n```\n\n```\n\\+two\n```');
+        expect(value).toBe('```\n+one\n```\n\n```\n\\- two\n```');
         expect(editorOf(value).getValue()).toBe(value);
         expect(editorSurfaceModel(editor)).toEqual(viewerModel(value).blocks);
     });

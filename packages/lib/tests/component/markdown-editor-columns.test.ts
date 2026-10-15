@@ -295,7 +295,7 @@ describe('wrapping a block in a fence saves the fence the viewer reads', () => {
         caretAtStart(editor);
         editor.setColumnCount(2);
 
-        expect(editor.getValue()).toBe('::: columns\n\\<div>\\\n\\`\\`\\`\\\n\\</div>\n|||\n\n:::');
+        expect(editor.getValue()).toBe('::: columns\n\\<div>\\\n\\```\\\n\\</div>\n|||\n\n:::');
         expectParity(editor);
     });
 

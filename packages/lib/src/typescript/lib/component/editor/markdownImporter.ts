@@ -388,8 +388,8 @@ export function $buildInlineContent(block: ElementNode, tokens: Token[]): void {
  *   pair one to one with the located blocks.
  */
 function $recordSourceMap(source: string, located: LocatedBlock[]): MarkdownSourceMap {
-    const definitions = $readDefinitions(true);
-    const rendered = $serializeTopLevelBlocks(definitions.forBlocks);
+    const definitions = $readDefinitions();
+    const rendered = $serializeTopLevelBlocks(definitions);
     const load: MarkdownSourceLoad = {
         prefix:          located.length > 0 ? source.slice(0, located[0]!.start) : source,
         endsWithNewline: source.endsWith("\n"),

@@ -261,9 +261,9 @@ function runSequence(testCase: CorpusCase, random: () => number): FuzzRun {
     const { editor } = loadAndSave(testCase.source);
     const record: EditRecord = { inserted: new Set(), released: new Set() };
     const edits = 1 + Math.floor(random() * MAX_EDITS_PER_SEQUENCE);
-    const definitionsBefore = lexicalOf(editor).read(() => $readDefinitions(true).key);
+    const definitionsBefore = lexicalOf(editor).read(() => $readDefinitions().key);
     const done = Array.from({ length: edits }, (_, step) => editOnce(editor, random, record, step));
-    const definitionsChanged = lexicalOf(editor).read(() => $readDefinitions(true).key !== definitionsBefore);
+    const definitionsChanged = lexicalOf(editor).read(() => $readDefinitions().key !== definitionsBefore);
     const saved = editor.getValue();
 
     return {
