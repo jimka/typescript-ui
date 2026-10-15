@@ -660,3 +660,65 @@ What the platform and common practice say:
 [^measured]: The probe, its output and the stand-in used for the test survey are kept at `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans3/window-focus/` (`zz-window-focus-probe.test.ts`, `probe-out.log`, `zz-probe-setup.ts`). No source file was changed. Measured under jsdom: `Window.show()` and `TabWindow.show()` leave focus on the opener, before and after the layout flush; `bringToFront()` moves focus only when another window was active; closing a focused window leaves focus on `<body>`; a window shown under a `Dialog` carries `inert`; `Dialog` and a modal `Drawer` take focus after the flush and a `Dialog` returns it; a non-modal `Drawer` and a `Popover` move none; with `FocusHistory` enabled a focused window's element is a stop. The pointer rows and the menu rows are from reading `LayerManager.handleOutside` and `Menu.ts:432`. The two standards rows were read from the WAI-ARIA 1.2 text, the ARIA Authoring Practices dialog page and the HTML Standard's `dialog` section on 2026-10-11; the desktop row is from general knowledge and was not re-checked. Not measured: any real browser, Firefox, WebKit, and any screen reader.
 
 [^no-test-change]: The stand-in patched `AbstractWindow.prototype` from a temporary vitest setup file: `show()` raised without focus and queued the focus move, `bringToFront()` focused a shown window, and `onExitAction()` returned focus. Run against the 235 test files matching `Window|Dock|Rail|restoreLayout|FocusHistory|SpatialNavigation|FocusTraversal|LayerManager|DiagnosticsOverlay|StyleAudit|TabBar|TabPanel|tearOff|detach`: 5295 cases passed, none failed. The same stand-in made the jsdom probe report the results of J1–J3. It differs from the plan in three ways: it had no `autoFocus` option, it left the press listener calling `bringToFront()`, and it left `restore()` and `applyWindow` alone. The other 320 test files construct no window and were not run; step 10 runs the whole suite.
+
+---
+
+## Implementation Notes
+
+Not run: the manual cases MV1 to MV12. The run had no browser, screen reader
+or SQLAdmin session. J1 to J4 cover the same flows under jsdom, but a real
+browser refuses focus on an inert or detached element, and none of the
+cross-browser or screen-reader rows were exercised.
+
+Deviations and findings:
+
+- **R2.** The plan's case asserts nothing about which window is active; the
+  test first drafted `LayerManager.getActive()`, which does not exist, so the
+  assertion was dropped. R2 still asserts one `focus` call and focus on `a`.
+- **F2 as written could not fail.** `show()` calls `reflectAccessibleName()`
+  before anything is queued, so the label is correct at the flush whether or
+  not `takeFocus()` refreshes it. F2 now uses one tab and also asserts the
+  plan's "as F1" part (one `focus` call on the window element). The refresh in
+  `takeFocus()` is pinned by R8 instead: a raise of the already-active
+  `TabWindow`, where `onActivate` does not run, after its title changed.
+- **R6 split.** The plan's R6 has two halves with different windows; they are
+  now R6 (a default window, press on the active window moves no focus) and R6b
+  (an `autoFocus: false` window, press on an inactive window focuses it).
+- **Added cases.** X1 and X2 pin `containsAcrossLayers` (focus in a layer
+  opened from the window counts as inside, on a raise and on close). R9 pins
+  that `raise()` puts `_focusOnActivation` back. T1 asserts focus is on the
+  opener before activation.
+- **Raises that now move focus.** `DockRegion.raiseHostWindow()`, `Tab`'s
+  `_onBarDockHover` and `_onBarDockRequested`, and `StyleAuditOverlay.open`
+  call `bringToFront()`, so with `autoFocus` enabled they now also move
+  keyboard focus into an already-active window. None was changed; only the
+  comments of `DockRegion.raiseHostWindow` and `Tab._onBarDockHover` say so.
+  That makes `DockRegion.ts` and `Tab.ts` (comments only) files outside the
+  plan's Files table, and the plan's `autoFocus` grep also matches the
+  `DockRegion` and `Tab` comments.
+- **Minimized windows.** `bringToFront()` on an already-active minimized
+  window now focuses it (`Dock.focusPanel` on a minimized float), unlike
+  `takeFocusAfterShow`, which skips a minimized window. Out of scope per the
+  plan's Non-Goals; noted only.
+- **`restoreLayout` closes live windows.** It closes them through
+  `onExitAction()`, so focus now returns as each one closes.
+- **F7's close half.** Under the plan's `reduceMotion()` the close finishes at
+  once and the destructor's cancel supplies the expected call, so deleting the
+  cancel in `onExitAction()` still passed. The close half now runs with the
+  fade still pending. C3b pins the `isRegistered` guard for a disposed opener.
+- **Rename.** `_boundOnBringToFront` is now `_boundOnPressRaise`, since it
+  calls `raise(true)`.
+- **`preventScroll` on return.** `restorePreviousFocus()` focuses with
+  `{ preventScroll: true }`, as the plan's snippet does. `Drawer` and
+  `Dialog` `restorePreviousFocus` do not pass it. Behaviour follows the plan;
+  the owner may want the three aligned.
+- **Test-first.** The registry row and L1 were written after the code; L1 was
+  checked to fail with its one `LayoutSerialization` line reverted.
+- **Left as is.** `setAutoFocus(false)` between `show()` and the first layout
+  does not cancel the queued move. The drag-dwell raises (`DockRegion`, `Tab`)
+  now add `FocusHistory` stops; the owner may want pointer raises to skip
+  focus later.
+- **Close order.** `onExitAction()` now returns focus before it emits
+  `"close"`, as `Drawer` does, so a `"close"` listener that moves focus has the
+  last word. `AbstractWindow.raise()` restores its flag in `finally`, since an
+  `"activate"` listener can throw.
