@@ -781,4 +781,181 @@ describe('Keyboard row actions — Tree', () => {
             }
         });
     });
+
+    describe('*', () => {
+        /**
+         * Records the nodes a tree's `"expand"` event carried.
+         *
+         * @param tree - The tree.
+         * @returns The recorded labels, filled as the event fires.
+         */
+        function expansions(tree: _Tree): string[] {
+            const labels: string[] = [];
+
+            tree.on('expand', (node: TreeNode) => { labels.push(node.label); });
+
+            return labels;
+        }
+
+        /**
+         * The `SIB` fixture: roots `A` (children `a0`, which has a child
+         * `deep`, and `a1`), `B` (child `b0`), `C`, a lazy `D` and `E` (child
+         * `e0`), mounted 240 px high with `E` expanded.
+         *
+         * @returns The tree, its element and the lazy loader spy.
+         */
+        function siblings(): MountedTree & { loadChildren: ReturnType<typeof vi.fn> } {
+            const loadChildren = vi.fn(async () => leaves(['d0']));
+            const e            = { label: 'E', children: leaves(['e0']) };
+            const nodes: TreeNode[] = [
+                { label: 'A', children: [{ label: 'a0', children: leaves(['deep']) }, { label: 'a1' }] },
+                { label: 'B', children: leaves(['b0']) },
+                { label: 'C' },
+                { label: 'D', hasChildren: true, loadChildren },
+                e,
+            ];
+
+            return { ...mountTree(nodes, { height: 240, expanded: [e] }), loadChildren };
+        }
+
+        it('X1: * expands the loaded siblings of the current row and keeps the selection', () => {
+            const t         = siblings();
+            const selection = counter(t.tree, 'selection');
+            const expanded  = expansions(t.tree);
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown');
+
+            expect(press(t.el, '*')).toBe(1);
+            expect(rows(t.tree)).toEqual(['A', 'a0', 'a1', 'B', 'b0', 'C', 'D', 'E', 'e0']);
+            expect(expanded).toEqual(['A', 'B']);
+            expect(current(t.tree)).toBe('B');
+            expect(selected(t.tree)).toEqual(['B']);
+            expect(selection()).toBe(2);
+            expect(t.loadChildren).not.toHaveBeenCalled();
+            expect(t.tree.getAria().getActiveDescendant()).toBe((t.tree as any)._focusPoolRow().getId());
+        });
+
+        it('X2: * with nothing left to open expands nothing', () => {
+            const t        = siblings();
+            const expanded = expansions(t.tree);
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown');
+            press(t.el, '*');
+            press(t.el, '*');
+
+            expect(expanded).toEqual(['A', 'B']);
+
+            const single    = mountTree(leaves(['C']));
+            const singleOut = expansions(single.tree);
+
+            press(single.el, 'ArrowDown');
+
+            expect(press(single.el, '*')).toBe(1);
+            expect(singleOut).toEqual([]);
+        });
+
+        it('X3: * works on the siblings of a nested row', () => {
+            const t = siblings();
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown');
+            press(t.el, '*');
+            press(t.el, 'ArrowUp');
+            press(t.el, 'ArrowUp');
+
+            expect(current(t.tree)).toBe('a0');
+
+            press(t.el, '*');
+
+            expect(rows(t.tree)).toEqual(['A', 'a0', 'deep', 'a1', 'B', 'b0', 'C', 'D', 'E', 'e0']);
+        });
+
+        it('X4b: * typed with Shift, as on a US layout, is the same key', () => {
+            const t = siblings();
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown');
+
+            expect(press(t.el, '*', { shiftKey: true })).toBe(1);
+            expect(rows(t.tree)).toEqual(['A', 'a0', 'a1', 'B', 'b0', 'C', 'D', 'E', 'e0']);
+        });
+
+        it('X4: * with a modifier is left alone', () => {
+            const t = siblings();
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown');
+
+            expect(press(t.el, '*', { ctrlKey: true })).toBe(0);
+        });
+
+        it('X5: * keeps the current row in view when rows open above it', () => {
+            const roots: TreeNode[] = Array.from({ length: 10 }, (_, i) => ({ label: 'P' + i, children: leaves(['x', 'y', 'z']) }));
+            const t                 = mountTree(roots);
+
+            for (let i = 0; i < 10; i++) {
+                press(t.el, 'ArrowDown');
+            }
+
+            expect(current(t.tree)).toBe('P9');
+            expect(scrollY(t.tree)).toBe(120);
+
+            press(t.el, '*');
+
+            expect(current(t.tree)).toBe('P9');
+            expect(rows(t.tree).indexOf('P9')).toBe(36);
+            expect(scrollY(t.tree)).toBe(37 * ROW_HEIGHT - TREE_HEIGHT);
+        });
+
+        it('X6: * is not a type-ahead character', () => {
+            const t = mountTree(leaves(['*Star', 'Other']));
+
+            clock(1000);
+
+            expect(press(t.el, '*')).toBe(1);
+            expect(current(t.tree)).toBeNull();
+        });
+
+        it('X7: * does not load a lazy node but opens one that is loaded', async () => {
+            const loadChildren = vi.fn(async () => leaves(['d0']));
+            const d            = { label: 'D', hasChildren: true, loadChildren };
+            const t            = mountTree([d, { label: 'Q', children: leaves(['q0']) }]);
+
+            await t.tree.expandNodeAsync(d);
+            (t.tree as any)._onToggle(d);
+            press(t.el, 'End');
+
+            expect(current(t.tree)).toBe('Q');
+
+            press(t.el, '*');
+
+            expect(rows(t.tree)).toEqual(['D', 'd0', 'Q', 'q0']);
+            expect(loadChildren).toHaveBeenCalledTimes(1);
+        });
+
+        it('X8: with the current row hidden * is prevented and does nothing', () => {
+            const a        = { label: 'A', children: leaves(['a0']) };
+            const t        = mountTree([a, { label: 'B', children: leaves(['b0']) }], { expanded: [a] });
+            const expanded = expansions(t.tree);
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown');
+            (t.tree as any)._onToggle(a);
+            expanded.length = 0;
+
+            expect(press(t.el, '*')).toBe(1);
+            expect(expanded).toEqual([]);
+        });
+
+        it('X9: with no current row * is prevented and does nothing', () => {
+            const t        = siblings();
+            const expanded = expansions(t.tree);
+
+            expect(press(t.el, '*')).toBe(1);
+            expect(expanded).toEqual([]);
+            expect(rows(t.tree)).toEqual(['A', 'B', 'C', 'D', 'E', 'e0']);
+        });
+    });
 });

@@ -211,14 +211,15 @@ const _defaultTreeOptions: Partial<TreeOptions> = {
  * handlers with fling momentum.
  *
  * A single node's expand or collapse — a caret click, a row-click toggle,
- * `ArrowRight` / `ArrowLeft`, `Enter`, {@link expandNode}, {@link expandNodeAsync}, or
- * a lazy load settling with an expand waiting on it — commits its state
- * synchronously and then animates: the toggle turns and the affected rows
- * slide into place over 200 ms. Bulk and structural calls (`expandAll`,
- * `revealByPredicate`, `setNodes`, `insertNode`, `removeNode`,
- * `setChildren`) and `prefers-reduced-motion: reduce` never animate; a
- * toggle whose children would not fit in the current viewport, or whose
- * commit moves the scroll offset, snaps instead.
+ * `ArrowRight` / `ArrowLeft`, `Enter`, {@link expandNode},
+ * {@link expandNodeAsync}, or a lazy load settling with an expand waiting
+ * on it — commits its state synchronously and then animates: the toggle
+ * turns and the affected rows slide into place over 200 ms. Bulk and
+ * structural calls (the `*` key, `expandAll`, `revealByPredicate`,
+ * `setNodes`, `insertNode`, `removeNode`, `setChildren`) and
+ * `prefers-reduced-motion: reduce` never animate; a toggle whose children
+ * would not fit in the current viewport, or whose commit moves the scroll
+ * offset, snaps instead.
  *
  * @example
  * ```typescript
@@ -1296,8 +1297,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * @remarks
      * The one search the tree makes for a single node, so every caller reads
      * what it needs off one walk: {@link removeNode} the holding array and
-     * index, {@link _expandPathTo} the path, and the reveal's walk the
-     * `null` alone, to learn that a level has left the tree.
+     * index, {@link _expandPathTo} the path, {@link _expandSiblingsOfCurrentNode}
+     * the siblings, and the reveal's walk the `null` alone, to learn that a
+     * level has left the tree.
      */
     private _locate(node: TreeNode): NodeLocation | null {
         const ancestors: TreeNode[] = [];
@@ -1944,6 +1946,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * - `PageDown` / `PageUp` — move down/up by one page of rows (plain) or extend range by a
      *   page (Shift); not part of the ARIA pattern, they follow `List` and the table body
      * - `Enter` — activate the current node: fire `"dblclick"`, then toggle an expandable node
+     * - `*` — expand the current node's siblings whose children are loaded
      * - a printable character — type-ahead to the next visible row whose label starts with
      *   what was typed; `Escape` clears the buffer
      *
@@ -2064,10 +2067,11 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
     /**
      * Handles the keys that act on the current row without moving it by
-     * position: `Enter` activates it, a printable character feeds
-     * type-ahead, and `Escape` clears the type-ahead buffer. `Enter` is plain
-     * only, and type-ahead allows `Shift` only: a chord with `Control`,
-     * `Meta` or `Alt` belongs to the browser or the application.
+     * position: `Enter` activates it, `*` expands its siblings, a printable
+     * character feeds type-ahead, and `Escape` clears the type-ahead buffer.
+     * `Enter` is plain only, and `*` and type-ahead allow `Shift` only: a
+     * chord with `Control`, `Meta` or `Alt` belongs to the browser or the
+     * application.
      *
      * @param e - The keydown on the tree element.
      * @returns `true` when the key was the tree's own, so the caller
@@ -2100,6 +2104,12 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             if (!e.repeat) {
                 this._activateCurrentNode();
             }
+
+            return true;
+        }
+
+        if (e.key === '*') {
+            this._expandSiblingsOfCurrentNode();
 
             return true;
         }
@@ -2138,6 +2148,47 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
         if (expandable) {
             this._onToggle(node);
+        }
+    }
+
+    /**
+     * `*`: expands every sibling of the current row, itself included, that
+     * is collapsed and has children in memory — the test {@link expandAll}
+     * uses, so a lazy node that has not loaded is skipped and nothing is
+     * loaded. One re-render, not animated. Emits `"expand"` once per node it
+     * expanded, in sibling order, and keeps the current row in view. The
+     * selection is not touched. Does nothing with no current row among the
+     * visible rows.
+     */
+    private _expandSiblingsOfCurrentNode(): void {
+        const index = this._currentRowIndex();
+
+        if (index < 0) {
+            return;
+        }
+
+        const location = this._locate(this._flatRows[index].node);
+
+        if (location === null) {
+            return;
+        }
+
+        const opened = location.siblings.filter(node =>
+            !!(node.children && node.children.length > 0) && !this._expandedNodes.has(node));
+
+        if (opened.length === 0) {
+            return;
+        }
+
+        for (const node of opened) {
+            this._expandedNodes.add(node);
+        }
+
+        this._reflattenAndRender();
+        this._revealFocusRow();
+
+        for (const node of opened) {
+            this.emit("expand", node);
         }
     }
 
