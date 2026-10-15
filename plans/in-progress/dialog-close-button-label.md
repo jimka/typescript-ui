@@ -482,3 +482,27 @@ The one-entry table is the first row's mechanism with one key. Nothing in the ot
     `ariaLabel` is no precedent for a shortcut-level override: it is a field of `DialogConfig`, so it reaches `Dialog.show(config)` and a constructed dialog, and not the five positional shortcuts.
 
 [^title-bar]: `DialogTitleBar` is exported from `overlay/index.ts`, but its class comment says it has no public constructor and is reached through `Dialog.getTitleBar()`. The library constructs it in one place and the tests in two. A parameter with a default would let the title bar fall back to the table by itself and put the resolution in two places. `dialog-aria-semantics` made the same choice for `createWindowControlButton(glyph, title)`: a required name makes an unnamed control a compile error.
+
+---
+
+## Implementation Notes
+
+One slip against the plan, caught by review and fixed: step 3 asks for a
+sentence about `strings` in `Body.init`'s JSDoc, and the first pass left it out.
+It was added afterwards. The plan's line numbers were located by symbol on the
+current chain tip, and the sign-offs were taken as recommended. Review also
+added case D9 (a shortcut dialog takes the application-wide name).
+
+Not run (the orchestrator forbade a browser and dev server on this run):
+
+- MV1: the "Dialog — alert with an accessible name" demo tooltip and the
+  accessibility-tree name `Keep the record`.
+- MV2: `Body.getInstance().setStrings({ dialogClose: 'Stäng' })` from the console
+  and the tooltip of "Dialog — confirm/cancel".
+- MV3: NVDA or VoiceOver announcement of the close button.
+
+The red step was not run as a separate pass. For the cases that import
+`core/BuiltInStrings` (S, B, and D5-D7) it could only have failed at import. D2
+and D3 did not need that module and could have been run red first; they were not.
+The full suite
+(570 files), typecheck, typecheck:test, lint, docs:api and docs:llms:check pass.
