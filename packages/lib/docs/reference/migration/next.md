@@ -458,3 +458,41 @@ win.getAria().clearLabelledBy().setLabel('Storage inspector');
 For a `Dialog`, `ariaLabel` in the config does the same and also works with
 `Dialog.show(config)`, which never hands out the dialog. Code that sets no
 ARIA on these layers needs no change.
+
+## `Markdown` and `MarkdownEditor` read through `marked` 18.1.0
+
+**What changed and why.** The library reads Markdown through `marked`
+18.1.0 and pins that exact version. Until now it declared `^18.0.5` and
+was tested on 18.0.9. `marked` released 29 changes to its parser in
+between, and each one that changes a reading brings it in line with the
+CommonMark specification or with GFM. The viewer and the editor change
+together, so a document still reads the same in both. A document that is
+loaded and saved without an edit is still saved byte for byte.
+
+| Source | Before | After |
+|---|---|---|
+| `[[a](/in)](/out)` — a link written around a link | the link `a` to `/in`; `/out` not shown | the text `[`, the link `a` to `/in`, the text `](/out)` |
+| `&#35;`, `&#x23;` — a numeric character reference | shown as typed | the character it names, `#` |
+| `&amp;`, `&copy;` — a named character reference | shown as typed | shown as typed (unchanged) |
+| a line after a fence closed inside a nested quote | not shown at all | a paragraph after the quote |
+| `- a`, then `<div` on the next line | the HTML block inside the list item | the HTML block after the list |
+| a tab in a list item's text | spaces | the tab |
+| `[ẞ]` with the definition `[SS]: /url` | literal text | a link: labels match by Unicode case folding, and ignore spaces at their edges |
+| `mailto:a@b.cc`, `xmpp:a@b.cc/x` as bare text | a link on the address alone | a link on the whole, as GFM specifies |
+| `Foo`, an indented line, then `===` | a paragraph | a heading |
+| `foo`, then a code fence alone on the last line | one paragraph holding the fence | the paragraph `foo`, then an empty code block |
+| `*a*\🙂` — emphasis, then a backslash and an emoji | emphasis holding `a*`, then `🙂` | emphasis holding `a`, then `\🙂` |
+| a line after a hard line break, starting with spaces | the spaces shown | the spaces dropped |
+
+**Who needs to act.** Nothing fails to compile. Review content that relies
+on one of the readings in the *Before* column. The one most likely to
+matter is a link written around a link: write the outer text without a
+link inside it, or keep only the inner link.
+
+```markdown
+<!-- Before: showed "docs" linked to /in -->
+[[docs](/in)](/out)
+
+<!-- After: pick one target -->
+[docs](/in)
+```

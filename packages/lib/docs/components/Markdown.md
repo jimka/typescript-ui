@@ -57,9 +57,10 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | `-`/`*` and `1.` lists | `<ul>`/`<ol>` with `<li>` items |
 | `- [ ] task`, `- [x] done` | an `<li>` whose text — in a loose list, whose first paragraph — starts with the literal `[ ]` / `[x]` marker — no checkbox |
 | `> quote` | `<blockquote>` |
-| `[text](url)` | `<a href target="_blank" rel="noopener noreferrer">` |
-| `[text][label]`, `[label][]`, `[label]` | `<a>` whose href is the matching reference definition's URL; labels match case-insensitively, and an undefined label renders as literal text |
+| `[text](url)` | `<a href target="_blank" rel="noopener noreferrer">`; a link written around a link (`[[a](/in)](/out)`) is no link, and its brackets and destination show as text around the inner link |
+| `[text][label]`, `[label][]`, `[label]` | `<a>` whose href is the matching reference definition's URL; labels match by Unicode case folding with outer spaces ignored, and an undefined label renders as literal text |
 | `[label]: url "title"` | nothing — the definition only supplies a URL, wherever it sits (top level, blockquote, list item, `:::` fence) |
+| `&#35;`, `&#x23;` | the character the reference names (`#`); a named reference (`&amp;`, `&copy;`) is shown as typed |
 | pipe table | `<table>` with `<thead>`/`<tbody>` |
 | delimiter cell `{width=240}` | `<colgroup>` / `<col style="width:240px">` — see [Extension syntax](#extension-syntax) |
 | body cell `<<` / `^^` | merges into the preceding cell as `colspan`/`rowspan` — see [Extension syntax](#extension-syntax) |
