@@ -1047,3 +1047,6 @@ page resets to empty.
   during a maximise or restore animation threw and left the window unable to
   change state, and a replacement made at any time stayed visible when the
   window was minimized. No consumer action is needed.
+
+- **A menu closed just after the pointer reached a submenu item no longer
+  opens that submenu.** No consumer action is needed.
