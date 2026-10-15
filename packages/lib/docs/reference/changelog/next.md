@@ -962,6 +962,14 @@ page resets to empty.
   the field, and focus was then lost as the list closed. No consumer action
   is needed.
 
+- **`MarkdownEditor.insertTable()` leaves no empty quote, heading or list
+  item beside the table.** A table inserted at the end of a quote, a
+  heading or a list item left an empty `>`, `#` or `-` after it, and one
+  inserted at the start left it before. The block holding the caret is now
+  split only where the caret is inside its content, and a table that ends
+  its container is followed by an empty paragraph. No consumer action is
+  needed.
+
 - **`insertImage()` no longer throws, and Delete, Enter, typing and
   `insertTable()` no longer leave an emptied `:::` block,** for a selection
   made in code with a point on a `:::` block, or a range with a point
