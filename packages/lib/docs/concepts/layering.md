@@ -38,9 +38,11 @@ layer a given anchor actually lives inside once more than one root band
 exists (see below). A layer with no anchor to resolve falls back to the
 last-registered layer — while a modal layer is open, to the last-registered
 layer of its [scope](#modal-scope), since the user can open nothing from a
-layer that is inert. Because a nested layer always draws a fresh, higher
-counter within the band it inherits, it lands above its opener in the z-order
-automatically.
+layer that is inert. An anchor whose component has been disposed while the
+layer stayed open counts as no anchor, here and in the
+[dismiss modes](#dismiss-modes) below. Because a nested layer always draws a
+fresh, higher counter within the band it inherits, it lands above its opener
+in the z-order automatically.
 
 ## One containment query across portals
 
