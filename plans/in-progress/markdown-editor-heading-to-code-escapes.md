@@ -523,3 +523,13 @@ From `packages/lib`, with `free -g` checked first and at most two vitest runs at
 [^no-differs]: `DIFFERS` rows are counted and owned row by row in the command-gaps plan's table *Every row that remains in `DIFFERS`*. Two new rows there for shapes whose difference is already `E5`'s and `E12`'s would change that plan's counts for no new information; a WYSIWYG-only test pins the code text, which is all this plan changes.
 
 [^kept-source]: The save writes an unedited top-level block as its source (`MarkdownSourceMap`), but a block's content is written in the standard form wherever it is serialized on its own, and the parity table only holds documents in the standard form (`canonicalSave(loaded)` must equal the document). Measured: `### [ ] alpha` loaded as written gives `\[ \] alpha` on the WYSIWYG surface, before and after this change, and `[ ] alpha` in source mode. Taking the code text from the source map would work only for a top-level block that is still unedited, would need the block's source parsed for its text, and is a different defect from the stray escapes this plan fixes.
+
+---
+
+## Implementation Notes
+
+- No behavioural deviation from the plan. Line numbers had drifted on the 18.1.0 base; code was located by symbol. The base had no `E41` rows in `DIFFERS`, so step 1's deletion and the docs clause deletion did not apply.
+- `$serializeBlockContent` assigns `writtenHeadingContent(...)` to a const before returning `.content`, where the plan chained `.content` on the call. A style choice only: no rule requires it (the no-call-in-condition rule is about `if`/`while` conditions), and the behaviour is the same.
+- The plan's block-start paste of tests left the context-menu test needing a blank line before the next `it`; added.
+- Known change (E41, accepted 2026-10-14): heading `# alpha \#` becomes code `alpha \#`, so heading -> code -> heading no longer returns to itself (pinned by the round-trip test).
+- Not run: the manual demo check (needs a browser and real keyboard), the full unfiltered suite, and the rebase-clean checkpoint (the branch stays on its chain base by orchestrator instruction). Audit loop and the implemented move were skipped by orchestrator override. Verified: typecheck and typecheck:test exit 0, lint clean, the three target files and tests/component/markdown + display (10,511 tests) green, docs:api succeeds.
