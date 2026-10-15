@@ -509,7 +509,6 @@ loaded and saved without an edit is still saved byte for byte.
 |---|---|---|
 | `[[a](/in)](/out)` — a link written around a link | the link `a` to `/in`; `/out` not shown | the text `[`, the link `a` to `/in`, the text `](/out)` |
 | `&#35;`, `&#x23;` — a numeric character reference | shown as typed | the character it names, `#` |
-| `&amp;`, `&copy;` — a named character reference | shown as typed | shown as typed (unchanged) |
 | a line after a fence closed inside a nested quote | not shown at all | a paragraph after the quote |
 | `- a`, then `<div` on the next line | the HTML block inside the list item | the HTML block after the list |
 | a tab in a list item's text | spaces | the tab |
@@ -538,3 +537,37 @@ link inside it, or keep only the inner link.
 
 An application that showed `&#35;` or `&#169;` as literal text on purpose
 writes `\&#35;` instead.
+
+## `Markdown` and `MarkdownEditor` read named character references
+
+**What changed and why.** A character reference is `&`, a name or a
+number, and `;`. CommonMark reads every reference whose name is in the
+HTML list as the character it names, in text, a link's destination and
+title, and a code fence's info string. The library read only numeric
+references, and only in text. It now reads both kinds wherever CommonMark
+does, in the viewer and the editor alike.
+
+| Source | Before | After |
+|---|---|---|
+| `&copy; &amp; &nbsp;` | shown as typed | `©`, `&`, a no-break space |
+| `[a](/f&ouml; "&#35;1")` | links to `/f&ouml;`, titled `&#35;1` | links to `/fö`, titled `#1` |
+| ```` ```j&#115; ```` | a code block of language `j&#115;` | of language `js` |
+| `# Terms &amp; Conditions` | `id="terms-amp-conditions"` | `id="terms-conditions"` |
+| `&notaname;`, `&copy` (no `;`), a reference in code, an autolink, an image, an HTML block, a tag's attributes, or between `<code>`, `<pre>`, `<kbd>` or `<script>` and its end tag | shown as typed | shown as typed (unchanged) |
+
+In the editor, text typed as `&copy;` is now saved as `\&copy;`, so that it
+stays the text that was typed.
+
+**Who needs to act.** Nothing fails to compile. Content that shows a
+named reference as literal text on purpose escapes its `&`:
+
+```markdown
+<!-- Before: showed "&copy;" -->
+&copy;
+
+<!-- After -->
+\&copy;
+```
+
+A `#fragment` link to a heading whose text holds a reference changes to the
+new id.
