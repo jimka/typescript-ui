@@ -480,6 +480,31 @@ function $getTableColumnCount(table: TableNode): number {
 }
 
 /**
+ * Whether a cell holds one empty paragraph and nothing else, the state of a
+ * cell that has no content.
+ *
+ * @param cell - The cell.
+ * @returns `true` for such a cell.
+ */
+function $holdsOneEmptyParagraph(cell: TableCellNode): boolean {
+    const only = cell.getFirstChild();
+
+    return cell.getChildrenSize() === 1 && $isParagraphNode(only) && only.isEmpty();
+}
+
+/**
+ * Whether a cell is in the table's header row, its first row.
+ *
+ * @param cell - The cell.
+ * @returns `true` for a header cell.
+ */
+function $isHeaderCell(cell: TableCellNode): boolean {
+    const row = cell.getParent();
+
+    return row !== null && row.getPreviousSibling() === null;
+}
+
+/**
  * Reads a table cell's alignment as the GFM-expressible subset.
  *
  * @param cell - The cell to read.
@@ -3437,8 +3462,7 @@ function $selectionTouchesTextOnlyBlock(): boolean {
  * only: a heading, quote, code block or list made there would be saved into
  * the cell as its literal syntax, so the block conversions decline. A table
  * selection is of whole cells, so it lies in them by what it is — its own
- * nodes are not read, since the cell its focus names can be gone (one merged
- * away, until the next selection change).
+ * nodes are not read.
  *
  * @returns `true` for a table selection, and for a range selection whose
  *   anchor, focus or any selected node is inside a `TableCellNode`.
@@ -5329,18 +5353,20 @@ function $readInlineAvailability(
  * Reads which of the table commands would apply. Those acting on the table
  * the caret is in need a range selection anchored in one of its cells;
  * unmerging needs that cell to span more than one row or column; merging
- * needs a table selection of more than one cell.
+ * needs a table selection of more than one cell, none of them a header
+ * cell.
  *
  * @returns The table fields of the {@link CommandAvailability}.
  */
 function $readTableAvailability(): Pick<CommandAvailability, "canEditTable" | "canMergeCells" | "canUnmergeCell"> {
     const selection = $getSelection();
     const cell = $getEnclosingTableCellNode();
-    const selectedCells = $isTableSelection(selection) ? selection.getNodes().filter($isTableCellNode).length : 0;
+    const selectedCells = $isTableSelection(selection) ? selection.getNodes().filter($isTableCellNode) : [];
+    const holdsHeaderCell = selectedCells.some($isHeaderCell);
 
     return {
         canEditTable:   cell !== null,
-        canMergeCells:  selectedCells > 1,
+        canMergeCells:  selectedCells.length > 1 && !holdsHeaderCell,
         canUnmergeCell: cell !== null && (cell.getColSpan() > 1 || cell.getRowSpan() > 1),
     };
 }
@@ -8624,9 +8650,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Merges the cells of the current drag-selected `TableSelection` into
-     * one, carrying `<<`/`^^` continuations on export. No-op without throwing
-     * when the current selection is not a `TableSelection` spanning more than
-     * one cell.
+     * one, carrying `<<`/`^^` continuations on export. The merged cell holds
+     * the content of each merged cell as a paragraph of its own, saved with
+     * the cell break (`\n\n`, a backslash and an `n` twice); an empty first
+     * cell adds no blank line. The caret lands at the end of the merged cell.
+     * No-op without throwing when the current selection is not a
+     * `TableSelection` spanning more than one cell, and when a header cell is
+     * among them: Markdown merges body cells only.
      *
      * No-op in `"source"` mode, where the raw-Markdown surface is shown.
      *
@@ -8650,7 +8680,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 return;
             }
 
-            $mergeCells(selection.getNodes().filter($isTableCellNode));
+            const cells = selection.getNodes().filter($isTableCellNode);
+            const emptyBefore = new Set(cells.filter($holdsOneEmptyParagraph).map((cell) => cell.getKey()));
+            const merged = $mergeCells(cells);
+
+            if (merged === null) {
+                return;
+            }
+
+            // `$mergeCells` skips a merged-in empty cell but keeps the first cell's own empty paragraph.
+            const leadsWithBlank = emptyBefore.has(merged.getKey()) && merged.getChildrenSize() > 1;
+
+            if (leadsWithBlank) {
+                merged.getFirstChildOrThrow().remove();
+            }
+
+            merged.selectEnd();
         }, { discrete: true });
 
         return this;

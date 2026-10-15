@@ -1,7 +1,7 @@
 // The WYSIWYG commands of `MarkdownEditor` that left something in the document they should not have, or threw:
-// `insertTable()` leaving an empty quote, heading or list item beside the table (T rows), and the commands meeting a
-// selection point where no caret can be: on a `:::` block, or an end of a range between two blocks of the root or a
-// column (P rows). Offline: the modelled DOM, no root element. The focus rows are in
+// `insertTable()` leaving an empty quote, heading or list item beside the table (T rows), `mergeTableCells()` (M rows),
+// and the commands meeting a selection point where no caret can be: on a list, on a `:::` block, or between two
+// blocks of a range (P rows). Offline: the modelled DOM, no root element. The focus rows are in
 // `markdown-editor-table-commands-mounted.test.ts`.
 
 // Keeps `@lexical/clipboard`'s real module (`@lexical/rich-text` imports it for its paste path) and replaces only
@@ -170,7 +170,6 @@ function caretIn(editor: MarkdownEditor, point: TextPoint): void {
     lexicalOf(editor).update(() => { $textNode(point[0]).select(point[1], point[1]); }, { discrete: true });
 }
 
-
 describe('insertTable() leaves no empty half of the block it splits (T rows)', () => {
     /** Row name, the document, the caret, what is saved, the root's children after. */
     const rows: Array<[string, string, TextPoint, string, string[]]> = [
@@ -249,6 +248,123 @@ describe('insertTable() leaves no empty half of the block it splits (T rows)', (
         });
 
         expect(inFirstCell).toBe(true);
+    });
+});
+
+describe('mergeTableCells() (M rows)', () => {
+    const HEAD = '| a | b |\n| --- | --- |\n';
+
+    /**
+     * Selects the cells from `[row, column]` to `[row, column]` of the first table, row 0 the header.
+     *
+     * @param editor - The editor.
+     * @param from - The first cell.
+     * @param to - The last cell.
+     */
+    function selectCells(editor: MarkdownEditor, from: [number, number], to: [number, number]): void {
+        lexicalOf(editor).update(() => {
+            const table = $dfs().map(({ node }) => node).find($isTableNode) as TableNode;
+            const cellAt = ([row, column]: [number, number]): ElementNode => {
+                const rowNode = table.getChildAtIndex(row) as TableRowNode;
+
+                return rowNode.getChildAtIndex(column) as ElementNode;
+            };
+
+            $setSelection($createTableSelectionFrom(table, cellAt(from) as never, cellAt(to) as never));
+        }, { discrete: true });
+    }
+
+    /** Row name, body rows, from, to, saved body rows, caret afterwards (`null` when it is only in the cell). */
+    const rows: Array<[string, string, [number, number], [number, number], string, string | null]> = [
+        ['M1: two cells', '| 1 | 2 |', [1, 0], [1, 1], '| 1\\n\\n2 | << |', '"2"@1'],
+        ['M2: an empty first cell leaves no blank line', '|  | 2 |', [1, 0], [1, 1], '| 2 | << |', '"2"@1'],
+        ['M3: an empty second cell', '| 1 |  |', [1, 0], [1, 1], '| 1 | << |', '"1"@1'],
+        ['M4: two empty cells', '|  |  |', [1, 0], [1, 1], '|  | << |', null],
+        ['M5: a column of two rows', '| 1 | 2 |\n| 3 | 4 |', [1, 0], [2, 0], '| 1\\n\\n3 | 2 |\n| ^^ | 4 |', '"3"@1'],
+        ['M6: selected backward', '| 1 | 2 |', [1, 1], [1, 0], '| 1\\n\\n2 | << |', '"2"@1'],
+        [
+            'M7: four cells with an empty first one', '|  | 2 |\n| 3 | 4 |', [1, 0], [2, 1],
+            '| 2\\n\\n3\\n\\n4 | << |\n| ^^ | ^^ |', '"4"@1',
+        ],
+        ['M8: a first cell that starts with the author\'s blank line', '| \\n\\nx | 2 |', [1, 0], [1, 1], '| \\n\\nx\\n\\n2 | << |', '"2"@1'],
+        ['M9: bold in the second cell', '| 1 | **2** |', [1, 0], [1, 1], '| 1\\n\\n **2** | << |', '"2"@1'],
+    ];
+
+    it.each(rows)('%s', (_name, body, from, to, saved, caret) => {
+        const editor = load(HEAD + body);
+        const loaded = editor.getValue();
+
+        selectCells(editor, from, to);
+        editor.mergeTableCells();
+
+        expect(editor.getValue()).toBe(HEAD + saved);
+
+        if (caret !== null) {
+            expect(caretOf(editor)).toBe(caret);
+        } else {
+            expect(lexicalOf(editor).read(() => $isRangeSelection($getSelection()))).toBe(true);
+        }
+
+        expectRoundTrips(editor);
+        expectOneUndoStep(editor, loaded);
+    });
+
+    it('M10: after a merge the table controls name the merged cell', () => {
+        const editor = load(`${HEAD}| 1 | 2 |`);
+
+        selectCells(editor, [1, 0], [1, 1]);
+        editor.mergeTableCells();
+
+        const state = editor.getSelectionState();
+        const namesAttachedNodes = lexicalOf(editor).read(() => {
+            const selection = $getSelection();
+
+            return $isRangeSelection(selection) && selection.anchor.getNode().isAttached() && selection.focus.getNode().isAttached();
+        });
+
+        expect(state).toMatchObject({ inTable: true, canEditTable: true, canUnmergeCell: true, canMergeCells: false });
+        expect(namesAttachedNodes).toBe(true);
+    });
+
+    it('M11: unmerging straight after a merge', () => {
+        const editor = load(`${HEAD}| 1 | 2 |`);
+        const loaded = editor.getValue();
+
+        selectCells(editor, [1, 0], [1, 1]);
+        editor.mergeTableCells();
+        editor.unmergeTableCell();
+
+        expect(editor.getValue()).toBe(`${HEAD}| 1\\n\\n2 |  |`);
+
+        editor.getValue();
+        lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+        editor.getValue();
+        lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+
+        expect(editor.getValue()).toBe(loaded);
+    });
+
+    it.each([
+        ['both header cells', [0, 0], [0, 1]],
+        ['a header cell and a body cell', [0, 0], [1, 0]],
+    ] as Array<[string, [number, number], [number, number]]>)('M12: %s decline', (_name, from, to) => {
+        const editor = load(`${HEAD}| 1 | 2 |`);
+        const loaded = editor.getValue();
+
+        selectCells(editor, from, to);
+
+        const keysBefore = lexicalOf(editor).read(() => $dfs().map(({ node }) => node.getKey()));
+
+        expect(editor.getSelectionState().canMergeCells).toBe(false);
+
+        editor.mergeTableCells();
+
+        const keysAfter = lexicalOf(editor).read(() => $dfs().map(({ node }) => node.getKey()));
+        const stillTableSelection = lexicalOf(editor).read(() => $getSelection()?.constructor.name === 'TableSelection');
+
+        expect(editor.getValue()).toBe(loaded);
+        expect(keysAfter).toEqual(keysBefore);
+        expect(stillTableSelection).toBe(true);
     });
 });
 

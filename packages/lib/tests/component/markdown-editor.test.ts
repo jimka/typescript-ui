@@ -5430,6 +5430,16 @@ describe('MarkdownEditor context menu — caret and availability', () => {
         }, { discrete: true });
     }
 
+    /** Selects the two cells of the first table's first (header) row, as a drag across them does. */
+    function selectFirstRowCells(editor: MarkdownEditor): void {
+        lexicalOf(editor).update(() => {
+            const table = $getRoot().getChildren().find((node) => node.getType() === 'table') as TableNode;
+            const [first, second] = (table.getFirstChild() as TableRowNode).getChildren() as TableCellNode[];
+
+            $setSelection($createTableSelectionFrom(table, first, second));
+        }, { discrete: true });
+    }
+
     /** Classifies the way a keyboard-opened menu does: its event target resolves to the root. */
     function classifyAtCaret(editor: MarkdownEditor): ContextMenuTarget {
         return lexicalOf(editor).read(() => $classifyContextMenuTarget($contextMenuNodeFor($getRoot())));
@@ -6108,6 +6118,12 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                 name: 'a table selection', markdown: `${TABLE}\n\nafter`,
                 select: (editor) => selectLastRowCells(editor),
                 available: ['canFormat', 'canInsertTable', 'canInsertImage', 'canMergeCells'],
+            },
+            {
+                // Markdown merges body cells only, so the header row's cells are not offered a merge.
+                name: 'a table selection holding a header cell', markdown: `${TABLE}\n\nafter`,
+                select: (editor) => selectFirstRowCells(editor),
+                available: ['canFormat', 'canInsertTable', 'canInsertImage'],
             },
             {
                 name: 'a table selection of one cell', markdown: `${TABLE}\n\nafter`,
