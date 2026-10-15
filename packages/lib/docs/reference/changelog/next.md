@@ -970,6 +970,13 @@ page resets to empty.
   its container is followed by an empty paragraph. No consumer action is
   needed.
 
+- **`mergeTableCells()` leaves a usable table.** An empty first cell no
+  longer gives the merged cell a blank first line, the caret lands in the
+  merged cell so Unmerge cell is available at once (the table controls
+  used to be disabled until the next click), and header cells are declined
+  (`canMergeCells` is `false`) where the merge used to move their text into
+  one cell without merging anything.
+
 - **`insertImage()` no longer throws, and Delete, Enter, typing and
   `insertTable()` no longer leave an emptied `:::` block,** for a selection
   made in code with a point on a `:::` block, or a range with a point
