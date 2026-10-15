@@ -528,6 +528,10 @@ page resets to empty.
 
 - **`LayerManager` gains `getLayerContaining(node)` and `getLayers()`.**
 
+- **`SmoothScroller.stop()` cancels the in-flight loop without reading.**
+  For an owner that is being torn down, where `reset()` would re-read the
+  live position through an element that is already gone.
+
 ### Data
 
 - **`JsonWriter.dataFor` is `protected`.** A subclass can override it to
@@ -788,6 +792,24 @@ page resets to empty.
 
 - **`Home` / `End` activate the first / last tab of a `Tab` strip.** They
   act while a tab or its ✕ holds focus, and a strip tool keeps the keys. No
+  consumer action is needed.
+
+- **Disposing a `Tree` or a `Table` while it is still scrolling no longer
+  throws.** Closing the tab or window that held one during an eased wheel
+  scroll or a touch fling logged an uncaught `DOM handle … is not
+  registered` on the next frame. No consumer action is needed.
+
+- **A `SpinButton` or a `Scrollbar` arrow disposed while pressed stops
+  repeating.** Its repeat timer used to keep firing every 40 ms for the life
+  of the page. No consumer action is needed.
+
+- **A `Tree` disposed during a lazy load stays quiet.** `revealByPredicate`
+  could reject with a handle error or go on calling `loadChildren` for the
+  remaining lazy branches; it now resolves `null`. `expandNodeAsync` resolves
+  `false`. No consumer action is needed.
+
+- **A paste into a `Table` that was disposed while the clipboard was being
+  read writes nothing.** It used to write the clipboard into the store. No
   consumer action is needed.
 
 ### Core
@@ -1057,3 +1079,12 @@ page resets to empty.
 
 - **A menu closed just after the pointer reached a submenu item no longer
   opens that submenu.** No consumer action is needed.
+
+- **Dismissing a `Dialog` while a button's async `onClick` is pending no
+  longer ends in an unhandled promise rejection, and no longer lets the late
+  button result override the dismissal.** Pressing Escape during a slow guard
+  used to resolve `show()` with the button's result instead of `"close"`. The
+  same now holds for any button click during the 150 ms dismissal fade, guarded
+  or not: the first dismissal wins, and `show()` resolves with its result. A
+  second Escape, close or programmatic `hide()` still restarts the fade. No
+  consumer action is needed.

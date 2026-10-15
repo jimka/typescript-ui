@@ -154,6 +154,36 @@ Closing a [`Tab`](/layouts/Tab) is the one container operation that **does** dis
 
 Because teardown recursion calls `destructor()`, a consumer's own cleanup must live in a `protected destructor()` override on a `Component` subclass — never a `dispose()` method or field on a plain object that merely wraps a `Component`. The wrapper is not in any parent's child list, so nothing ever calls it; an owning `Component`'s `destructor()` must call the wrapper explicitly if the wrapper's cleanup needs to run.
 
+### Work that outlives the component
+
+A frame, a timer or an `await` can finish after the component is disposed. Cancel frames and timers in `destructor()`, before `super.destructor()`. After an `await`, return when the component is gone:
+
+```typescript
+class RowList extends Component {
+    private _disposed: boolean = false;
+
+    protected destructor(): void {
+        this._disposed = true;
+
+        super.destructor();
+    }
+
+    async reload(): Promise<void> {
+        const rows = await this.fetchRows();
+
+        if (this._disposed) {
+            return;
+        }
+
+        this.showRows(rows);
+    }
+}
+```
+
+The component's own `destructor()` is where it learns it was disposed. A module outside the class hierarchy uses `onDestroy` for the same purpose.
+
+A setter called on a disposed component writes nothing, so a late call does not throw. It is still work done for nothing, and anything it does outside the component — a callback, a store write — still happens.
+
 ### Attaching state from outside the component
 
 `subscribeTheme` (above) is `protected` — only the component's own subclass code can use it. A module *outside* a component's class hierarchy that attaches state keyed by component identity — [`Tooltip.attach`](/components/Tooltip) is the built-in example — has no subclass to put a `destructor()` override on, so it needs a public equivalent:
