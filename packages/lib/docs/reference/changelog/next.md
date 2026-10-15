@@ -1744,6 +1744,15 @@ page resets to empty.
   three places, as a typed character already was. No consumer action is
   needed.
 
+- **`MarkdownEditor` no longer adds a backslash to a heading's text when
+  the heading becomes a code block.** `setBlockType("code")`, and the
+  toolbar's and context menu's *Code block*, wrote a heading's text with
+  the escapes a paragraph needs at a line's start, so `### +alpha` gave a
+  code block holding `\+alpha`. The code block now holds the text as the
+  heading's own line holds it, `+alpha`, as source mode already did. A
+  heading that ends in an escaped `#` (`# alpha \#`) now gives
+  `alpha \#`, as in source mode, where it gave `alpha #`.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
