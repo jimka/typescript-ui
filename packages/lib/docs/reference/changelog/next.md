@@ -757,6 +757,16 @@ page resets to empty.
   rows are searched and nothing is expanded or loaded, and the keys are
   prevented, not stopped. No consumer action is needed.
 
+- **`Enter` activates the current `Tree` row.** The tree's activation
+  event, `"dblclick"`, fired only for a double-click, so "open" was out of
+  reach from the keyboard. `Enter` on the current row now fires it and then
+  toggles an expandable node, as a double-click on the row does. A held key
+  activates once, and `Enter` with a modifier is left alone. One behaviour
+  changes: a `"dblclick"` listener now also runs for `Enter`, and in a modal
+  `Dialog` with a primary button the dialog is confirmed as well. No
+  consumer action is needed unless a `keydown` handler of your own already
+  opens the node on `Enter`: remove it, or it opens the node twice.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
