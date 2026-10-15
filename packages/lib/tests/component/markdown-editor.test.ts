@@ -1273,6 +1273,11 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['H20', '\\- alpha', 'alpha', null, 'code', '```\n\\- alpha\n```', '```\n\\- alpha\n```'],
         ['H21', '> \\- alpha', 'alpha', null, 'code', '```\n\\- alpha\n```', '```\n\\- alpha\n```'],
         ['H22', '- \\- alpha', 'alpha', null, 'code', '```\n\\- alpha\n```', '```\n\\- alpha\n```'],
+        // Text that would read as a character reference keeps its escaped `&` on both surfaces.
+        ['CR1', '\\&copy; one & x', 'one', null, 'h2', '## \\&copy; one & x', '## \\&copy; one & x'],
+        ['CR1', '\\&copy; one & x', 'one', null, 'quote', '> \\&copy; one & x', '> \\&copy; one & x'],
+        ['CR1', '\\&copy; one & x', 'one', null, 'code', '```\n\\&copy; one & x\n```', '```\n\\&copy; one & x\n```'],
+        ['CR1', '\\&copy; one & x', 'one', null, 'UL', '- \\&copy; one & x', '- \\&copy; one & x'],
     ];
 
     const DIFFERS: ParityRow[] = [

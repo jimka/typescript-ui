@@ -44,6 +44,7 @@ import {
     rawBlockStandsInItem, runsOn, withoutBlankEdges,
 } from "~/component/editor/markdownSerializer.js";
 import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode, $isMarkdownRawBlockNode } from "~/component/editor/markdownSourceNodes.js";
+import { headingSlugSource, slugify } from "~/component/display/markdownHeadingIds.js";
 import { $readStandardForm, keptImageShown } from "~/component/editor/markdownSerializer.js";
 import type { StandardFormReading } from "~/component/editor/markdownSerializer.js";
 import type { MarkdownSourceBlock, MarkdownSourceLoad, MarkdownSourceMap } from "~/component/editor/markdownSourceMap.js";
@@ -848,7 +849,7 @@ function $buildRawBlock(source: string, isList: boolean = false): LexicalNode {
 function $buildHeading(token: Tokens.Heading): LexicalNode {
     const depth = Math.min(Math.max(token.depth, HEADING_MIN_DEPTH), HEADING_MAX_DEPTH);
 
-    return $appendInlineContent($createHeadingNode(`h${depth}` as HeadingTagType), token.tokens, token.text);
+    return $appendInlineContent($createHeadingNode(`h${depth}` as HeadingTagType), token.tokens, true);
 }
 
 /**
@@ -1061,7 +1062,7 @@ function $buildListItem(item: Tokens.ListItem): ListItemNode | null {
     }
 
     if (text !== null) {
-        $buildKeepingConstructs(itemText, [...(checkbox === null ? [] : [checkbox]), ...tokens], null, (keep) => {
+        $buildKeepingConstructs(itemText, [...(checkbox === null ? [] : [checkbox]), ...tokens], false, (keep) => {
             itemText.clear();
 
             if (checkbox !== null) {
@@ -1196,7 +1197,7 @@ function $buildCellParagraphs(cell: TableCellNode, tokens: Token[]): void {
         return paragraph;
     };
 
-    $buildKeepingConstructs(cell, tokens, null, (keep) => {
+    $buildKeepingConstructs(cell, tokens, false, (keep) => {
         cell.clear();
         appendInlineTokens({ block: startParagraph(), openLink: null, nextCellParagraph: startParagraph, keep, edges: edgeLinks(tokens) }, tokens, PLAIN);
     });
@@ -1238,11 +1239,11 @@ function $buildFence(token: MdBlockToken): MarkdownBlockNode {
  *
  * @param block - The paragraph, heading or quote.
  * @param tokens - Its inline tokens.
- * @param headingText - A heading's source text, whose slug is its id; `null` (the default) for any other block.
+ * @param isHeading - Whether the block is a heading, whose id the standard form must keep.
  * @returns `block`.
  */
-function $appendInlineContent<T extends ElementNode>(block: T, tokens: Token[], headingText: string | null = null): T {
-    $buildKeepingConstructs(block, tokens, headingText, (keep) => {
+function $appendInlineContent<T extends ElementNode>(block: T, tokens: Token[], isHeading: boolean = false): T {
+    $buildKeepingConstructs(block, tokens, isHeading, (keep) => {
         block.clear();
         appendInlineTokens({ block, openLink: null, nextCellParagraph: null, keep, edges: edgeLinks(tokens) }, tokens, PLAIN);
     });
@@ -1271,11 +1272,11 @@ function $appendInlineContent<T extends ElementNode>(block: T, tokens: Token[], 
  *
  * @param container - The block (a table cell for a cell's content).
  * @param tokens - Its inline tokens (a task item's checkbox first).
- * @param headingText - A heading's source text; `null` for any other block.
+ * @param isHeading - Whether the block is a heading.
  * @param build - Builds the block's content, the given tokens kept as written.
  */
 function $buildKeepingConstructs(
-    container: ElementNode, tokens: Token[], headingText: string | null, build: (keep: ReadonlySet<Token>) => void,
+    container: ElementNode, tokens: Token[], isHeading: boolean, build: (keep: ReadonlySet<Token>) => void,
 ): void {
     let best = { keep: new Set<Token>() as ReadonlySet<Token>, reading: null as StandardFormReading | null };
 
@@ -1285,7 +1286,7 @@ function $buildKeepingConstructs(
         return;
     }
 
-    const read = (): StandardFormReading => $readKeepingForm(container, tokens, headingText);
+    const read = (): StandardFormReading => $readKeepingForm(container, tokens, isHeading);
     const tries = { left: MAX_KEEP_TRIES };
     let built = best.keep;
 
@@ -1303,7 +1304,7 @@ function $buildKeepingConstructs(
         const reading = best.reading!;
         let improved: typeof best | null = null;
 
-        for (const candidate of keepCandidates(tokens, best.keep, reading, headingText)) {
+        for (const candidate of keepCandidates(tokens, best.keep, reading)) {
             if (tries.left <= 0) {
                 break;
             }
@@ -1380,17 +1381,17 @@ function keepTogether(
  *
  * @param container - The block (a table cell for a cell's content).
  * @param tokens - Its inline tokens.
- * @param headingText - A heading's source text; `null` for any other block.
+ * @param isHeading - Whether the block is a heading.
  * @returns How far the standard form reads as the tokens do.
  */
-function $readKeepingForm(container: ElementNode, tokens: Token[], headingText: string | null): StandardFormReading {
+function $readKeepingForm(container: ElementNode, tokens: Token[], isHeading: boolean): StandardFormReading {
     for (const { node } of $dfs(container)) {
         if ($isReferenceLinkNode(node)) {
             node.setImportedContent($serializeLinkContent(node));
         }
     }
 
-    return $readStandardForm(container, tokens, headingText, IMPORT_DEFINITIONS.current);
+    return $readStandardForm(container, tokens, isHeading, IMPORT_DEFINITIONS.current);
 }
 
 /**
@@ -1437,15 +1438,14 @@ function readsFurther(next: StandardFormReading, previous: StandardFormReading):
  * @param tokens - The block's inline tokens.
  * @param keep - The tokens kept so far.
  * @param reading - The block's standard-form reading so far.
- * @param headingText - A heading's source text; `null` for any other block.
  * @returns The candidates, in order.
  */
-function keepCandidates(tokens: Token[], keep: ReadonlySet<Token>, reading: StandardFormReading, headingText: string | null): Token[] {
+function keepCandidates(tokens: Token[], keep: ReadonlySet<Token>, reading: StandardFormReading): Token[] {
     const all = tokensBelow(tokens, keep);
     const size = (token: Token): number => token.raw.length;
 
     if (reading.score === Infinity) {
-        const at = idSourceIndex(headingText ?? "", reading.idScore);
+        const at = idSourceIndex(tokens, reading.idScore);
         const offsets = tokenOffsets(tokens);
         const distance = (token: Token): number => {
             const [start, end] = offsets.get(token) ?? [0, 0];
@@ -1518,23 +1518,28 @@ function tokenOffsets(tokens: readonly Token[], base: number = 0, offsets = new 
 
 /**
  * The index of the source character a heading's id first differs at: the
- * shortest prefix of the heading's text whose slug reaches past the id's
- * matching part.
+ * start of the first top-level token whose reading makes the id's slug reach
+ * past the matching part.
  *
- * @param text - The heading's source text.
+ * @param tokens - The heading's inline tokens.
  * @param idScore - How many leading characters of the id match.
- * @returns The index of the prefix's last character.
+ * @returns The index in the heading's source text, or its length when none does.
  */
-function idSourceIndex(text: string, idScore: number): number {
-    const slug = (prefix: string): string => prefix.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+/, "");
+function idSourceIndex(tokens: Token[], idScore: number): number {
+    const offsets = tokenOffsets(tokens);
+    let read = "";
 
-    for (let length = 1; length <= text.length; length += 1) {
-        if (slug(text.slice(0, length)).length > idScore) {
-            return length - 1;
+    for (const token of tokens) {
+        read += headingSlugSource([token]);
+
+        const reached = slugify(read).length > idScore;
+
+        if (reached) {
+            return offsets.get(token)?.[0] ?? 0;
         }
     }
 
-    return text.length;
+    return tokens.reduce((length, token) => length + token.raw.length, 0);
 }
 
 /**

@@ -11,6 +11,7 @@ import { Size } from "~/primitive/Size.js";
 import { Menu } from "~/overlay/Menu.js";
 import { buildSelectionCopyMenuItems } from "~/component/shared/buildSelectionCopyMenuItems.js";
 import type { Token, Tokens } from "marked";
+import { headingSlug } from "~/component/display/markdownHeadingIds.js";
 import { lexMarkdown } from "~/component/display/markdownExtensions.js";
 import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
 import { resolveSpanStyle, resolveBlockStyle, resolveImageSpec } from "~/component/display/markdownAttributes.js";
@@ -399,32 +400,19 @@ function alignmentClass(align: "center" | "left" | "right" | "justify" | null): 
 }
 
 /**
- * GitHub/VitePress-compatible slug: lowercase, non-alphanumerics collapsed to
- * single hyphens, ends trimmed. Does not dedupe — the caller folds in a `-N`
- * suffix via a per-render counter so every id on the page is unique.
- *
- * @param text - The heading's plain text.
- * @returns The slug, with no leading, trailing, or doubled hyphens.
- */
-function slugify(text: string): string {
-    return text
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-+|-+$/g, "");
-}
-
-/**
  * Shared by {@link Markdown.appendHeading} and {@link extractMarkdownHeadings}
  * — the single place a heading's slug is deduped against ids already used
  * earlier in the same render/extraction pass, so both produce identical ids
  * from identical inputs.
  *
- * @param text - The heading's plain text.
+ * @param heading - The heading token; its id is made from what the viewer reads
+ *   of its text (`headingSlug`), so `&amp;`, `\&` and `&` give one
+ *   id and an editor save that writes a character differently moves none.
  * @param headingIds - The current pass's dedupe counter, keyed by slug.
  * @returns The slug, suffixed with `-N` when it was already seen this pass.
  */
-function nextHeadingId(text: string, headingIds: Map<string, number>): string {
-    const slug = slugify(text);
+function nextHeadingId(heading: Tokens.Heading, headingIds: Map<string, number>): string {
+    const slug = headingSlug(heading.tokens);
     const seen = headingIds.get(slug) ?? 0;
 
     headingIds.set(slug, seen + 1);
@@ -1686,7 +1674,7 @@ class Markdown extends Component<MarkdownOptions> {
     private appendHeading(parent: Handle, token: Tokens.Heading, headingIds: Map<string, number>): void {
         const depth = Math.min(Math.max(token.depth, HEADING_MIN_DEPTH), HEADING_MAX_DEPTH);
         const heading = this.create("h" + depth);
-        const id = nextHeadingId(token.text, headingIds);
+        const id = nextHeadingId(token, headingIds);
 
         DOM.sink.apply(heading, { addClass: [HEADING_CLASS], setAttr: { id } });
         this.appendInlineTokens(heading, token.tokens);
@@ -2207,8 +2195,8 @@ export interface MarkdownHeading {
  * contributes its label text with no `[]()` syntax, and a hard line break
  * (`br`) contributes a single space. `heading.text` (the raw
  * source substring) is deliberately not used here — it still carries that
- * markup, which is correct for {@link nextHeadingId} (matching `appendHeading`'s
- * own slug input) but wrong for display.
+ * markup, which {@link nextHeadingId} keeps (through `headingSlug`)
+ * but display must not.
  *
  * @param tokens - A heading's inline-level tokens (`Tokens.Heading.tokens`).
  * @returns The heading's rendered plain text.
@@ -2243,7 +2231,7 @@ function collectHeadings(tokens: Token[], headingIds: Map<string, number>, out: 
             const heading = token as Tokens.Heading;
             const depth = Math.min(Math.max(heading.depth, HEADING_MIN_DEPTH), HEADING_MAX_DEPTH);
 
-            out.push({ id: nextHeadingId(heading.text, headingIds), text: inlineText(heading.tokens), depth });
+            out.push({ id: nextHeadingId(heading, headingIds), text: inlineText(heading.tokens), depth });
         } else if (token.type === "blockquote") {
             collectHeadings((token as Tokens.Blockquote).tokens, headingIds, out);
         } else if (token.type === "list") {

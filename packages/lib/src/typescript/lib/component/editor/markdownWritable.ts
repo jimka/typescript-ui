@@ -24,6 +24,7 @@ import type { TableSelection } from "@lexical/table";
 import { $isLinkNode, LinkNode } from "@lexical/link";
 import { $dfs, $unwrapAndFilterDescendants, $unwrapNode, mergeRegister } from "@lexical/utils";
 import { lexMarkdownWithDefinitions, linkLabelKey } from "~/component/display/markdownExtensions.js";
+import { holdsLineContent } from "~/component/display/markdownLineContent.js";
 import {
     $definitionsSource, $documentDefinitions, $headingWritesOneLine, $itemReadsLoose, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown,
     $runsReadingOtherwise, $serializeBlock, $writtenListMarker, definitionsOfSource, keptImageShown, NO_DEFINITIONS_SOURCE, rawBlockStandsInItem,
@@ -1830,7 +1831,14 @@ function $dropBreaksAtRunEnd(leaf: LexicalNode): boolean {
     const code = leaf.hasFormat("code");
     let contentEnd = text.length;
 
-    while (contentEnd > 0 && (text[contentEnd - 1] === "\n" || (!code && /\s/.test(text[contentEnd - 1]!)))) {
+    while (contentEnd > 0) {
+        const char = text[contentEnd - 1]!;
+        const trailing = char === "\n" || (!code && !holdsLineContent(char));
+
+        if (!trailing) {
+            break;
+        }
+
         contentEnd -= 1;
     }
 

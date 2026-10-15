@@ -25,6 +25,12 @@ import {
     lexMarkdown, lexMarkdownInline, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions, linkLabelKey,
 } from "~/component/display/markdownExtensions.js";
 import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
+import { needsAngleBrackets } from "~/component/display/markdownDestinations.js";
+import { headingSlug } from "~/component/display/markdownHeadingIds.js";
+import { holdsLineContent } from "~/component/display/markdownLineContent.js";
+import {
+    decodeEscapesAndCharacterReferences, escapeCharacterReferences, startsWithCharacterReference,
+} from "~/component/display/markdownCharacterReferences.js";
 import type { MdTableToken } from "~/component/display/markdownTableExtension.js";
 import { $isMarkdownBlockNode, $isMarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import type { MarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
@@ -344,19 +350,11 @@ const EMAIL_LOCAL_CHARACTER = /^[A-Za-z0-9._+-]$/;
 /** A character of the domain of a GFM bare email autolink. */
 const EMAIL_DOMAIN_CHARACTER = /^[A-Za-z0-9_-]$/;
 
-/**
- * A numeric character reference at the start of the text: `&#35;` or
- * `&#x23;`, with one to seven decimal digits or one to six hexadecimal ones
- * (the limits copy `marked`'s own rule). `marked` reads one as the character
- * it names, so the `&` of a reference the text holds as typed is escaped.
- */
-const NUMERIC_CHARACTER_REFERENCE = /^&#(?:\d{1,7}|[Xx][0-9A-Fa-f]{1,6});/;
+/** A text of spaces and tabs only (or nothing): what `marked` strips from a line's edge, unlike a no-break space. */
+const ASCII_BLANK = /^[ \t]*$/;
 
-/** The highest C0 control character code; a link destination holding one must be written in angle brackets. */
-const LAST_C0_CONTROL = 0x1f;
-
-/** The DEL control character's code, the one control character above the C0 range. */
-const DELETE_CHARACTER = 0x7f;
+/** The no-break space (U+00A0), which `marked` trims like any whitespace at some edges ({@link noBreakSpaceEntities}). */
+const NO_BREAK_SPACE = "\u00A0";
 
 /**
  * How many times one block's inline Markdown is read back with the viewer's
@@ -468,6 +466,16 @@ interface InlineContext {
      * see: every escape is written.
      */
     readonly joinsMarkdown?: boolean;
+    /**
+     * The Markdown is joined into a raw or code block's text, which holds no
+     * line edge of its own: a no-break space is written as the character.
+     * Distinct from {@link joinsMarkdown}, which also covers a setext
+     * heading's and a multi-paragraph cell's writing, whose edges `marked`
+     * trims.
+     */
+    readonly joinsIntoRawBlock?: boolean;
+    /** `marked` trims each line's edges of the content (a setext heading's lines), as it does a single-line block's. */
+    readonly trimsLineEdges?: boolean;
     /**
      * The saved document's link reference definitions, as the viewer resolves
      * them; `null` when the document holds no reference link to resolve.
@@ -1001,7 +1009,7 @@ export function $serializeBlock(node: LexicalNode): string {
  * @returns Their Markdown, lines separated by `\n`.
  */
 export function $serializeInlineNodes(nodes: LexicalNode[]): string {
-    return serializeInlineNodes(nodes, { ...MULTI_LINE, definitions: $collectDefinitions(), joinsMarkdown: true });
+    return serializeInlineNodes(nodes, { ...MULTI_LINE, definitions: $collectDefinitions(), joinsMarkdown: true, joinsIntoRawBlock: true });
 }
 
 /**
@@ -1104,17 +1112,18 @@ export interface StandardFormReading {
  * from: the reading of the Markdown a save writes for its inline content —
  * a paragraph's, a heading's, a quote's, a list item's or a table cell's —
  * against the viewer's reading of the tokens and, for a heading, the id the
- * viewer gives it, which it slugs from the heading's source text. Must run
+ * viewer gives it, which it makes from what it reads of the heading's text
+ * ({@link headingSlug}). Must run
  * inside an `editor.read` or `editor.update`.
  *
  * @param container - The block (a table cell for a cell's content).
  * @param tokens - The inline tokens it was loaded from (a task item's checkbox first).
- * @param headingText - A heading's source text, as `marked` gives it; `null` for any other block.
+ * @param isHeading - Whether the block is a heading, whose id the standard form is read for.
  * @param definitions - The document's link reference definitions, which keep a reference link in its written form; `null` for none.
  * @returns How far the standard form reads as the tokens do.
  */
 export function $readStandardForm(
-    container: ElementNode, tokens: readonly Token[], headingText: string | null, definitions: Links | null,
+    container: ElementNode, tokens: readonly Token[], isHeading: boolean, definitions: Links | null,
 ): StandardFormReading {
     const cell = $isTableCellNode(container);
     const heading = $isHeadingNode(container) ? container : null;
@@ -1129,27 +1138,15 @@ export function $readStandardForm(
     const written = cell ? serializeTableCell(container, definitions) : serializeInline(container, context);
     const score = readingScore(withoutTrailingWhitespace(markdownReading(written, reading)), withoutTrailingWhitespace(intended));
 
-    if (heading === null || headingText === null) {
+    if (heading === null || !isHeading) {
         return { score, spans, idScore: Infinity };
     }
 
     const writtenHeading = lexMarkdown(serializeHeading(heading, definitions)).find((token) => token.type === "heading") as Tokens.Heading | undefined;
-    const [id, writtenId] = [headingSlug(headingText), headingSlug(writtenHeading?.text ?? "")];
+    const [id, writtenId] = [headingSlug(tokens), headingSlug(writtenHeading?.tokens ?? [])];
     const differs = [...id].findIndex((char, index) => writtenId[index] !== char);
 
     return { score, spans, idScore: id === writtenId ? Infinity : differs === -1 ? id.length : differs };
-}
-
-/**
- * The slug the viewer makes a heading's id from: lowercase, each run of
- * characters other than ASCII letters and digits one hyphen, none at the
- * ends. Mirrors `slugify` in `Markdown.ts`, which the viewer does not export.
- *
- * @param text - The heading's source text.
- * @returns The slug.
- */
-function headingSlug(text: string): string {
-    return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
 /**
@@ -2426,7 +2423,7 @@ function writtenHeadingContent(node: HeadingNode, definitions: Links | null): { 
 
     if (level <= SETEXT_MAX_LEVEL) {
         // The underline is Markdown the lean rules do not see: `|` over `---` is a table.
-        const lines = serializeInline(node, { ...MULTI_LINE, definitions, joinsMarkdown: true });
+        const lines = serializeInline(node, { ...MULTI_LINE, definitions, joinsMarkdown: true, trimsLineEdges: true });
 
         if (lines.includes("\n") && !lines.split("\n").some((line) => SETEXT_INTERRUPTING_LINE.test(line))) {
             return { content: lines, setext: true };
@@ -2460,8 +2457,9 @@ function serializeQuote(node: QuoteNode, definitions: Links | null): string {
  * info string holds a backtick (which a backtick fence's info string cannot),
  * longer than any run of the fence's character that starts one of its lines.
  * The info string is the one the block was loaded with
- * ({@link codeInfoState}) while its first word is still the block's
- * language, else the language.
+ * ({@link codeInfoState}) while its first word, read as `marked` reads it,
+ * is still the block's language, else the language with the `&` of each
+ * character reference escaped.
  *
  * @param node - The code block.
  * @returns The fenced code.
@@ -2470,8 +2468,10 @@ function serializeCode(node: CodeNode): string {
     const code = node.getTextContent();
     const language = node.getLanguage() ?? "";
     const authored = $getState(node, codeInfoState);
-    const authoredLanguage = authored.replace(/\\([!-/:-@[-`{-~])/g, "$1").split(/\s+/)[0];
-    const info = authored !== "" && authoredLanguage === language ? authored : language;
+    const authoredLanguage = decodeEscapesAndCharacterReferences(authored).split(/\s+/)[0];
+    // A backslash before punctuation or a symbol (`marked`'s escapable characters) is an escape, so it is doubled to stay a backslash before the `&` escape lands.
+    const written = escapeCharacterReferences(language.replace(/\\(?=[\p{P}\p{S}])/gu, "\\\\"));
+    const info = authored !== "" && authoredLanguage === language ? authored : written;
     const char = info.includes("`") ? "~" : "`";
 
     const longestRun = Math.max(0, ...code.split("\n").map((line) => {
@@ -2650,8 +2650,8 @@ function $writesSomething(block: ElementNode): boolean {
  */
 function holdsInlineContent(nodes: LexicalNode[]): boolean {
     return flattenInline(nodes).some((segment) => segment.kind === "image"
-        || (segment.kind === "text" && (segment.code || /\S/.test(segment.text)))
-        || (segment.kind === "source" && /\S/.test(segment.source)));
+        || (segment.kind === "text" && (segment.code || holdsLineContent(segment.text)))
+        || (segment.kind === "source" && holdsLineContent(segment.source)));
 }
 
 /**
@@ -3936,11 +3936,11 @@ function withoutEdgeBreaks(segments: Segment[], context: InlineContext): Segment
 
     const hasContent = (segment: Segment): boolean =>
         segment.kind === "image"
-        || (segment.kind === "text" && (segment.code || /\S/.test(segment.text)))
-        || (segment.kind === "source" && /\S/.test(segment.source));
+        || (segment.kind === "text" && (segment.code || holdsLineContent(segment.text)))
+        || (segment.kind === "source" && holdsLineContent(segment.source));
 
     const isBreak = (segment: Segment): boolean =>
-        segment.kind === "break" || (segment.kind === "source" && !/\S/.test(segment.source));
+        segment.kind === "break" || (segment.kind === "source" && !holdsLineContent(segment.source));
 
     const first = segments.findIndex(hasContent);
     const last = segments.findLastIndex(hasContent);
@@ -3973,8 +3973,10 @@ function endsInLink(segments: readonly Segment[], index: number): boolean {
     for (let next = index + 1; next < segments.length && segments[next]!.link === link; next += 1) {
         const segment = segments[next]!;
 
-        if (segment.kind === "image" || (segment.kind === "text" && (segment.code || /\S/.test(segment.text)))
-            || (segment.kind === "source" && /\S/.test(segment.source))) {
+        const holdsContent = segment.kind === "image" || (segment.kind === "text" && (segment.code || holdsLineContent(segment.text)))
+            || (segment.kind === "source" && holdsLineContent(segment.source));
+
+        if (holdsContent) {
             return true;
         }
     }
@@ -4890,7 +4892,8 @@ function writeCodeSpan(code: string, context: InlineContext, inLink: boolean): s
  * breaks are written where its block can hold them: none in a heading or
  * table cell, whose content is one line, so each becomes a space; and no
  * blank line anywhere, which would end the block, so each stretch of line
- * breaks becomes one.
+ * breaks becomes one. The `&` of a character reference is escaped in both
+ * (`\&copy;`), since `marked` reads one as its character.
  *
  * @param link - The link.
  * @param context - Where it is written.
@@ -4901,23 +4904,11 @@ function writeLinkDestination(link: LinkNode, context: InlineContext): string {
     const title = link.getTitle();
     const titled = title !== null && title !== "";
     const bare = url !== "" && ![...url].some((char) => needsAngleBrackets(char));
-    const destination = bare ? url : url === "" && !titled ? "" : `<${url.replace(/[\\<>]/g, "\\$&")}>`;
+    const destination = bare ? escapeCharacterReferences(url) : url === "" && !titled ? "" : `<${escapeCharacterReferences(url.replace(/[\\<>]/g, "\\$&"))}>`;
     const lines = titled ? title.replace(/\n[ \t]*(?=\n)/g, "").replace(/\n+/g, context.singleLine ? " " : "\n") : "";
-    const written = `(${destination}${titled ? ` "${lines.replace(/[\\"]/g, "\\$&")}"` : ""})`;
+    const written = `(${destination}${titled ? ` "${escapeCharacterReferences(lines.replace(/[\\"]/g, "\\$&"))}"` : ""})`;
 
     return context.inTableCell ? written.replace(/\|/g, "\\|") : written;
-}
-
-/**
- * Tells whether a destination character forces the `<…>` form.
- *
- * @param char - One character of the URL.
- * @returns `true` for a space, `<`, `>`, `(`, `)`, `\` or a control character.
- */
-function needsAngleBrackets(char: string): boolean {
-    const code = char.charCodeAt(0);
-
-    return " <>()\\".includes(char) || code <= LAST_C0_CONTROL || code === DELETE_CHARACTER;
 }
 
 /**
@@ -5496,7 +5487,7 @@ function lineBreakMarker(marker: string, content: string): string {
 function trimLineEdges(pieces: LinePiece[], firstLine: boolean): LinePiece[] {
     const trimmed = pieces.slice();
     const first = trimmed[0];
-    const indentsSource = !firstLine && trimmed[1]?.kind === "source" && first?.kind === "text" && first.text.trim() === "";
+    const indentsSource = !firstLine && trimmed[1]?.kind === "source" && first?.kind === "text" && ASCII_BLANK.test(first.text);
 
     if (first?.kind === "text" && !indentsSource) {
         trimmed[0] = { kind: "text", text: first.text.replace(/^[ \t]+/, "") };
@@ -5506,7 +5497,7 @@ function trimLineEdges(pieces: LinePiece[], firstLine: boolean): LinePiece[] {
     const last = trimmed[lastIndex];
 
     if (last?.kind === "text") {
-        const followsSource = lastIndex > 0 && trimmed[lastIndex - 1]?.kind === "source" && last.text.trim() === "";
+        const followsSource = lastIndex > 0 && trimmed[lastIndex - 1]?.kind === "source" && ASCII_BLANK.test(last.text);
 
         trimmed[lastIndex] = { kind: "text", text: followsSource ? " " : last.text.replace(/[ \t]+$/, "") };
     }
@@ -5993,15 +5984,23 @@ function joinsShortcut(pieces: LinePiece[], index: number, startsBlock: boolean,
  * @returns The escaped text.
  */
 function escapeText(text: string, before: string, after: string, context: InlineContext, lean: LeanText | null = null): string {
+    const entities = noBreakSpaceEntities(text, before, after, context);
+    const written = text.split("").map((char, index) => (entities[index] === true ? "&" : char)).join("");
     let escaped = "";
 
     for (let index = 0; index < text.length; index += 1) {
         const char = text[index]!;
 
+        if (entities[index] === true) {
+            escaped += "&nbsp;";
+            continue;
+        }
+
+        // The neighbours are read as written, so a `\` before a no-break space written `&nbsp;` sees the `&`.
         const site: EscapeSite = {
-            text, index, context, before, after,
-            previous: index > 0 ? text[index - 1]! : before,
-            next:     index < text.length - 1 ? text[index + 1]! : after,
+            text: written, index, context, before, after,
+            previous: index > 0 ? written[index - 1]! : before,
+            next:     index < text.length - 1 ? written[index + 1]! : after,
         };
 
         const full = needsEscape(char, site);
@@ -6015,6 +6014,37 @@ function escapeText(text: string, before: string, after: string, context: Inline
     }
 
     return escaped;
+}
+
+/**
+ * Tells which no-break spaces of a text are written as the entity `&nbsp;`,
+ * so the escape rules can read what is written (a `\` before the entity is a
+ * `\` before `&`) and not the character.
+ *
+ * A no-break space is written as the entity where `marked` would trim it: at
+ * the edge of a heading's, a table cell's or a list item's line, and in a
+ * line holding nothing else, which `marked` takes for a blank line. Elsewhere
+ * it is written as itself, since `marked` keeps it at a paragraph's line
+ * edge. Markdown joined into a raw or code block ({@link InlineContext.joinsIntoRawBlock})
+ * holds no line edge of its own, so it writes the character.
+ *
+ * @param text - The text.
+ * @param before - The output character before it (`\n` at a line start).
+ * @param after - The output character after it (`\n` at a line end).
+ * @param context - Where it is written.
+ * @returns For each character, whether it is a no-break space written as the entity.
+ */
+function noBreakSpaceEntities(text: string, before: string, after: string, context: InlineContext): boolean[] {
+    const edgeTrimmed = context.singleLine || context.inTableCell || context.inListItem === true || context.inItemParagraph === true || context.trimsLineEdges === true;
+    const trimsEdges = context.joinsIntoRawBlock !== true && edgeTrimmed;
+    const alone = context.joinsIntoRawBlock !== true && before === "\n" && after === "\n" && text.trim() === "";
+    const lastIndex = text.length - 1;
+
+    return text.split("").map((char, index) => {
+        const atEdge = (index === 0 && before === "\n") || (index === lastIndex && after === "\n");
+
+        return char === NO_BREAK_SPACE && ((trimsEdges && atEdge) || alone);
+    });
 }
 
 /** One character's surroundings, as {@link needsEscape} reads them. */
@@ -6119,8 +6149,8 @@ function runEdges(text: string, index: number): { start: number; end: number } {
  * code or bracket character always; a `\` before punctuation or at a run's
  * end; a `_` that is not intraword; a tag-shaped `<`; a `+` next to a `+`
  * (underline); a `|` in a table cell; the `:` of a bare URL scheme, the `.`
- * of `www.` and the `@` of an email address (GFM autolinks); the `&` of a
- * numeric character reference; a `!` just before a link (an image); and a
+ * of `www.` and the `@` of an email address (GFM autolinks); an `&` that
+ * starts a character reference (`&copy;`, `&#35;`); a `!` just before a link (an image); and a
  * `(` or `{` after a `]` or an image's `)`
  * — `marked` unescapes the brackets of link text before reading it, so
  * `\]` followed by `(` or `{` would otherwise become a link or span there.
@@ -6149,7 +6179,7 @@ function needsEscape(char: string, site: EscapeSite): boolean {
         case ":":  return BARE_URL_SCHEME.test(site.text.slice(0, site.index)) && site.text.startsWith("//", site.index + 1);
         case ".":  return BARE_WWW_PREFIX.test(site.text.slice(0, site.index));
         case "@":  return EMAIL_LOCAL_CHARACTER.test(site.previous) && EMAIL_DOMAIN_CHARACTER.test(site.next);
-        case "&":  return NUMERIC_CHARACTER_REFERENCE.test(site.text.slice(site.index));
+        case "&":  return startsWithCharacterReference(site.text.slice(site.index));
         case "!":  return isLast && site.next === "[";
         case "(":  return site.previous === "]";
         case "{":  return site.previous === "]" || (site.index === 0 && site.previous === ")");

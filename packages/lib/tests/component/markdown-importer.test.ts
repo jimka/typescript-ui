@@ -17,6 +17,7 @@ import {
 } from '@lexical/table';
 import type { TableCellNode } from '@lexical/table';
 import { $dfs, $findMatchingParent } from '@lexical/utils';
+import { extractMarkdownHeadings } from '~/component/display/Markdown';
 import { MarkdownEditor, $classifyContextMenuTarget } from '~/component/editor/MarkdownEditor';
 import type { MarkdownEditorSelectionState } from '~/component/editor/MarkdownEditor';
 import { $serializeMarkdown } from '~/component/editor/markdownSerializer';
@@ -545,11 +546,146 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
         expect(firstBlockInline(load('a\r\nb'))).toEqual(firstBlockInline(load('a\nb')));
     });
 
-    it('I28: an entity stays text and an escape is its character, in one text node', () => {
-        const editor = load('&amp; \\*');
+    it('I28: a character reference and an escape are each their character, in one text node', () => {
+        const editor = load('&amp; &copy; \\* &notaname;');
 
-        expect(firstBlockInline(editor)).toEqual([{ text: '&amp; *' }]);
-        expectSurface(editor, '&amp; \\*');
+        expect(firstBlockInline(editor)).toEqual([{ text: '& \u00A9 * &notaname;' }]);
+        expectSurface(editor, '&amp; &copy; \\* &notaname;');
+    });
+
+    it('I29: a code block takes its language from the info string as read, and keeps the info string as written', () => {
+        const editor = load('```j&#115; x\ncode\n```');
+
+        const language = readDocument(editor, () => {
+            const code = $getRoot().getFirstChild();
+
+            return $isCodeNode(code) ? code.getLanguage() : null;
+        });
+
+        expect(language).toBe('js');
+        expect(canonicalSave(editor)).toBe('```j&#115; x\ncode\n```');
+    });
+});
+
+describe('$importMarkdown — a no-break space survives a save and a reload', () => {
+    // The editor's text after loading the source and after loading its standard-form save must be the same: nothing
+    // `marked` trims or reads as an escape may eat a no-break space or the backslash before it.
+    const cases: Array<[string, string]> = [
+        ['a spacer paragraph', 'a\n\n&nbsp;\n\nb'],
+        ['two spacer paragraphs', '&nbsp;\n\n&nbsp;'],
+        ['a paragraph\'s start', '&nbsp;x'],
+        ['a paragraph\'s end', 'x&nbsp;'],
+        ['bold at a paragraph\'s start', '&nbsp;**x**'],
+        ['bold at a paragraph\'s end', '**x**&nbsp;'],
+        ['before a backslash hard break', 'x&nbsp;\\\ny'],
+        ['after a kept tag at a line end', 'a <kbd>x</kbd>&nbsp;'],
+        ['a heading\'s start', '# &nbsp;x'],
+        ['a heading\'s end', '# x&nbsp;'],
+        ['a heading holding only it', '# &nbsp;'],
+        ['a cell holding only it', '| a |\n|---|\n| &nbsp; |'],
+        ['a cell\'s start', '| a |\n|---|\n| &nbsp;x |'],
+        ['a cell\'s end', '| a |\n|---|\n| x&nbsp; |'],
+        ['a list item\'s end', '- x&nbsp;'],
+        ['a list item holding only it', '- a\n- &nbsp;\n- b'],
+        ['an ordered list item\'s end', '1. x&nbsp;'],
+        ['a quote\'s end', '> x&nbsp;'],
+        ['a backslash before it in a paragraph', 'C:\\\\&nbsp;'],
+        ['a backslash before it in a heading', '# C:\\\\&nbsp;'],
+        ['a backslash before it in a cell', '| a |\n|---|\n| C:\\\\&nbsp; |'],
+        ['a backslash before it in a list item', '- C:\\\\&nbsp;'],
+        ['a backslash before it in a quote', '> C:\\\\&nbsp;'],
+        ['a backslash before it and a hard break', 'a\\\\&nbsp;\\\nb'],
+        ['a backslash and it loaded as characters', 'a\n\n&bsol;&#92;\u00A0\n\nb'],
+        ['a setext heading\'s start', '&nbsp;Foo\nbar\n==='],
+        ['a setext heading\'s end', 'Foo\nbar&nbsp;\n==='],
+        ['a two-paragraph cell\'s start', '| a |\n| --- |\n| &nbsp;x\\n\\ny |'],
+        ['a two-paragraph cell\'s end', '| a |\n| --- |\n| x\\n\\ny&nbsp; |'],
+        ['a two-paragraph cell\'s paragraph edges', '| a |\n| --- |\n| x&nbsp;\\n\\n&nbsp;y |'],
+        ['a backslash before it in a setext heading', 'C:\\\\&nbsp;\nbar\n==='],
+    ];
+
+    it.each(cases)('%s', (_name, source) => {
+        const loaded = load(source);
+        const text = readDocument(loaded, () => $getRoot().getTextContent());
+        const reloaded = load(canonicalSave(loaded));
+
+        expect(text).toContain('\u00A0');
+        expect(readDocument(reloaded, () => $getRoot().getTextContent())).toBe(text);
+    });
+});
+
+describe('$importMarkdown — a hard break before a line holding only a no-break space', () => {
+    const sources: Array<[string, string]> = [
+        ['a numeric reference', 'a\\\n&#160;'],
+        ['a named reference', 'a\\\n&nbsp;'],
+        ['bold text', '**a**\\\n&#160;'],
+        ['a list item', '- a\\\n  &#160;'],
+    ];
+
+    it.each(sources)('keeps the break and the source of %s', (_name, source) => {
+        const loaded = load(source);
+        const text = readDocument(loaded, () => $getRoot().getTextContent());
+
+        expect(loaded.getValue()).toBe(source);
+        expect(text).toContain('\n\u00A0');
+        expect(readDocument(load(canonicalSave(loaded)), () => $getRoot().getTextContent())).toBe(text);
+        expectSurface(loaded, source);
+    });
+});
+
+describe('$importMarkdown — a typed line break before a non-ASCII space keeps its break in the save', () => {
+    // `marked` strips ASCII whitespace at a line's end but keeps a no-break space and an em space, so a break typed
+    // before one is a break the save must write, as the editor shows it.
+    const spaces: Array<[string, string]> = [['a no-break space', ' '], ['an em space', ' ']];
+    const blocks: Array<[string, string]> = [['a paragraph', 'b'], ['a quote', '> b'], ['a list item', '- b']];
+
+    // An em space alone on a list item's continuation line is dropped by `marked` on reload (a known issue, listed in
+    // the plan's notes), so that one pairing is left out.
+    const rows = blocks.flatMap(([block, source]) => spaces.map(([name, space]) => [block, name, source, space] as const))
+        .filter(([block, name]) => !(block === 'a list item' && name === 'an em space'));
+
+    it.each(rows)(
+        '%s, then a break and %s', (_block, _name, source, space) => {
+            const editor = load(source);
+
+            lexicalOf(editor).update(() => {
+                $getRoot().getFirstChild()!.selectEnd();
+
+                const selection = $getSelection();
+
+                if ($isRangeSelection(selection)) {
+                    selection.insertLineBreak();
+                    selection.insertText(space);
+                }
+            }, { discrete: true });
+
+            const shown = readDocument(editor, () => $getRoot().getTextContent());
+            const reloaded = readDocument(load(editor.getValue()), () => $getRoot().getTextContent());
+
+            expect(shown.endsWith(space)).toBe(true);
+            expect(reloaded).toBe(shown);
+        });
+});
+
+describe('$importMarkdown — a save never moves a heading id', () => {
+    const ids = (markdown: string): string[] => extractMarkdownHeadings(markdown).map((heading) => heading.id);
+
+    it.each([
+        '# Terms &amp; *Conditions*',
+        '# <https://a.test/?q&amp;x> y',
+        '# see https://a.test/?q&amp;x y',
+        '# <kbd>&copy;</kbd> x',
+        '# [a](/f&ouml;) &amp; b',
+        '# [](/f&ouml;)',
+        '# &amp;copy; and \\&copy;',
+    ])('%s', (source) => {
+        const loaded = load(source);
+
+        expect(ids(canonicalSave(loaded))).toEqual(ids(source));
+    });
+
+    it('leaves `# Terms &amp; *Conditions*` saved lean, with its reference read', () => {
+        expect(canonicalSave(load('# Terms &amp; *Conditions*'))).toBe('# Terms & *Conditions*');
     });
 });
 
@@ -675,6 +811,15 @@ describe('$importMarkdown — round trips (R rows)', () => {
         ['R10', 'a\r\nb', 'a\nb'],
         ['R11', 'foo  \nbar', 'foo  \nbar'],
         ['R12', 'foo\\\nbar', 'foo\\\nbar'],
+        ['R13', '&copy; &amp; x', '\u00A9 & x'],
+        ['R14', '&amp;copy; and \\&copy;', '\\&copy; and \\&copy;'],
+        ['R15', '[a](/f&ouml; "t&amp;amp;")', '[a](/f\u00F6 "t\\&amp;")'],
+        ['R16', '[x](/a\\&copy;)', '[x](/a\\&copy;)'],
+        ['R17', '# Terms &amp; Conditions', '# Terms & Conditions'],
+        ['R18', 'a\n\n&nbsp;\n\nb', 'a\n\n&nbsp;\n\nb'],
+        ['R19', '| &nbsp; | b |\n|---|---|\n| c | &nbsp; |', '| &nbsp; | b |\n| --- | --- |\n| c | &nbsp; |'],
+        ['R20', '# &nbsp;x&nbsp;', '# &nbsp;x&nbsp;'],
+        ['R21', '# &amp;copy;', '# \\&copy;'],
         ['setext heading with a hard break', 'Foo  \nbar\n===', 'Foo  \nbar\n==='],
         ['single-item loose list', '- a\n\n  - b', '- a\n\n  - b'],
         // A source run leading or ending a line keeps the whitespace around it, so marked parses it as before.
@@ -4563,10 +4708,10 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
 
         it('a format a selection from a list into the next paragraph cannot apply keeps a construct kept as written in the list', () => {
             // The declined edit puts the list back from its JSON: the image's place in the kept construct must survive it.
-            const source = '- ~[![a](/i.png)](/p) [<https://b.test/p_(q)>](/out)~\n- [[e &amp;](/x)]\n\nf';
+            const source = '- ~[![a](/i.png)](/p) [<https://b.test/p_(q)>](/out)~\n- [[e and x](/x)]\n\nf';
             const editor = load(source);
 
-            select(editor, ['e &amp;', 6], ['f', 1]);
+            select(editor, ['e and x', 6], ['f', 1]);
             editor.toggleStrikethrough();
 
             expect(editor.getValue()).toContain('~[![a](/i.png)](/p) [<https://b.test/p_(q)>](/out)~');

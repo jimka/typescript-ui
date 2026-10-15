@@ -218,6 +218,44 @@ describe('Markdown heading ids', () => {
         expect(secondId).toBe(firstId);
         expect(secondId).toBe('repeat');
     });
+
+    // A heading id is read from the heading's text with its character references read, so `&amp;` and `&` give one id
+    // and an edit that writes the character itself keeps the id.
+    it('CR20: reads character references before slugifying, so `&amp;` and `&` give one id', () => {
+        new Markdown('# Terms &amp; Conditions\n\n## Terms & Conditions\n\n### &#35;1 &copy;\n\n#### \\&copy; x\n\n##### &amp;copy; x').getElement(true);
+
+        expect(attrWrites().map((a) => a.id).filter((id) => id !== undefined))
+            .toEqual(['terms-conditions', 'terms-conditions-1', '1', 'copy-x', 'copy-x-1']);
+    });
+
+    // The editor writes a typed `&copy;` as `\\&copy;`, and the text it keeps as written (a code span, the text between an
+    // inline tag and its end tag) as typed, so an id made from either spelling must be the id of the other.
+    it('CR20b: gives a heading and its escaped spelling one id, where the viewer reads the same text', () => {
+        const ids = (source: string): string[] => extractMarkdownHeadings(source).map((heading) => heading.id);
+
+        expect(ids('# Escaping &amp;lt; in HTML')).toEqual(ids('# Escaping \\&lt; in HTML'));
+        expect(ids('# &#38;copy;')).toEqual(ids('# \\&copy;'));
+        expect(ids('# &amp;amp;')).toEqual(ids('# \\&amp;'));
+    });
+
+    it.each(['kbd', 'code', 'pre', 'script'])('CR20d: keeps a reference between <%s> and its end tag as written, in the id too', (tag) => {
+        const ids = (source: string): string[] => extractMarkdownHeadings(source).map((heading) => heading.id);
+        const typed = `## <${tag}>&copy; &amp;</${tag}> x`;
+        const saved = `## <${tag}>\\&copy; \\&amp;</${tag}> x`;
+
+        expect(ids(typed)).toEqual([`${tag}-copy-amp-${tag}-x`]);
+        expect(ids(saved)).toEqual(ids(typed));
+    });
+
+    it('CR20e: reads the destination and title of a link in a heading, as the viewer does', () => {
+        const ids = (source: string): string[] => extractMarkdownHeadings(source).map((heading) => heading.id);
+
+        expect(ids('# [a](/f&ouml;x "t&amp;u")')).toEqual(ids('# [a](/föx "t&u")'));
+    });
+
+    it('CR20c: extractMarkdownHeadings reads references in the heading text it reports', () => {
+        expect(extractMarkdownHeadings('# Terms &amp; Conditions')).toEqual([{ id: 'terms-conditions', text: 'Terms & Conditions', depth: 1 }]);
+    });
 });
 
 describe('extractMarkdownHeadings', () => {
@@ -736,6 +774,45 @@ describe('Markdown fenced code block', () => {
 
         expect(createdTags()).toEqual(expect.arrayContaining(['p', 'pre']));
         expect(textWrites()).toEqual(['foo', '']);
+    });
+});
+
+describe('Markdown character references', () => {
+    // CommonMark 25, 28, 29, 30: a named reference the HTML list holds reads as its characters; any other `&…;`, and a
+    // name without its `;`, stays as written.
+    it('CR21: reads a named or numeric reference in text as its characters, and leaves the rest as written', () => {
+        new Markdown('&copy; &amp; &ngE; &#35; &notaname; &copy &Copy;').getElement(true);
+
+        expect(textWrites()).toEqual(['\u00A9 & \u2267\u0338 # &notaname; &copy &Copy;']);
+    });
+
+    // CommonMark 32, 33: references are read in a link destination and title, an inline link's or a definition's.
+    it('CR22: reads references in a link destination, and keeps a backslash-escaped & as written', () => {
+        new Markdown('[a](/f&ouml;&ouml;) [b](/x\\&copy;) [c] [d](/n&#35;1)\n\n[c]: /d&amp;e').getElement(true);
+
+        expect(attrWrites().map((a) => a.href).filter((href) => href !== undefined)).toEqual(['/f\u00F6\u00F6', '/x&copy;', '/d&e', '/n#1']);
+    });
+
+    // CommonMark 35, 36: a code span and a code block keep their text as written.
+    it('CR23: keeps references in a code span and in a code block as written', () => {
+        new Markdown('`&copy;`\n\n    &amp;').getElement(true);
+
+        expect(trimmedTextWrites()).toEqual(['&copy;', '&amp;']);
+    });
+
+    // CommonMark 34: a fence's info string is read, so `j&#115;` names the js language.
+    it('CR24: reads references in a code fence\'s info string', () => {
+        new Markdown('```j&#115;\nconst a = 1;\n```').getElement(true);
+
+        expect(classWrites()).toContainEqual(['ts-ui-md-code-host']);
+    });
+
+    // Text inside an autolink is its destination as written; raw HTML is shown as written.
+    it('CR25: keeps references in an autolink and in an HTML block as written', () => {
+        new Markdown('<https://a.test/?q&copy;>\n\n<div>&copy;</div>').getElement(true);
+
+        expect(attrWrites().map((a) => a.href).filter((href) => href !== undefined)).toEqual(['https://a.test/?q&copy;']);
+        expect(trimmedTextWrites()).toEqual(['https://a.test/?q&copy;', '<div>&copy;</div>']);
     });
 });
 

@@ -5,6 +5,7 @@ import type { Lexer, Links, Token, TokenizerExtension, TokenizerObject, Tokens }
 import {
     FENCE_ATTRIBUTE_GROUP, lineEndAt, parseAttributes, readFenceLine, splitColumnSections, startFenceLineScan,
 } from "~/component/display/markdownAttributes.js";
+import { decodeCharacterReferences, decodeEscapesAndCharacterReferences } from "~/component/display/markdownCharacterReferences.js";
 import { tokenizeTable } from "~/component/display/markdownTableExtension.js";
 
 /** The `mdblock` token the fence extension emits — one token list per column. */
@@ -524,6 +525,115 @@ function htmlWithInputEndAsLineEnd(this: Tokenizer, src: string): Tokens.HTML | 
     return ended;
 }
 
+/** A pattern that matches nothing: `marked`'s unescape rule, switched off. */
+const MATCHES_NOTHING = /(?!)/gu;
+
+/**
+ * The view {@link keepingEscapes} made for each rules object. `marked` gives
+ * the tokenizer a new rules object for every lexer it makes, so this holds
+ * one view per lex, made on that lex's first link, definition or code fence.
+ */
+const VIEWS_KEEPING_ESCAPES = new WeakMap<Tokenizer["rules"], Tokenizer>();
+
+/**
+ * A view of the tokenizer whose `anyPunctuation` rule matches nothing, so the
+ * destination, title and info string `marked` builds keep their backslash
+ * escapes as written. The view shares everything else with the tokenizer,
+ * through its prototype: its lexer, options and state.
+ *
+ * @param tokenizer - The tokenizer `marked` called.
+ * @returns The view.
+ */
+function keepingEscapes(tokenizer: Tokenizer): Tokenizer {
+    let view = VIEWS_KEEPING_ESCAPES.get(tokenizer.rules);
+
+    if (view === undefined) {
+        const rules = { ...tokenizer.rules, inline: { ...tokenizer.rules.inline, anyPunctuation: MATCHES_NOTHING } };
+
+        view = Object.create(tokenizer, { rules: { value: rules } }) as Tokenizer;
+        VIEWS_KEEPING_ESCAPES.set(tokenizer.rules, view);
+    }
+
+    return view;
+}
+
+/**
+ * Reads the backslash escapes and character references of a destination,
+ * title or info string, skipping the work for the common one that holds
+ * neither a `\` nor an `&`.
+ *
+ * @param text - The text, its escapes still in it.
+ * @returns It as read.
+ */
+function readEscapesAndReferences(text: string): string {
+    return /[\\&]/.test(text) ? decodeEscapesAndCharacterReferences(text) : text;
+}
+
+/**
+ * The four tokenizers that read character references (`&copy;`, `&#169;`)
+ * where CommonMark reads them: in text, link destinations and titles (inline
+ * links and link reference definitions, so a reference link gets its
+ * definition's read values), and code fence info strings. `marked` reads only
+ * numeric references, and only in text; it keeps a named one as written. Each
+ * runs `marked`'s own method; `link`, `def` and `fences` run it on
+ * {@link keepingEscapes}'s view and then read the escapes and references
+ * together ({@link decodeEscapesAndCharacterReferences}), so an escaped `&`
+ * (`\&copy;`) stays text. Text inside raw HTML (`marked`'s `escaped`), code
+ * spans, code blocks and autolinks is not read: those keep what is written.
+ */
+const CHARACTER_REFERENCE_TOKENIZERS: TokenizerObject = {
+    inlineText(src) {
+        const token = Tokenizer.prototype.inlineText.call(this, src);
+
+        if (token === undefined) {
+            return token;
+        }
+
+        const readsReferences = token.escaped !== true && token.raw.includes("&");
+
+        if (readsReferences) {
+            token.text = decodeCharacterReferences(token.raw);
+        }
+
+        return token;
+    },
+    link(src) {
+        const token = Tokenizer.prototype.link.call(keepingEscapes(this), src);
+
+        if (token !== undefined) {
+            token.href = readEscapesAndReferences(token.href);
+
+            if (token.title) {
+                token.title = readEscapesAndReferences(token.title);
+            }
+        }
+
+        return token;
+    },
+    def(src) {
+        const token = Tokenizer.prototype.def.call(keepingEscapes(this), src);
+
+        if (token !== undefined) {
+            token.href = readEscapesAndReferences(token.href);
+
+            if (token.title) {
+                token.title = readEscapesAndReferences(token.title);
+            }
+        }
+
+        return token;
+    },
+    fences(src) {
+        const token = Tokenizer.prototype.fences.call(keepingEscapes(this), src);
+
+        if (token?.lang) {
+            token.lang = readEscapesAndReferences(token.lang);
+        }
+
+        return token;
+    },
+};
+
 /**
  * The four block tokenizers the dialect owns, installed in `marked`'s
  * `blockquote`, `list`, `table` and `html` slots: the unbounded test twin
@@ -599,7 +709,7 @@ const MARKDOWN_EXTENSIONS: TokenizerExtension[] = [
  * `use()` would change parsing for any other consumer of `marked` in the same
  * bundle.
  */
-const _marked = new Marked({ extensions: MARKDOWN_EXTENSIONS, tokenizer: BOUNDED_BLOCK_TOKENIZERS });
+const _marked = new Marked({ extensions: MARKDOWN_EXTENSIONS, tokenizer: { ...BOUNDED_BLOCK_TOKENIZERS, ...CHARACTER_REFERENCE_TOKENIZERS } });
 
 /**
  * The unbounded twin's instance, created on first use so production code — which
@@ -610,8 +720,9 @@ let _unboundedMarked: Marked | null = null;
 /**
  * Lexes Markdown source through the same dialect with no block-rule guards or
  * windows, so a test can assert that bounding them changed no token. It shares
- * the dialect's own `table`, `blockquote`, `list` and `html` tokenizers, so
- * the guards and windows are the only difference.
+ * the dialect's own `table`, `blockquote`, `list` and `html` tokenizers and
+ * its character-reference tokenizers, so the guards and windows are the only
+ * difference.
  *
  * @internal Test-only reference lexer, not part of the public API surface.
  *
@@ -619,7 +730,7 @@ let _unboundedMarked: Marked | null = null;
  * @returns The top-level token list.
  */
 export function lexMarkdownUnbounded(source: string): Token[] {
-    _unboundedMarked ??= new Marked({ extensions: MARKDOWN_EXTENSIONS, tokenizer: DIALECT_BLOCK_TOKENIZERS });
+    _unboundedMarked ??= new Marked({ extensions: MARKDOWN_EXTENSIONS, tokenizer: { ...DIALECT_BLOCK_TOKENIZERS, ...CHARACTER_REFERENCE_TOKENIZERS } });
 
     return _unboundedMarked.lexer(source);
 }
