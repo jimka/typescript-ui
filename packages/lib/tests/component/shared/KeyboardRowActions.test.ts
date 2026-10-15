@@ -303,10 +303,11 @@ describe('Keyboard row actions — Tree', () => {
      * @param event - The event to count.
      * @returns A function reading the count.
      */
-    function counter(tree: _Tree, event: 'selection'): () => number {
+    function counter(tree: _Tree, event: 'selection' | 'expand' | 'collapse'): () => number {
         let count = 0;
 
-        tree.on(event, () => { count += 1; });
+        // `on` is overloaded per event; one cast serves the union.
+        (tree as unknown as { on(name: string, listener: () => void): unknown }).on(event, () => { count += 1; });
 
         return () => count;
     }
@@ -587,6 +588,197 @@ describe('Keyboard row actions — Tree', () => {
             press(t.el, 'b');
 
             expect(current(t.tree)).toBe('B');
+        });
+    });
+
+    describe('Enter', () => {
+        /** Roots `A` (children `a0`, `a1`) and `B`. */
+        function family(): TreeNode[] {
+            return [{ label: 'A', children: leaves(['a0', 'a1']) }, { label: 'B' }];
+        }
+
+        /**
+         * Records the nodes a tree's `"dblclick"` event carried.
+         *
+         * @param tree - The tree.
+         * @returns The recorded labels, filled as the event fires.
+         */
+        function activations(tree: _Tree): string[] {
+            const labels: string[] = [];
+
+            tree.on('dblclick', (node: TreeNode) => { labels.push(node.label); });
+
+            return labels;
+        }
+
+        it('N1: Enter activates the current row and expands it', () => {
+            const t           = mountTree(family());
+            const selection   = counter(t.tree, 'selection');
+            const expand      = counter(t.tree, 'expand');
+            const activated   = activations(t.tree);
+
+            press(t.el, 'ArrowDown');
+
+            expect(press(t.el, 'Enter')).toBe(1);
+            expect(activated).toEqual(['A']);
+            expect(rows(t.tree)).toEqual(['A', 'a0', 'a1', 'B']);
+            expect(expand()).toBe(1);
+            expect(selection()).toBe(1);
+        });
+
+        it('N2: Enter again activates again and collapses', () => {
+            const t         = mountTree(family());
+            const collapse  = counter(t.tree, 'collapse');
+            const activated = activations(t.tree);
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'Enter');
+            press(t.el, 'Enter');
+
+            expect(activated).toEqual(['A', 'A']);
+            expect(collapse()).toBe(1);
+            expect(rows(t.tree)).toEqual(['A', 'B']);
+        });
+
+        it('N3: with no current row Enter is prevented and does nothing', () => {
+            const t         = mountTree(family());
+            const activated = activations(t.tree);
+
+            expect(press(t.el, 'Enter')).toBe(1);
+            expect(activated).toEqual([]);
+        });
+
+        it('N5: Enter with a modifier is left alone', () => {
+            const t         = mountTree(family());
+            const activated = activations(t.tree);
+
+            press(t.el, 'ArrowDown');
+
+            expect(press(t.el, 'Enter', { ctrlKey: true })).toBe(0);
+            expect(press(t.el, 'Enter', { altKey: true })).toBe(0);
+            expect(press(t.el, 'Enter', { metaKey: true })).toBe(0);
+            expect(press(t.el, 'Enter', { shiftKey: true })).toBe(0);
+            expect(activated).toEqual([]);
+        });
+
+        it('N6: an auto-repeat is prevented and does nothing', () => {
+            const t         = mountTree(family());
+            const activated = activations(t.tree);
+
+            press(t.el, 'ArrowDown');
+
+            expect(press(t.el, 'Enter', { repeat: true })).toBe(1);
+            expect(activated).toEqual([]);
+            expect(rows(t.tree)).toEqual(['A', 'B']);
+        });
+
+        it('N7: a leaf is activated and neither expands nor collapses', () => {
+            for (const nodes of [family(), [{ label: 'B' }]]) {
+                const t         = mountTree(nodes);
+                const expand    = counter(t.tree, 'expand');
+                const collapse  = counter(t.tree, 'collapse');
+                const activated = activations(t.tree);
+
+                press(t.el, 'ArrowDown');
+
+                if (nodes.length === 2) {
+                    press(t.el, 'ArrowDown');
+                }
+
+                press(t.el, 'Enter');
+
+                expect(activated).toEqual(['B']);
+                expect(expand()).toBe(0);
+                expect(collapse()).toBe(0);
+            }
+        });
+
+        it('N8: Enter toggles with the click trigger too', () => {
+            const t = mountTree(family(), { options: { expandTrigger: 'click' } });
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'Enter');
+
+            expect(rows(t.tree)).toEqual(['A', 'a0', 'a1', 'B']);
+        });
+
+        it('N9: Enter scrolls the current row into view first', () => {
+            const t         = mountTree(leaves(Array.from({ length: 60 }, (_, i) => 'Node ' + i)));
+            const activated = activations(t.tree);
+
+            press(t.el, 'ArrowDown');
+            (t.tree as any).setScrollY(600);
+            press(t.el, 'Enter');
+
+            expect(scrollY(t.tree)).toBe(0);
+            expect(activated).toEqual(['Node 0']);
+        });
+
+        it('N10: with the current row hidden Enter is prevented and does nothing', () => {
+            const a         = { label: 'A', children: leaves(['a0']) };
+            const t         = mountTree([a, { label: 'B' }], { expanded: [a] });
+            const activated = activations(t.tree);
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'ArrowDown');
+            (t.tree as any)._onToggle(a);
+
+            expect(press(t.el, 'Enter')).toBe(1);
+            expect(activated).toEqual([]);
+        });
+
+        it('N11: Enter on an unloaded lazy node loads it once and opens it', async () => {
+            const loadChildren = vi.fn(async () => leaves(['kid']));
+            const t            = mountTree([{ label: 'L', hasChildren: true, loadChildren }]);
+            const activated    = activations(t.tree);
+
+            press(t.el, 'ArrowDown');
+            press(t.el, 'Enter');
+
+            for (let i = 0; i < 3; i++) {
+                await Promise.resolve();
+            }
+
+            expect(activated).toEqual(['L']);
+            expect(loadChildren).toHaveBeenCalledTimes(1);
+            expect(rows(t.tree)).toEqual(['L', 'kid']);
+        });
+
+        it('N12: Enter activates an unselected current row and leaves the selection', () => {
+            const t         = mountTree(leaves(['P', 'Q']));
+            const activated = activations(t.tree);
+            const q         = (t.tree as any)._flatRows[1].node as TreeNode;
+            const rowQ      = (t.tree as any)._rowPool.find((row: any) => row.getNode() === q);
+
+            for (let i = 0; i < 2; i++) {
+                (t.tree as any)._handleClick(makeEvent(rowQ.getElement(), 'click', { ctrlKey: true }));
+            }
+
+            expect(current(t.tree)).toBe('Q');
+            expect(selected(t.tree)).toEqual([]);
+
+            press(t.el, 'Enter');
+
+            expect(activated).toEqual(['Q']);
+            expect(selected(t.tree)).toEqual([]);
+        });
+
+        it('N13: Enter is prevented, not stopped: an ancestor still hears it', () => {
+            const parent          = track(new Container());
+            const t               = mountTree(family(), { parent });
+            const heard: string[] = [];
+            const spy             = (e: KeyboardEvent): void => { heard.push(e.key); };
+
+            Event.addSubtreeListener(parent, 'keydown', spy);
+
+            try {
+                press(t.el, 'ArrowDown');
+
+                expect(press(t.el, 'Enter')).toBe(1);
+                expect(heard[heard.length - 1]).toBe('Enter');
+            } finally {
+                Event.removeSubtreeListener(parent, 'keydown', spy);
+            }
         });
     });
 });

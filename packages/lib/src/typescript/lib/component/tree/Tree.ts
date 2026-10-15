@@ -211,7 +211,7 @@ const _defaultTreeOptions: Partial<TreeOptions> = {
  * handlers with fling momentum.
  *
  * A single node's expand or collapse — a caret click, a row-click toggle,
- * `ArrowRight` / `ArrowLeft`, {@link expandNode}, {@link expandNodeAsync}, or
+ * `ArrowRight` / `ArrowLeft`, `Enter`, {@link expandNode}, {@link expandNodeAsync}, or
  * a lazy load settling with an expand waiting on it — commits its state
  * synchronously and then animates: the toggle turns and the affected rows
  * slide into place over 200 ms. Bulk and structural calls (`expandAll`,
@@ -1022,13 +1022,15 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     on(event: "contextmenu", listener: (node: TreeNode, event: MouseEvent) => void): this;
 
     /**
-     * Registers a listener for a double-click (activation) on a node.
+     * Registers a listener for a node being activated.
      *
-     * @param event - `"dblclick"` fires when a node row is double-clicked,
-     *   receiving the {@link TreeNode} under the cursor. The first click of the
-     *   pair still emits `"selection"` as usual, so `"dblclick"` is an
-     *   activation signal layered on top of selection — consumers typically use
-     *   `"selection"` to preview a node and `"dblclick"` to open it.
+     * @param event - `"dblclick"` fires when a node's row is double-clicked,
+     *   and when `Enter` is pressed while the tree has focus and a current
+     *   row; the listener receives the {@link TreeNode}. The first click of a
+     *   double-click still emits `"selection"` as usual, and `Enter` leaves
+     *   the selection as it is, so `"dblclick"` is an activation signal
+     *   layered on top of selection — consumers typically use `"selection"`
+     *   to preview a node and `"dblclick"` to open it.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This tree, for method chaining.
@@ -1941,6 +1943,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * - `Home` / `End` — jump to first/last visible row (plain) or extend range to edge (Shift)
      * - `PageDown` / `PageUp` — move down/up by one page of rows (plain) or extend range by a
      *   page (Shift); not part of the ARIA pattern, they follow `List` and the table body
+     * - `Enter` — activate the current node: fire `"dblclick"`, then toggle an expandable node
      * - a printable character — type-ahead to the next visible row whose label starts with
      *   what was typed; `Escape` clears the buffer
      *
@@ -2061,9 +2064,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
     /**
      * Handles the keys that act on the current row without moving it by
-     * position: a printable character feeds type-ahead, and `Escape` clears
-     * the type-ahead buffer. A chord with `Control`, `Meta` or `Alt` belongs
-     * to the browser or the application.
+     * position: `Enter` activates it, a printable character feeds
+     * type-ahead, and `Escape` clears the type-ahead buffer. `Enter` is plain
+     * only, and type-ahead allows `Shift` only: a chord with `Control`,
+     * `Meta` or `Alt` belongs to the browser or the application.
      *
      * @param e - The keydown on the tree element.
      * @returns `true` when the key was the tree's own, so the caller
@@ -2086,6 +2090,20 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             return false;
         }
 
+        if (e.key === 'Enter') {
+            if (e.shiftKey) {
+                return false;
+            }
+
+            // A held key's auto-repeat is consumed and ignored, as a menu
+            // does: it would activate the node again on every repeat.
+            if (!e.repeat) {
+                this._activateCurrentNode();
+            }
+
+            return true;
+        }
+
         const typed = isTypeAheadKey(e);
 
         if (typed) {
@@ -2093,6 +2111,34 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         }
 
         return typed;
+    }
+
+    /**
+     * `Enter`: does what a double-click on the current row's label does. It
+     * scrolls the row into view, emits `"dblclick"` and then toggles an
+     * expandable node. The toggle does not depend on {@link getExpandTrigger}:
+     * `Enter` stands for whichever click gesture opens the node. The
+     * selection is not touched. Does nothing with no current row among the
+     * visible rows.
+     */
+    private _activateCurrentNode(): void {
+        const index = this._currentRowIndex();
+
+        if (index < 0) {
+            return;
+        }
+
+        const node = this._flatRows[index].node;
+
+        this._revealFocusRow();
+        this.emit("dblclick", node);
+
+        // Read after the listeners ran, as `_handleDblClick` reads it.
+        const expandable = this._isExpandable(node);
+
+        if (expandable) {
+            this._onToggle(node);
+        }
     }
 
     /**
