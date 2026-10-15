@@ -1829,6 +1829,68 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
+     * `Home` / `End`: activates the first or last tab, as a click on it
+     * would. Acts only while a tab button or its ✕ holds focus and no
+     * modifier is held, so a strip tool keeps the two keys for its own
+     * caret. A target that is already active only takes focus, so no
+     * `"tabpressed"` is emitted for it.
+     *
+     * @param e - The `Home` or `End` keydown.
+     * @param focusedIndex - Index of the cell that holds DOM focus, or `-1`
+     *   when focus is not on a tab button or a ✕ of this strip.
+     *
+     * @returns A prevent disposition when the key was the strip's; nothing otherwise.
+     */
+    private activateEdgeEntry(e: KeyboardEvent, focusedIndex: number): Event.ListenerResult {
+        const chord = e.altKey || e.ctrlKey || e.metaKey || e.shiftKey;
+
+        if (chord || focusedIndex < 0) {
+            return;
+        }
+
+        const target = this._entries[e.key === 'Home' ? 0 : this._entries.length - 1];
+
+        if (target.id === this._activeId) {
+            this.focusActiveEdgeEntry(target);
+        } else {
+            this.setActiveEntry(target.id);
+        }
+
+        return { prevent: true };
+    }
+
+    /**
+     * `Home` / `End` onto the tab that is already active: no `"tabpressed"` is
+     * emitted, since nothing changed for the owner, but the key still has to
+     * bring the tab into focus and view. Focus goes through the roving group
+     * (which does not scroll the strip) so the tab stop follows the active
+     * tab. The reveal is the strip's own one-shot path, run directly: `Tab`
+     * schedules the layout that normally runs it only on `"tabpressed"`, and
+     * nothing has moved, so the laid-out rects it reads are still current.
+     *
+     * @param target - The already-active edge cell.
+     */
+    private focusActiveEdgeEntry(target: BarEntry): void {
+        const rovingIdx = this._rovingTabIndex.getItems().indexOf(target.button);
+
+        if (rovingIdx >= 0) {
+            this._rovingTabIndex.moveTo(rovingIdx);
+        }
+
+        // `moveTo` leaves focus alone when the group already points here.
+        const focused = DOM.source.getActiveElement() === target.button.getElement();
+
+        if (!focused) {
+            target.button.focus(true);
+        }
+
+        // Nothing moved, so the laid-out rects are current and the strip's own
+        // one-shot reveal can run now, with no flag left pending.
+        this._scrollToSelected = true;
+        this.revealSelectedIfRequested();
+    }
+
+    /**
      * Returns the active cell record, or `null` when the strip is empty.
      *
      * @returns The active {@link BarEntry}, or `null`.
@@ -3459,14 +3521,17 @@ class TabBar extends Container<TabBarOptions> {
 
     /**
      * Handles ArrowLeft / ArrowRight to move tab focus and activate the
-     * adjacent tab, and Delete to close the focused tab.
+     * adjacent tab, Home / End to activate the first / last tab, and Delete
+     * to close the focused tab.
      *
      * @param e - The keyboard event fired on the strip element.
      */
     private onToolbarKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (SpatialNavigation.claimsKey(e)) { return; }
 
-        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Delete') {
+        const edgeKey = e.key === 'Home' || e.key === 'End';
+
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Delete' && !edgeKey) {
             return;
         }
 
@@ -3486,6 +3551,10 @@ class TabBar extends Container<TabBarOptions> {
 
         if (e.key === 'Delete') {
             return this.closeFocusedEntry(focusedIdx);
+        }
+
+        if (edgeKey) {
+            return this.activateEdgeEntry(e, focusedIdx);
         }
 
         const activeIdx = focusedIdx >= 0

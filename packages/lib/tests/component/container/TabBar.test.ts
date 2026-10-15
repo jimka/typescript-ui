@@ -11,6 +11,9 @@ import { file } from '~/glyphs/solid/file';
 import { file_lines } from '~/glyphs/solid/file_lines';
 import { DOM } from '~/core/DOM';
 import { SpatialNavigation } from '~/core/SpatialNavigation';
+import { Container } from '~/core/Container';
+import { Tab } from '~/layout/Tab';
+import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -858,5 +861,270 @@ describe('TabBar glyph', () => {
         bar.setEntryGlyph('a', 'file');
 
         expect(bar.isEntryItalic('a')).toBe(true);
+    });
+});
+
+// collection-widget-keyboard-gaps plan, Part D: Home / End activate the first /
+// last tab, as a click on it would, while a tab or its ✕ holds focus and no
+// modifier is held. A strip tool keeps both keys for its own caret.
+describe('TabBar onToolbarKeyDown — Home and End', () => {
+    afterEach(() => {
+        DOM.reset();
+        vi.restoreAllMocks();
+    });
+
+    /** A rendered bar of `a`, a closeable `b` and `c`, recording the ids `"tabpressed"` carried. */
+    function edgeBar(): { bar: TabBar; pressed: string[] } {
+        const bar = new TabBar();
+        const pressed: string[] = [];
+
+        bar.createBarEntry('a', 'Alpha');
+        bar.createBarEntry('b', 'Beta', closeable());
+        bar.createBarEntry('c', 'Gamma');
+        bar.getElement(true);
+        bar.on('tabpressed', (id: string) => { pressed.push(id); });
+
+        return { bar, pressed };
+    }
+
+    /**
+     * Presses a key on the strip, as its keydown listener receives it.
+     *
+     * @param bar - The strip.
+     * @param init - The key and any modifiers.
+     * @returns The listener's result.
+     */
+    function keyDown(bar: TabBar, init: Partial<KeyboardEvent>): unknown {
+        return (bar as any).onToolbarKeyDown(init as KeyboardEvent);
+    }
+
+    it('H1: End from a tab activates and focuses the last tab', () => {
+        installTestDOM(CONFIG);
+
+        const { bar, pressed } = edgeBar();
+
+        barEntries(bar)[1].button.focus();
+
+        expect(keyDown(bar, { key: 'End' })).toEqual({ prevent: true });
+        expect(bar.getActiveEntryId()).toBe('c');
+        expect(pressed).toEqual(['c']);
+        expect(DOM.source.getActiveElement()).toBe(barEntries(bar)[2].button.getElement());
+    });
+
+    it('H2: Home from the last tab activates the first tab', () => {
+        installTestDOM(CONFIG);
+
+        const { bar, pressed } = edgeBar();
+
+        barEntries(bar)[1].button.focus();
+        keyDown(bar, { key: 'End' });
+
+        expect(keyDown(bar, { key: 'Home' })).toEqual({ prevent: true });
+        expect(bar.getActiveEntryId()).toBe('a');
+        expect(pressed).toEqual(['c', 'a']);
+    });
+
+    it('H3: an edge tab that is already active and focused is left alone', () => {
+        installTestDOM(CONFIG);
+
+        const { bar, pressed } = edgeBar();
+
+        barEntries(bar)[1].button.focus();
+        keyDown(bar, { key: 'End' });
+
+        expect(keyDown(bar, { key: 'End' })).toEqual({ prevent: true });
+        expect(pressed).toEqual(['c']);
+
+        const single = new TabBar();
+        const singlePressed: string[] = [];
+
+        single.createBarEntry('only', 'Only');
+        single.getElement(true);
+        single.on('tabpressed', (id: string) => { singlePressed.push(id); });
+        barEntries(single)[0].button.focus();
+
+        expect(keyDown(single, { key: 'Home' })).toEqual({ prevent: true });
+        expect(keyDown(single, { key: 'End' })).toEqual({ prevent: true });
+        expect(singlePressed).toEqual([]);
+    });
+
+    it('H9: an already active edge tab takes focus without a second "tabpressed"', () => {
+        installTestDOM(CONFIG);
+
+        const { bar, pressed } = edgeBar();
+
+        barEntries(bar)[1].button.focus();
+
+        expect(keyDown(bar, { key: 'Home' })).toEqual({ prevent: true });
+        expect(pressed).toEqual([]);
+        expect(DOM.source.getActiveElement()).toBe(barEntries(bar)[0].button.getElement());
+
+        const closing = new TabBar();
+        const closingPressed: string[] = [];
+
+        closing.createBarEntry('a', 'Alpha', closeable());
+        closing.createBarEntry('b', 'Beta');
+        closing.getElement(true);
+        closing.on('tabpressed', (id: string) => { closingPressed.push(id); });
+        barEntries(closing)[0].closeButton!.focus();
+
+        expect(keyDown(closing, { key: 'Home' })).toEqual({ prevent: true });
+        expect(closingPressed).toEqual([]);
+        expect(DOM.source.getActiveElement()).toBe(barEntries(closing)[0].button.getElement());
+    });
+
+    it('H4: with nothing focused, or a strip tool focused, the keys are not the strip\'s', () => {
+        installTestDOM(CONFIG);
+
+        const { bar } = edgeBar();
+
+        expect(keyDown(bar, { key: 'End' })).toBeUndefined();
+
+        const tool = new Button('Tool');
+
+        bar.addTool(tool);
+        tool.focus();
+
+        expect(keyDown(bar, { key: 'Home' })).toBeUndefined();
+        expect(bar.getActiveEntryId()).toBe('a');
+    });
+
+    it('H5: a modifier leaves the key alone', () => {
+        installTestDOM(CONFIG);
+
+        const { bar } = edgeBar();
+
+        barEntries(bar)[1].button.focus();
+
+        for (const modifier of ['ctrlKey', 'altKey', 'metaKey', 'shiftKey']) {
+            expect(keyDown(bar, { key: 'End', [modifier]: true })).toBeUndefined();
+        }
+
+        expect(bar.getActiveEntryId()).toBe('a');
+    });
+
+    it('H6: End from a tab\'s ✕ activates the last tab and focuses its button', () => {
+        installTestDOM(CONFIG);
+
+        const { bar } = edgeBar();
+
+        barEntries(bar)[1].closeButton!.focus();
+        keyDown(bar, { key: 'End' });
+
+        expect(bar.getActiveEntryId()).toBe('c');
+        expect(DOM.source.getActiveElement()).toBe(barEntries(bar)[2].button.getElement());
+    });
+
+    it('H7: an empty strip ignores the keys', () => {
+        installTestDOM(CONFIG);
+
+        const bar = new TabBar();
+
+        bar.getElement(true);
+
+        expect(keyDown(bar, { key: 'Home' })).toBeUndefined();
+    });
+
+    it('H8: a key SpatialNavigation claims is left alone', () => {
+        installTestDOM(CONFIG);
+
+        const { bar } = edgeBar();
+
+        barEntries(bar)[2].button.focus();
+        vi.spyOn(SpatialNavigation, 'claimsKey').mockReturnValue(true);
+
+        expect(keyDown(bar, { key: 'Home' })).toBeUndefined();
+        expect(bar.getActiveEntryId()).toBe('a');
+    });
+});
+
+// collection-widget-keyboard-gaps plan, Part D: Home / End onto the tab that is
+// already active emits no "tabpressed", so nothing else asks the host to lay
+// the strip out. The strip must do it itself, or a tab scrolled out of view
+// stays out of view and the one-shot reveal request fires on a later layout.
+describe('TabBar Home and End — an already active edge tab is revealed', () => {
+    const HOST_WIDTH  = 400;
+    const HOST_HEIGHT = 300;
+    const TAB_COUNT   = 3;
+    /** Most passes a frame drain may take before it gives up. */
+    const MAX_DRAIN_PASSES = 10;
+
+    let frames: Map<number, FrameRequestCallback>;
+    let nextFrame: number;
+
+    /** Captures animation frames so the test can run them on demand. */
+    function captureFrames(): void {
+        frames    = new Map();
+        nextFrame = 1;
+
+        (DOM.sink as any).requestAnimationFrame = (callback: FrameRequestCallback): number => {
+            const handle = nextFrame++;
+
+            frames.set(handle, callback);
+
+            return handle;
+        };
+        (DOM.sink as any).cancelAnimationFrame = (handle: number): void => { frames.delete(handle); };
+    }
+
+    /** Runs the captured frames, and the ones they queue, until none are left. */
+    function drainFrames(): void {
+        for (let pass = 0; pass < MAX_DRAIN_PASSES && frames.size > 0; pass++) {
+            const pending = Array.from(frames.values());
+
+            frames.clear();
+
+            for (const callback of pending) {
+                callback(0);
+            }
+        }
+    }
+
+    afterEach(() => {
+        (AbstractWindow as any).openWindows.clear();
+        DOM.reset();
+        vi.restoreAllMocks();
+    });
+
+    it('H10: Home onto the active first tab reveals it on the next layout, once', () => {
+        installTestDOM(CONFIG);
+        captureFrames();
+
+        const tab  = new Tab({ scrollable: true } as any);
+        const host = new Container({ layoutManager: tab });
+
+        host.getElement(true);
+        host.setWidth(HOST_WIDTH);
+        host.setHeight(HOST_HEIGHT);
+        host.clearInsets();
+
+        for (let i = 0; i < TAB_COUNT; i++) {
+            host.addComponent(new Component({}));
+        }
+
+        host.doLayout();
+        drainFrames();
+
+        const bar     = (tab as any)._bar as TabBar;
+        const entries = barEntries(bar);
+        const pressed: string[] = [];
+
+        bar.on('tabpressed', (id: string) => { pressed.push(id); });
+        entries[1].button.focus();
+        drainFrames();
+
+        const reveal = vi.spyOn((bar as any)._tabClip, 'revealItem');
+
+        expect(bar.getActiveEntryId()).toBe(entries[0].id);
+
+        (bar as any).onToolbarKeyDown({ key: 'Home' } as KeyboardEvent);
+        drainFrames();
+
+        expect(pressed).toEqual([]);
+        expect(reveal).toHaveBeenCalledTimes(1);
+        expect(reveal).toHaveBeenCalledWith(entries[0].button.getElement());
+        expect((bar as any)._scrollToSelected).toBe(false);
+        expect(DOM.source.getActiveElement()).toBe(entries[0].button.getElement());
+        expect(entries[0].button.getAria().getTabIndex()).toBe(0);
     });
 });
