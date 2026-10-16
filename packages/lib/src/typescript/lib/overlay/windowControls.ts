@@ -36,6 +36,27 @@ const _defaultWindowControlOptions: Partial<ButtonOptions> = {
 };
 
 /**
+ * The names of a window's title-bar buttons: what a screen reader announces
+ * for each, and what its hover tooltip shows. One table for `WindowHeader`,
+ * `TabWindow` and the window menu, so a button and the menu row that does the
+ * same thing read the same by default. `restore` replaces `minimize` while the
+ * window is minimized and `maximize` while it is maximized.
+ *
+ * English, like every other built-in string of the library, which has no
+ * translation hook. A consumer who needs another wording reaches the button
+ * through its owner's getter and calls `setText` — see
+ * {@link reflectWindowControlLabel} for how such a name survives a state
+ * change.
+ */
+export const WINDOW_CONTROL_LABEL = {
+    minimize: "Minimize",
+    maximize: "Maximize",
+    restore:  "Restore",
+    close:    "Close",
+    menu:     "Window menu",
+} as const;
+
+/**
  * A single window control button (minimize / maximize / close), shared by
  * `TabWindow`'s trailing tools and `WindowHeader`'s trailing buttons. Real,
  * declared chrome instead of `chromeless: true` — see
@@ -67,8 +88,21 @@ class WindowControlButton extends Button {
         },
     ];
 
-    constructor(glyph: string, subclassDefaults?: Partial<ButtonOptions>) {
-        super(undefined, { glyph, insets: new Insets(2, 2, 2, 2) }, { ..._defaultWindowControlOptions, ...(subclassDefaults ?? {}) });
+    /**
+     * Builds a glyph-only control button that carries a name.
+     *
+     * @param glyph - The registry glyph name to show.
+     * @param title - The button's name: its accessible name and hover text,
+     *   kept off its face.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults.
+     */
+    constructor(glyph: string, title: string, subclassDefaults?: Partial<ButtonOptions>) {
+        super(
+            undefined,
+            { glyph, text: title, showText: false, insets: new Insets(2, 2, 2, 2) },
+            { ..._defaultWindowControlOptions, ...(subclassDefaults ?? {}) },
+        );
     }
 }
 
@@ -127,8 +161,21 @@ class WindowLeadGlyphButton extends Button {
         },
     ];
 
-    constructor(glyph: string, subclassDefaults?: Partial<ButtonOptions>) {
-        super(undefined, { glyph, insets: new Insets(2, 2, 2, 2) }, { ..._defaultWindowLeadGlyphOptions, ...(subclassDefaults ?? {}) });
+    /**
+     * Builds the glyph-only window-menu trigger, which carries a name.
+     *
+     * @param glyph - The registry glyph name to show.
+     * @param title - The button's name: its accessible name and hover text,
+     *   kept off its face.
+     * @param subclassDefaults - Per-subclass default bag layered over this
+     *   class's defaults.
+     */
+    constructor(glyph: string, title: string, subclassDefaults?: Partial<ButtonOptions>) {
+        super(
+            undefined,
+            { glyph, text: title, showText: false, insets: new Insets(2, 2, 2, 2) },
+            { ..._defaultWindowLeadGlyphOptions, ...(subclassDefaults ?? {}) },
+        );
     }
 }
 
@@ -139,11 +186,14 @@ class WindowLeadGlyphButton extends Button {
  * bar re-sets them to the compact tool inset).
  *
  * @param glyph - The registry glyph name to show.
+ * @param title - The button's name, one of {@link WINDOW_CONTROL_LABEL}: its
+ *   accessible name and hover text. Required, so that a control cannot be
+ *   built without a name.
  *
  * @returns The configured control button.
  */
-export function createWindowControlButton(glyph: string): Button {
-    return new WindowControlButton(glyph);
+export function createWindowControlButton(glyph: string, title: string): Button {
+    return new WindowControlButton(glyph, title);
 }
 
 /**
@@ -153,11 +203,13 @@ export function createWindowControlButton(glyph: string): Button {
  * trailing controls.
  *
  * @param glyph - The registry glyph name to show.
+ * @param title - The button's name: its accessible name and hover text.
+ *   Required, so that the trigger cannot be built without a name.
  *
  * @returns The configured leading glyph button.
  */
-export function createWindowLeadGlyphButton(glyph: string): Button {
-    const button = new WindowLeadGlyphButton(glyph);
+export function createWindowLeadGlyphButton(glyph: string, title: string): Button {
+    const button = new WindowLeadGlyphButton(glyph, title);
     // Button sets its whole `_content` row to `pointer-events: none` so face
     // clicks fall through to the `<button>`; this button then sits inside
     // `TabBar._leadGroup`'s own `pointer-events: none`, so with no declaration
@@ -166,6 +218,30 @@ export function createWindowLeadGlyphButton(glyph: string): Button {
     button.setPointerEvents("auto");
 
     return button;
+}
+
+/**
+ * Renames a minimize or maximize control as the window changes state — to
+ * `restore` while the state it leads to is the current one, back to its own
+ * name otherwise. A control carries one of two library names: its own and
+ * `restore`. Any other text was given by the consumer and is left alone: the
+ * window only replaces a name it gave.
+ *
+ * @param button - The control to rename.
+ * @param ownLabel - The control's own library name, {@link WINDOW_CONTROL_LABEL}'s
+ *   `minimize` or `maximize`.
+ * @param restoring - True while a press on the control restores the window,
+ *   so that it reads `restore`.
+ */
+export function reflectWindowControlLabel(button: Button, ownLabel: string, restoring: boolean): void {
+    const current            = button.getText();
+    const carriesLibraryName = current === ownLabel || current === WINDOW_CONTROL_LABEL.restore;
+
+    if (!carriesLibraryName) {
+        return;
+    }
+
+    button.setText(restoring ? WINDOW_CONTROL_LABEL.restore : ownLabel);
 }
 
 /**

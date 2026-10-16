@@ -7,7 +7,9 @@ import { callable } from "~/core/Callable.js";
 import {
     createWindowControlButton,
     createWindowLeadGlyphButton,
+    reflectWindowControlLabel,
     setWindowControlsActive,
+    WINDOW_CONTROL_LABEL,
 } from "~/overlay/windowControls.js";
 import {
     AbstractWindow,
@@ -65,6 +67,12 @@ class TabWindow extends AbstractWindow {
     private _maxTool: Button;
     private _leadGlyphBtn: Button;
 
+    // The name this window last wrote into aria-label, or null when it wrote
+    // none. A different current value means a consumer named the window, and
+    // that name is left alone. A plain initializer is safe: nothing reads or
+    // writes the field during the super() cascade.
+    private _reflectedName: string | null = null;
+
     private readonly _boundOnLeadGlyphAction: () => void = () => this.onLeadGlyphAction();
 
     /**
@@ -92,9 +100,9 @@ class TabWindow extends AbstractWindow {
         // `window.control` theme tokens, same box). The bar later re-sets their
         // insets to the compact tool inset (see `Tab`/`TabBar`), so the factory's
         // 2px insets are the standalone default, not the rendered box.
-        this._minTool   = createWindowControlButton("window-minimize");
-        this._maxTool   = createWindowControlButton("window-maximize");
-        this._closeTool = createWindowControlButton("xmark");
+        this._minTool   = createWindowControlButton("window-minimize", WINDOW_CONTROL_LABEL.minimize);
+        this._maxTool   = createWindowControlButton("window-maximize", WINDOW_CONTROL_LABEL.maximize);
+        this._closeTool = createWindowControlButton("xmark", WINDOW_CONTROL_LABEL.close);
 
         this._minTool.on("action",   () => this.toggleMinimize());
         this._maxTool.on("action",   () => this.toggleMaximize());
@@ -109,7 +117,8 @@ class TabWindow extends AbstractWindow {
         // the `window-maximize` default. Built from the shared leading-glyph factory
         // (transparent, clickable, control-peer box — it opens the window menu) so it
         // matches the header's title icon.
-        this._leadGlyphBtn = createWindowLeadGlyphButton(this._options.glyph ?? "window-maximize");
+        this._leadGlyphBtn = createWindowLeadGlyphButton(this._options.glyph ?? "window-maximize", WINDOW_CONTROL_LABEL.menu);
+        this._leadGlyphBtn.getAria().setHasPopup("menu");
         this._leadGlyphBtn.on("action", this._boundOnLeadGlyphAction);
         this._tab.setBarLeadingWidget(this._leadGlyphBtn);
 
@@ -143,6 +152,48 @@ class TabWindow extends AbstractWindow {
         this._leadGlyphBtn.setGlyph(glyph);
 
         return this;
+    }
+
+    /**
+     * Returns the minimize tool, named "Minimize" — "Restore" while the window
+     * is minimized. Call `setText` on it to give it another name, which is
+     * then kept in every window state.
+     *
+     * @returns The minimize [`Button`](/api/component/button/classes/Button).
+     */
+    getMinimizeButton(): Button {
+        return this._minTool;
+    }
+
+    /**
+     * Returns the maximize tool, named "Maximize" — "Restore" while the window
+     * is maximized. Call `setText` on it to give it another name, which is
+     * then kept in every window state.
+     *
+     * @returns The maximize [`Button`](/api/component/button/classes/Button).
+     */
+    getMaximizeButton(): Button {
+        return this._maxTool;
+    }
+
+    /**
+     * Returns the close tool, named "Close". Call `setText` on it to give it
+     * another name.
+     *
+     * @returns The close [`Button`](/api/component/button/classes/Button).
+     */
+    getCloseButton(): Button {
+        return this._closeTool;
+    }
+
+    /**
+     * Returns the leading glyph button that opens the window menu, named
+     * "Window menu". Call `setText` on it to give it another name.
+     *
+     * @returns The window-menu [`Button`](/api/component/button/classes/Button).
+     */
+    getWindowMenuButton(): Button {
+        return this._leadGlyphBtn;
     }
 
     // ----- AbstractWindow hook implementations -----
@@ -227,14 +278,51 @@ class TabWindow extends AbstractWindow {
     }
 
     /**
-     * No-op: a `TabWindow` has no maximize/restore glyph to swap. The maximize
-     * control tool keeps a single glyph; the window state is conveyed by the
-     * window geometry, not a glyph change.
+     * Renames the maximize and minimize tools to match the window state: the
+     * maximize tool reads "Restore" while maximized, the minimize tool reads
+     * "Restore" while minimized. Their glyphs stay — a `TabWindow` has no
+     * maximize/restore glyph to swap — so the name is what tells a
+     * screen-reader user, and the tooltip a mouse user, what a press will do.
+     * A tool the consumer renamed is left as it is.
      *
-     * @param _state - The window state being entered (unused).
+     * @param state - The window state being entered.
      */
-    protected reflectMaximizeState(_state: WindowState): void {
-        // Intentionally empty — see method JSDoc.
+    protected reflectMaximizeState(state: WindowState): void {
+        reflectWindowControlLabel(this._maxTool, WINDOW_CONTROL_LABEL.maximize, state === "maximized");
+        reflectWindowControlLabel(this._minTool, WINDOW_CONTROL_LABEL.minimize, state === "minimized");
+    }
+
+    /**
+     * Writes the active tab's label into `aria-label`, so the window is
+     * announced by the title it shows. A `TabWindow` has no title element to
+     * point `aria-labelledby` at, and its title is never cached, so the name
+     * is read at the two moments a screen reader announces the window: when it
+     * is shown and when it is activated. A name the consumer set through
+     * `getAria().setLabel(…)` is left alone, and an empty strip leaves the
+     * window unnamed. A consumer who clears the label hands the name back:
+     * the window writes its title again.
+     */
+    protected reflectAccessibleName(): void {
+        const aria         = this.getAria();
+        const currentLabel = aria.getLabel();
+
+        // A label other than the one last written here is the consumer's.
+        // No label at all is nobody's, so there is nothing to protect.
+        const namedByConsumer = currentLabel !== null && currentLabel !== this._reflectedName;
+
+        if (namedByConsumer) {
+            return;
+        }
+
+        const title = this.getTitle();
+
+        this._reflectedName = title !== "" ? title : null;
+
+        if (this._reflectedName !== null) {
+            aria.setLabel(this._reflectedName);
+        } else {
+            aria.clearLabel();
+        }
     }
 
     /**

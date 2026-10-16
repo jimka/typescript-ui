@@ -318,7 +318,9 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
     /**
      * Sets the title row text. Lazily creates the underlying
      * [`Text`](/api/component/input/classes/Text) child on first call. Passing
-     * `null` clears the title.
+     * `null` clears the title. The title is also the popover's accessible
+     * name: the popover points `aria-labelledby` at it when the title row is
+     * created, unless a name was already set through `getAria()`.
      *
      * @param text - The title string, or `null` to clear.
      * @returns This popover, for method chaining.
@@ -335,6 +337,19 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
             this._titleComponent.setFontWeight("bold");
 
             this.insertComponent(this._titleComponent, 0);
+
+            // Named by reference to the title, so the name follows the title
+            // text. Written once, when the title row is created, and only
+            // when the consumer has not named the popover: the reference
+            // would outrank an aria-label and replace a reference of theirs.
+            // Runs inside super() when `title` is an option: touch nothing
+            // here but getAria(), which is ready by then.
+            const aria            = this.getAria();
+            const namedByConsumer = aria.getLabel() !== null || aria.getLabelledBy() !== null;
+
+            if (!namedByConsumer) {
+                aria.setLabelledBy(this._titleComponent.getId());
+            }
         } else {
             this._titleComponent.setText(text);
         }
@@ -354,14 +369,24 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
     }
 
     /**
-     * Removes the title row.
+     * Removes the title row, and with it the popover's reference to the title
+     * as its accessible name. A name the consumer set through `getAria()` is
+     * not touched.
      *
      * @returns This popover, for method chaining.
      */
     clearTitle(): this {
         if (this._titleComponent) {
+            // Only the reference to the title goes with it; one the consumer
+            // pointed elsewhere stays.
+            const namedByTitle = this.getAria().getLabelledBy() === this._titleComponent.getId();
+
             this.removeComponent(this._titleComponent);
             this._titleComponent = null;
+
+            if (namedByTitle) {
+                this.getAria().clearLabelledBy();
+            }
         }
 
         this._title = null;

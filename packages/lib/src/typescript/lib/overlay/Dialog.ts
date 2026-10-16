@@ -102,6 +102,15 @@ export interface DialogButtonConfig {
 export type DialogSeverity = 'info' | 'success' | 'warning' | 'error';
 
 /**
+ * The ARIA role of a dialog: `'dialog'`, or `'alertdialog'` for a message
+ * that interrupts the user and needs an answer — a confirmation prompt, a
+ * warning, an error.
+ *
+ * @category Core
+ */
+export type DialogRole = 'dialog' | 'alertdialog';
+
+/**
  * Configuration object passed to `new Dialog(config)` or `Dialog.show(config)`.
  *
  * @category Core
@@ -145,6 +154,21 @@ export interface DialogConfig {
      * element on open, which falls back to the default order.
      */
     initialFocus?    : Component;
+    /**
+     * How the dialog is announced by assistive technology. `'alertdialog'` is
+     * for a message that interrupts the user and needs an answer;
+     * `Dialog.confirm`, `Dialog.warning` and `Dialog.error` pass it. Defaults
+     * to `'dialog'`. Read once, at construction; change it afterwards through
+     * `dialog.getAria().setRole(…)`.
+     */
+    role?            : DialogRole;
+    /**
+     * Accessible name of the dialog, replacing the title as the name a screen
+     * reader announces. Use it when the title alone does not say what the
+     * dialog is about, or when the title is empty. An empty string counts as
+     * not set. Read once, at construction.
+     */
+    ariaLabel?       : string;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +188,9 @@ const MIN_CONTENT_HEIGHT: number = 80;
 // Minimum gap kept between a content-resized dialog and each viewport edge, so a
 // dialog grown to tall content never runs flush to the top/bottom of the screen.
 const DIALOG_VIEWPORT_MARGIN: number = 24;
+
+/** Accessible name and hover text of the title-bar close button. */
+const CLOSE_BUTTON_LABEL: string = "Close";
 
 // Leading title-bar glyph per severity tone, mirroring Notification's badges.
 const SEVERITY_GLYPH: Record<DialogSeverity, string> = {
@@ -252,7 +279,8 @@ function lastStopOutside(stops: Handle[], owner: Handle): Handle | null {
  * Reach this instance via [`Dialog.getTitleBar()`](/api/overlay/classes/Dialog#gettitlebar) — there is no public
  * constructor. The supported surface is `getTitleText()` (for tinting the
  * title text colour), `setGlyph()` / `getGlyph()` (for the optional leading
- * icon), and any inherited [`Component`](/api/core/classes/Component) setter
+ * icon), `getCloseButton()` (for renaming the close button with `setText`),
+ * and any inherited [`Component`](/api/core/classes/Component) setter
  * (e.g. `setBackgroundColor`).
  *
  * @category Core
@@ -290,7 +318,7 @@ class DialogTitleBar extends Component {
         this.addComponent(this._titleText);
 
         if (dismissable) {
-            this._closeButton = new Button({ glyph: "xmark" });
+            this._closeButton = new Button({ glyph: "xmark", text: CLOSE_BUTTON_LABEL, showText: false });
             this._closeButton.setInsets(new Insets(0, 0, 0, 0));
             this._closeButton.setBorder("none");
             this._closeButton.clearBackgroundImage();
@@ -781,6 +809,10 @@ class Dialog extends Component implements DismissableLayer {
             insets:        new Insets(0, 0, 0, 0),
         });
 
+        // The component whose text describes the dialog to assistive
+        // technology: the message, when the dialog is built from one.
+        let description: Component | null = null;
+
         if (config.contentComponent) {
             this._contentContainer.addComponent(config.contentComponent);
         } else {
@@ -789,9 +821,14 @@ class Dialog extends Component implements DismissableLayer {
             messageText.setWordBreak("break-word");
             messageText.setPadding(new Insets(16, 16, 16, 16));
             this._contentContainer.addComponent(messageText);
+
+            if (config.message) {
+                description = messageText;
+            }
         }
 
         this.addComponent(this._contentContainer, { placement: Placement.CENTER });
+        this.applyAriaSemantics(description);
 
         this._buttonRow = new DialogButtonRow(buttons, (result) => this.hide(result));
         this.addComponent(this._buttonRow, { placement: Placement.SOUTH });
@@ -878,6 +915,38 @@ class Dialog extends Component implements DismissableLayer {
 
         if (headerGlyph !== null) {
             headerGlyph.setForegroundColor(fgVar);
+        }
+    }
+
+    /**
+     * Gives the dialog what assistive technology announces when focus enters
+     * it: the configured role, a name, and a description. The name is a
+     * reference to the title text, so it follows every later change of that
+     * text; a configured `ariaLabel` replaces the reference, because a browser
+     * prefers `aria-labelledby` over `aria-label` when both are present.
+     *
+     * The ARIA modal flag is deliberately not set. The `inert` attribute
+     * `LayerManager` puts on everything outside the dialog is what makes it
+     * modal, and it leaves alone the layers the dialog opens — its dropdowns
+     * and menus, mounted beside it — which the flag would hide along with the
+     * page (ARCHITECTURE.md, "Modal layers").
+     *
+     * @param description - The component whose text describes the dialog, or
+     *   `null` for a dialog that has none.
+     */
+    private applyAriaSemantics(description: Component | null): void {
+        const aria = this.getAria();
+
+        aria.setRole(this._config.role ?? "dialog");
+
+        if (this._config.ariaLabel) {
+            aria.setLabel(this._config.ariaLabel);
+        } else {
+            aria.setLabelledBy(this._titleBar.getTitleText().getId());
+        }
+
+        if (description !== null) {
+            aria.setDescribedBy(description.getId());
         }
     }
 
@@ -1116,13 +1185,14 @@ class Dialog extends Component implements DismissableLayer {
 
     /**
      * Resolves the configured `initialFocus` component to the element that
-     * should take focus: the component's own root element when it is itself
-     * focusable (a `TextField` renders as the `<input>`), otherwise its first
-     * focusable descendant (a `Panel` wrapping a field).
+     * should take focus: its first visible, enabled stop, the component's own
+     * root element included (a `TextField` renders as the `<input>`; a `Panel`
+     * wrapping a field offers the field).
      *
      * @returns The element to focus, or `null` when no `initialFocus` is
-     *   configured or it offers nothing focusable — both of which fall through
-     *   to the default order.
+     *   configured or it offers no stop that can take focus now — hidden and
+     *   disabled ones do not count — both of which fall through to the
+     *   default order.
      */
     private requestedFocusElement(): Handle | null {
         const component = this._config.initialFocus;
@@ -1132,11 +1202,9 @@ class Dialog extends Component implements DismissableLayer {
             return null;
         }
 
-        if (DOM.source.matches(element, FOCUSABLE_SELECTOR)) {
-            return element;
-        }
-
-        return DOM.source.querySelector(element, FOCUSABLE_SELECTOR);
+        // visibleFocusable lists the root first when it is itself a stop, then its
+        // descendants, and leaves out anything hidden or disabled.
+        return visibleFocusable(element)[0] ?? null;
     }
 
     /**
@@ -1675,7 +1743,8 @@ class Dialog extends Component implements DismissableLayer {
      * Displays a confirm/cancel dialog and resolves to `true` when the user confirms.
      *
      * Buttons are ordered Cancel (default focus) then Confirm, so pressing Enter or
-     * Escape both safely default to cancellation.
+     * Escape both safely default to cancellation. The dialog is announced as an
+     * alert dialog.
      *
      * @param title - Text displayed in the title bar.
      * @param message - Body message shown in the content area.
@@ -1692,6 +1761,7 @@ class Dialog extends Component implements DismissableLayer {
         const result = await Dialog.show({
             title,
             message,
+            role: 'alertdialog',
             buttons: [
                 { ...DialogButtons.Cancel, primary: true },
                 DialogButtons.Confirm,
@@ -1705,7 +1775,9 @@ class Dialog extends Component implements DismissableLayer {
      * Displays a severity-toned dialog with a single OK button and resolves once
      * the user acknowledges it. Shared by the {@link Dialog.info} /
      * {@link Dialog.success} / {@link Dialog.warning} / {@link Dialog.error}
-     * shorthands.
+     * shorthands. A warning or an error interrupts the user, so those two are
+     * alert dialogs; an info or a success message is an acknowledgement and
+     * stays a plain dialog.
      *
      * @param severity - The title-bar severity tone (see {@link DialogConfig.severity}).
      * @param title - Text displayed in the title bar.
@@ -1716,6 +1788,7 @@ class Dialog extends Component implements DismissableLayer {
             title,
             message,
             severity,
+            role: severity === 'warning' || severity === 'error' ? 'alertdialog' : 'dialog',
             buttons: [{ ...DialogButtons.Ok, primary: true }],
         });
     }
@@ -1754,7 +1827,7 @@ class Dialog extends Component implements DismissableLayer {
 
     /**
      * Displays a warning-toned dialog with a single OK button and resolves once
-     * the user acknowledges it.
+     * the user acknowledges it. The dialog is announced as an alert dialog.
      *
      * @param title - Text displayed in the title bar.
      * @param message - Body message shown in the content area.
@@ -1771,7 +1844,8 @@ class Dialog extends Component implements DismissableLayer {
     /**
      * Displays an error-toned dialog with a single OK button and resolves once
      * the user acknowledges it. The title bar carries the error severity tint and
-     * glyph (see {@link DialogConfig.severity}).
+     * glyph (see {@link DialogConfig.severity}). The dialog is announced as an
+     * alert dialog.
      *
      * @param title - Text displayed in the title bar.
      * @param message - Body message shown in the content area.

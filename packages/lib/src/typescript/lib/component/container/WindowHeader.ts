@@ -20,7 +20,9 @@ import { Placement } from "~/primitive/Placement.js";
 import { callable } from "~/core/Callable.js";
 import {
     createWindowControlButton,
+    reflectWindowControlLabel,
     setWindowControlsActive,
+    WINDOW_CONTROL_LABEL,
 } from "~/overlay/windowControls.js";
 import { xmark } from "~/glyphs/solid/xmark.js";
 import { window_maximize } from "~/glyphs/solid/window_maximize.js";
@@ -165,9 +167,9 @@ class WindowHeader extends Header {
         // `Insets(0,4,0,4)` only sets the within-box horizontal padding; the stretch
         // supplies the height. They fill the band edge-to-edge (no overflow, so the
         // clip frame contains them) and meet the content panel at the bottom edge.
-        this._minimizeButton = createWindowControlButton("window-minimize");
-        this._maximizeButton = createWindowControlButton("window-maximize");
-        this._exitButton     = createWindowControlButton("xmark");
+        this._minimizeButton = createWindowControlButton("window-minimize", WINDOW_CONTROL_LABEL.minimize);
+        this._maximizeButton = createWindowControlButton("window-maximize", WINDOW_CONTROL_LABEL.maximize);
+        this._exitButton     = createWindowControlButton("xmark", WINDOW_CONTROL_LABEL.close);
 
         for (const control of [this._minimizeButton, this._maximizeButton, this._exitButton]) {
             control.setInsets(new Insets(0, 4, 0, 4));
@@ -461,7 +463,10 @@ class WindowHeader extends Header {
     /**
      * Swaps the maximize button's glyph between the "maximize" and "restore"
      * icons. Called by the owning [`Window`](/api/overlay/classes/Window) when
-     * transitioning between the `"normal"` and `"maximized"` states.
+     * transitioning between the `"normal"` and `"maximized"` states. The
+     * button's name — its accessible name and tooltip — follows the glyph:
+     * "Restore" with the restore icon, "Maximize" otherwise. A name set on the
+     * button through {@link getMaximizeButton} is left as it is.
      *
      * @param name - Either `"window-maximize"` or `"window-restore"`.
      *
@@ -469,6 +474,8 @@ class WindowHeader extends Header {
      */
     setMaximizeButtonGlyph(name: "window-maximize" | "window-restore"): this {
         this._maximizeButton.setGlyph(name);
+
+        reflectWindowControlLabel(this._maximizeButton, WINDOW_CONTROL_LABEL.maximize, name === "window-restore");
 
         return this;
     }
@@ -479,7 +486,10 @@ class WindowHeader extends Header {
      * transitioning into and out of the `"minimized"` state — while minimized the
      * window stays docked at header height with the button visible, so a restore
      * glyph signals that pressing it un-minimizes (mirroring the maximize button's
-     * restore swap).
+     * restore swap). The button's name — its accessible name and tooltip —
+     * follows the glyph: "Restore" with the restore icon, "Minimize" otherwise.
+     * A name set on the button through {@link getMinimizeButton} is left as it
+     * is.
      *
      * @param name - Either `"window-minimize"` or `"window-restore"`.
      *
@@ -487,6 +497,8 @@ class WindowHeader extends Header {
      */
     setMinimizeButtonGlyph(name: "window-minimize" | "window-restore"): this {
         this._minimizeButton.setGlyph(name);
+
+        reflectWindowControlLabel(this._minimizeButton, WINDOW_CONTROL_LABEL.minimize, name === "window-restore");
 
         return this;
     }
@@ -598,6 +610,38 @@ class WindowHeader extends Header {
         const trailingW = this._trailingRow.getPreferredSize()?.width  ?? 0;
 
         return glyphW + textBudget + trailingW;
+    }
+
+    /**
+     * Returns the minimize button, named "Minimize" — "Restore" while the
+     * window is minimized. Call `setText` on it to give it another name, which
+     * is then kept in every window state.
+     *
+     * @returns The minimize [`Button`](/api/component/button/classes/Button).
+     */
+    getMinimizeButton(): Button {
+        return this._minimizeButton;
+    }
+
+    /**
+     * Returns the maximize button, named "Maximize" — "Restore" while the
+     * window is maximized. Call `setText` on it to give it another name, which
+     * is then kept in every window state.
+     *
+     * @returns The maximize [`Button`](/api/component/button/classes/Button).
+     */
+    getMaximizeButton(): Button {
+        return this._maximizeButton;
+    }
+
+    /**
+     * Returns the close (exit) button, named "Close". Call `setText` on it to
+     * give it another name.
+     *
+     * @returns The close [`Button`](/api/component/button/classes/Button).
+     */
+    getCloseButton(): Button {
+        return this._exitButton;
     }
 
     /**

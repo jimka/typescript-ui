@@ -7,7 +7,7 @@ import { Component } from '~/core/Component';
 import { _Button as Button } from '~/component/button/Button';
 import { _DialogBackdrop as DialogBackdrop } from '~/component/container/DialogBackdrop';
 import { FOCUSABLE_SELECTOR } from '~/core/Focusable';
-import { installTestDOM, setConnected, setQuerySelectorAllResult, setRenderedVisible } from '../dom/TestDOM';
+import { installTestDOM, setConnected, setQuerySelectorAllResult, setQuerySelectorResult, setRenderedVisible } from '../dom/TestDOM';
 import { Diagnostics } from '~/core/Diagnostics';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -1356,16 +1356,16 @@ describe('Dialog — initial focus', () => {
         expect(dialog.requestFocusEl()).toBe(el);
     });
 
+    // F1
     it('requestedFocusElement() falls back to the first focusable descendant', () => {
         installTestDOM(CONFIG);
 
         // A Panel wrapping a field: the root is not focusable, but a descendant is.
         const wrapper    = new Component();
         const dialog     = new TestDialog({ title: 'T', contentComponent: wrapper, initialFocus: wrapper });
-        wrapper.getElement(true);
         const descendant = DOM.sink.createElement('input');
         vi.spyOn(DOM.source, 'matches').mockReturnValue(false);
-        vi.spyOn(DOM.source, 'querySelector').mockReturnValue(descendant);
+        setQuerySelectorAllResult(wrapper.getElement(true)!, FOCUSABLE_SELECTOR, [descendant]);
 
         expect(dialog.requestFocusEl()).toBe(descendant);
     });
@@ -1377,9 +1377,87 @@ describe('Dialog — initial focus', () => {
         const dialog  = new TestDialog({ title: 'T', contentComponent: wrapper, initialFocus: wrapper });
         wrapper.getElement(true);
         vi.spyOn(DOM.source, 'matches').mockReturnValue(false);
-        vi.spyOn(DOM.source, 'querySelector').mockReturnValue(null);
 
         expect(dialog.requestFocusEl()).toBeNull();
+    });
+
+    // F2
+    it('requestedFocusElement() is null when the only stop is not rendered', () => {
+        installTestDOM(CONFIG);
+
+        // A hidden initialFocus must fall through to the default order: a
+        // focus call on it does nothing, and the dialog would open unfocused.
+        const wrapper = new Component();
+        const dialog  = new TestDialog({ title: 'T', contentComponent: wrapper, initialFocus: wrapper });
+        const field   = DOM.sink.createElement('input');
+        setQuerySelectorAllResult(wrapper.getElement(true)!, FOCUSABLE_SELECTOR, [field]);
+        // What a browser's querySelector answers: the first match, shown or not.
+        setQuerySelectorResult(FOCUSABLE_SELECTOR, field);
+        setRenderedVisible(field, false);
+
+        expect(dialog.requestFocusEl()).toBeNull();
+    });
+
+    // F3
+    it('requestedFocusElement() is null when the only stop is disabled', () => {
+        installTestDOM(CONFIG);
+
+        const wrapper = new Component();
+        const dialog  = new TestDialog({ title: 'T', contentComponent: wrapper, initialFocus: wrapper });
+        const field   = DOM.sink.createElement('input');
+        setQuerySelectorAllResult(wrapper.getElement(true)!, FOCUSABLE_SELECTOR, [field]);
+        // What a browser's querySelector answers: the first match, enabled or not.
+        setQuerySelectorResult(FOCUSABLE_SELECTOR, field);
+        DOM.sink.edit(field).attr('disabled', '').commit();
+
+        expect(dialog.requestFocusEl()).toBeNull();
+    });
+
+    // F4
+    it('requestedFocusElement() skips a hidden stop for the next visible one', () => {
+        installTestDOM(CONFIG);
+
+        const wrapper = new Component();
+        const dialog  = new TestDialog({ title: 'T', contentComponent: wrapper, initialFocus: wrapper });
+        const hidden  = DOM.sink.createElement('input');
+        const field   = DOM.sink.createElement('input');
+        setQuerySelectorAllResult(wrapper.getElement(true)!, FOCUSABLE_SELECTOR, [hidden, field]);
+        setRenderedVisible(hidden, false);
+
+        expect(dialog.requestFocusEl()).toBe(field);
+    });
+
+    it('a hidden initialFocus lets the dialog fall back to its default focus order', () => {
+        installTestDOM(CONFIG);
+
+        const scheduled: Array<() => void> = [];
+        vi.spyOn(Component, 'afterNextLayout').mockImplementation((cb: () => void) => {
+            scheduled.push(cb);
+
+            return { cancel: () => {} };
+        });
+
+        // The form's first field is the requested one and is hidden; the
+        // second field is what the default order finds.
+        const form    = new Component();
+        const dialog  = new TestDialog({ title: 'T', contentComponent: form, initialFocus: form });
+        const formEl  = form.getElement(true)!;
+        const hidden  = DOM.sink.createElement('input');
+        const shown   = DOM.sink.createElement('input');
+        const content = dialog.getContentComponent().getElement(true)!;
+
+        setRenderedVisible(hidden, false);
+        setQuerySelectorAllResult(formEl, FOCUSABLE_SELECTOR, [hidden]);
+        // What a browser's querySelector answers: the first match, shown or not.
+        setQuerySelectorResult(FOCUSABLE_SELECTOR, hidden);
+        setQuerySelectorAllResult(content, FOCUSABLE_SELECTOR, [hidden, shown]);
+
+        void dialog.show();
+        scheduled.forEach(cb => cb());
+
+        expect(DOM.source.getActiveElement()).toBe(shown);
+
+        dialog.dispose();
     });
 });
 

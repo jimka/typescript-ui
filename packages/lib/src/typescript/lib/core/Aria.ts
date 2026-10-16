@@ -36,6 +36,7 @@ export type AriaRole =
     | 'status'
     | 'alert'
     | 'dialog'
+    | 'alertdialog'
     | 'checkbox'
     | 'radio'
     | 'slider'
@@ -379,6 +380,73 @@ export class Aria {
      */
     getLabelledBy(): string | null {
         return this._attributes.get("labelledby") ?? null;
+    }
+
+    /**
+     * Removes `aria-labelledby`, clearing any labelling reference previously
+     * set with {@link setLabelledBy}. The null companion to `setLabelledBy` —
+     * needed before {@link setLabel} can name the element, because a browser
+     * prefers `aria-labelledby` over `aria-label`.
+     *
+     * @returns This Aria helper, for method chaining.
+     */
+    clearLabelledBy(): this {
+        // The clear-side twin of `setAttribute`'s own guard: with no cached
+        // entry there is no `aria-labelledby` on the element to remove.
+        const hasReference = this._attributes.has("labelledby");
+
+        if (!hasReference) {
+            return this;
+        }
+
+        this._attributes.delete("labelledby");
+        this._component.applyAriaAttribute("aria-labelledby", null);
+
+        return this;
+    }
+
+    /**
+     * Sets `aria-describedby` to the ID of the element that describes this
+     * one. Assistive technology reads that element's text after this
+     * element's accessible name and role.
+     *
+     * @param id - The ID of the describing element.
+     */
+    setDescribedBy(id: string): this {
+        this.setAttribute("describedby", id);
+
+        return this;
+    }
+
+    /**
+     * Returns the current `aria-describedby` value, or null if not set.
+     *
+     * @returns The describing element ID, or null.
+     */
+    getDescribedBy(): string | null {
+        return this._attributes.get("describedby") ?? null;
+    }
+
+    /**
+     * Removes `aria-describedby`, clearing any describing reference
+     * previously set with {@link setDescribedBy}. The null companion to
+     * `setDescribedBy`.
+     *
+     * @returns This Aria helper, for method chaining.
+     */
+    clearDescribedBy(): this {
+        // The clear-side twin of `setAttribute`'s own guard: with no cached
+        // entry there is no `aria-describedby` on the element to remove.
+        const hasReference = this._attributes.has("describedby");
+
+        if (!hasReference) {
+            return this;
+        }
+
+        this._attributes.delete("describedby");
+        this._component.applyAriaAttribute("aria-describedby", null);
+
+        return this;
     }
 
     /**

@@ -690,3 +690,173 @@ Against the WAI-ARIA dialog patterns:
 [^initial-focus]: The WAI-ARIA pattern asks for focus on the least destructive action of a confirmation, on the most likely action of a simple message, and on the first field of a form. `Dialog.confirm` marks Cancel `primary`, the severity shortcuts mark OK `primary`, a message body holds nothing focusable so the primary button wins, and a form's first field comes before the buttons. A dialog with nothing focusable takes focus itself since the focus-trap plan, and now has a role and a name to announce there. The hidden-`initialFocus` case is the first item of that plan's "Left as they are" list that this plan depends on: without focus inside the dialog, none of the new attributes is ever spoken. `DialogConfig.initialFocus` already documents the fixed behaviour ("Ignored when the component has no focusable element on open").
 
 [^sqladmin]: Read, not run (`/home/jika/typescript/sqladmin/frontend/src`). The application calls `Dialog.confirm`, `Dialog.error` and `Dialog.show`, constructs `Dialog` directly (the login dialog with `dismissable: false` and `initialFocus`, `promptQueryName`, `ImportRowsDialog`), subclasses it twice (`DismissDialog`, `SqlPreviewModal`, each passing a config to `super`), and opens one `Window`. It never calls `getTitleBar()`, never sets ARIA on a dialog or window, and uses no `Popover` or `Drawer`. Every dialog passes a non-empty `title`, so each gets a name. What a user of the application notices: confirm and error prompts are announced as alert dialogs with their message, and title-bar buttons show a tooltip. The login dialog's `initialFocus` is a visible field, so the fallback change does not touch it.
+
+---
+
+## Implementation Notes
+
+Built on `feature/scroll-reveal-geometry-fixes` (`e521d512f`). The plan was drafted on that branch before it was rebased onto the current master. Nothing had drifted: every path and line number the plan cites matched the base.
+
+### Decided by the user on 2026-10-10: no `aria-modal` anywhere
+
+Implemented as planned. No `Dialog`, `Drawer`, `Window`, `TabWindow` or `Popover` sets `aria-modal`, and `Aria` has no setter for it. This was the plan's one debatable call, and it could not be tested where it matters.
+
+**The decision.** Accepted as implemented. The screen reader check (VoiceOver, NVDA, JAWS, Firefox and WebKit) stays a manual verification.
+
+**The evidence.**
+
+- `inert` already removes the page. Measured again in Chromium on Linux on this branch: with a dialog open, the accessibility-tree snapshot holds the dialog's own nodes and every node of the page behind is `ignored`.
+- `aria-modal` is all-or-nothing by DOM containment. The library mounts a dialog's dropdowns, menus, popovers and nested dialogs on `<html>`, beside the dialog. Toast text is kept readable while a dialog is open.
+- Two public reports say what VoiceOver then does. [w3c/aria-practices#1241](https://github.com/w3c/aria-practices/issues/1241): VoiceOver does not accept an element that is not a DOM descendant of the `aria-modal` element, and `aria-owns` does not help. [w3c/aria#1854](https://github.com/w3c/aria/issues/1854): VoiceOver ignores live regions outside a modal dialog.
+- Chromium on Linux ignores the attribute. Measured on this branch with `aria-modal="true"` set by script on the open form dialog, its `ComboBox` open and an error toast shown: the dialog reads `dialog "Focus containment" modal`, and the dropdown's `listbox` with its four `option` nodes and the toast's `alert` node are all still listed.
+
+**What was not tested.** VoiceOver, NVDA, JAWS, Firefox and WebKit. The claim that VoiceOver would go silent rests on the two reports alone. MV5, MV6 and MV8 are the checks that decide it.
+
+**What would change if the attribute is wanted.**
+
+- `core/Aria.ts`: a typed `setModal(value: boolean | null)` and `getModal()`, with cases in `tests/core/Aria.test.ts`.
+- `overlay/Dialog.ts`: `applyAriaSemantics` calls `aria.setModal(true)`.
+- `overlay/Drawer.ts`: `open()` sets it when the drawer opens modal and the close path removes it, since a drawer keeps the modality it opened with.
+- Three test cases flip: "never carries aria-modal, before or after it is shown" (`Dialog.aria.test.ts`), "carries no aria-modal while a modal drawer is open" (`Drawer.test.ts`), and the `Window` half of W1 stays as it is.
+- Documentation: the sentence in `ARCHITECTURE.md`, `### Why no aria-modal` in `accessibility.md`, the paragraph in `layering.md`, the closing paragraph of `### Screen readers` in `Dialog.md`, the sentence in `Drawer.md` and the changelog entry. The source comments in `Dialog.applyAriaSemantics` and the `Drawer` constructor say the same.
+- The plan's grep check `aria-modal\|setModal(` would then match `Aria.ts` and `Dialog.ts` as well.
+- If VoiceOver does hide the portaled layers, the attribute would also have to come off while the modal has an open child layer. That needs a new `LayerManager` notification for "the scope changed", and it still leaves toasts silent on VoiceOver. The plan rejected this for that reason.
+
+### Deviations from the plan
+
+1. **The title-bar buttons are reachable through getters.** The plan gives `WindowHeader` and `TabWindow` no public member, and says a consumer who needs another wording "reaches the component and calls its setter". For the window buttons there was no way to reach them: they are private fields. The instruction for this run was that every accessible name is overridable the way the precedent is. The precedent is a public getter that returns the `Button`: `Header.getMenuButton()` on the table header, `DialogTitleBar.getCloseButton()`, `AccordionHeader.getTitleButton()`. Added, in that shape:
+   - `WindowHeader.getMinimizeButton()`, `getMaximizeButton()`, `getCloseButton()`.
+   - `TabWindow.getMinimizeButton()`, `getMaximizeButton()`, `getCloseButton()`, `getWindowMenuButton()`.
+   - `Dialog` already had `getTitleBar().getCloseButton()`.
+
+   The close getter has one name on all three. `WindowHeader`'s older members say "exit" (`addExitButtonListener`, `getExitButtonElement`), and the getter was first called `getExitButton()` to match; the review pointed out that the same control then had two names across `Window` and `TabWindow`, so it follows `DialogTitleBar`, `TabButton` and the header's own `setCloseable`.
+
+2. **A window renames only a button that still carries a library name.** The plan's `setMaximizeButtonGlyph`, `setMinimizeButtonGlyph` and `TabWindow.reflectMaximizeState` call `setText` unconditionally, which would overwrite a consumer's name on the first state change. They go through a new module function, `reflectWindowControlLabel(button, ownLabel, restoring)` in `windowControls.ts`, which writes only when the button's current text is one of the two names the library gives that button: its own and "Restore". The intent is the one behind the plan's `_reflectedName` for a `TabWindow`'s name, that a value the library did not write is the consumer's and is left alone. The mechanism differs: `_reflectedName` remembers the last value written, while this compares against the two possible library names and keeps no state, so a consumer who names a maximize button exactly "Maximize" or "Restore" is not told apart from the library. Cases W4 and W6 hold as written; three cases cover the override.
+
+3. **The window menu reads its row texts from `WINDOW_CONTROL_LABEL`.** `AbstractWindow.buildWindowMenuItems` had the literals `"Minimize"`, `"Maximize"`, `"Restore"` and `"Close"`. The plan says the button names "are the ones the window menu already shows" and "live in one exported constant", which is only true if the menu uses the constant. Same strings, so `AbstractWindow.windowMenu.test.ts` passes unchanged. "Always on top" and "Lock position" stay literals: no button shares them.
+
+4. **The library has no localisation mechanism, as the plan found.** Searched again for `locale`, `i18n`, `translat`, a labels option and a default-label setter. The matches are sort collation and CSS `translate`. The existing mechanism for an icon-only button's name is a module constant passed as `text` with `showText: false`, and that is what was used: `CLOSE_BUTTON_LABEL` in `Dialog.ts` and `WINDOW_CONTROL_LABEL` in `windowControls.ts`. No English literal was added anywhere else in a component.
+
+5. **No source comment contains the string `aria-modal`.** The plan's grep check wants exactly two hits for `aria-modal\|setModal(`, both `Drawer.setModal`. The comments that explain the decision in `Dialog.applyAriaSemantics` and the `Drawer` constructor say "the ARIA modal flag" and point at `ARCHITECTURE.md`. The second review noted the cost: a search of the source for `aria-modal` finds nothing, and the reader has to know to look in `ARCHITECTURE.md`. Kept, because the plan's check is explicit; naming the attribute in the two comments is a two-line change if the check is relaxed.
+
+6. **D3 and D6 check the reference through the document, not through an `id` attribute.** The test DOM keeps a component's id in its own index, not as an attribute, so `getAttribute(el, 'id')` is `null`. The two cases show the dialog and assert that `DOM.source.getElementById(titleId)` is the title text's element, and likewise for the message.
+
+7. **F2, F3 and one added case seed `querySelector`.** Offline, the old lookup's `querySelector` returns `null` for an unseeded selector, so a case that only hides the field passed before the change. `setQuerySelectorResult(FOCUSABLE_SELECTOR, field)` makes the old lookup answer what a browser answers, and the cases then failed first.
+
+8. **A call's result is named before it is tested.** The plan's snippets for `clearLabelledBy`, `clearDescribedBy` and `TabWindow.reflectAccessibleName` put a call in the `if` condition, as `Aria.clearLabel` does. The project rule is to assign the result to a named constant first, so the three do (`hasReference`, `currentLabel`). Nothing else differs from the snippets.
+
+9. **Extra cases** beyond `## Expected Behaviour`: each `Aria` clear writes one removal and none again; the clears chain; a dialog's role is not derived from `severity`; a `message` beside a `contentComponent` gives no description; the close button can be renamed; a hidden `initialFocus` ends with focus on the next visible control (through `show()`); a `Window` carries no `aria-label`; the `clearLabelledBy().setLabel(…)` override; a `Window` follows its state through `reflectMaximizeState`; the tool glyphs of a `TabWindow` stay; the window-menu name survives `setGlyph`; a `TabWindow` is named on `show()`, is not renamed on deactivation, and keeps a name set before the first activation; a popover whose title was cleared and set again points at the new title; a consumer's label on an untitled popover survives `clearTitle()`.
+
+10. **Demo** (`MiscPanel.ts`, not in the file table): "Dialog — alert with an accessible name" uses `role` and `ariaLabel`, and the drawer demo names its drawer with `getAria().setLabelledBy(heading.getId())`.
+
+11. **More documentation than listed.** `Window.md` and `TabWindow.md` describe the getters and the rename rule; `accessibility.md` has a table of where each button is reached; the changelog has an `## Added` → `### Overlay` entry for the getters, and its `## Changed` entry says that a name already set with `getAria().setLabel(…)` on a `Dialog`, a `Window` or a titled `Popover` is now outranked by the reference to the title.
+
+12. **No DOM seam member was added.** Every write goes through `Aria` and `Component.applyAriaAttribute`, so there is no entry under Breaking changes → Core.
+
+13. **A window reflects the state it is constructed in.** Found by the review. The plan wires the names to the transition hook only, and `setWindowState` returns early for a state that is already current, so `new Window('W', { windowState: 'maximized' })` and the `TabWindow` equivalent kept the name "Maximize". `AbstractWindow.initChrome` now calls `reflectMaximizeState(getWindowState())` after its `setWindowState` call. This also corrects something older than the plan: such a `Window` kept the normal state's glyphs on its header buttons. Three cases in `AbstractWindow.aria.test.ts`, and a changelog entry under `## Fixed`.
+
+14. **A `Popover` writes the reference to its title once, and removes only its own.** Found by the review. The plan's step 11 sets `aria-labelledby` on every `setTitle`, which put the reference back after a consumer had replaced it with `clearLabelledBy().setLabel(…)`, the override the changelog recommends. The reference is now written when the title row is created, and only when the consumer has set neither an `aria-label` nor an `aria-labelledby` of their own; `clearTitle()` removes it only while it still points at the title. So a name the consumer set is never replaced or outranked by a later title. P1–P4 hold as written; four cases cover the override. This is a third way of telling the library's name from the consumer's, beside `_reflectedName` and deviation 2, and it is not symmetric with a `TabWindow`: a consumer who removes a titled popover's reference and sets no name leaves it unnamed through later `setTitle` calls, until the title is cleared and set again, while a `TabWindow` takes its name back (deviation 17).
+
+15. **A `Tab` strip's descriptor tools are named** (`component/container/TabBar.ts`, not in the file table), in a code commit and a documentation commit of their own, since the change reaches every `Tab` strip and not only a `TabWindow`'s title bar. Found by the review. `TabBar.buildDescriptorTool` built `new Button({ glyph })` and attached the descriptor's `label` as a tooltip only, so the button had no accessible name. On a `TabWindow` these tools sit in the title bar beside the newly named controls. The button is now built with `text: label, showText: false`, the same mechanism as the window controls, and the separate `Tooltip.attach` call is gone, since the button shows its title as a tooltip itself. The plan's non-goals name the tab close button and the filter popover's remove button as a separate change; descriptor tools were not on that list.
+
+16. **A stale comment was corrected** in `core/Focusable.ts` (not in the file table). Found by the review: `findFocusable`'s comment described the lookup `requestedFocusElement` no longer has.
+
+17. **A `TabWindow` names itself again after the consumer clears the name.** Found by the second review. With the plan's snippet, a `getAria().clearLabel()` after the window had written its name left the stored name unequal to the current one for good, and the window stayed unnamed. A missing label is now treated as nobody's. W9 holds as written; one case covers this.
+
+18. **The name is pinned to arrive before focus, and to be written by `show()`.** Found by the second and third reviews: W7–W11 passed with `reflectAccessibleName()` and `focusSelf()` swapped in `onActivate`, and the "shown" case passed without the call in `show()`, because `show()` also activates the window. One case records the name at the moment the window is focused; the "shown" case silences the activation.
+
+19. **A Breaking-changes entry and a migration note** (`docs/reference/migration/next.md`, not in the file table). Found by the second review. An `aria-label` set after construction on a `Dialog`, a `Window` or a titled `Popover` is now outranked by the title reference, which needs consumer action, and items that do are listed under Breaking changes → Overlay with a note. SQLAdmin sets no ARIA on these layers. **Decided by the user on 2026-10-10:** the breaking change is accepted.
+
+20. **Files changed beyond the plan's file table:** `tests/diagnostics/DiagnosticsOverlay.rowTooltips.test.ts` and `tests/component/container/TabBar.tools.test.ts` (next section), `src/typescript/MiscPanel.ts` (10), `component/container/TabBar.ts` and `docs/layouts/Tab.md` (15), `core/Focusable.ts` (16), `docs/reference/migration/next.md` (19). None of these is in the plan's `touches-shared` list, which matters to a later chained rebase if a sibling branch edits the same file.
+
+### Existing tests whose expected value changed
+
+| Test | Change | Why |
+|---|---|---|
+| `tests/diagnostics/DiagnosticsOverlay.rowTooltips.test.ts`, case 8 | tooltip count `27` → `30` | The overlay is a `Window`. Its header's three buttons are now named, and a named button shows its name as a tooltip. The plan expected a count like this might exist and found none. |
+| `tests/overlay/Dialog.test.ts`, "requestedFocusElement() falls back to the first focusable descendant" | the `querySelector` mock became `setQuerySelectorAllResult`; the expected element is the same | as the plan says (case F1) |
+| `tests/overlay/Dialog.test.ts`, "requestedFocusElement() is null when the component offers nothing focusable" | the `querySelector` mock was dropped; the expectation is the same | as the plan says |
+| `tests/component/button/WindowControlButton.classStyleHoisting.test.ts` | five factory calls gained the `title` argument; no expectation changed | as the plan says |
+| `tests/component/container/TabBar.tools.test.ts`, "builds a flat, tooltip'd Button from a descriptor…" | two assertions were added (the accessible name, and that it is kept off the face); the existing tooltip assertion holds unchanged | deviation 15 |
+
+No other existing test was edited.
+
+### Verification that was run
+
+Whole check set from `packages/lib`: `typecheck`, `typecheck:test`, `lint`, the whole vitest suite (554 files, 9668 passed, 2 todo), `docs:api` (no warnings), `docs:llms:check`, `build:lib`. The plan's three grep checks hold.
+
+Chromium on Linux through chrome-devtools, on this worktree's demo dev server (port 8091), page `#/misc`. Each row is a verbose accessibility-tree snapshot. Demo buttons were pressed by script (`element.click()`); the `ComboBox`, the window's maximize button and the nested-dialog button took real clicks and real key presses. `TabWindow`, the two popovers and the hidden-`initialFocus` dialog were built by script from the served library modules, since the demo has no button for them.
+
+| Case | Snapshot |
+|---|---|
+| X1, `Dialog.confirm` | `alertdialog "Confirm action" description="Are you sure you want to proceed with this action?"` holding `button "Close"`, `button "Cancel" focusable focused`, `button "Confirm"`; every node of the page is `ignored` |
+| X2, `Dialog.info` / `Dialog.success` | `dialog "Import complete" description="Loaded 1,204 rows."`; `dialog "Saved" description="…"`; `button "Close"`, `button "Ok"` focused |
+| `Dialog.warning` / `Dialog.error` | `alertdialog "Unsaved changes" description="…"`; `alertdialog "Connection failed" description="Host not allowed."` |
+| `Dialog.show({ title, message })` | `dialog "Information" description="…"` |
+| `role` + `ariaLabel` (new demo button) | `alertdialog "Delete record 42" description="Record 42 will be removed. This cannot be undone."`; the visible title is "Delete?"; `button "Cancel"` focused |
+| X4, non-dismissable | `dialog "Mandatory action required" description="…"`; no `button "Close"` |
+| X3, form dialog, `ComboBox` open, an error and an info toast | `dialog "Focus containment"` with no description and no `modal` flag; `listbox` with four `option` nodes; `alert` "Saving failed" and `status` "Draft kept". `ArrowDown` then `Enter` chose "Beta": the dropdown is operable |
+| nested dialog from the form | `alertdialog "Nested dialog" description="…"`; the outer dialog is out of the tree |
+| X5, `Window` | `dialog "Settings"` holding `banner`, `button "Minimize"`, `button "Maximize"`, `button "Close"`; after a click on Maximize, `button "Restore"`. The page behind stays in the tree |
+| hover on a window's Close | a tooltip reading "Close" |
+| `TabWindow`, two tabs | `dialog "Query 1"` holding `tablist`, `button "Minimize"`, `button "Maximize"`, `button "Close"` (disabled: the tabs are not closeable), `button "Window menu" haspopup="menu"`. After a click on the second tab the name is still "Query 1"; after the next activation it is "Query 2". Maximized, the tool reads "Restore", then "Maximize" again |
+| X6, modal `Drawer` | `dialog "Modal drawer — left"` (named by the demo's heading) holding `textbox "Filter"` focused and `button "Close"`; no control of the page |
+| non-modal `Drawer` | `dialog "Non-modal drawer — left"`; the page's controls are still listed |
+| X7, titled `Popover` | `dialog "Confirm delete"` |
+| untitled `Popover` | `dialog` with no name |
+| hidden `initialFocus` | focus is on the next visible field, not on `<body>` |
+| a `Window` constructed with `windowState: 'maximized'` (deviation 13) | its maximize button is named "Restore" and shows the restore glyph; minimize is "Minimize" |
+| a `TabWindow` with a descriptor tool (deviation 15) | the tool's button is named "New tab", beside "Minimize", "Maximize", "Close" and "Window menu" |
+| a titled `Popover` renamed with `clearLabelledBy().setLabel('Mine')`, then `setTitle('T2')` (deviation 14) | `aria-label` is "Mine" and there is no `aria-labelledby` |
+
+No element carried `aria-modal` at any point, nothing was left `inert` afterwards, and the console showed no error or warning.
+
+**Not run.** A real screen reader, Firefox and WebKit. The `verify` skill drives the SQLAdmin application, which was not to be run. The docs application's own tests (`packages/docs`) were run for the corpus checks only: seven files pass (1807 cases), and six do not load in a worktree because they import the built library through the main tree's `node_modules`.
+
+### What to listen for, by hand
+
+Rows MV1–MV16 of `### Needs manual verification (screen reader)` are the list. None was run. Run them with NVDA on Windows in Firefox and Chrome, and with VoiceOver on macOS in Safari. Three rows decide the `aria-modal` question and should come first:
+
+- **MV5.** In a dialog, move the reading cursor past the last control (NVDA arrow keys in browse mode, VoiceOver `VO`+arrows). It must stay in the dialog and read nothing of the page. This is the check that `inert` alone is enough.
+- **MV6.** Open the `ComboBox` in the form dialog and arrow through it. Each option must be announced.
+- **MV8.** Show an error toast while a dialog is open. Its text must be announced. Note separately whether an info toast is announced at all.
+
+Then, in order: MV1 (the title, "alert dialog", the message once, "Cancel, button"), MV2 ("dialog" for info, "alert dialog" for error), MV3 (a form dialog reads no message), MV4 ("Close, button"), MV7 (a context menu inside a dialog), MV9 (a nested dialog, and the control that regains focus), MV10 (no close button can be reached), MV11 (a `Window`: its header text, "dialog", "Minimize", "Maximize", "Close", then "Restore"; note whether NVDA reads the whole window content on activation), MV12 (a `TabWindow`: the active tab's label as the name on each entry, "Window menu" announcing a menu), MV13 (a named drawer), MV14 (a titled popover), MV15 (a tooltip on each title-bar button), MV16 (SQLAdmin).
+
+Three more things to listen for that the plan does not list:
+
+- Whether "Restore" is announced when the focused maximize button changes its name, or only on the next focus.
+- Whether Firefox and Safari expose `alertdialog` with its description the way Chromium's tree does.
+- In a `TabWindow`, what is announced after a tab switch inside the active window: the stored name is the previous tab's until the next activation.
+
+### SQLAdmin
+
+Read, not run (`frontend/src`, library `^0.10.0`). No application change is needed. The application sets no ARIA on a dialog or a window, never calls `getTitleBar()`, and uses no `Popover`, `Drawer` or `TabWindow` directly. No dialog has an empty title.
+
+| Where | Built as | Role | Name | Description |
+|---|---|---|---|---|
+| Login (`shell/LoginDialog.ts`) | `new Dialog`, `dismissable: false`, `initialFocus`, built anew for each attempt of the reopen loop | `dialog` | "Connect to database" | none; the focused field is read |
+| A failed sign-in | `Dialog.error` | `alertdialog` | "Connection failed" | the server's message |
+| "Save preset", "Save query as" (`promptQueryName.ts`) | `Dialog({ contentComponent })` | `dialog` | the title passed | none |
+| Sign out, close-tab guard, replace query, remove saved query, clear storage | `Dialog.confirm` | `alertdialog` | the title passed | the question |
+| Delete rows (`dock/TableWorkPanel.ts`) | `Dialog.show({ title, message })` | `dialog` | "Delete rows" | the message |
+| SQL preview (`dock/SqlPreviewDialog.ts`) | `SqlPreviewModal extends Dialog` | `dialog` | the DDL title, such as "Create table" | none |
+| Import rows (`dock/ImportRowsDialog.ts`) | `new Dialog` | `dialog` | `Import into "<table>"` | none |
+| Shortcuts, About, Changelog (`shell/DismissDialog.ts`) | `DismissDialog extends Dialog` | `dialog` | the title passed | none |
+| Local Storage (`shell/localStorageWindow.ts`) | `new Window("Local Storage")` | `dialog`, non-modal | "Local Storage" | — |
+| A panel floated out of the `Dock` | a library window | `dialog`, non-modal | its header text or active tab | — |
+
+- **Login.** The login dialog has no close button, so it has no "Close" name to announce, and each rebuilt dialog of the loop is announced afresh with the same name. `initialFocus` is `LoginForm.focusTarget(…)`, which always returns a visible field (host, database, username or password), so the fallback change does not touch it.
+- **What a user notices.** Confirm and error prompts are announced as alert dialogs with their message. The title-bar buttons of every dialog and of the Local Storage window show a tooltip.
+- **Two things the application could do, neither needed.** "Delete rows" is a confirmation built with `Dialog.show`, so it is a plain `dialog`; `role: 'alertdialog'` would announce it as the prompt it is. It also marks no button `primary`, so focus opens on the title-bar close button, which is today's behaviour. And the long dialogs with a `contentComponent` (SQL preview, import) have no description, which is right for a form.
+
+### Left as they are
+
+- **The names are English and there is no application-wide way to change them.** A `Dialog` opened through `Dialog.show` or a shortcut is never handed out, so its close button cannot be renamed; the same is true of the shortcuts' "OK", "Cancel" and "Confirm" texts today. Renaming it for every dialog needs either a `DialogConfig` field or the localisation mechanism the plan lists as a non-goal.
+- **A renamed minimize or maximize button keeps one name in every state.** The window no longer swaps it to "Restore", and the consumer has no event for "maximized" to swap it themselves (`"minimize"` and `"restore"` exist; there is none for maximize). A pair of names per button would need an option on the window, which the plan decided against.
+- **A `TabWindow`'s name is stale between a tab switch and the next activation**, as the plan says. Seen in Chromium.
+- **A window does not take focus when it is shown, so it is not announced then.** Older than this plan, and left alone because this plan must not move focus. `show()` activates the window before it mounts it, so the focus call lands on an element that is not in the document yet. Measured in Chromium: after `new Window(…).show()` the active element is still `<body>`. The window is announced, with its new role and name, when focus first enters it: on a click, or on `Tab` into it. The plan's premise that `show()` is an announcement moment does not hold today; the call there still puts the name in place before the window is in the document. MV11 and MV12 begin with a click, so they do not expose this. A candidate for a follow-up plan.
+- **A `WindowHeader` is exposed as a `banner` landmark inside the window**, as the plan's non-goals say. Seen in every window snapshot.
+- **A `Window`'s title icon is still not a button.** It opens the window menu on a click only.
+- **An untitled `Popover` and a `Drawer` have the `dialog` role and no name** until the consumer gives one. Seen in Chromium for the popover. The library's own popover, the table filter's conditions popover (`component/table/cell/Filter.ts`), is constructed without a title but is given one each time it opens, so it is named.
+- **A tab's close button and the filter popover's remove button are still unnamed**, as the plan's non-goals say.

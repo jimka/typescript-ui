@@ -81,6 +81,8 @@ await Dialog.warning('Unsaved changes', 'They will be lost if you continue.');
 await Dialog.info('Import complete', 'Loaded 1,204 rows.');
 ```
 
+`Dialog.warning`, `Dialog.error` and `Dialog.confirm` are announced by a screen reader as alert dialogs; `Dialog.info` and `Dialog.success` as plain dialogs. Setting `severity` yourself does not change how a dialog is announced — see [Screen readers](#screen-readers).
+
 ## Decorating the title bar
 
 For tones beyond the four severities, `Dialog.getTitleBar()` returns the title-bar component so callers can tint or decorate the header directly:
@@ -111,6 +113,8 @@ See [`DialogConfig`](/api/overlay/interfaces/DialogConfig) for the full option l
 | `dismissable` | `true` | When `false`, mandatory modal: no title-bar close button, Escape/backdrop inert. |
 | `severity` | — | Title-bar tone (`'info'` / `'success'` / `'warning'` / `'error'`); tints the header and shows a matching glyph, overriding the button-derived tone. |
 | `initialFocus` | — | Component to focus on open, overriding the default (the first focusable element in the body). |
+| `role` | `'dialog'` | How a screen reader announces the dialog. `'alertdialog'` is for a message that interrupts and needs an answer. |
+| `ariaLabel` | the title | Accessible name, replacing the title as the name a screen reader announces. |
 
 ### Initial focus
 
@@ -143,6 +147,15 @@ await Dialog.show({
     initialFocus:     passwordField,   // host is prefilled; start on the password
 });
 ```
+
+An `initialFocus` component that is hidden or disabled when the dialog opens is
+skipped, and the default order applies. A dialog is announced when focus enters
+it, so focus always lands somewhere inside.
+
+In an alert dialog, mark the least destructive button `primary`. A message body
+holds nothing focusable, so the primary button is where focus lands, and it is
+the first thing a screen reader names after the message. `Dialog.confirm` does
+this for Cancel.
 
 ### Keyboard
 
@@ -185,6 +198,64 @@ leaving it with `Tab` is not reliable yet: the table's own `Tab` handling can
 move focus back into the table after the dialog moves it out, and an open cell
 editor cancels the release. Give a dialog that hosts a `Table` a plain control
 at each end if a keyboard user needs to reach it with `Tab`.
+
+### Screen readers
+
+A dialog tells assistive technology what it is, what it is called and what it
+says. A screen reader announces all three when the dialog opens.
+
+**Role.** `role` in the config is `'dialog'` by default. `'alertdialog'` is for
+a message that interrupts the user and needs an answer: a confirmation, a
+warning, an error. Three shortcuts ask for it; nothing else is inferred, and
+`severity` alone does not change the role.
+
+| Call | Role |
+| --- | --- |
+| `Dialog.show({ title, message })`, `new Dialog(config)` | `dialog` |
+| `Dialog.info(…)`, `Dialog.success(…)` | `dialog` |
+| `Dialog.confirm(…)`, `Dialog.warning(…)`, `Dialog.error(…)` | `alertdialog` |
+| `Dialog.show({ …, role: 'alertdialog' })` | `alertdialog` |
+
+**Name.** The dialog is named by its title. The name is a reference to the
+title text, so it follows a later
+`dialog.getTitleBar().getTitleText().setText(…)`. `ariaLabel` replaces the
+title as the name; use it when the title is too short to say what the dialog is
+about. A dialog with an empty `title` has no name unless it sets `ariaLabel`.
+
+```typescript
+await Dialog.show({
+    title:     'Delete?',
+    message:   'Record 42 will be removed. This cannot be undone.',
+    role:      'alertdialog',
+    ariaLabel: 'Delete record 42',
+    buttons:   [{ ...DialogButtons.Cancel, primary: true }, DialogButtons.Confirm],
+});
+```
+
+**Description.** A `message` is the dialog's description, read after the name
+and role, so a prompt is understood without exploring it. A dialog built from a
+`contentComponent` has no description, because a description is read as one
+flat string and a form or a table is not one. To describe such a dialog with a
+line of text it shows, construct it and point at that text:
+
+```typescript
+const dialog = new Dialog({ title: 'Import rows', contentComponent: body });
+
+dialog.getAria().setDescribedBy(summaryText.getId());
+await dialog.show();
+```
+
+**Close button.** The title-bar close button is named "Close" and shows that
+name as a tooltip. To give it another name, call
+`dialog.getTitleBar().getCloseButton()?.setText(…)` on a constructed dialog.
+
+`role` and `ariaLabel` are read once, when the dialog is constructed. After
+that the values live in `dialog.getAria()`.
+
+A dialog does not carry `aria-modal`. It is modal because everything outside it
+is inert, which already takes the page away from a screen reader. See
+[Why no `aria-modal`](/concepts/accessibility#why-no-aria-modal) for why the
+attribute is left out.
 
 ### Per-button glyph
 

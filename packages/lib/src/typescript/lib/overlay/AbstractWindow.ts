@@ -24,6 +24,7 @@ import type { Rail } from "~/overlay/Rail.js";
 import { Menu } from "~/overlay/Menu.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
+import { WINDOW_CONTROL_LABEL } from "~/overlay/windowControls.js";
 
 // Window body inset in pixels, set explicitly now that the base is Container
 // (zero default insets) rather than Panel (which supplied this 4px implicitly).
@@ -443,6 +444,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // — focus is driven programmatically on activation, not by tabbing.
         this.getAria().setTabIndex(-1);
 
+        // A window is a non-modal dialog: it floats above the page and has a
+        // title, and the page behind it stays usable.
+        this.getAria().setRole("dialog");
+
         // Any button brings the window to front — a right-click should raise
         // it before its context menu opens too, not just a left-click.
         Event.addSubtreeListener(this, "mousedown", { button: "any", handler: this._boundOnBringToFront });
@@ -481,6 +486,12 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.applyResizeChrome();
         this.setMaximizeBounds(this.getMaximizeBounds());
         this.setWindowState(this.getWindowState());
+
+        // `setWindowState` returns early for a state that is already current,
+        // so a window constructed minimized or maximized never passes through
+        // a transition. Reflect the state it starts in here, or its controls
+        // would carry the names and glyphs of the normal state.
+        this.reflectMaximizeState(this.getWindowState());
 
         this.wireMoveTrigger();
 
@@ -601,13 +612,29 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     protected abstract reflectMaximizeAvailability(value: boolean): void;
 
     /**
-     * Reflects a window-state transition into the subclass UI — typically the
-     * maximize/restore glyph swap. Called from {@link AbstractWindow.setWindowState}
-     * as the state changes.
+     * Reflects the window state into the subclass UI — the maximize/restore
+     * glyph swap and the names of the minimize and maximize controls. Called
+     * from {@link AbstractWindow.setWindowState} as the state changes, and
+     * once from `initChrome` for the state the window is constructed in,
+     * which no transition announces.
      *
      * @param state - The state being entered.
      */
     protected abstract reflectMaximizeState(state: WindowState): void;
+
+    /**
+     * Refreshes an accessible name the window derives rather than references.
+     * Called from {@link AbstractWindow.show}, so the name is in place before
+     * the window is in the document, and from {@link AbstractWindow.onActivate}
+     * just before the window takes focus, which is when assistive technology
+     * announces it. The base does nothing — a window
+     * named by `aria-labelledby` (a header's title text) needs no refresh. A
+     * subclass whose title is not an element of its own overrides this to
+     * write the title into `aria-label`.
+     */
+    protected reflectAccessibleName(): void {
+        // Nothing to refresh by default — see method JSDoc.
+    }
 
     /**
      * Paints the active/inactive appearance (e.g. a header gradient). Called
@@ -764,6 +791,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     show(): this {
         const el = this.getElement(true)!;
+
+        this.reflectAccessibleName();
 
         // Join the central layer tree before bringToFront so the manager has
         // a node to re-stamp. A dropdown opened inside the window then
@@ -935,6 +964,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.paintActive(active);
 
         if (active) {
+            // Before the focus move: the name is announced as focus arrives.
+            this.reflectAccessibleName();
             this.focusSelf();
             this.emit("activate");
         }
@@ -2009,9 +2040,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * closeable). Minimize/Maximize/Close each carry a glyph that swaps to
      * match the window state; on `Window` this always matches the header
      * button's own glyph in the same state, but on `TabWindow` the trailing
-     * tool buttons never swap (`reflectMaximizeState` is a no-op there — see
-     * its own doc), so the menu row and the tool button can show different
-     * icons while minimized or maximized. The two checkable rows
+     * tool buttons never swap their glyph (`reflectMaximizeState` renames them
+     * there and leaves the glyph — see its own doc), so the menu row and the
+     * tool button can show different icons while minimized or maximized. The
+     * row texts are the names the title-bar buttons carry by default
+     * (`WINDOW_CONTROL_LABEL`). The two checkable rows
      * deliberately carry none — they stay plain `CheckboxMenuRow` factories,
      * not icon-capable `MenuItem`s. Rebuilt on every open — see the plan's
      * Architecture Decisions — so the checkable rows' `checked`, the
@@ -2026,7 +2059,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         if (this.isMinimizable()) {
             items.push({
-                text:   state === "minimized" ? "Restore" : "Minimize",
+                text:   state === "minimized" ? WINDOW_CONTROL_LABEL.restore : WINDOW_CONTROL_LABEL.minimize,
                 glyph:  state === "minimized" ? "window-restore" : "window-minimize",
                 action: this._boundToggleMinimize,
             });
@@ -2034,7 +2067,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         if (this.isMaximizable()) {
             items.push({
-                text:    state === "maximized" ? "Restore" : "Maximize",
+                text:    state === "maximized" ? WINDOW_CONTROL_LABEL.restore : WINDOW_CONTROL_LABEL.maximize,
                 glyph:   state === "maximized" ? "window-restore" : "window-maximize",
                 enabled: this.canMaximize(),
                 action:  this._boundToggleMaximize,
@@ -2065,7 +2098,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
                 },
             },
             { separator: true },
-            { text: "Close", glyph: "xmark", enabled: this.isCloseable(), action: this._boundRequestClose },
+            { text: WINDOW_CONTROL_LABEL.close, glyph: "xmark", enabled: this.isCloseable(), action: this._boundRequestClose },
         );
 
         return items;

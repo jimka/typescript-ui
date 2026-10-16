@@ -240,3 +240,35 @@ that overrides `requestClose(): void` no longer compiles: return `boolean`,
 and call `super.requestClose()` and return its result to keep the release.
 Other `DismissableLayer` implementations need no change; a `requestClose()`
 that returns nothing is handled as before.
+
+## A `Dialog`, a `Window` and a titled `Popover` are named by their title
+
+**What changed and why.** These three layers had no accessible name, so a
+screen reader announced none when focus entered them. Each now points
+`aria-labelledby` at the component that shows its title: a dialog's title-bar
+text, a window's header text, a popover's title row. A browser computes an
+element's name from `aria-labelledby` before it looks at `aria-label`, so an
+`aria-label` on the same element is ignored while the reference is there.
+
+| Layer | You wrote | Announced before | Announced now |
+|---|---|---|---|
+| `Window('Local Storage')` | `win.getAria().setLabel('Storage inspector')` | "Storage inspector" | "Local Storage" |
+| `new Dialog({ title: 'Delete?' })` | `dialog.getAria().setLabel('Delete record 42')` | "Delete record 42" | "Delete?" |
+| `Popover({ title: 'Filters' })` | `popover.getAria().setLabel('Row filters')` | "Row filters" | "Filters" |
+
+A `TabWindow` and a `Drawer` are not affected. A `TabWindow` writes its name
+into `aria-label` and leaves a name you set alone; a `Drawer` has no title
+and takes whatever name you give it. A `Popover` you name before it gets a
+title also keeps your name.
+
+**Who needs to act.** Code that names a `Dialog`, a `Window` or a titled
+`Popover` through `getAria().setLabel(…)` after constructing it. Remove the
+reference first:
+
+```typescript
+win.getAria().clearLabelledBy().setLabel('Storage inspector');
+```
+
+For a `Dialog`, `ariaLabel` in the config does the same and also works with
+`Dialog.show(config)`, which never hands out the dialog. Code that sets no
+ARIA on these layers needs no change.

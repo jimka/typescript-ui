@@ -304,9 +304,13 @@ in the context menu's **Tools** submenu from that one descriptor — so glyph,
 label, and action are declared exactly once and the button and menu row always
 fire the same action. A plain-`Component` tool never appears in the menu.
 
+A descriptor tool takes its `label` as its accessible name and its tooltip. A
+tool you pass as a `Button` is yours to name: give a glyph-only one a `text`
+with `showText: false`.
+
 ```typescript
 // Bare strip tool — visible on the strip only.
-tab.addTool(new Button({ glyph: 'gear' }));
+tab.addTool(new Button({ glyph: 'gear', text: 'Settings', showText: false }));
 
 // Menu-backed tool — one "+" button on the strip and a matching
 // "New tab" row in the right-click menu's Tools submenu.

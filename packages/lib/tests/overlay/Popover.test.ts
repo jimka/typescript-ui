@@ -339,3 +339,146 @@ describe('Popover onClose', () => {
         expect(() => popover.hide()).not.toThrow();
     });
 });
+
+describe('Popover — accessible name', () => {
+    afterEach(() => DOM.reset());
+
+    /** The id of the component that shows the popover's title. */
+    function titleId(popover: Popover): string {
+        return (popover as any)._titleComponent.getId();
+    }
+
+    // P1
+    it('is named by reference to its title, and stays a dialog', () => {
+        installTestDOM(CONFIG);
+
+        const popover = new Popover();
+
+        popover.setTitle('Confirm delete');
+
+        expect(popover.getAria().getLabelledBy()).toBe(titleId(popover));
+        expect(popover.getAria().getRole()).toBe('dialog');
+        expect(DOM.source.getAttribute(popover.getElement(true)!, 'aria-labelledby')).toBe(titleId(popover));
+    });
+
+    // P2
+    it('keeps the same reference when the title text changes', () => {
+        installTestDOM(CONFIG);
+
+        const popover = new Popover();
+
+        popover.setTitle('Confirm delete');
+
+        const id = titleId(popover);
+
+        popover.setTitle('Really?');
+
+        expect(titleId(popover)).toBe(id);
+        expect(popover.getAria().getLabelledBy()).toBe(id);
+    });
+
+    // P3
+    it('drops the reference when the title is cleared, by either route', () => {
+        installTestDOM(CONFIG);
+
+        const cleared = new Popover();
+        const nulled  = new Popover();
+
+        cleared.setTitle('Confirm delete');
+        cleared.clearTitle();
+
+        nulled.setTitle('Confirm delete');
+        nulled.setTitle(null);
+
+        expect(cleared.getAria().getLabelledBy()).toBeNull();
+        expect(nulled.getAria().getLabelledBy()).toBeNull();
+    });
+
+    it('points at the new title component when a cleared title is set again', () => {
+        installTestDOM(CONFIG);
+
+        const popover = new Popover();
+
+        popover.setTitle('Confirm delete');
+        popover.clearTitle();
+        popover.setTitle('Really?');
+
+        expect(popover.getAria().getLabelledBy()).toBe(titleId(popover));
+    });
+
+    // P4
+    it('takes its name from a title given at construction, and has none without one', () => {
+        installTestDOM(CONFIG);
+
+        const titled   = new Popover({ title: 'T' });
+        const untitled = new Popover();
+
+        expect(titled.getAria().getLabelledBy()).toBe(titleId(titled));
+        expect(untitled.getAria().getLabelledBy()).toBeNull();
+        expect(untitled.getAria().getLabel()).toBeNull();
+    });
+
+    it('keeps a name the consumer put in place of the title when the title text changes', () => {
+        installTestDOM(CONFIG);
+
+        const popover = new Popover({ title: 'T' });
+
+        popover.getAria().clearLabelledBy().setLabel('Mine');
+        popover.setTitle('T2');
+
+        expect(popover.getAria().getLabelledBy()).toBeNull();
+        expect(popover.getAria().getLabel()).toBe('Mine');
+    });
+
+    it('leaves a reference the consumer set alone when the title is cleared', () => {
+        installTestDOM(CONFIG);
+
+        const popover = new Popover({ title: 'T' });
+
+        popover.getAria().setLabelledBy('heading-of-my-own');
+        popover.clearTitle();
+
+        expect(popover.getAria().getLabelledBy()).toBe('heading-of-my-own');
+    });
+
+    it('does not point at a new title when the consumer already named the popover', () => {
+        installTestDOM(CONFIG);
+
+        const labelled   = new Popover();
+        const referenced = new Popover();
+
+        labelled.getAria().setLabel('Row actions');
+        labelled.setTitle('T');
+
+        referenced.getAria().setLabelledBy('heading-of-my-own');
+        referenced.setTitle('T');
+
+        expect(labelled.getAria().getLabelledBy()).toBeNull();
+        expect(labelled.getAria().getLabel()).toBe('Row actions');
+        expect(referenced.getAria().getLabelledBy()).toBe('heading-of-my-own');
+    });
+
+    it('keeps the consumer\'s name when the title is cleared and set again', () => {
+        installTestDOM(CONFIG);
+
+        const popover = new Popover({ title: 'T' });
+
+        popover.getAria().clearLabelledBy().setLabel('Mine');
+        popover.clearTitle();
+        popover.setTitle('T2');
+
+        expect(popover.getAria().getLabelledBy()).toBeNull();
+        expect(popover.getAria().getLabel()).toBe('Mine');
+    });
+
+    it('leaves a name the consumer gave an untitled popover alone', () => {
+        installTestDOM(CONFIG);
+
+        const popover = new Popover();
+
+        popover.getAria().setLabel('Row actions');
+        popover.clearTitle();
+
+        expect(popover.getAria().getLabel()).toBe('Row actions');
+    });
+});

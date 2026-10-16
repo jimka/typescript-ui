@@ -321,3 +321,101 @@ describe('Aria — unchanged writes are skipped', () => {
         expect(hiddenRemoves.length).toBe(1);
     });
 });
+
+describe('Aria — labelledby / describedby', () => {
+    afterEach(() => DOM.reset());
+
+    /** Every recorded `apply` patch on `element` that removes the attribute `name`. */
+    function removals(sink: { writes: Array<{ op: string; args: unknown[] }> }, element: unknown, name: string): number {
+        return sink.writes
+            .filter(w => w.op === 'apply' && w.args[0] === element)
+            .filter(w => (w.args[1] as { removeAttr?: string[] }).removeAttr?.includes(name))
+            .length;
+    }
+
+    // A1
+    it('setDescribedBy/getDescribedBy round-trip; getDescribedBy defaults null', () => {
+        const a = aria();
+
+        expect(a.getDescribedBy()).toBeNull();
+
+        a.setDescribedBy('d1');
+
+        expect(a.getDescribedBy()).toBe('d1');
+    });
+
+    // A2
+    it('clearDescribedBy removes aria-describedby from the element', () => {
+        installTestDOM(CONFIG);
+
+        const c = new Component();
+        const element = c.getElement(true)!;
+
+        c.getAria().setDescribedBy('d1');
+
+        expect(DOM.source.getAttribute(element, 'aria-describedby')).toBe('d1');
+
+        c.getAria().clearDescribedBy();
+
+        expect(DOM.source.getAttribute(element, 'aria-describedby')).toBeNull();
+        expect(c.getAria().getDescribedBy()).toBeNull();
+    });
+
+    // A3
+    it('clearLabelledBy removes aria-labelledby from the element', () => {
+        installTestDOM(CONFIG);
+
+        const c = new Component();
+        const element = c.getElement(true)!;
+
+        c.getAria().setLabelledBy('t1');
+
+        expect(DOM.source.getAttribute(element, 'aria-labelledby')).toBe('t1');
+
+        c.getAria().clearLabelledBy();
+
+        expect(DOM.source.getAttribute(element, 'aria-labelledby')).toBeNull();
+        expect(c.getAria().getLabelledBy()).toBeNull();
+    });
+
+    // A4
+    it('the two clears write nothing when no value was ever set, and alertdialog is a role', () => {
+        const sink = installTestDOM(CONFIG);
+        const c = new Component();
+        const element = c.getElement(true)!;
+
+        expect(() => c.getAria().clearLabelledBy()).not.toThrow();
+        expect(() => c.getAria().clearDescribedBy()).not.toThrow();
+
+        expect(removals(sink, element, 'aria-labelledby')).toBe(0);
+        expect(removals(sink, element, 'aria-describedby')).toBe(0);
+
+        c.getAria().setRole('alertdialog');
+
+        expect(c.getAria().getRole()).toBe('alertdialog');
+    });
+
+    it('each clear writes one removal, and none again once cleared', () => {
+        const sink = installTestDOM(CONFIG);
+        const c = new Component();
+        const element = c.getElement(true)!;
+
+        c.getAria().setLabelledBy('t1');
+        c.getAria().setDescribedBy('d1');
+        c.getAria().clearLabelledBy();
+        c.getAria().clearDescribedBy();
+        c.getAria().clearLabelledBy();
+        c.getAria().clearDescribedBy();
+
+        expect(removals(sink, element, 'aria-labelledby')).toBe(1);
+        expect(removals(sink, element, 'aria-describedby')).toBe(1);
+    });
+
+    it('both clears return the helper, for chaining', () => {
+        const a = aria();
+
+        expect(a.clearLabelledBy()).toBe(a);
+        expect(a.clearDescribedBy()).toBe(a);
+        expect(a.setDescribedBy('d1')).toBe(a);
+    });
+});

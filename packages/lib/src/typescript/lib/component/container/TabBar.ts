@@ -111,7 +111,7 @@ export type TabBarEvent =
  * @category Components
  */
 export interface TabToolDescriptor {
-    /** Tooltip on the strip button and label on the menu row (required). */
+    /** Tooltip and accessible name of the strip button, and label on the menu row (required). */
     label: string;
 
     /** Optional registry glyph name for the button and menu row (matches {@link MenuItemConfig.glyph}). */
@@ -1215,7 +1215,8 @@ class TabBar extends Container<TabBarOptions> {
 
     /**
      * Builds the flat strip {@link Button} for a descriptor tool — glyph from the
-     * descriptor, `label` as its tooltip, `action` as its press handler — and
+     * descriptor, `label` as its name (its tooltip and, kept off the face, its
+     * accessible name), `action` as its press handler — and
      * registers its menu row in {@link _toolMenuItems} so {@link openTabMenu}
      * lists it. The button's press and the menu row invoke the same `action`
      * reference, so the two can never diverge.
@@ -1225,10 +1226,9 @@ class TabBar extends Container<TabBarOptions> {
      * @returns The built, flat, tooltip'd tool button.
      */
     private buildDescriptorTool(descriptor: TabToolDescriptor): Button {
-        const button = new Button({ glyph: descriptor.glyph });
+        const button = new Button({ glyph: descriptor.glyph, text: descriptor.label, showText: false });
 
         button.setFlat(true);
-        Tooltip.attach(button, descriptor.label);
         button.on("action", descriptor.action);
         this._toolMenuItems.set(button, descriptor);
 
