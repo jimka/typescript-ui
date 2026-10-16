@@ -258,6 +258,16 @@ class SpinButton extends Button<SpinButtonOptions> {
 
         this._repeat.stop();
     }
+
+    /**
+     * Stops a press-and-hold repeat still running. The mouse-up listener that
+     * would have stopped it is purged by the inherited teardown.
+     */
+    protected destructor(): void {
+        this._repeat.stop();
+
+        super.destructor();
+    }
 }
 
 const SpinButtonCallable = callable(SpinButton);

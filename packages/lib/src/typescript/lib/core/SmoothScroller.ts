@@ -181,6 +181,18 @@ export class SmoothScroller {
     }
 
     /**
+     * Cancels the in-flight loop and reads nothing. For an owner that is being
+     * torn down, where `reset()`'s re-read of the live position would go
+     * through an element that is gone.
+     */
+    stop(): void {
+        if (this._raf !== null) {
+            DOM.sink.cancelAnimationFrame(this._raf);
+            this._raf = null;
+        }
+    }
+
+    /**
      * Reports whether the easing loop is currently running.
      *
      * @returns `true` while the RAF loop is active.

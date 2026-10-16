@@ -87,7 +87,9 @@ export interface DialogButtonConfig {
      *
      * Only chrome buttons go through this guard: Escape, a backdrop click, and
      * the title-bar close button all still close unconditionally, so a user
-     * always has an unvalidated way out of the dialog.
+     * always has an unvalidated way out of the dialog. A guard that resolves
+     * `true` after one of those has started the dismissal has its result
+     * discarded: `show()` resolves with the dismissal's result.
      */
     onClick?: () => boolean | Promise<boolean>;
 }
@@ -559,6 +561,10 @@ class DialogButtonRow extends Component {
      * guard settles (a `true`/omitted result is about to tear this row down
      * anyway, so re-enabling then is harmless). A guard that rejects/throws
      * still re-enables the row and propagates — see `DialogButtonConfig.onClick`'s doc.
+     * A dialog disposed while the guard is pending is left alone: the buttons
+     * are not re-enabled and the result is not reported. One that is merely
+     * being dismissed (its fade is running) still re-enables the row, but the
+     * owning dialog ignores the late result, so the dismissal's own result wins.
      *
      * @param cfg - The clicked button's own config (carries its `onClick`).
      * @param result - The `DialogResult` to report once the guard clears.
@@ -577,10 +583,18 @@ class DialogButtonRow extends Component {
         try {
             proceed = await cfg.onClick();
         } finally {
-            this.setButtonsEnabled(true);
+            // The dialog may have been disposed while the guard was pending;
+            // its buttons are destroyed with it.
+            const destroyed = this.isDestroyed();
+
+            if (!destroyed) {
+                this.setButtonsEnabled(true);
+            }
         }
 
-        if (proceed) {
+        const alive = !this.isDestroyed();
+
+        if (proceed && alive) {
             this._onButton(result);
         }
     }
@@ -757,6 +771,13 @@ class Dialog extends Component implements DismissableLayer {
     // cancelled dismiss animation will never call finalize at all).
     private _finalizing: boolean = false;
 
+    // True from the first `hide()` call on. `hide()` destroys the dialog only
+    // after its fade, so `isDestroyed()` stays false meanwhile; the flag makes
+    // the button row's callback ignore any button result in that window,
+    // guarded or not, so the first dismissal wins. `hide()` itself stays
+    // callable: a later Escape or programmatic hide restarts the fade.
+    private _dismissing: boolean = false;
+
     /**
      * Constructs a Dialog but does not display it. Call `show()` to open.
      *
@@ -843,7 +864,11 @@ class Dialog extends Component implements DismissableLayer {
         this.addComponent(this._contentContainer, { placement: Placement.CENTER });
         this.applyAriaSemantics(description);
 
-        this._buttonRow = new DialogButtonRow(buttons, (result) => this.hide(result));
+        this._buttonRow = new DialogButtonRow(buttons, (result) => {
+            if (!this._dismissing) {
+                this.hide(result);
+            }
+        });
         this.addComponent(this._buttonRow, { placement: Placement.SOUTH });
 
         this._backdrop = new DialogBackdrop();
@@ -1466,6 +1491,8 @@ class Dialog extends Component implements DismissableLayer {
      * skipped when motion is reduced.
      */
     hide(result: DialogResult): this {
+        this._dismissing = true;
+
         Event.removeViewportListener(this, 'keydown', this._boundKeyHandler);
         Event.removeViewportListener(this, 'focusin', this._boundFocusInHandler);
         Event.removeViewportListener(this, 'resize', this._boundResizeHandler);

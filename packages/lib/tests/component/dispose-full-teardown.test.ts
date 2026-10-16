@@ -45,6 +45,8 @@ import { Model } from '~/data/Model';
 import { Menu } from '~/overlay/Menu';
 import { Popover } from '~/overlay/Popover';
 import { Link } from '~/component/input/Link';
+import { SpinButton } from '~/component/input/SpinButton';
+import { Scrollbar } from '~/component/container/Scrollbar';
 import { SelectableText } from '~/component/input/SelectableText';
 import { TextField } from '~/component/input/TextField';
 import { TabBar } from '~/component/container/TabBar';
@@ -415,6 +417,8 @@ const REGISTRY: Array<{
         },
     },
     { name: 'Link',    make: () => new Link('x') },
+    { name: 'SpinButton', covers: ['SpinButton'], make: () => new SpinButton('▲') },
+    { name: 'Scrollbar (arrows)', covers: ['ScrollArrowButton'], make: () => new Scrollbar('vertical', { arrowsEnabled: true }) },
     {
         name: 'TabButton',
         covers: ['TabButton'],
@@ -521,7 +525,7 @@ const REGISTRY: Array<{
     {
         // expandAll() rebinds the root row, so `setRowData` turns its toggle.
         name: 'Tree',
-        covers: ['VirtualRowView', 'TreeRow', 'LabelTreeNodeRenderer'],
+        covers: ['Tree', 'VirtualRowView', 'TreeRow', 'LabelTreeNodeRenderer'],
         make: () => {
             const tree = new Tree();
 

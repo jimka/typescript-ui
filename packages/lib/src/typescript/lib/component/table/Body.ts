@@ -2044,6 +2044,15 @@ class TableBody extends VirtualRowView<Row> {
      */
     private async pasteIntoRange(bounds: CellRangeBounds): Promise<void> {
         const clip = await DOM.source.readClipboardText();
+
+        // The read can take as long as a permission prompt stays open. A body
+        // disposed meanwhile must not write into a store that outlives it.
+        const destroyed = this.isDestroyed();
+
+        if (destroyed) {
+            return;
+        }
+
         if (clip === null || clip === '') {
             // See copyContextMenuSelection's identical comment: restores
             // focus after the menu row's click blurred the body, even on a

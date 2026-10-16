@@ -54,6 +54,7 @@ export class VirtualScroller {
     private _contentWidth   : number = 0;
     private _contentHeight  : number = 0;
     private _smooth         : SmoothScroller;
+    private _momentumRaf    : number | null = null;
     private _shadowOverlay  : Handle;
     private _shadowStrips   : readonly Handle[] = [];
     private _shadowEdges     : ScrollShadowEdges = { top: 0, bottom: 0, left: 0, right: 0 };
@@ -157,11 +158,25 @@ export class VirtualScroller {
      * appended straight onto the owner's element rather than registered as its
      * children, so the owner's `destructor()` recursion cannot reach them and
      * their per-instance stylesheet rules would otherwise survive teardown.
-     * Called from `VirtualRowView.destructor()`.
+     * Called from `VirtualRowView.destructor()`. Stops the eased wheel scroll
+     * and the touch fling first.
      */
     dispose(): void {
+        // Both loops write the scroll transform through `_rowsContainer`, which
+        // the owner releases right after this call.
+        this._smooth.stop();
+        this.cancelMomentum();
+
         this._scrollbarV.dispose();
         this._scrollbarH.dispose();
+    }
+
+    /** Cancels a touch-fling loop that is still running. */
+    private cancelMomentum(): void {
+        if (this._momentumRaf !== null) {
+            DOM.sink.cancelAnimationFrame(this._momentumRaf);
+            this._momentumRaf = null;
+        }
     }
 
     /**
@@ -597,14 +612,6 @@ export class VirtualScroller {
         let touchStartScrollY = 0;
         let touchStartScrollX = 0;
         let touchSamples      : Array<{ time: number, x: number, y: number }> = [];
-        let momentumRaf       : number | null = null;
-
-        const cancelMomentum = (): void => {
-            if (momentumRaf !== null) {
-                DOM.sink.cancelAnimationFrame(momentumRaf);
-                momentumRaf = null;
-            }
-        };
 
         // Subtree because touch events fire on descendants of the owner
         // (rows / cells) — not the owner root.
@@ -612,7 +619,7 @@ export class VirtualScroller {
             if (e.touches.length !== 1) {
                 return;
             }
-            cancelMomentum();
+            this.cancelMomentum();
             this._smooth.reset();
             touchActive       = true;
             touchStartY       = e.touches[0].clientY;
@@ -687,7 +694,7 @@ export class VirtualScroller {
 
                 const speed = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
                 if (speed < STOP_VELOCITY) {
-                    momentumRaf = null;
+                    this._momentumRaf = null;
                     return;
                 }
 
@@ -702,14 +709,14 @@ export class VirtualScroller {
                     velocityX = 0;
                 }
                 if (velocityY === 0 && velocityX === 0) {
-                    momentumRaf = null;
+                    this._momentumRaf = null;
                     return;
                 }
 
-                momentumRaf = DOM.sink.requestAnimationFrame(step);
+                this._momentumRaf = DOM.sink.requestAnimationFrame(step);
             };
 
-            momentumRaf = DOM.sink.requestAnimationFrame(step);
+            this._momentumRaf = DOM.sink.requestAnimationFrame(step);
         };
 
         Event.addSubtreeListener(this._owner, "touchend", () => {
@@ -722,7 +729,7 @@ export class VirtualScroller {
 
         Event.addSubtreeListener(this._owner, "touchcancel", () => {
             touchActive = false;
-            cancelMomentum();
+            this.cancelMomentum();
         });
     }
 }

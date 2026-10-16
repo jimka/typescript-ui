@@ -415,6 +415,15 @@ class ScrollArrowButton extends Component {
         this.setBackgroundColor("var(--ts-ui-scrollbar-arrow-bg, transparent)");
     };
 
+    /**
+     * Stops a press-and-hold repeat still running. The mouse-up listener that
+     * would have stopped it is purged by the inherited teardown.
+     */
+    protected destructor(): void {
+        this._repeat.stop();
+
+        super.destructor();
+    }
 }
 
 const _defaultScrollbarOptions: Partial<ScrollbarOptions> = {

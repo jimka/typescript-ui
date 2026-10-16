@@ -260,7 +260,7 @@ function ensureFlushScheduled(): void {
  * the isolation buys a rendered frame, not silence, and the fix is the
  * underlying throw rather than a rate limiter.
  *
- * @param stage - The flush stage that failed, `"doLayout"` or `"afterNextLayout"`.
+ * @param stage - The stage that failed: "doLayout", "afterNextLayout", "onFirstLayout" or "onEffectiveVisibilityChange".
  * @param componentId - The failing component's id, or `null` for an entry that
  *   belongs to no single component.
  * @param error - The value that was thrown.
@@ -1261,6 +1261,12 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // beside the purge that strands the drag.
         endPointerDragFor(this.getId());
 
+        // The purge above removed the wheel listener; the ease it started is a
+        // bare animation frame and would keep stepping for a few hundred
+        // milliseconds against an element that is gone.
+        this._wheelScroller?.stop();
+        this._wheelScroller = null;
+
         // Tear any active clip frame down, then remove this component's own
         // element — before recursing into children below, rather than after.
         // A still-connected element's removal here is the one call in this
@@ -1392,6 +1398,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         }
 
         this._ownedHandles.length = 0;
+
+        // Both buffers are still bound to a handle released above, so a setter
+        // called from here on would write through it. Detached, they keep
+        // taking writes and reach no element — what `release()` does for the
+        // same reason.
+        this._inlineStyle.detach();
+        this._elementAttributes.detach();
+
         this._element             = undefined;
     }
 
@@ -2721,7 +2735,14 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
             return;
         }
         this._lastEffectiveVisible = effective;
-        this.onEffectiveVisibilityChange(effective);
+
+        // Isolated: one hook that throws would otherwise leave this node's
+        // children, and every root queued behind it, unreconciled.
+        try {
+            this.onEffectiveVisibilityChange(effective);
+        } catch (error) {
+            reportFlushFailure("onEffectiveVisibilityChange", this.getId(), error);
+        }
 
         for (const child of this.getComponents()) {
             const childEffective =
@@ -4801,6 +4822,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * element handle is released, while its parent link may or may not be —
      * `destructor` clears the child list, not the children's parent links —
      * so the link cannot stand in for liveness.
+     *
+     * A component also asks this of itself after an `await`: the code that
+     * follows may be running after its own teardown, and then it must return
+     * without touching the component, a consumer callback or caller-owned data.
      *
      * @returns `true` once the component has been destroyed.
      *
@@ -8280,7 +8305,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         this._firstLayoutCallbacks = null;
 
         for (const callback of callbacks) {
-            callback();
+            // Isolated: the queue was emptied above, so a throw would lose
+            // every callback behind this one and abort the enclosing layout.
+            try {
+                callback();
+            } catch (error) {
+                reportFlushFailure("onFirstLayout", this.getId(), error);
+            }
         }
 
         return true;
