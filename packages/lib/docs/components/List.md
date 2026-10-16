@@ -52,6 +52,11 @@ as you type — can highlight a row up front with
 without an arrow keypress first. It moves the focus mark only: the selection is untouched and
 no `change` event fires.
 
+A keyboard move, type-ahead and `setFocusedIndex` scroll the focused row into view. The list
+moves the least distance that shows the whole row, and never sideways, so a list with
+[horizontal scrolling](#horizontal-scrolling) keeps its horizontal position. `setSelectedIndex`
+and `setValue` do not scroll.
+
 Navigation and type-ahead skip disabled rows entirely — see [Disabled rows](#disabled-rows) below.
 
 ## Selection events
@@ -92,7 +97,7 @@ fruits.on("contextmenu", (index, event) => menu.show(event.clientX, event.client
 | Opened with | `index` | `event` |
 |---|---|---|
 | a right-click on a row | the row under the pointer | the browser's `contextmenu` event |
-| `Shift+F10` / ContextMenu key | the focused row | a synthetic `contextmenu` event whose `clientX` / `clientY` sit under the row; its `target` is `null` |
+| `Shift+F10` / ContextMenu key | the focused row, scrolled into view first | a synthetic `contextmenu` event whose `clientX` / `clientY` sit under the row; its `target` is `null` |
 
 Either way the browser's own menu is already suppressed — the listener need not call
 `preventDefault()`, which does nothing on the synthetic event — and the selection is left as
@@ -102,10 +107,6 @@ click, an empty list, or a disabled one — the keys fire nothing, as a right-cl
 list's empty area fires nothing. A read-only list ignores the arrow keys and row clicks, so
 its keyboard menu is for the row the host focused with `setFocusedIndex`, if any; a
 right-click on a row still fires for that row.
-
-**Known limitation:** a list with overlay scrollbars — the default — does not yet scroll its
-focused row into view, for the arrow keys or for this menu. When the focused row is scrolled
-out of view, the synthetic event's point is the list's nearest edge, so the menu opens there.
 
 A menu opened from the keyboard takes focus and is worked with the arrow keys; focus returns
 to the list when it closes — see [Menu: Keyboard](/components/Menu#keyboard).

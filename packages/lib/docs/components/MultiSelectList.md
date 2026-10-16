@@ -42,6 +42,8 @@ A `Shift`-extension that crosses a disabled row drops it from the resulting sele
 
 A navigation key that leaves the selection as it was — `Shift`-`ArrowDown` on the last row, say — fires no `change`, and announces no `"action"` either.
 
+A keyboard move, type-ahead and `setFocusedIndex` scroll the focused row into view, as in [List: Keyboard](/components/List#keyboard). `setValues` and `setSelectedIndex` do not scroll.
+
 ## Selection events
 
 `on("action", fn)` fires once per user-driven selection — a row click, `Enter`, `Space`, or a navigation key that moves the selection — and never for a programmatic `setValues` or `setSelectedIndex`. `on("change", fn)` carries the committed value and fires for the user's gestures **and** your own `setSelectedIndex` calls; `setValues` is silent on both. [`List`](/components/List#selection-events), [`Checkbox`](/components/Checkbox) and [`Slider`](/components/Slider) follow the same contract.

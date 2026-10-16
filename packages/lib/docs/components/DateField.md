@@ -46,7 +46,7 @@ The dropdown header carries three navigation affordances:
 - **Header label** ("May 2026") is a button: click it to swap the day grid for an in-place year-scroller. Click a year cell to return to the day grid for that year; press `Escape` to return without changing the year.
 - **Type-ahead** inside the year scroller: typing four digits (e.g. `1985`) jumps to that year. The buffer resets after a brief idle pause.
 
-Keyboard inside the day grid: arrow keys move the highlight (`±1` day / `±7` days), `PageUp`/`PageDown` advance by month, `Home`/`End` jump to the first / last in-range day, `Enter` or `Space` commits the highlighted day. Inside the year scroller the same arrow / Page / Home / End semantics walk the year list (`PageUp`/`PageDown` step `±10` years).
+Keyboard inside the day grid: arrow keys move the highlight (`±1` day / `±7` days), `PageUp`/`PageDown` advance by month, `Home`/`End` jump to the first / last in-range day, `Enter` or `Space` commits the highlighted day. Inside the year scroller the same arrow / Page / Home / End semantics walk the year list (`PageUp`/`PageDown` step `±10` years). The scroller opens centred on the calendar's year and keeps the highlighted year in the middle as those keys and type-ahead move it, or as near the middle as the ends of the list allow. Scrolling it with the wheel moves the view and not the highlight; the next key that moves the highlight brings the view back to it.
 
 ## Relative shorthand
 

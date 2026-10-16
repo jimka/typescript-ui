@@ -175,6 +175,14 @@ page resets to empty.
   scrollbars — for an owner whose content changed between renders and must
   scroll against the new height before its next one.
 
+- **`PickerColumn` can centre a cell its caller names.**
+  `scrollCellIntoView(cell)` scrolls the column so that cell sits in the
+  middle of the view, as `scrollSelectedIntoView()` does for the first
+  selected cell. It is for a column that shows more than one cell
+  selected, as a calendar's year list does for the calendar's year and
+  the year the keyboard is on. Neither method scrolls a column that is
+  hidden.
+
 - **A modified tab is announced to assistive technology.** While
   `Tab.setTabModified` (or `TabButton.setModified`) marks a tab, its
   button carries `aria-description="Modified"`, so a screen reader
@@ -348,17 +356,37 @@ page resets to empty.
   `Tree`, a `List` and a table body hold focus on their own element, so the
   browser sends the key's `contextmenu` event to the widget and not to a
   row or a cell. `Tree`, `List`, `MultiSelectList`, `Table` and `TreeTable`
-  now open the menu for the current row or cell and under it. A `Tree`, a
-  `Table` and a `TreeTable` scroll that item into view first. A `List` or
-  `MultiSelectList` with overlay scrollbars, the default, does not yet: it
-  does not scroll its focused row into view for the arrow keys either, and
-  the menu opens at the list's nearest edge when that row is out of view.
-  It is the menu a right-click on that item opens, the selection is not
-  changed, and with no current item nothing opens. One contract changes:
-  for a keyboard menu a `Tree` or `List` `"contextmenu"` listener receives
-  a synthetic event, with `clientX` / `clientY` under the row and a `null`
-  `target`. No consumer action is needed unless a listener reads
-  `event.target`.
+  now open the menu for the current row or cell and under it. Each scrolls
+  that item into view first. It is the menu a right-click on that item
+  opens, the selection is not changed, and with no current item nothing
+  opens. One contract changes: for a keyboard menu a `Tree` or `List`
+  `"contextmenu"` listener receives a synthetic event, with `clientX` /
+  `clientY` under the row and a `null` `target`. No consumer action is
+  needed unless a listener reads `event.target`.
+
+- **A `List` scrolls its focused row into view.** With overlay scrollbars,
+  the default, moving the focused row with the arrow keys, `Home` / `End`,
+  `PageUp` / `PageDown`, type-ahead or `setFocusedIndex` did not scroll the
+  list, so the row could sit out of view. `List` and `MultiSelectList` now
+  scroll the least distance that shows the whole row, vertically only, so
+  a list with `horizontalScrolling` keeps its horizontal position. The
+  dropdown of a `ComboBox` follows its highlighted option for the same
+  reason. A programmatic selection — `setSelectedIndex`, `setValue`,
+  `setValues` — does not scroll, as before. No consumer action is needed.
+
+- **A calendar's year list opens on the calendar's year and follows the
+  keyboard.** The year list of a `DateField` or `DateTimeField` opened on
+  its first year, with the calendar's year out of view, and the arrow
+  keys, `PageUp` / `PageDown`, `Home` / `End` and typing a year moved a
+  highlight the list did not follow. It now opens centred on the
+  calendar's year, and each of those keys puts the year it highlights in
+  the middle of the list, towards earlier and later years alike; at
+  either end of the list the highlight sits as near the middle as the
+  list allows. A view scrolled with the wheel or the scrollbar stays
+  where it is until a key moves the highlight. A click on a month arrow
+  while the list is open no longer clears the mark of the year the
+  keyboard is on. A table's date and date-time cell editors open the
+  same calendar and get the centring. No consumer action is needed.
 
 ### Core
 

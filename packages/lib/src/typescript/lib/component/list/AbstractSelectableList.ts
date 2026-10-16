@@ -1547,11 +1547,10 @@ abstract class AbstractSelectableList<
      * and the browser's {@link MouseEvent}. It also fires when Shift+F10 or
      * the ContextMenu key is pressed while the list has focus and a focused
      * row: the listener then receives the focused row's index and a synthetic
-     * `contextmenu` event whose `clientX` / `clientY` sit under that row, or
-     * on the list's nearest edge when the row is scrolled out of view; the
-     * synthetic event's `target` is `null`. Either way `clientX` / `clientY`
-     * position a context menu, the browser's own menu is suppressed, and the
-     * selection is left unchanged.
+     * `contextmenu` event whose `clientX` / `clientY` sit under that row,
+     * which is scrolled into view first; the synthetic event's `target` is
+     * `null`. Either way `clientX` / `clientY` position a context menu, the
+     * browser's own menu is suppressed, and the selection is left unchanged.
      * `"dblclick"` fires on a row double-click with the row index and the
      * browser's event. Both carry the row index directly, so hosts need not
      * walk the row DOM to resolve it.
@@ -1864,10 +1863,8 @@ abstract class AbstractSelectableList<
 
     /**
      * Returns the focused row, as the component a keyboard-opened context
-     * menu is anchored under, after asking for it to be scrolled into view
-     * the way a keyboard move does (see {@link scrollIndexIntoView}). Where
-     * that leaves the row out of view, the menu point is clamped to the
-     * list's own box.
+     * menu is anchored under, after scrolling it into view the way a keyboard
+     * move does (see {@link scrollIndexIntoView}).
      *
      * @returns The pool row at the focused index, or `null` when no row
      *   holds focus.
@@ -1980,6 +1977,10 @@ abstract class AbstractSelectableList<
      * selection: the selected row (if any) is untouched and no `change`
      * or `action` event fires. An index outside the item array clears
      * the focus mark instead of throwing.
+     *
+     * The focused row is scrolled into view, vertically and by the least
+     * distance. A list that is hidden or not yet rendered moves the mark
+     * without scrolling, and does not scroll later when it is shown.
      *
      * @param idx - The zero-based index to focus, or an out-of-range
      *   value to clear the focus mark.
@@ -2307,12 +2308,12 @@ abstract class AbstractSelectableList<
     }
 
     /**
-     * Scrolls the inner panel so the row at `idx` is fully visible, with
-     * no movement when it already is. Reads / writes the panel's native
-     * `scrollTop` directly — the framework's typed scroll setter only
-     * lives on the `VirtualScroller`-backed components (`Table.Body`,
-     * `Tree`); the `Panel`-with-`autoScroll: "y"` surface relies on
-     * native browser overflow and exposes no setter.
+     * Scrolls the inner panel vertically, by the least distance, so the row
+     * at `idx` is fully visible; writes nothing when it already is. The
+     * horizontal offset is never touched. Reads the viewport height from the
+     * panel's inner size and the offset through the panel's scroll API, so
+     * the same code serves both scrollbar styles. Does nothing while the
+     * panel is unrendered or not effectively visible.
      *
      * @param idx - The row index to scroll into view.
      */
@@ -2321,22 +2322,27 @@ abstract class AbstractSelectableList<
             return;
         }
 
-        const panelEl = this._innerPanel.getElement();
+        const panel    = this._innerPanel;
+        const viewport = panel.getInnerSize();
+        const visible  = panel.isEffectivelyVisible();
 
-        if (!panelEl) {
+        if (!viewport || !visible) {
             return;
         }
 
-        const metrics       = DOM.source.getScrollMetrics(panelEl);
-        const top           = idx * ROW_HEIGHT_PX;
-        const bottom        = top + ROW_HEIGHT_PX;
-        const scrollTop     = metrics.scrollTop;
-        const visibleBottom = scrollTop + metrics.clientHeight;
+        // The browser also scrolls the panel on its own — a touch pan, a drag of
+        // a native scrollbar — and the panel's remembered offset does not hear
+        // of it. Re-read it, or the comparison below is against a stale value.
+        panel.syncScrollOffsets();
+
+        const top       = idx * ROW_HEIGHT_PX;
+        const bottom    = top + ROW_HEIGHT_PX;
+        const scrollTop = panel.getScrollTop();
 
         if (top < scrollTop) {
-            DOM.sink.apply(panelEl, { scrollTop: top });
-        } else if (bottom > visibleBottom) {
-            DOM.sink.apply(panelEl, { scrollTop: bottom - metrics.clientHeight });
+            panel.setScrollTop(top);
+        } else if (bottom > scrollTop + viewport.height) {
+            panel.setScrollTop(bottom - viewport.height);
         }
     }
 }

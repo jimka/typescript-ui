@@ -235,7 +235,7 @@ Shift+F10 and the ContextMenu key open the same menu a right-click opens. Which 
 | --- | --- | --- |
 | a control that holds focus itself — a button, a tab, a text field | that control | where the browser places the event: at the caret for a text field or an editor |
 | a [`Tree`](/components/Tree#context-menu) | its current row | under that row, scrolled into view first |
-| a [`List`](/components/List#context-menu) or a [`MultiSelectList`](/components/MultiSelectList) | its focused row | under that row; at the list's nearest edge when the row is scrolled out of view (see the [known limitation](/components/List#context-menu)) |
+| a [`List`](/components/List#context-menu) or a [`MultiSelectList`](/components/MultiSelectList) | its focused row | under that row, scrolled into view first |
 | a [`Table`](/components/Table#keyboard) or a [`TreeTable`](/components/TreeTable) | its current cell | under that cell, scrolled into view first |
 
 A tree, a list and a table body each hold focus on their own element and mark the current row or cell with `aria-activedescendant`, so the browser sends the key's `contextmenu` event to the widget and not to a row. The widget answers it for its current item. With no current item — for example, focus arrived with `Tab` and no arrow key was pressed yet, or the widget is empty — nothing opens. Neither the mouse nor the keyboard changes the selection by opening the menu.

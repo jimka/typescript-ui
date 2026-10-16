@@ -339,54 +339,56 @@ class PickerColumn extends Component {
     }
 
     /**
-     * Scrolls the inner panel so the first {@link PickerCell} whose
-     * {@link PickerCell.isSelected} is `true` lands mid-viewport. Reads and
-     * writes the panel's native `scrollTop` directly — the framework's typed
-     * scroll setter lives only on the `VirtualScroller`-backed components, and
-     * a `Panel`-with-`autoScroll: "y"` surface relies on native browser
-     * overflow (the same pattern `AbstractSelectableList.scrollIndexIntoView` uses).
+     * Scrolls the cell list so the first selected cell lands in the middle of
+     * the viewport, clamped to the scrollable range. Does nothing when no
+     * cell is selected. A column that shows more than one cell selected names
+     * the one to follow with {@link scrollCellIntoView}.
      *
      * @returns This component, for method chaining.
      */
     scrollSelectedIntoView(): this {
-        const panelEl = this._cellList.getElement();
-
-        if (!panelEl) {
-            return this;
-        }
-
-        const children = this._cellList.getComponents();
-        let target: PickerCell | null = null;
-
-        for (const child of children) {
+        for (const child of this._cellList.getComponents()) {
             if (child instanceof PickerCell && child.isSelected()) {
-                target = child;
-                break;
+                return this.scrollCellIntoView(child);
             }
         }
 
-        if (!target) {
+        return this;
+    }
+
+    /**
+     * Scrolls the cell list so `cell` lands in the middle of the viewport,
+     * clamped to the scrollable range, whether or not the cell is selected.
+     * Reads the viewport height from the cell list's inner size and writes
+     * through the cell list's scroll API, so the same code serves both
+     * scrollbar styles. Does nothing while the column is unrendered or not
+     * effectively visible, and ignores a cell that is not in this column.
+     *
+     * @param cell - The cell to centre.
+     * @returns This component, for method chaining.
+     */
+    scrollCellIntoView(cell: PickerCell): this {
+        const viewport = this._cellList.getInnerSize();
+        const cellEl   = cell.getElement();
+        const ownsCell = cell.getParentComponent() === this._cellList;
+
+        // A column inside a hidden subtree has no layout box: the cell's
+        // offset and the scrollable range read as 0 and the write is ignored,
+        // so the call could only record a wrong offset to come back at.
+        const visible  = this._cellList.isEffectivelyVisible();
+
+        if (!viewport || !cellEl || !ownsCell || !visible) {
             return this;
         }
 
-        const cellEl = target.getElement();
+        // `offsetTop` is the cell's top edge relative to its offsetParent — the
+        // element the list scrolls. Centring = top minus half the viewport plus
+        // half the cell.
+        const cellBox    = DOM.source.getOffsetSize(cellEl);
+        const desiredTop = cellBox.offsetTop - (viewport.height - cellBox.offsetHeight) / 2;
+        const maxTop     = this._cellList.getMaxScrollTop();
 
-        if (!cellEl) {
-            return this;
-        }
-
-        // `offsetTop` is the cell's top edge relative to its offsetParent (the
-        // panel). Centring = top minus half the viewport plus half the cell.
-        const cellBox      = DOM.source.getOffsetSize(cellEl);
-        const panelMetrics = DOM.source.getScrollMetrics(panelEl);
-        const cellTop      = cellBox.offsetTop;
-        const cellHeight   = cellBox.offsetHeight;
-        const viewportH    = panelMetrics.clientHeight;
-        const desiredTop   = cellTop - (viewportH - cellHeight) / 2;
-        const maxScrollTop = panelMetrics.scrollHeight - viewportH;
-        const clamped      = Util.clamp(desiredTop, 0, maxScrollTop);
-
-        DOM.sink.apply(panelEl, { scrollTop: clamped });
+        this._cellList.setScrollTop(Util.clamp(desiredTop, 0, maxTop));
 
         return this;
     }
