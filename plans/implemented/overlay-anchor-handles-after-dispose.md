@@ -336,3 +336,14 @@ counts as no anchor, here and in the [dismiss modes](#dismiss-modes) below.
 [^stay-open]: The previous plan's D2 closed a `Popover` at the first moment it needed its anchor: its resize, scroll and layout handlers read the anchor's rect. `AnimatedDropdown` and `Menu` read their stored anchor nowhere except in the getter; neither repositions against it after opening. The first moment either needs the anchor is the manager's next outside press, and on that press a `"click-outside"` layer now closes. So the rule is the same — close when the anchor is next needed — and needs no new code. Closing at once was considered: the layer holds only a handle, and a handle has no release notification; the layer would have to be given the anchor's `Component` and subscribe to its `onDestroy`, which changes `setAnchorElement`, `toggleFor`, `show` and `setExcludedElement`, all public. Inside the library, every host that owns its dropdown or menu already disposes it in its own destructor before its element is released (`ComboBox`, `AbstractPickerField`, the date-time cell editor, `AutoCompleteField`, `PopupButton`, `MenuButton`, `SplitButton`, `ToolBar`, `MenuBar`, `AbstractWindow`), so the stale-anchor case is limited to an opener disposed on its own.
 
 [^getters]: The bug is the manager's read, and the manager's check fixes it for every getter. Filtering the getters as well would change three public return values to fix nothing further, and `Menu.getExcludedElement` has no counterpart on `Popover` to stay consistent with. `Popover`'s check stays because its JSDoc and the changelog entry of the previous branch already promise `null` for a disposed anchor; removing it would be a second public change in the other direction.
+
+---
+
+## Implementation Notes
+
+- Step 1 (baseline before the change) was not recorded: the tests were written first and the baseline run was skipped. The full run after the change had 576 files and 10320 tests passed, 2 todo, 0 failed, so the failed count is zero either way.
+- The `layering.md` sentence is inserted directly after "...is inert." and the following sentence ("Because a nested layer...") now starts on its own line; no wording change.
+- The manual Window-menu check is automated offline as case W1 (open the window menu via `onTitleGlyphClick`, `clearGlyph()`, press outside; no throw, menu closed). It fails without the guard. The demo-based manual run was not done: no browser or dev server was allowed.
+- The throwing-`contains` stub is a shared helper, `tests/helpers/throwOnReleasedHandle.ts`, used by the new file and by Popover test L1 (now checking both arguments). Without Popover's own getter check only L1 fails; the A-tests do not use the stub.
+- Checks run after the change: typecheck and typecheck:test exit 0; lint clean; docs:api zero warnings; docs:llms:check passes; build:lib succeeds; full vitest run passes.
+- No audit loop and no move to plans/implemented/, per orchestrator override.

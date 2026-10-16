@@ -59,6 +59,12 @@ export interface DismissableLayer {
     /**
      * Optional anchor element excluded from "outside" tests so the trigger
      * click that opened the layer does not immediately re-close it.
+     *
+     * The manager reads it when the layer registers (to find the layer it
+     * was opened from) and on every outside press and focus move. A handle
+     * whose element has been released since — its component was disposed
+     * while the layer stayed open — counts as no anchor, so an implementation
+     * may return the handle it stored without checking it.
      */
     getAnchorElement?(): Handle | null;
 
@@ -844,10 +850,11 @@ export namespace LayerManager {
      * old assumption that "last registered" and "paints in front" were the
      * same layer.
      *
-     * A layer with no anchor, or an anchor not (yet) inside any registered
-     * layer, falls back to the last-registered layer — the rule the tree
-     * used for every nested layer before {@link setBand} introduced a second
-     * root band, and still correct for such a layer today. While a modal
+     * A layer with no anchor, an anchor not (yet) inside any registered
+     * layer, or an anchor already released, falls back to the
+     * last-registered layer — the rule the tree used for every nested layer
+     * before {@link setBand} introduced a second root band, and still correct
+     * for such a layer today. While a modal
      * layer is open the fallback skips every layer behind it: those are
      * inert, so the user cannot have opened anything from one, and a context
      * menu shown at the pointer inside a dialog must not link under a window
@@ -862,7 +869,7 @@ export namespace LayerManager {
      *   empty and there is nothing to fall back to.
      */
     function resolveParent(layer: DismissableLayer): LayerNode | null {
-        const anchor = layer.getAnchorElement?.();
+        const anchor = liveAnchorOf(layer);
         const owner  = anchor ? nodeOwning(anchor) : null;
 
         if (owner) {
@@ -880,6 +887,29 @@ export namespace LayerManager {
         }
 
         return null;
+    }
+
+    /**
+     * Returns `layer`'s anchor element, or `null` when it has none or when
+     * the anchor's element has been released since the layer stored it — its
+     * component was disposed while the layer stayed open. Every read of a
+     * released handle throws, and the outside-press walk below serves every
+     * open layer, so one layer's stale anchor would stop the walk for all of
+     * them. A released anchor is treated as no anchor.
+     *
+     * @param layer - The layer whose anchor is wanted.
+     * @returns The anchor element, or `null`.
+     */
+    function liveAnchorOf(layer: DismissableLayer): Handle | null {
+        const anchor = layer.getAnchorElement?.() ?? null;
+
+        if (anchor === null) {
+            return null;
+        }
+
+        const live = DOM.source.isRegistered(anchor);
+
+        return live ? anchor : null;
     }
 
     /** True when `node` (or a descendant layer) contains `target`. */
@@ -1022,7 +1052,7 @@ export namespace LayerManager {
                 break;
             }
 
-            const anchor = node.layer.getAnchorElement?.();
+            const anchor = liveAnchorOf(node.layer);
 
             if (anchor && target && DOM.source.contains(anchor, target)) {
                 landedInside = true;

@@ -1097,3 +1097,13 @@ page resets to empty.
   or not: the first dismissal wins, and `show()` resolves with its result. A
   second Escape, close or programmatic `hide()` still restarts the fade. No
   consumer action is needed.
+
+- **A dropdown or menu whose trigger is disposed while it is open no longer
+  breaks outside clicks.** Every later press or focus move outside it threw
+  `DOM handle … is not registered`, and other open menus and dropdowns did
+  not close on that press.
+  This happened with a `Window`'s window menu after `clearGlyph()` on its
+  header, and with any `Menu`, `PopupPanel` or other dropdown opened from a
+  component the application disposed. The layer now stays open until the
+  next outside press, Escape or window blur closes it as usual. No consumer
+  action is needed.
