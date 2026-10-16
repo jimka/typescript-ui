@@ -15,6 +15,8 @@ export namespace Event {
     interface ListenerEntry {
         listener: Listener,
         options?: ListenerOptions,
+        /** Viewport registrations only: this registration's place in {@link viewportRegistrationSeq}. */
+        seq?: number,
     }
 
     interface CompFunc {
@@ -174,6 +176,9 @@ export namespace Event {
 
     let listenerMap = new Map<String, Map<String, CompFunc>>();
     let viewportListenerMap = new Map<String, Map<String, CompFunc>>();
+    // Counts viewport registrations, so a dispatch can tell the ones made
+    // before it began from the ones a listener made while it ran.
+    let viewportRegistrationSeq = 0;
     let subtreeListenerMap = new Map<String, Map<String, CompFunc>>();
     let installedListenerTypes = new Set<string>();
     let installedListenerOpts = new Map<string, AddEventListenerOptions>();
@@ -371,6 +376,17 @@ export namespace Event {
             return;
         }
 
+        // A listener registered by one of the listeners below does not
+        // receive this event, as a native listener added during a dispatch
+        // does not. Both loops walk live collections, which would otherwise
+        // hand the event to it: a `Dialog` opened by a viewport `keydown`
+        // listener would then act on the key press that opened it. A
+        // registration removed meanwhile is simply no longer in the
+        // collections. The mark is taken as this pass begins, so a listener
+        // registered earlier in the same event — by an element listener that
+        // ran before this pass — still receives it.
+        const firstLaterRegistration = viewportRegistrationSeq;
+
         for (let listeners of typeListeners) {
             let compFunc = listeners[1];
             if (!compFunc) {
@@ -380,6 +396,12 @@ export namespace Event {
             let component = compFunc.component;
 
             for (let entry of compFunc.listeners) {
+                const registeredDuringPass = entry.seq !== undefined && entry.seq >= firstLaterRegistration;
+
+                if (registeredDuringPass) {
+                    continue;
+                }
+
                 applyDisposition(evnt, entry.listener.apply(component, [evnt]), entry.options);
             }
         }
@@ -796,7 +818,11 @@ export namespace Event {
      * returned disposition asks for a stop. Logs a console trace and returns early if either
      * argument is falsy. Re-registering the same function reference does not add a second
      * listener — it is ignored; a fresh inline closure has no identity to match, so a site that
-     * can run more than once must pass a stable reference.
+     * can run more than once must pass a stable reference. A listener registered by another
+     * viewport listener, while that one is handling an event of the same type, does not receive
+     * that event; it receives the next one. A listener registered by an element listener earlier
+     * in the same event is not covered: it receives the event when element listeners happen to
+     * run before viewport listeners.
      */
     export function addViewportListener(component: Component, type: string, listener: Listener) {
         if (!listener || !component) {
@@ -826,7 +852,8 @@ export namespace Event {
             return;
         }
 
-        compFunc.listeners.push({ listener });
+        compFunc.listeners.push({ listener, seq: viewportRegistrationSeq });
+        viewportRegistrationSeq += 1;
     }
 
     /**

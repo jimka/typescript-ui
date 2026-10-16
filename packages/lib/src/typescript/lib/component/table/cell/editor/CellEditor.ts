@@ -6,6 +6,7 @@ import { Insets } from "~/primitive/Insets.js";
 import { ThemeManager } from "~/core/Theme.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import { Menu } from "~/overlay/Menu.js";
 
 /**
  * Interns the `relatedTarget` of a blur event into a {@link Handle}, or returns
@@ -138,21 +139,28 @@ export abstract class CellEditor<T> extends Component {
 
     /**
      * Returns whether the edit should stay alive when the editor's `<input>`
-     * loses focus to `relatedTarget`. The default is `false` (any blur ends the
-     * edit). Editors that own a floating sub-surface (e.g. a picker dropdown
-     * with its own focusable field) override this to keep editing while focus
-     * moves into that surface.
+     * loses focus to `relatedTarget`. By default any blur ends the edit, with
+     * one exception: the edit stays alive while a context menu that was opened
+     * from the keyboard inside this editor holds the keyboard. Such a menu
+     * takes DOM focus so its rows can be worked with the keys, and returns it
+     * to the editor when it closes; ending the edit as it opens would leave
+     * the menu's Cut / Copy / Paste acting on nothing. Editors that own a
+     * floating sub-surface (e.g. a picker dropdown with its own focusable
+     * field) override this to also keep editing while focus moves into that
+     * surface, and keep this answer by calling `super.retainsFocus`.
      *
      * @remarks Overrides delegate the cross-portal answer ("did focus land
      * inside my dropdown or any descendant layer?") to
      * [`LayerManager.containsAcrossLayers`](/api/core/namespaces/LayerManager/functions/containsAcrossLayers)
-     * rather than walking a private layer stack themselves.
+     * rather than walking a private layer stack themselves. The menu case
+     * asks the menu, not `relatedTarget`: some editors re-fire their inner
+     * field's blur without one.
      *
      * @param _relatedTarget - The node handle receiving focus, or null.
      * @returns True to suppress the blur-driven commit/close.
      */
     retainsFocus(_relatedTarget: Handle | null): boolean {
-        return false;
+        return Menu.hasKeyboardSessionFrom(this.getElement() ?? null);
     }
 
     /**

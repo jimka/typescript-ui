@@ -229,8 +229,8 @@ page resets to empty.
   highlight and `Enter` / `Space` activate the highlighted row. `focusItem`,
   `focusNext`, `focusPrev`, `activateFocused` and `getFocusedIndex` used to
   throw on a rebuild-mode menu; they now work in both modes. Each
-  rebuild-mode show starts with no row highlighted. No consumer action is
-  needed.
+  `toggleFor()` starts with no row highlighted, and so does a `show()`
+  opened with the mouse. No consumer action is needed.
 
 ## Fixed
 
@@ -315,6 +315,17 @@ page resets to empty.
   topmost layer.** With focus in an editor inside the dialog, the service
   armed its own `Escape` release for the editor alongside the dialog's, and
   moved focus a second time on the next `Tab`.
+
+- **A viewport listener registered by another viewport listener no longer
+  receives the event that one is handling.** `Event.addViewportListener`
+  handed the event in flight to a listener added by an earlier viewport
+  listener of the same dispatch, which a native listener added during a
+  dispatch never gets. A `Dialog` opened from a viewport `keydown` listener
+  therefore saw the key press that opened it, and confirmed itself on
+  `Enter` unless focus was on a button, a text area or an editing surface.
+  Such a listener now receives the next event of its type. A viewport
+  listener registered from an element listener earlier in the same event is
+  unchanged. No consumer action is needed.
 
 ### Layouts
 
@@ -401,3 +412,23 @@ page resets to empty.
   rendered `menuitem` rows inside an element with no role. They now carry
   `role="menu"`, as persistent-mode menus already did. No consumer action is
   needed.
+
+- **A context menu opened from the keyboard can be worked from the
+  keyboard.** Shift+F10 or the ContextMenu key opened the menu, but the arrow
+  keys, `Enter` and `Space` went on acting on the control that had focus: the
+  caret moved, a line break was inserted, and no row could be reached. A
+  `Menu.show()` that follows a key press now takes focus, highlights its
+  first enabled row, and handles `ArrowDown` / `ArrowUp`, `Home` / `End`,
+  `Enter` / `Space`, `ArrowRight` / `ArrowLeft` for submenus, `Tab` and
+  `Escape`. When it closes, focus returns to where it was, before a closing
+  row's `action` runs. A menu opened with the mouse, and the `SplitButton`
+  and `MenuBar` dropdowns, behave as before. A table cell editor keeps its
+  edit open while such a menu is up, and a date or time editor its picker.
+  The menu names its highlighted row in `aria-activedescendant`, through the
+  new `MenuRow.getActiveDescendantId()`. A modifier pressed by itself and a
+  held key's auto-repeat do not count as a key press. See
+  [Menu: Keyboard](/components/Menu#keyboard). No consumer action is needed,
+  with two exceptions. Code that calls `show()` for a dropdown whose trigger
+  should keep focus after a key press should call `toggleFor()` instead. A
+  custom `CellEditor` that overrides `retainsFocus` should also return `true`
+  when `super.retainsFocus(...)` does, or its edit ends when the menu opens.

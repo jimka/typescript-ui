@@ -27,6 +27,7 @@ import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { Event } from '~/core/Event';
 import { Tooltip } from '~/overlay/Tooltip';
+import { Menu } from '~/overlay/Menu';
 import { setAppResizeMode } from '~/core/ResizeDrag';
 import type { ResizeMode } from '~/core/ResizeDrag';
 import { Insets } from '~/primitive/Insets';
@@ -141,6 +142,9 @@ describe('Table column resize — outline mode', () => {
         // session-long viewport watch — a surviving `keydown` type map of
         // exactly the kind described above.
         Tooltip._stopPointerWatch();
+        // A table builds a context `Menu`, which installs `Menu`'s own
+        // session-long input watch: another surviving `keydown` type map.
+        Menu._stopInputWatch();
         DOM.reset();
     });
 

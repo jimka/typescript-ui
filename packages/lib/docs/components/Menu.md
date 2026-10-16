@@ -5,7 +5,7 @@
 - **Rebuild mode** — `Menu()` — a right-click context menu. Items are passed per `show(x, y, items)` call and rebuilt on each invocation. Best for menus whose contents depend on what the user clicked.
 - **Persistent mode** — `Menu(items, onClose)` — a [`MenuBar`](/components/MenuBar) dropdown. Items are built once in the constructor and reused across `open()` / `close()` cycles. Used internally by `MenuBar`.
 
-Most of the API belongs to one mode. `show()` / `hide()` / `setMenuWidth()` are valid only in rebuild mode; `open()` / `close()` / `setExcludedElement()` are valid only in persistent mode. Calling a method outside its mode throws. The keyboard-highlight methods — `focusItem`, `focusNext`, `focusPrev`, `activateFocused`, `getFocusedIndex` and `handleKey` — work in both (see [Keyboard](#keyboard)).
+Most of the API belongs to one mode. `show()` / `hide()` / `setMenuWidth()` are valid only in rebuild mode; `open()` / `close()` / `setExcludedElement()` are valid only in persistent mode. Calling a method outside its mode throws. The keyboard-highlight methods — `focusItem`, `focusNext`, `focusPrev`, `activateFocused`, `getFocusedIndex` and `handleKey` — work in both. A context menu opened from the keyboard needs none of them: it takes focus and handles its own keys (see [Keyboard](#keyboard)).
 
 ## Rebuild mode (right-click context menu)
 
@@ -81,6 +81,7 @@ Most menus are built entirely from `MenuItemConfig` fields, but an entry can car
 - **`isNavigable()` defaults to `false`.** A custom row is left out of the menu's roving arrow-key highlight by default, exactly like a separator — the row is expected to own its own DOM focus and keys. Override it to `true` for a row that behaves like a menu item instead (no embedded focusable control): the highlight then lands on it, and Enter calls its `activate()`.
 - **The row opts out of the shared check/icon/title/shortcut column grid by default** and renders across the row's full width. A row that wants to line up with the `MenuItem`s around it overrides `setColumns(checkZone, iconStart, titleColumn)` and positions its content from the injected `iconStart`. Because a row contributing no title/shortcut metrics would otherwise leave the panel too narrow, override `getContentWidth()` to report the row's own natural width — read **before** `setColumns` runs, so it must not depend on the injected columns.
 - **Dismissing the menu from inside a custom row** goes through the protected `closeMenu()` helper, backed by a close callback `Menu` injects into every factory-built row right after constructing it — a factory row has no other reference to the menu hosting it.
+- **`getActiveDescendantId()` returns the row's own id by default.** While a row is highlighted, the menu names this id in its `aria-activedescendant`, which is what a screen reader announces for a menu that holds focus. Override it when the row's accessible name and state live on an inner control: [`CheckboxMenuRow`](/components/CheckboxMenuRow) and [`RadioMenuRow`](/components/RadioMenuRow) return the id of their checkbox or radio button.
 
 ```typescript
 import { CheckboxMenuRow } from '@jimka/typescript-ui/component/container';
@@ -98,7 +99,42 @@ See [`CheckboxMenuRow`](/components/CheckboxMenuRow) for the full worked example
 
 ## Keyboard
 
-A menu never takes DOM focus. The control that opened it keeps focus and forwards its keydowns to `handleKey(e)`, which moves a highlight over the rows — the same model as a [`ComboBox`](/components/ComboBox) dropdown. [`SplitButton`](/components/SplitButton) drives its dropdown this way, and [`MenuBar`](/components/MenuBar) drives its panels through the same highlight methods.
+A menu is worked from the keyboard in one of two ways, depending on how it was opened.
+
+### Context menus (`show()`)
+
+A context menu has no host control to forward keys to it, so what `show()` does depends on the user's last press: a key, or a pointer button. A modifier pressed by itself and the auto-repeat of a held key do not count as a key press, so a Control-held right-click is still a mouse open.
+
+**Opened with the mouse** — the last press was a pointer button — the menu takes no focus, highlights no row and handles no key. Focus stays where it was, and `Escape` still closes the menu.
+
+**Opened from the keyboard** — the last press was a key, such as Shift+F10, the ContextMenu key, or `Enter` on a button whose action calls `show()` — the menu takes DOM focus on its panel and highlights its first enabled row (the first row when none is enabled). It then handles these keys itself:
+
+| Key | Effect |
+| --- | --- |
+| `↓` / `↑` | Highlights the next / previous row, wrapping and skipping separators. Scrolls the row into view. |
+| `Home` / `End` | Highlights the first / last row. |
+| `Enter` / `Space` | Activates the highlighted row; on a row with a submenu, opens the submenu and moves into it. Once per press: a held key does not repeat. |
+| `→` | Opens the highlighted row's submenu and moves into it. |
+| `←` | In a submenu, closes it and returns to its parent row. |
+| `Tab` / `Shift+Tab` | Closes the whole menu and returns focus; the key then moves focus on as usual. |
+| `Escape` | Closes the whole menu, submenus included. |
+
+A key pressed with `Alt`, `Control` or `Meta` is left alone, so a browser or application chord such as `Alt+←` keeps working while the menu is open.
+
+When the menu closes, focus returns to the element that had it when the menu opened, with its selection or caret as it was. The same `contextmenu` handler serves both the mouse and the keyboard; nothing extra is wired.
+
+- **Focus returns before a closing row's `action` runs**, so an action that reads the selection, uses the clipboard, or opens a [`Dialog`](/components/Dialog) acts on the element the menu was opened for. An action that moves focus elsewhere keeps it: focus is returned only while it is still inside the menu. A row with `closeOnActivate: false` leaves the menu open and focused.
+- **Disabled rows can be highlighted**, so a keyboard user can find them. Activating one does nothing and leaves the menu open.
+- **The element the menu was opened from loses focus while the menu is open.** A text field with typed, uncommitted text therefore commits it when the menu opens. A [`Table`](/components/Table) cell editor is the exception: its edit stays open until the menu closes.
+- **Any `show()` your code makes while the user's last press was a key takes focus**, however long ago that press was — a menu shown from a timer after the user typed, for example. Use `toggleFor()` for a dropdown whose trigger should keep focus.
+- **Inside a modal [`Dialog`](/components/Dialog), `Tab` can leave the dialog.** The dialog's focus trap stands down for a key pressed on the menu, so `Tab` from a menu opened on the dialog's last tab stop moves focus out of the dialog. From a stop that has another one after it, focus stays inside.
+- **A `show()` called from your own `keydown` handler, for the key press being handled, is not guaranteed either way.** The press may not be on record yet when the handler runs, so the menu can open as if from the mouse. Open the menu from `contextmenu`, or from a button's `"action"`, where the press always comes first.
+
+The panel declares `aria-activedescendant` for its highlighted row, so assistive technology follows the highlight.
+
+### Dropdowns driven by a host (`toggleFor()`, `MenuBar`)
+
+A dropdown never takes DOM focus. The control that opened it keeps focus and forwards its keydowns to `handleKey(e)`, which moves a highlight over the rows — the same model as a [`ComboBox`](/components/ComboBox) dropdown. [`SplitButton`](/components/SplitButton) drives its dropdown this way, and [`MenuBar`](/components/MenuBar) drives its panels through the same highlight methods.
 
 | Key | Effect |
 | --- | --- |
@@ -106,7 +142,7 @@ A menu never takes DOM focus. The control that opened it keeps focus and forward
 | `↑` | Highlights the previous row, wrapping; from no highlight, the last row. |
 | `Enter` / `Space` | Activates the highlighted row, if any. |
 
-`handleKey` returns `true` for those four keys, so the host consumes them — `Enter` and `Space` included when no row is highlighted, so the host's own activation does not run. It returns `false` for every other key. `Escape` is one of them: it closes the topmost layer, which is the open menu, without the host's help. Each rebuild-mode `show()` / `toggleFor()` starts with no row highlighted, and `hide()` clears the highlight.
+`handleKey` returns `true` for those four keys, so the host consumes them — `Enter` and `Space` included when no row is highlighted, so the host's own activation does not run. It returns `false` for every other key. `Escape` is one of them: it closes the topmost layer, which is the open menu, without the host's help. Each `toggleFor()` starts with no row highlighted, and `hide()` clears the highlight.
 
 ```typescript
 const handled = menu.handleKey(e);

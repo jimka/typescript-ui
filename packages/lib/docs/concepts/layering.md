@@ -51,7 +51,9 @@ inside.
 
 The same query answers the focus question. A cell editor's `retainsFocus` asks
 "did focus leave my dropdown subtree?" by calling `containsAcrossLayers` rather
-than walking a private stack.
+than walking a private stack. A cell editor also keeps its edit while a
+[context menu opened from the keyboard](/components/Menu#keyboard) inside it
+holds focus; that menu returns focus to the editor when it closes.
 
 ## Z-index bands
 

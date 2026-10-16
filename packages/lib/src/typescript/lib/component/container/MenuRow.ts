@@ -91,6 +91,19 @@ export abstract class MenuRow<TOptions extends ComponentOptions = ComponentOptio
     }
 
     /**
+     * The id of the element `Menu` names in its panel's
+     * `aria-activedescendant` while this row is highlighted, so assistive
+     * technology announces the row the keyboard is on. Override it when the
+     * row's accessible name and state live on an inner control rather than
+     * on the row element.
+     *
+     * @returns The row's own id by default.
+     */
+    getActiveDescendantId(): string {
+        return this.getId();
+    }
+
+    /**
      * Applies or removes the keyboard/hover focus highlight background,
      * reading the CSS-variable family selected by {@link setCssVarPrefix}.
      *

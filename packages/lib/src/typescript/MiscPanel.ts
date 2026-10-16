@@ -914,8 +914,12 @@ class MiscPanel extends Panel {
 
         const contextMenu = new Menu();
 
+        // Opened with the mouse the menu takes no focus. Opened from the
+        // keyboard (focus the button, then Shift+F10 or the ContextMenu key)
+        // it takes focus and is worked with the arrow keys, Home / End,
+        // Enter / Space, Right / Left for the submenu, and Escape.
         const buttonContextMenu = new Button("Right-click me for context menu");
-        Tooltip.attach(buttonContextMenu, "Right-click to open a context menu");
+        Tooltip.attach(buttonContextMenu, "Right-click, or focus and press Shift+F10, to open a context menu");
         Event.addListener(buttonContextMenu, "contextmenu", { prevent: true, handler: (e: MouseEvent) => {
             Tooltip.hide();
             contextMenu.show(e.clientX, e.clientY, [
@@ -924,6 +928,16 @@ class MiscPanel extends Panel {
                 { separator: true },
                 { text: "Disabled action", enabled: false },
                 { text: "Action 3", action: () => alert("Action 3 clicked!") },
+                {
+                    text:    "More",
+                    submenu: {
+                        label: "More",
+                        items: [
+                            { text: "Action 4", action: () => alert("Action 4 clicked!") },
+                            { text: "Action 5", action: () => alert("Action 5 clicked!") },
+                        ],
+                    },
+                },
             ]);
         } });
         leftColumn.addComponent(buttonContextMenu);

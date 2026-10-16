@@ -112,6 +112,18 @@ export abstract class AbstractBooleanMenuRow<
     }
 
     /**
+     * Overrides {@link MenuRow.getActiveDescendantId}, naming the inner
+     * control: the row element carries no role, while the control — a real
+     * checkbox or radio button — carries the accessible name and the checked
+     * state a screen reader announces.
+     *
+     * @returns The inner control's id.
+     */
+    getActiveDescendantId(): string {
+        return this.getControl().getId();
+    }
+
+    /**
      * Overrides {@link MenuRow.isEnabled}, reading the inner control's own
      * enabled state — the cache for this row's `enabled` option, just as it
      * already is for `checked`.

@@ -51,7 +51,7 @@ body.addComponent(panel);
 That's it for the full CRUD path. Let's break down what happens:
 
 - **Add** — calls `store.add({})`. The new row gets the `table.row.new` background tint until `store.sync()` confirms it server-side.
-- **Edit** — double-click any cell; the in-place editor commits on blur or Enter. Modified rows show the `table.row.dirty` tint.
+- **Edit** — double-click any cell; the in-place editor commits on blur or Enter (opening its context menu from the keyboard does not count as a blur). Modified rows show the `table.row.dirty` tint.
 - **Remove** — selects a row, then calls `store.remove(record)`.
 - **Sync** — calls `store.sync()` which talks to the proxy: `POST` for new records, `PUT`/`PATCH` for dirty ones, `DELETE` for removed ones.
 

@@ -72,7 +72,7 @@ Custom cell authors can opt in by overriding `getEditorKey()` and registering a 
 
 ## Building a custom cell type
 
-Subclass [`Cell<T>`](/api/component/table/classes/Cell) with your own [`CellRenderer`](/api/component/table/classes/CellRenderer) and optional [`CellEditor`](/api/component/table/classes/CellEditor). The renderer displays the value; the editor takes over on double-click, commits on blur or Enter, and reverts on Escape.
+Subclass [`Cell<T>`](/api/component/table/classes/Cell) with your own [`CellRenderer`](/api/component/table/classes/CellRenderer) and optional [`CellEditor`](/api/component/table/classes/CellEditor). The renderer displays the value; the editor takes over on double-click, commits on blur or Enter, and reverts on Escape. One blur does not commit: the one caused by a [context menu opened from the keyboard](/components/Menu#keyboard) inside the editor, which returns focus when it closes. `CellEditor.retainsFocus` answers that; an editor that overrides it should keep the base class's answer.
 
 ```typescript
 import { Cell, CellRenderer, CellEditor } from '@jimka/typescript-ui/component/table';
