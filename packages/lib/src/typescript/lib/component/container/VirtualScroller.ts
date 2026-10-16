@@ -393,6 +393,18 @@ export class VirtualScroller {
     }
 
     /**
+     * Effective viewport height — the vertical twin of {@link getViewportWidth}:
+     * the owner's content-box height minus the horizontal scrollbar's track
+     * reservation when that bar is visible. An owner tests a row against this,
+     * not against its own height, to tell whether the row is in view.
+     *
+     * @returns The effective viewport height in pixels.
+     */
+    getViewportHeight(): number {
+        return this.effectiveViewportH();
+    }
+
+    /**
      * Clamps the current `scrollX` / `scrollY` against the new content size
      * and the *effective* viewport on each axis (which subtracts the
      * cross-axis scrollbar's track-width when that bar is visible). Call at

@@ -102,6 +102,23 @@ class TimeColumns extends Component {
     }
 
     /**
+     * Scrolls each column so its highlighted cell lands in the middle of the
+     * column's viewport, clamped to the scrollable range. A column with no
+     * highlighted cell is left where it is. Called by the host when the grid
+     * opens, after the layout pass that places the cells; a pick never calls
+     * it, so a column the user scrolled stays put.
+     *
+     * @returns This component, for method chaining.
+     */
+    scrollSelectedIntoView(): this {
+        this._hourColumn.scrollSelectedIntoView();
+        this._minuteColumn.scrollSelectedIntoView();
+        this._secondColumn?.scrollSelectedIntoView();
+
+        return this;
+    }
+
+    /**
      * Builds a single scrollable column, populating it with `count / step`
      * cells whose labels are zero-padded values.
      *

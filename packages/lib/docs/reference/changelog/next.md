@@ -183,6 +183,12 @@ page resets to empty.
   the year the keyboard is on. Neither method scrolls a column that is
   hidden.
 
+- **`VirtualScroller` gains `getViewportHeight()`,** the twin of
+  `getViewportWidth()`: the owner's content-box height, less the track of
+  the horizontal scrollbar while that bar shows. An owner tests a row
+  against it, not against its own height, to tell whether the row is in
+  view.
+
 - **A modified tab is announced to assistive technology.** While
   `Tab.setTabModified` (or `TabButton.setModified`) marks a tab, its
   button carries `aria-description="Modified"`, so a screen reader
@@ -245,6 +251,18 @@ page resets to empty.
   attribute. `LayerManager` drives it for the surfaces behind a modal layer,
   and overwrites a value set from elsewhere on a layer or on a component
   added to `Body`; there is no options-bag field.
+
+- **`Panel` gains `getScrollViewportRect()` and `revealSpan()`.**
+  `getScrollViewportRect()` returns the visible window onto a scrolling
+  panel's content, in browser-viewport coordinates: the panel's box inside
+  its border, clear of its scrollbars, and the same rectangle under either
+  `scrollbarStyle`. It returns `null` for a panel that does not scroll
+  (`autoScroll: "none"`), is not rendered, or is hidden.
+  `revealSpan(axis, start, end)` scrolls the least distance that brings a
+  span of the content into that window along one axis; `start` and `end`
+  are positions in the content, so a caller that knows its own row
+  arithmetic need not measure an element. It leaves alone an axis the panel
+  does not scroll, and a hidden panel.
 
 ### Data
 
@@ -388,6 +406,36 @@ page resets to empty.
   keyboard is on. A table's date and date-time cell editors open the
   same calendar and get the centring. No consumer action is needed.
 
+- **A `Tree`, `Table` or `TreeTable` no longer leaves its current row or
+  cell partly hidden.** With a border, or with the other axis's scrollbar
+  showing, the row or column that the keyboard scrolled into view — or
+  that Shift+F10 opened a menu for — stayed clipped by up to 16 px, under
+  the border and the scrollbar. `PageUp` / `PageDown` in a `Table`,
+  `TreeTable`, `List` or `MultiSelectList` also moved one row too many in
+  the same situation, so one row per page was never shown whole. A page is
+  now the number of whole rows in view. No consumer action is needed.
+
+- **A `ComboBox` dropdown opens on its selected option.** It opened
+  scrolled to the top, with a selected option further down out of view.
+  The option is now scrolled into view by the least distance, so one below
+  the first page appears at the dropdown's bottom edge. A table's combo
+  cell editor opens the same dropdown. No consumer action is needed.
+
+- **A time picker opens on its selected time.** The dropdown of a
+  `TimeField` opened with every column scrolled to the top: with `09:30`
+  in the field, `09` was below the view. Each column now opens with its
+  selected hour, minute or second in the middle, or as near the middle as
+  the ends of the column allow. A minute or second that is not a multiple
+  of five has no cell, and its column is not scrolled. Picking a value
+  still does not scroll. The time row of a `DateTimeField` and a table's
+  time and date-time cell editors open the same dropdown. No consumer
+  action is needed.
+
+- **A `MarkdownViewer` minimap click lands on the heading after the prose
+  was scrolled from the keyboard.** After `PageDown` or another scroll the
+  browser makes on its own, a click on a minimap heading stopped short of
+  it by the distance scrolled. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
@@ -432,6 +480,20 @@ page resets to empty.
   Such a listener now receives the next event of its type. A viewport
   listener registered from an element listener earlier in the same event is
   unchanged. No consumer action is needed.
+
+- **A `Panel` scrolls a control into view correctly.** After the browser
+  had scrolled the panel itself — a key press such as `PageDown`, `Tab`
+  moving focus to a control out of view, a touch pan, a native scrollbar —
+  the reveal started from an out-of-date position and stopped short. With
+  `scrollbarStyle: "native"` the control could end under the scrollbar or
+  the border. A panel was scrolled along an axis its `autoScroll` mode does
+  not scroll, with no scrollbar to bring it back. And a control wider or
+  taller than the panel lost its start. `Panel.revealDescendant` now
+  re-reads the position, measures the visible window inside the border and
+  clear of the scrollbars, moves only the axes the panel scrolls, and keeps
+  the start of a control that does not fit. Focus history, spatial
+  navigation and a `Menu`'s highlighted row all reveal through it. No
+  consumer action is needed.
 
 ### Layouts
 

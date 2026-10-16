@@ -8,9 +8,11 @@ import { Event } from "~/core/Event.js";
 import { InlineStyle, StyleRule } from "~/core/StyleTarget.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
-import type { Handle, ScrollMetrics } from "~/core/DOM.js";
+import type { Handle, Rect, ScrollMetrics } from "~/core/DOM.js";
 import { FocusReveal } from "~/core/FocusReveal.js";
 import type { FocusRevealer } from "~/core/FocusReveal.js";
+import { nearestRevealOffset } from "~/core/ScrollReveal.js";
+import type { ScrollAxis } from "~/core/SmoothScroller.js";
 import { appendScrollShadowStrips, scrollShadowEdgeValue, scrollShadowRamp, quantizeShadowEdge, ScrollShadowEdges } from "~/core/ScrollShadow.js";
 import { Scrollbar } from "~/component/container/Scrollbar.js";
 
@@ -634,38 +636,118 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
-     * {@link FocusRevealer.revealDescendant}: scrolls `target` into view along
-     * whichever axis it currently sits outside of, through the cached scroll
-     * API — never the browser's native scroll-into-view method. Reads the
-     * viewport rect through the panel's own scroll element rather than its
-     * outer element, since under `scrollbarStyle: "overlay"` the panel's own
-     * element never scrolls — the narrower inner overlay-scroll element does,
-     * and reading the outer element's rect would treat the scrollbar gutter
-     * band as already-visible and under-scroll a target sitting there.
+     * The panel's scroll viewport: the visible window onto its scrolled
+     * content, as a rectangle in browser-viewport coordinates. It is the
+     * panel's box inside its border, less the band each visible scrollbar
+     * occupies, and is the same rectangle under either scrollbar style.
+     *
+     * @returns The rectangle, or null when the panel does not scroll
+     *   (`autoScroll: "none"`), is not rendered, or is not effectively
+     *   visible — a hidden element measures as empty.
+     */
+    getScrollViewportRect(): Rect | null {
+        const element = this.getElement();
+        const scrolls = this._autoScroll !== "none";
+        const visible = this.isEffectivelyVisible();
+
+        if (!element || !scrolls || !visible) {
+            return null;
+        }
+
+        const box    = DOM.source.getElementRect(element);
+        const border = this.getBorderSize();
+        const gutter = this._scrollbarGutter;
+        const left   = box.left + border.left;
+        const top    = box.top  + border.top;
+        const width  = Math.max(0, box.width  - border.left - border.right  - gutter.right);
+        const height = Math.max(0, box.height - border.top  - border.bottom - gutter.bottom);
+
+        return { x: left, y: top, left, top, width, height, right: left + width, bottom: top + height };
+    }
+
+    /**
+     * Scrolls the least distance along `axis` that brings a span of the
+     * scrolled content into the scroll viewport, and nothing when the span is
+     * already in view. `start` and `end` are positions in the content, where
+     * `0` is the content's leading edge. An axis this panel does not scroll
+     * is left alone, and so is a panel that is not effectively visible.
+     *
+     * @param axis - The axis to scroll along.
+     * @param start - Where the span begins.
+     * @param end - Where the span ends.
+     * @returns This panel, for method chaining.
+     */
+    revealSpan(axis: ScrollAxis, start: number, end: number): this {
+        const view = this.getScrollViewportRect();
+
+        if (!view) {
+            return this;
+        }
+
+        // The browser also scrolls the panel on its own — a key press, a move
+        // of focus, a touch pan — and the remembered offset does not hear of
+        // it. Re-read it. This also stops a wheel scroll that is still easing,
+        // which would otherwise carry the span out of view again.
+        this.syncScrollOffsets();
+        this.revealSpanWithin(view, axis, start, end);
+
+        return this;
+    }
+
+    /**
+     * {@link revealSpan} against a viewport already measured and offsets
+     * already re-read, so a caller revealing along both axes measures once.
+     *
+     * @param view - The scroll viewport, from {@link getScrollViewportRect}.
+     * @param axis - The axis to scroll along.
+     * @param start - Where the span begins, in content coordinates.
+     * @param end - Where the span ends, in content coordinates.
+     */
+    private revealSpanWithin(view: Rect, axis: ScrollAxis, start: number, end: number): void {
+        const axes = this.scrollableAxes();
+
+        if (axis === "x" && axes.x) {
+            const offset = this.getScrollLeft();
+            const target = nearestRevealOffset(start, end, offset, view.width);
+
+            if (target !== offset) {
+                this.setScrollLeft(target);
+            }
+        }
+
+        if (axis === "y" && axes.y) {
+            const offset = this.getScrollTop();
+            const target = nearestRevealOffset(start, end, offset, view.height);
+
+            if (target !== offset) {
+                this.setScrollTop(target);
+            }
+        }
+    }
+
+    /**
+     * {@link FocusRevealer.revealDescendant}: scrolls `target` into the scroll
+     * viewport by the least distance, along each axis this panel scrolls.
      *
      * @param target - The element to scroll into view.
      */
     revealDescendant(target: Handle): void {
-        const el = this.getScrollElement() ?? this.getElement();
+        const view = this.getScrollViewportRect();
 
-        if (!el) {
+        if (!view) {
             return;
         }
 
-        const view = DOM.source.getElementRect(el);
+        this.syncScrollOffsets();
+
+        // The target's rectangle is where it is drawn now. Adding the current
+        // offset turns it into a position in the scrolled content.
         const rect = DOM.source.getElementRect(target);
+        const dx   = this.getScrollLeft() - view.left;
+        const dy   = this.getScrollTop()  - view.top;
 
-        if (rect.top < view.top) {
-            this.setScrollTop(this.getScrollTop() - (view.top - rect.top));
-        } else if (rect.bottom > view.bottom) {
-            this.setScrollTop(this.getScrollTop() + (rect.bottom - view.bottom));
-        }
-
-        if (rect.left < view.left) {
-            this.setScrollLeft(this.getScrollLeft() - (view.left - rect.left));
-        } else if (rect.right > view.right) {
-            this.setScrollLeft(this.getScrollLeft() + (rect.right - view.right));
-        }
+        this.revealSpanWithin(view, "x", rect.left + dx, rect.right  + dx);
+        this.revealSpanWithin(view, "y", rect.top  + dy, rect.bottom + dy);
     }
 
     /**

@@ -261,9 +261,10 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
     /**
      * Replaces the rendered row list with one entry per item, seeds the
      * inner list's selection from `selectedIndex`, and lays out the panel
-     * anchored below `anchorEl`. The dropdown height is capped at
-     * {@link COMBOBOX_DROPDOWN_MAX_HEIGHT_PX} so long option lists
-     * scroll inside the panel rather than overflowing the viewport.
+     * anchored below `anchorEl`. The selected row is scrolled into view.
+     * The dropdown height is capped at {@link COMBOBOX_DROPDOWN_MAX_HEIGHT_PX}
+     * so long option lists scroll inside the panel rather than overflowing
+     * the viewport.
      *
      * @param anchorEl - Element the dropdown is anchored to.
      * @param items - The option pairs to display.
@@ -314,6 +315,10 @@ class ComboBoxDropdown extends AnimatedDropdown<AnimatedDropdownOptions> {
         // after `showAnimated` mounts the panel so rows land at the
         // correct y offsets on first open.
         this.doLayout();
+
+        // Open on the selected option. The rows were laid out just above, so
+        // the list can scroll that row into view the way a keyboard move does.
+        this._list.setFocusedIndex(selectedIndex);
 
         // Focus stays on the host ComboBox — `ComboBox.onKeyDown`
         // forwards keystrokes into `handleKey` so the list's keyboard

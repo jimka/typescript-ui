@@ -17,6 +17,7 @@ import { ComboEditor } from "~/component/table/cell/editor/Combo.js";
 import { Event } from "~/core/Event.js";
 import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
+import { nearestRevealOffset } from "~/core/ScrollReveal.js";
 import { reduceModifierSelection } from "~/component/shared/reduceModifierSelection.js";
 import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
 import { resolveContextMenuTarget, watchContextMenuInput } from "~/component/shared/resolveContextMenuTarget.js";
@@ -3230,8 +3231,9 @@ class TableBody extends VirtualRowView<Row> {
 
     /**
      * Scrolls the body horizontally so the column at `colIndex` is fully
-     * visible, without moving the viewport unless necessary. The horizontal
-     * mirror of {@link scrollRecordIntoView}.
+     * visible inside the scroller's viewport — clear of a border and of the
+     * vertical scrollbar — moving the least distance. The horizontal mirror
+     * of {@link scrollRecordIntoView}.
      *
      * @param colIndex - The visible-column index to reveal.
      *
@@ -3253,17 +3255,10 @@ class TableBody extends VirtualRowView<Row> {
         for (let i = 0; i < colIndex; i++) {
             left += widths[i];
         }
-        const right         = left + widths[colIndex];
-        const scrollLeft    = this._scroller.getScrollX();
-        const viewportWidth = this.getWidth() || 0;
-        const visibleRight  = scrollLeft + viewportWidth;
 
-        let target = scrollLeft;
-        if (left < scrollLeft) {
-            target = left;
-        } else if (right > visibleRight) {
-            target = right - viewportWidth;
-        }
+        const scrollLeft = this._scroller.getScrollX();
+        const target     = nearestRevealOffset(left, left + widths[colIndex], scrollLeft, this._scroller.getViewportWidth());
+
         if (target !== scrollLeft) {
             this.setScrollX(target);
         }

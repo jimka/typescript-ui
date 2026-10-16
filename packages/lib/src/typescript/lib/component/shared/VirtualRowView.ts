@@ -4,6 +4,7 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
+import { nearestRevealOffset } from "~/core/ScrollReveal.js";
 import { Animation } from "~/core/Animation.js";
 import { COLLAPSE_DURATION, COLLAPSE_EASE } from "~/layout/CollapseSupport.js";
 
@@ -279,14 +280,15 @@ abstract class VirtualRowView<
 
     /**
      * Computes the number of whole rows a page-nav keystroke should move by:
-     * one viewport height, floored to at least one row.
+     * the whole rows the scroller's viewport shows, and at least one.
      *
      * @returns The page size in rows.
      */
     protected computePageSize(): number {
-        const rowHeight = this.getRowHeight();
+        const rowHeight      = this.getRowHeight();
+        const viewportHeight = this._scroller?.getViewportHeight() || rowHeight;
 
-        return Math.max(1, Math.floor((this.getHeight() || rowHeight) / rowHeight));
+        return Math.max(1, Math.floor(viewportHeight / rowHeight));
     }
 
     /**
@@ -1111,9 +1113,11 @@ abstract class VirtualRowView<
     }
 
     /**
-     * Scrolls the view so the row at `index` is fully visible, without moving
-     * the viewport unless necessary. Delegates through {@link VirtualScroller}
-     * so the header translate + scrollbar thumb stay in sync.
+     * Scrolls the view by the least distance so the row at `index` is fully
+     * visible inside the scroller's viewport — clear of a border and of the
+     * horizontal scrollbar — and not at all when it already is. Delegates
+     * through {@link VirtualScroller} so the header translate + scrollbar
+     * thumb stay in sync.
      *
      * @param index - The data index of the row to reveal. A negative index is a
      *   no-op (the row is not in the current view).
@@ -1123,19 +1127,11 @@ abstract class VirtualRowView<
             return;
         }
 
-        const rowHeight      = this.getRowHeight();
-        const top            = index * rowHeight;
-        const bottom         = top + rowHeight;
-        const scrollTop      = this._scroller.getScrollY();
-        const viewportHeight = this.getHeight();
-        const visibleBottom  = scrollTop + viewportHeight;
+        const rowHeight = this.getRowHeight();
+        const top       = index * rowHeight;
+        const scrollTop = this._scroller.getScrollY();
+        const target    = nearestRevealOffset(top, top + rowHeight, scrollTop, this._scroller.getViewportHeight());
 
-        let target = scrollTop;
-        if (top < scrollTop) {
-            target = top;
-        } else if (bottom > visibleBottom) {
-            target = bottom - viewportHeight;
-        }
         if (target !== scrollTop) {
             this.scrollToCommittedY(target);
         }

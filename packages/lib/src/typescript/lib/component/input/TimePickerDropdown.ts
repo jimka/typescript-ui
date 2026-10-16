@@ -133,7 +133,9 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
      * Anchors the picker below `anchorEl`, highlights the active hour/minute
      * from `selected` (or clears the highlight when null), and plays the
      * entrance fade. The columns already exist, so the selection is updated in
-     * place rather than rebuilt.
+     * place rather than rebuilt. Each column is scrolled so its highlighted
+     * cell is in the middle of the column, or as near to it as the column's
+     * range allows.
      *
      * @param anchorEl - The input the picker anchors to.
      * @param selected - The currently-selected time (Date), or null.
@@ -154,6 +156,11 @@ class TimePickerDropdown extends AnimatedDropdown<TimePickerDropdownOptions> {
         this.showAnimated();
 
         this.doLayout();
+
+        // Open on the selected time. The cells were laid out just above, so
+        // each column can centre its highlighted cell the way a calendar's
+        // year list opens on its year.
+        this._timeColumns.scrollSelectedIntoView();
 
         return this;
     }
