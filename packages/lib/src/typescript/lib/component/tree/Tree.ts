@@ -9,6 +9,7 @@ import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
 import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
+import { TypeAheadSearch, isTypeAheadKey } from "~/component/shared/TypeAheadSearch.js";
 import { resolveContextMenuTarget, watchContextMenuInput } from "~/component/shared/resolveContextMenuTarget.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
 import { TreeRow } from "~/component/tree/TreeRow.js";
@@ -210,14 +211,15 @@ const _defaultTreeOptions: Partial<TreeOptions> = {
  * handlers with fling momentum.
  *
  * A single node's expand or collapse — a caret click, a row-click toggle,
- * `ArrowRight` / `ArrowLeft`, {@link expandNode}, {@link expandNodeAsync}, or
- * a lazy load settling with an expand waiting on it — commits its state
- * synchronously and then animates: the toggle turns and the affected rows
- * slide into place over 200 ms. Bulk and structural calls (`expandAll`,
- * `revealByPredicate`, `setNodes`, `insertNode`, `removeNode`,
- * `setChildren`) and `prefers-reduced-motion: reduce` never animate; a
- * toggle whose children would not fit in the current viewport, or whose
- * commit moves the scroll offset, snaps instead.
+ * `ArrowRight` / `ArrowLeft`, `Enter`, {@link expandNode},
+ * {@link expandNodeAsync}, or a lazy load settling with an expand waiting
+ * on it — commits its state synchronously and then animates: the toggle
+ * turns and the affected rows slide into place over 200 ms. Bulk and
+ * structural calls (the `*` key, `expandAll`, `revealByPredicate`,
+ * `setNodes`, `insertNode`, `removeNode`, `setChildren`) and
+ * `prefers-reduced-motion: reduce` never animate; a toggle whose children
+ * would not fit in the current viewport, or whose commit moves the scroll
+ * offset, snaps instead.
  *
  * @example
  * ```typescript
@@ -291,6 +293,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     private _focusNode          : TreeNode | null                                         = null;
     private _listeners          : ListenerBag<TreeEvent>                                  = this.registerListenerBag(new ListenerBag<TreeEvent>());
     private _rendererFactory    : () => TreeNodeRenderer                                  = () => new LabelTreeNodeRenderer();
+    // The type-ahead buffer. Framework-managed bookkeeping, so it gets no
+    // `TreeOptions` field and no setter. A plain initializer is safe: only a
+    // key press writes it, and no key arrives during `super()`.
+    private _typeAhead          : TypeAheadSearch                                         = new TypeAheadSearch();
 
     constructor(options?: TreeOptions, subclassDefaults?: Partial<TreeOptions>) {
         super(options, { ..._defaultTreeOptions, ...(subclassDefaults ?? {}) });
@@ -1017,13 +1023,15 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     on(event: "contextmenu", listener: (node: TreeNode, event: MouseEvent) => void): this;
 
     /**
-     * Registers a listener for a double-click (activation) on a node.
+     * Registers a listener for a node being activated.
      *
-     * @param event - `"dblclick"` fires when a node row is double-clicked,
-     *   receiving the {@link TreeNode} under the cursor. The first click of the
-     *   pair still emits `"selection"` as usual, so `"dblclick"` is an
-     *   activation signal layered on top of selection — consumers typically use
-     *   `"selection"` to preview a node and `"dblclick"` to open it.
+     * @param event - `"dblclick"` fires when a node's row is double-clicked,
+     *   and when `Enter` is pressed while the tree has focus and a current
+     *   row; the listener receives the {@link TreeNode}. The first click of a
+     *   double-click still emits `"selection"` as usual, and `Enter` leaves
+     *   the selection as it is, so `"dblclick"` is an activation signal
+     *   layered on top of selection — consumers typically use `"selection"`
+     *   to preview a node and `"dblclick"` to open it.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This tree, for method chaining.
@@ -1289,8 +1297,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * @remarks
      * The one search the tree makes for a single node, so every caller reads
      * what it needs off one walk: {@link removeNode} the holding array and
-     * index, {@link _expandPathTo} the path, and the reveal's walk the
-     * `null` alone, to learn that a level has left the tree.
+     * index, {@link _expandPathTo} the path, {@link _expandSiblingsOfCurrentNode}
+     * the siblings, and the reveal's walk the `null` alone, to learn that a
+     * level has left the tree.
      */
     private _locate(node: TreeNode): NodeLocation | null {
         const ancestors: TreeNode[] = [];
@@ -1936,11 +1945,23 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * - `Home` / `End` — jump to first/last visible row (plain) or extend range to edge (Shift)
      * - `PageDown` / `PageUp` — move down/up by one page of rows (plain) or extend range by a
      *   page (Shift); not part of the ARIA pattern, they follow `List` and the table body
+     * - `Enter` — activate the current node: fire `"dblclick"`, then toggle an expandable node
+     * - `*` — expand the current node's siblings whose children are loaded
+     * - a printable character — type-ahead to the next visible row whose label starts with
+     *   what was typed; `Escape` clears the buffer
      *
      * @param e - The keyboard event fired on the tree element.
      */
     private _onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (SpatialNavigation.claimsKey(e)) { return; }
+
+        // Enter, `*`, Escape and type-ahead act on the current row without
+        // moving it by position; the navigation keys below do the rest.
+        const handled = this._handleActionKey(e);
+
+        if (handled) {
+            return { prevent: true };
+        }
 
         const navigable = new Set(['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageDown', 'PageUp']);
         if (!navigable.has(e.key)) {
@@ -2029,6 +2050,168 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         }
 
         return { prevent: true };
+    }
+
+    /**
+     * Finds the current row among the visible rows.
+     *
+     * @returns Zero-based index into `_flatRows` of the focus node's row, or
+     *   -1 when there is no focus node, its node was removed, or it is hidden
+     *   under a collapsed node.
+     */
+    private _currentRowIndex(): number {
+        const focusNode = this._focusNode;
+
+        return focusNode === null ? -1 : this._flatRows.findIndex(r => r.node === focusNode);
+    }
+
+    /**
+     * Handles the keys that act on the current row without moving it by
+     * position: `Enter` activates it, `*` expands its siblings, a printable
+     * character feeds type-ahead, and `Escape` clears the type-ahead buffer.
+     * `Enter` is plain only, and `*` and type-ahead allow `Shift` only: a
+     * chord with `Control`, `Meta` or `Alt` belongs to the browser or the
+     * application.
+     *
+     * @param e - The keydown on the tree element.
+     * @returns `true` when the key was the tree's own, so the caller
+     *   prevents it. `Escape` is never the tree's own.
+     */
+    private _handleActionKey(e: KeyboardEvent): boolean {
+        if (this._flatRows.length === 0) {
+            return false;
+        }
+
+        if (e.key === 'Escape') {
+            this._typeAhead.clear();
+
+            return false;
+        }
+
+        const chord = e.ctrlKey || e.metaKey || e.altKey;
+
+        if (chord) {
+            return false;
+        }
+
+        if (e.key === 'Enter') {
+            if (e.shiftKey) {
+                return false;
+            }
+
+            // A held key's auto-repeat is consumed and ignored, as a menu
+            // does: it would activate the node again on every repeat.
+            if (!e.repeat) {
+                this._activateCurrentNode();
+            }
+
+            return true;
+        }
+
+        if (e.key === '*') {
+            this._expandSiblingsOfCurrentNode();
+
+            return true;
+        }
+
+        const typed = isTypeAheadKey(e);
+
+        if (typed) {
+            this._typeAheadTo(e.key);
+        }
+
+        return typed;
+    }
+
+    /**
+     * `Enter`: does what a double-click on the current row's label does. It
+     * scrolls the row into view, emits `"dblclick"` and then toggles an
+     * expandable node. The toggle does not depend on {@link getExpandTrigger}:
+     * `Enter` stands for whichever click gesture opens the node. The
+     * selection is not touched. Does nothing with no current row among the
+     * visible rows.
+     */
+    private _activateCurrentNode(): void {
+        const index = this._currentRowIndex();
+
+        if (index < 0) {
+            return;
+        }
+
+        const node = this._flatRows[index].node;
+
+        this._revealFocusRow();
+        this.emit("dblclick", node);
+
+        // Read after the listeners ran, as `_handleDblClick` reads it.
+        const expandable = this._isExpandable(node);
+
+        if (expandable) {
+            this._onToggle(node);
+        }
+    }
+
+    /**
+     * `*`: expands every sibling of the current row, itself included, that
+     * is collapsed and has children in memory — the test {@link expandAll}
+     * uses, so a lazy node that has not loaded is skipped and nothing is
+     * loaded. One re-render, not animated. Emits `"expand"` once per node it
+     * expanded, in sibling order, and keeps the current row in view. The
+     * selection is not touched. Does nothing with no current row among the
+     * visible rows.
+     */
+    private _expandSiblingsOfCurrentNode(): void {
+        const index = this._currentRowIndex();
+
+        if (index < 0) {
+            return;
+        }
+
+        const location = this._locate(this._flatRows[index].node);
+
+        if (location === null) {
+            return;
+        }
+
+        const opened = location.siblings.filter(node =>
+            !!(node.children && node.children.length > 0) && !this._expandedNodes.has(node));
+
+        if (opened.length === 0) {
+            return;
+        }
+
+        for (const node of opened) {
+            this._expandedNodes.add(node);
+        }
+
+        this._reflattenAndRender();
+        this._revealFocusRow();
+
+        for (const node of opened) {
+            this.emit("expand", node);
+        }
+    }
+
+    /**
+     * Type-ahead: feeds one typed character to the buffer and, on a match,
+     * moves the current row there as a plain key does: it selects the row,
+     * scrolls it into view and fires `"selection"`. Only the visible rows
+     * are searched, by `TreeNode.label`; nothing is expanded or loaded.
+     *
+     * @param ch - The character typed.
+     */
+    private _typeAheadTo(ch: string): void {
+        const rows  = this._flatRows;
+        const index = this._typeAhead.type(ch, {
+            count:      rows.length,
+            current:    this._currentRowIndex(),
+            labelAt:    (i: number): string => rows[i].node.label,
+            isEligible: (): boolean => true,
+        });
+
+        if (index >= 0) {
+            this._selectAtIndex(index, true);
+        }
     }
 
     /**

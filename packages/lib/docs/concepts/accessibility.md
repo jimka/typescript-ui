@@ -299,13 +299,14 @@ A [`Tree`](/components/Tree#keyboard), a [`List`](/components/List#keyboard) or 
 | `Home` / `End` | first / last row | first / last row | first / last row | first / last row |
 | `PageUp` / `PageDown` | up / down one page | up / down one page | up / down one page | up / down one page |
 | `ArrowLeft` / `ArrowRight` | collapse / expand, or to the parent / first child | — | previous / next cell | collapse / expand, or to the parent / first child |
-| `Enter` / `Space` | — | select the focused row | edit the current cell | edit the current cell |
-| Printable character | — | type-ahead | — | — |
+| `Enter` / `Space` | `Enter`: activate the current row | select the focused row | edit the current cell | edit the current cell |
+| Printable character | type-ahead: selects the row | type-ahead: moves the focus mark | — | — |
+| `*` | expand the current row's siblings | — | — | — |
 | `Shift+F10` / ContextMenu key | menu for the current row | menu for the focused row | menu for the current cell | menu for the current cell |
 
 A page is the number of whole rows the widget shows, and at least one. The key moves the current row that far and scrolls it into view by the least distance. `Shift` with a row key extends the selection in a `Tree` and a `MultiSelectList`.
 
-A key that moves the current row is the widget's own even when the row cannot move: `PageDown` on the last row changes nothing, and the browser does not scroll the page behind the widget. The key is not stopped, so a `keydown` listener on an ancestor still receives it. An empty widget leaves these keys alone, and so does a disabled or read-only `List` or `MultiSelectList`.
+A key that moves the current row is the widget's own even when the row cannot move: `PageDown` on the last row changes nothing, and the browser does not scroll the page behind the widget. The key is not stopped, so a `keydown` listener on an ancestor still receives it. An empty widget leaves these keys alone, and so does a disabled or read-only `List` or `MultiSelectList`. `Enter` and `*` in a `Tree`, and a type-ahead character in a `Tree` or a list, follow the same rule: prevented, never stopped.
 
 ## Building an accessible custom widget
 

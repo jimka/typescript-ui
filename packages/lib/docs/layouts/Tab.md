@@ -118,6 +118,8 @@ Like the italic flag and `setTabGlyph`, this writes to the tab's `LayoutConstrai
 
 Tabs are selected by clicking their button. To set programmatically, look up the underlying [`ToggleButton`](/components/ToggleButton) via the layout's API and call `setSelected(true)`. The full surface is at the [API page](/api/layout/classes/Tab).
 
+From the keyboard, with a tab focused: `ArrowLeft` / `ArrowRight` activate the previous / next tab, wrapping at the ends, and `Home` / `End` activate the first / last tab. `Home` and `End` act only while a tab or its ✕ holds focus, so a text field among the [tab tools](#tab-tools) keeps them for its caret.
+
 ## Lazy panel construction
 
 For tabs whose content is expensive to build (large forms, virtualised tables, charts), pass a **factory** instead of a component. The factory only runs when the user first activates that tab:

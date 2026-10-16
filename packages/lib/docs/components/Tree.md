@@ -79,7 +79,7 @@ The tree waits on at most one `loadChildren` call per node. A second expand, or 
 
 ## Expansion state
 
-`getExpandedNodes()` returns a snapshot of every currently expanded node, and the `"expand"` / `"collapse"` events fire whenever a single node's expansion changes — a caret click, `ArrowRight` / `ArrowLeft`, a double-click on a parent row, or a programmatic `expandNode(node)` / `expandNodeAsync(node)`. This is enough to persist which nodes are open and restore them: subscribe to both events, store `getExpandedNodes()`, and on reload `await expandNodeAsync(node)` per stored node — `expandNodeAsync` resolves only once the expansion has committed, including after an unloaded lazy node's `loadChildren` settles.
+`getExpandedNodes()` returns a snapshot of every currently expanded node, and the `"expand"` / `"collapse"` events fire whenever a single node's expansion changes — a caret click, `ArrowRight` / `ArrowLeft`, `Enter` or a double-click on a parent row, `*`, or a programmatic `expandNode(node)` / `expandNodeAsync(node)`. This is enough to persist which nodes are open and restore them: subscribe to both events, store `getExpandedNodes()`, and on reload `await expandNodeAsync(node)` per stored node — `expandNodeAsync` resolves only once the expansion has committed, including after an unloaded lazy node's `loadChildren` settles.
 
 ```typescript
 tree.on('expand', node => saveExpanded(node));
@@ -94,9 +94,9 @@ for (const node of loadStoredExpandedNodes()) {
 
 ### Animation
 
-A single node's expand or collapse — a caret click, a row-click toggle, `ArrowRight` / `ArrowLeft`, `expandNode(Async)`, or a lazy load settling with an expand waiting on it — animates after its state commits: the toggle turns from pointing right to pointing down (or back), the node's children slide out from under it and fade in as they emerge, and the rows below move to make room, over 200ms. State, `getExpandedNodes()` and the `"expand"` / `"collapse"` events all commit synchronously, before the motion starts — nothing about reading the tree right after a toggle waits on the animation.
+A single node's expand or collapse — a caret click, a row-click toggle, `Enter`, `ArrowRight` / `ArrowLeft`, `expandNode(Async)`, or a lazy load settling with an expand waiting on it — animates after its state commits: the toggle turns from pointing right to pointing down (or back), the node's children slide out from under it and fade in as they emerge, and the rows below move to make room, over 200ms. State, `getExpandedNodes()` and the `"expand"` / `"collapse"` events all commit synchronously, before the motion starts — nothing about reading the tree right after a toggle waits on the animation.
 
-The bulk and structural calls — `expandAll()`, `revealByPredicate()`, `setNodes()`, `insertNode()`, `removeNode()`, `setChildren()` — never animate; they can change many nodes at once, which a single reveal value cannot describe. A toggle whose children would not fit in the current viewport, or whose commit moves the scroll offset, also snaps instead of animating. `prefers-reduced-motion: reduce` turns off every animation, caret included. While a collapse plays, the rows sliding away carry `aria-hidden="true"`, so assistive technology reads only the committed rows. A call that has to scroll a row into view — `selectNode()`, a click or a keyboard move — settles a running motion first; one whose row is already in view leaves it playing. A keyboard move onto a child that an expand is still fading in also settles it, so the selection never lands on a row that is not yet fully drawn.
+The bulk and structural calls — the `*` key, `expandAll()`, `revealByPredicate()`, `setNodes()`, `insertNode()`, `removeNode()`, `setChildren()` — never animate; they can change many nodes at once, which a single reveal value cannot describe. A toggle whose children would not fit in the current viewport, or whose commit moves the scroll offset, also snaps instead of animating. `prefers-reduced-motion: reduce` turns off every animation, caret included. While a collapse plays, the rows sliding away carry `aria-hidden="true"`, so assistive technology reads only the committed rows. A call that has to scroll a row into view — `selectNode()`, a click or a keyboard move — settles a running motion first; one whose row is already in view leaves it playing. A keyboard move onto a child that an expand is still fading in also settles it, so the selection never lands on a row that is not yet fully drawn.
 
 ## Updating nodes
 
@@ -141,9 +141,16 @@ The tree is one focus stop: its own element holds focus, and the current row is 
 | `ArrowLeft` | Collapse an expanded node, or move to the parent. |
 | `Home` / `End` | Move to the first / last visible row and select it. With `Shift`, extend the selection instead. |
 | `PageUp` / `PageDown` | Move up / down by one page — the number of whole rows the tree shows — and select that row. With `Shift`, extend the selection instead. With no current row yet, the first press lands on the first row. |
+| `Enter` | Activate the current row: fire `"dblclick"` for its node, as a double-click on the row does, then expand or collapse it when it has children. Holding the key activates once. |
+| Printable character | Type-ahead: move to the next visible row whose label starts with what was typed, and select it. Typing one letter again steps through the rows that start with it. Several different letters match as a prefix, searched from the current row itself. The buffer starts again after a 700 ms pause, or on `Escape`. |
+| `*` | Expand every sibling of the current row, itself included, whose children are already loaded. |
 | `Shift+F10` / ContextMenu key | Fire `"contextmenu"` for the current row — see [Context menu](#context-menu). |
 
 `Shift` extends from the anchor: the row last clicked without `Shift` (a `Ctrl`/`Cmd`-click included), moved to by a key that did not extend the selection (any key without `Shift`; `ArrowLeft` and `ArrowRight` always), or passed to `selectNode()`. [`getSelectedNode()`](/api/component/tree/classes/Tree#getselectednode) returns it. With no anchor among the visible rows — nothing selected yet, the anchor's node removed, or the anchor under a collapsed node — `Shift` is ignored: a `Shift` move or a `Shift`-click is a plain one, a `Ctrl`/`Cmd`+`Shift`-click is a `Ctrl`/`Cmd`-click, and the row it lands on becomes the anchor.
+
+Type-ahead searches the rows that are visible — every expanded row, scrolled into view or not — by each node's `label`, whatever a custom renderer draws. It never expands a node and never loads a lazy one. `Shift` types capitals; a key pressed with `Ctrl`, `Alt` or `Meta` is not type-ahead, and neither is `Space`. The key is the tree's own: the browser's default does not run, and a `keydown` listener on an ancestor still receives it.
+
+`*` likewise skips a lazy node that has not loaded, and fires `"expand"` once for each node it opens. `Enter` and `*` are the tree's own keys: the browser's default does not run, and a `keydown` listener on an ancestor still receives them. `Enter` with a modifier is left alone. In a modal [`Dialog`](/components/Dialog) with a primary button, `Enter` also confirms the dialog, as it does from any control that is not a button, a text area or an editor.
 
 A key that moves the current row is the tree's own even when the row cannot move: `PageDown` on the last row changes nothing, and the browser does not scroll what is behind the tree. See [Keys in trees, lists and tables](/concepts/accessibility#keys-in-trees-lists-and-tables).
 
@@ -183,6 +190,7 @@ A menu opened from the keyboard takes focus and is worked with the arrow keys; f
 | `getExpandedNodes()` | Snapshot the currently expanded nodes (see [Expansion state](#expansion-state)). |
 | `expandNodeAsync(node)` | Expand a node and resolve once the expansion has committed, including a lazy load (see [Expansion state](#expansion-state)). |
 | `on("selection", fn)` | Subscribe to user-driven selection changes. |
+| `on("dblclick", fn)` | Subscribe to a node being activated: a double-click on its row, or `Enter` on the current row. |
 | `on("loaderror", fn)` | Subscribe to lazy-load failures (see [Lazy loading](#lazy-loading)). |
 | `on("expand", fn)` / `on("collapse", fn)` | Subscribe to a single node's expansion changing (see [Expansion state](#expansion-state)). |
 | `on("contextmenu", fn)` | Subscribe to a context-menu request for a row, from the mouse or the keyboard (see [Context menu](#context-menu)). |
@@ -204,7 +212,7 @@ A custom [`TreeNodeRenderer`](#custom-row-renderers) opts into the same behaviou
 
 ## Expand trigger
 
-By default (`expandTrigger: "dblclick"`), a row's body expands or collapses it only on a double-click — the file-explorer convention. The caret always toggles on a single click regardless of this setting.
+By default (`expandTrigger: "dblclick"`), a row's body expands or collapses it only on a double-click — the file-explorer convention. The caret always toggles on a single click regardless of this setting, and `Enter` on the current row toggles it in both modes.
 
 Pass `expandTrigger: "click"` to switch a row's body to the IDE-sidebar convention of toggling on a plain click instead:
 

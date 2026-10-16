@@ -325,6 +325,12 @@ abstract class VirtualRowView<
             // scroll-driven translate doesn't pay a layer-creation cost.
             row.setWillChange("transform");
 
+            // A new row shows nothing until a render pass binds it, so it
+            // starts hidden, as `_rowDisplayed` below records. `positionRow`
+            // shows a row the first time it places it, and
+            // `hideExcessPoolRows` hides only a row that was shown.
+            row.setDisplayed(false);
+
             this._rowPool.push(row);
             this._boundIndices.push(-1);
             this._rowGeom.push(null);

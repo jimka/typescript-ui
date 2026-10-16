@@ -38,7 +38,7 @@ The list root is focusable; rows are not. Focus tracks the active row via `aria-
 | `PageUp` / `PageDown` | Jump by the number of whole rows the list shows. |
 | `Ctrl` (or `Cmd`) with any of the six keys above | Move focus without changing the selection. `Enter` or `Space` then selects the focused row. |
 | `Enter` / `Space` | Commit the focused row. |
-| Printable character | Type-ahead — focus the first row whose label starts with the buffer. The buffer resets after a 700ms pause. |
+| Printable character | Type-ahead — focus the next row after the focused one whose label starts with what was typed. Typing one letter again steps through the rows that start with it. Several different letters match as a prefix, searched from the focused row itself. The buffer resets after a 700ms pause. |
 | `Escape` | Clear the type-ahead buffer. |
 | `Shift+F10` / ContextMenu key | Fire `"contextmenu"` for the focused row — see [Context menu](#context-menu). |
 

@@ -181,6 +181,18 @@ page resets to empty.
   `FocusReveal.reveal(component.getElement())` after the setter. No
   consumer action is needed.
 
+- **`List` type-ahead moves to the next match and steps on a repeated
+  letter.** A letter used to focus the first row from the top whose label
+  starts with the buffer, so a repeated letter did nothing. It now focuses
+  the next matching row after the focused one, wrapping, and typing the same
+  letter again steps through the matches. Several different letters still
+  match as a prefix, now starting from the focused row. The key is now
+  prevented on the list's own element, as it already was in an open
+  `ComboBox`. `MultiSelectList` and the `ComboBox` dropdown change with it.
+  The `protected` fields `_typeAheadBuf` and `_typeAheadAt` of
+  `AbstractSelectableList` are gone. No consumer action is needed unless a
+  subclass read those two fields.
+
 ### Core
 
 - **`FocusHistory` records places, not popups.** A control inside a context
@@ -732,6 +744,36 @@ page resets to empty.
   below the panel's edge, out of sight. The panel now follows by the least
   distance: up or down for a row, sideways for a table column. See the
   entry under Changed for what follows and what does not.
+
+- **A `Tree`, `Table` or `TreeTable` no longer holds empty rows.** A view
+  with more rows than fit kept three spare pool rows displayed and unbound,
+  which were empty `treeitem` or `row` elements a screen reader could reach.
+  A spare row is now hidden until it shows data. No consumer action is
+  needed.
+
+- **A `Tree` has type-ahead.** Typing the first letters of a label moves to
+  the next visible row that starts with them, selects it and scrolls it into
+  view. The same letter typed again steps through the matches. Only visible
+  rows are searched and nothing is expanded or loaded, and the keys are
+  prevented, not stopped. No consumer action is needed.
+
+- **`Enter` activates the current `Tree` row.** The tree's activation
+  event, `"dblclick"`, fired only for a double-click, so "open" was out of
+  reach from the keyboard. `Enter` on the current row now fires it and then
+  toggles an expandable node, as a double-click on the row does. A held key
+  activates once, and `Enter` with a modifier is left alone. One behaviour
+  changes: a `"dblclick"` listener now also runs for `Enter`, and in a modal
+  `Dialog` with a primary button the dialog is confirmed as well. No
+  consumer action is needed unless a `keydown` handler of your own already
+  opens the node on `Enter`: remove it, or it opens the node twice.
+
+- **`*` expands a `Tree` row's siblings.** It opens every sibling of the
+  current row whose children are already loaded, fires `"expand"` for each,
+  and never starts a lazy load. No consumer action is needed.
+
+- **`Home` / `End` activate the first / last tab of a `Tab` strip.** They
+  act while a tab or its ✕ holds focus, and a strip tool keeps the keys. No
+  consumer action is needed.
 
 ### Core
 
