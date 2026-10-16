@@ -5,6 +5,7 @@ import { Event } from "~/core/Event.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { LayerManager } from "~/core/LayerManager.js";
+import type { BackgroundSurface } from "~/core/LayerManager.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { FocusReveal } from "~/core/FocusReveal.js";
 import { isLiveHandle } from "~/core/Focusable.js";
@@ -44,12 +45,15 @@ export interface FocusHistoryOptions {
 export type FocusHistoryEvent = "change";
 
 /**
- * Payload of the `"change"` event: the navigability of the trail after the change.
+ * Payload of the `"change"` event: what {@link FocusHistory.back} and
+ * {@link FocusHistory.forward} would do from where focus is now.
  *
  * @category Core
  */
 export interface FocusHistoryChange {
+    /** Whether `back()` has a stop to go to. */
     canGoBack:    boolean;
+    /** Whether `forward()` has a stop to go to. */
     canGoForward: boolean;
 }
 
@@ -75,11 +79,17 @@ let _entries: Handle[] = [];
 let _index: number = -1;
 let _enabled: boolean = false;
 // Re-entrancy guard: true for the duration of a service-driven `DOM.sink.focus`
-// call, so the synchronous `focusin` it triggers is not recorded as a new move.
+// call, so the synchronous `focusin` it triggers is not recorded as a new move
+// and neither that event nor its `focusout` fires `"change"` mid-walk.
 let _navigating: boolean = false;
 let _maxSize: number = DEFAULT_MAX_ENTRIES;
 let _back:    FocusHistoryKeyCombo = DEFAULT_BACK_COMBO;
 let _forward: FocusHistoryKeyCombo = DEFAULT_FORWARD_COMBO;
+// The flags last handed to `"change"` listeners. Seeded with those of an empty
+// trail, which is what a listener has to assume before its first event.
+let _lastChange: FocusHistoryChange = { canGoBack: false, canGoForward: false };
+// Whether a modal layer was open the last time the layer watch was called.
+let _modalWasOpen: boolean = false;
 
 /**
  * Drops every stale (no-longer-connected) entry from the trail, and merges a
@@ -114,19 +124,63 @@ function pruneStale(): void {
     _index = newIndex;
 }
 
-/** Computes the current navigability and notifies `"change"` listeners. */
-function fireChange(): void {
-    const change: FocusHistoryChange = {
-        canGoBack:    _index > 0,
-        canGoForward: _index < _entries.length - 1,
-    };
+/**
+ * The position in `_entries` a walk in `direction` tries first. Going back
+ * starts at the current stop itself when focus is not on it; going forward
+ * always starts at the stop after it. The result can lie outside the trail,
+ * which means the walk has nothing to try.
+ *
+ * @param direction - `-1` for a walk back, `1` for a walk forward.
+ * @returns The first position to try.
+ */
+function firstCandidate(direction: -1 | 1): number {
+    // Focus can be somewhere that is no stop: in a control inside a table
+    // cell, or on <body> after the focused control was removed.
+    const onCurrentStop = _index >= 0 && _entries[_index] === DOM.source.getActiveElement();
 
-    _listeners.fire("change", change);
+    return direction === -1 && !onCurrentStop ? _index : _index + direction;
+}
+
+/**
+ * Prunes stale entries, then answers what a walk would do from where focus
+ * is now: a flag is true when the walk in that direction has a stop to try.
+ * Both are false while a modal layer is open, where no walk starts.
+ *
+ * @returns The two flags as they stand.
+ */
+function currentFlags(): FocusHistoryChange {
+    pruneStale();
+
+    const modalOpen = LayerManager.hasModalLayer();
+
+    if (modalOpen) {
+        return { canGoBack: false, canGoForward: false };
+    }
+
+    return {
+        canGoBack:    firstCandidate(-1) >= 0,
+        canGoForward: firstCandidate(1) < _entries.length,
+    };
+}
+
+/**
+ * Fires `"change"` when either flag differs from the one last fired, and
+ * does nothing otherwise.
+ */
+function fireChangeIfFlipped(): void {
+    const flags = currentFlags();
+
+    if (flags.canGoBack === _lastChange.canGoBack && flags.canGoForward === _lastChange.canGoForward) {
+        return;
+    }
+
+    _lastChange = flags;
+    _listeners.fire("change", flags);
 }
 
 /**
  * Appends `handle` to the trail (deduping a repeat of the current entry and
- * truncating any forward branch), advances `_index`, and fires `"change"`.
+ * truncating any forward branch) and advances `_index`.
  */
 function record(handle: Handle): void {
     if (_index >= 0 && _entries[_index] === handle) {
@@ -141,7 +195,6 @@ function record(handle: Handle): void {
     }
 
     _index = _entries.length - 1;
-    fireChange();
 }
 
 /**
@@ -180,7 +233,7 @@ function revealAndFocus(handle: Handle): boolean {
  * @param direction - `-1` to walk back, `1` to walk forward.
  * @returns True if focus moved.
  */
-function navigate(direction: -1 | 1): boolean {
+function walk(direction: -1 | 1): boolean {
     pruneStale();
 
     // The trail is out of reach while a modal layer is open. A stop behind
@@ -193,16 +246,11 @@ function navigate(direction: -1 | 1): boolean {
         return false;
     }
 
-    // Focus can be somewhere that is no stop: in a control inside a table
-    // cell, or on <body> after the focused control was removed. Going back
-    // from there returns to the current stop before it goes any further.
-    const onCurrentStop = _index >= 0 && _entries[_index] === DOM.source.getActiveElement();
-    let target = direction === -1 && !onCurrentStop ? _index : _index + direction;
+    let target = firstCandidate(direction);
 
     while (target >= 0 && target < _entries.length) {
         if (revealAndFocus(_entries[target])) {
             _index = target;
-            fireChange();
 
             return true;
         }
@@ -211,6 +259,22 @@ function navigate(direction: -1 | 1): boolean {
     }
 
     return false;
+}
+
+/**
+ * Walks the trail by `direction`, then fires `"change"` when a flag differs
+ * from the one last fired — after a walk that moved focus and after one
+ * that did not, since pruning alone can change a flag.
+ *
+ * @param direction - `-1` to walk back, `1` to walk forward.
+ * @returns True if focus moved.
+ */
+function navigate(direction: -1 | 1): boolean {
+    const moved = walk(direction);
+
+    fireChangeIfFlipped();
+
+    return moved;
 }
 
 /**
@@ -270,7 +334,12 @@ function matchesCombo(e: KeyboardEvent, combo: FocusHistoryKeyCombo): boolean {
         e.shiftKey === !!combo.shift && e.metaKey === !!combo.meta;
 }
 
-/** Document `focusin` handler: records the newly-focused element when it is a stop. */
+/**
+ * Document `focusin` handler: records the newly-focused element when it is a
+ * stop, then fires `"change"` when a flag differs from the one last fired. A
+ * move that records nothing can change a flag too: focus has left the
+ * current stop, or returned to it.
+ */
 function onFocusIn(e: FocusEvent): void {
     if (!_enabled || _navigating) {
         return;
@@ -284,11 +353,80 @@ function onFocusIn(e: FocusEvent): void {
 
     const stop = isHistoryStop(handle);
 
-    if (!stop) {
+    if (stop) {
+        record(handle);
+    }
+
+    fireChangeIfFlipped();
+}
+
+/**
+ * Document `focusout` handler: acts when focus has left an element for
+ * nowhere — a click on the empty page, a blur from code — since no `focusin`
+ * follows then. Fires `"change"` when a flag differs from the one last
+ * fired.
+ */
+function onFocusOut(e: FocusEvent): void {
+    if (!_enabled || _navigating) {
         return;
     }
 
-    record(handle);
+    // Focus is on its way to another element. That element's `focusin`
+    // follows, and reports the flags once the move is complete.
+    const movingToElement = DOM.source.isNode(e.relatedTarget);
+
+    if (movingToElement) {
+        return;
+    }
+
+    fireChangeIfFlipped();
+}
+
+/**
+ * Layer watch: `LayerManager` calls this on every register and unregister of
+ * any layer. Acts only when a modal layer has opened or closed since the last
+ * call, and then fires `"change"` when a flag differs from the one last
+ * fired. No other layer changes a flag, and one that closes because focus
+ * moved — a popover that closes on blur — unregisters in the middle of that
+ * move, where the flags describe a state between two elements.
+ *
+ * @param modalOpen - Whether any modal layer is open now.
+ */
+function onLayersChanged(modalOpen: boolean): void {
+    const modalChanged = modalOpen !== _modalWasOpen;
+
+    _modalWasOpen = modalOpen;
+
+    if (!modalChanged) {
+        return;
+    }
+
+    fireChangeIfFlipped();
+}
+
+// How the service learns that a modal layer opened or closed. A background
+// surface is what `LayerManager` tells about modality; the service is not a
+// surface and writes no element — the trail is what goes out of reach while
+// the page behind a modal layer is inert.
+const _layerWatch: BackgroundSurface = { onInertChanged: onLayersChanged };
+
+/**
+ * Records the element that has focus as the first stop, when it is one.
+ * Nothing is recorded when nothing has focus or the focused element is not a
+ * stop.
+ */
+function seedFromActiveElement(): void {
+    const active = DOM.source.getActiveElement();
+
+    if (active === null) {
+        return;
+    }
+
+    const stop = isHistoryStop(active);
+
+    if (stop) {
+        record(active);
+    }
 }
 
 /**
@@ -338,11 +476,12 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
  */
 export namespace FocusHistory {
     /**
-     * Installs the `focusin` + `keydown` listeners, seeds the trail with the
-     * current active element, and begins recording. The seed is skipped when
-     * nothing has focus or the focused element is not a stop — it is inside a
-     * menu or a dialog, say. Idempotent — calling it again while already
-     * enabled only applies `options`.
+     * Installs the `focusin`, `focusout` and `keydown` listeners, seeds the
+     * trail with the current active element, and begins recording. The seed
+     * is skipped when nothing has focus or the focused element is not a stop
+     * — it is inside a menu or a dialog, say. Idempotent — calling it again
+     * while already enabled only applies `options`. Fires `"change"` when a
+     * flag differs from the one last fired.
      *
      * @param options - Optional `maxSize` / combo overrides, applied via
      * {@link configure} before enabling.
@@ -359,24 +498,20 @@ export namespace FocusHistory {
         _enabled = true;
 
         Event.addViewportListener(_owner, "focusin", onFocusIn);
+        Event.addViewportListener(_owner, "focusout", onFocusOut);
         Event.addViewportListener(_owner, "keydown", onKeyDown);
 
-        const active = DOM.source.getActiveElement();
-
-        if (active === null) {
-            return;
-        }
-
-        const stop = isHistoryStop(active);
-
-        if (stop) {
-            record(active);
-        }
+        seedFromActiveElement();
+        LayerManager.addBackgroundSurface(_layerWatch);
+        fireChangeIfFlipped();
     }
 
     /**
      * Removes the listeners and stops recording. Preserves the trail —
-     * re-enabling resumes from where it left off. Idempotent.
+     * re-enabling resumes from where it left off. Idempotent. While disabled,
+     * {@link canGoBack} and {@link canGoForward} keep answering, but a focus
+     * move fires no `"change"`; {@link enable} fires it if a flag changed in
+     * between.
      */
     export function disable(): void {
         if (!_enabled) {
@@ -387,7 +522,9 @@ export namespace FocusHistory {
         _navigating = false;
 
         Event.removeViewportListener(_owner, "focusin", onFocusIn);
+        Event.removeViewportListener(_owner, "focusout", onFocusOut);
         Event.removeViewportListener(_owner, "keydown", onKeyDown);
+        LayerManager.removeBackgroundSurface(_layerWatch);
     }
 
     /** Whether the service is currently observing. */
@@ -440,45 +577,50 @@ export namespace FocusHistory {
     }
 
     /**
-     * Whether a live entry exists before the current position. Prunes stale
-     * entries as a side effect, so a stale-only direction never reports true.
-     * It describes the trail, not where focus is: it is not `true` merely
-     * because focus has left the current stop, although {@link back} would
-     * then return to that stop.
+     * Whether {@link back} has a stop to go to from where focus is now: the
+     * current stop when focus has left it, otherwise a stop before it. Always
+     * `false` while a dialog or a modal drawer is open. Prunes stale entries as
+     * a side effect, so a stop that has left the document never counts. A stop
+     * that is still in the document counts even when it is hidden or disabled,
+     * so `back()` can return `false` after this returned `true`.
      *
-     * @returns True when the trail holds a stop before the current one.
+     * @returns True when `back()` has a stop to try.
      */
     export function canGoBack(): boolean {
-        pruneStale();
-
-        return _index > 0;
+        return currentFlags().canGoBack;
     }
 
     /**
-     * Whether a live entry exists after the current position. Prunes stale
-     * entries as a side effect, so a stale-only direction never reports true.
+     * Whether {@link forward} has a stop to go to: one after the current stop.
+     * Always `false` while a dialog or a modal drawer is open. Prunes stale
+     * entries as a side effect, so a stop that has left the document never
+     * counts. A stop that is still in the document counts even when it is
+     * hidden or disabled.
      *
-     * @returns True when the trail holds a stop after the current one.
+     * @returns True when `forward()` has a stop to try.
      */
     export function canGoForward(): boolean {
-        pruneStale();
-
-        return _index < _entries.length - 1;
+        return currentFlags().canGoForward;
     }
 
-    /** Empties the trail and fires `"change"` with both flags false. */
+    /** Empties the trail. Fires `"change"` when either flag was true. */
     export function clear(): void {
         _entries = [];
         _index = -1;
-        fireChange();
+        fireChangeIfFlipped();
     }
 
     /**
-     * Subscribes to trail-navigability changes, fired after every recorded
-     * focus move and after every `back()` / `forward()` navigation.
+     * Subscribes to `"change"`, fired whenever {@link canGoBack} or
+     * {@link canGoForward} changes value: after a focus move, recorded or not,
+     * after a `back()` / `forward()` call, after {@link clear}, and when a
+     * dialog or a modal drawer opens or closes. It is not fired when neither
+     * value changed, and not on subscribing: call the two functions once for
+     * the starting state. A listener can run while a layer is opening or
+     * closing, so it should not open or close one itself.
      *
      * @param event - Always `"change"`.
-     * @param listener - Invoked with the trail's navigability after the change.
+     * @param listener - Invoked with the two flags after the change.
      */
     export function on(event: "change", listener: (change: FocusHistoryChange) => void): void {
         _listeners.add(event, listener);

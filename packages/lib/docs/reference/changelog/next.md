@@ -149,9 +149,24 @@ page resets to empty.
   and `forward()` return `false` and move nothing while a dialog or modal
   drawer is open. When focus has left the current stop — it is in a table
   cell's editor, or the focused control was removed — `back()` returns to
-  that stop first; `canGoBack` still describes the trail only. Consumer
-  action: none, unless code relied on `back()` reaching a dialog's own
-  controls.
+  that stop first. Consumer action: none, unless code relied on `back()`
+  reaching a dialog's own controls.
+
+- **`FocusHistory`'s `canGoBack` / `canGoForward` and `"change"` follow
+  focus.** The two flags now say what `back()` and `forward()` would do from
+  where focus is. `canGoBack` is `true` when focus has left the current
+  stop, also when that is the only stop, because `back()` returns to it.
+  Both are `false` while a dialog or a modal drawer is open. `"change"` now
+  fires when either flag changes value, and only then. It no longer fires
+  after a recorded focus move or a `back()` / `forward()` call that leaves
+  both flags as they were, nor from `clear()` when both were already
+  `false`. It now also fires for a focus move that records nothing — into a
+  table cell's editor or a popup, or off every control — and when a dialog
+  or a modal drawer opens or closes. Consumer action: none for a listener
+  that copies the two flags onto buttons, but read `canGoBack()` /
+  `canGoForward()` once when subscribing, since no event announces the
+  starting state. Code that used `"change"` to learn that a focus move was
+  recorded can no longer do so.
 
 ### Overlay
 

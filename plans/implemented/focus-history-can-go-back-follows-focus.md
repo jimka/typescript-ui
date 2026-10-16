@@ -1,8 +1,8 @@
 ---
-depends-on: [focus-history-transient-layers, nested-scroll-reveal]
+depends-on: [focus-history-transient-layers]
 touches-shared:
   - packages/lib/src/typescript/lib/core/FocusHistory.ts      # nested-scroll-reveal edits only revealAndFocus's JSDoc there
-  - packages/lib/tests/unit/core/FocusHistory.test.ts         # the planned removal of LayerManager.isBehindModal edits one case there
+  - packages/lib/tests/unit/core/FocusHistory.test.ts         # one case there calls LayerManager.isBehindModal, which stays
   - packages/lib/tests/core/FocusHistoryLayers.test.ts
   - packages/lib/docs/recipes/focus-history.md
   - packages/lib/docs/concepts/layering.md
@@ -840,3 +840,59 @@ The modelled DOM of `tests/dom/TestDOM.ts` fires nothing by itself. A case dispa
 [^evidence]: No source file was changed. A copy of `FocusHistory.ts` with the edits of `## Internal Structure` was placed in the test tree, and both test files were run against it with their imports pointed at the copy. Result: 8 failures (R1–R7; R3 counts twice, once per layer mode) and no other. With the R edits applied, and with every F, M, E, D and J case added, all 95 cases passed. Each new part was then removed from the copy in turn — the layer watch, the `focusout` listener, its related-target test, its `_navigating` test, the fire after a walk that moved nothing, the modal rule, the guard itself, the fire for a non-stop — and each removal failed at least one case. The "before step 6" column comes from running the same cases against the unchanged file.
     The browser table is from a page loaded into headless Chromium 155 as a `data:` URL.
     Kept at `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans3/can-go-back/`: `FocusHistoryProto.ts`, the test files, `prototype-run.log`, `red-state-against-current-code.log`, `focus-events-probe.html`, `chromium-probe-out.txt`. The copy and the temporary tests were deleted from the worktree.
+
+---
+
+## Implementation Notes
+
+Built on `feature/focus-history-transient-layers` (`f73c00eb6`), the eighth branch of the unmerged stack. The code is the plan's `## Internal Structure` as written, except for the layer watch (item 5). Every case was written against the real `FocusHistory` before the code changed. The planner's prototype was read as evidence and not copied.
+
+### Corrections to the plan's text
+
+1. **The base is not `feature/nested-scroll-reveal`.** The Overview says the work is built on that branch, and the frontmatter listed it under `depends-on`. The order was changed after the plan was written: this plan is implemented below `nested-scroll-reveal`, which is held back and is rebased onto this branch afterwards. The frontmatter now reads `depends-on: [focus-history-transient-layers]`. No step needed the other branch. Checked against its tip `054987a6c`: in `core/FocusHistory.ts` it changes only the JSDoc of `revealAndFocus`, and it touches neither test file, nor the recipe, nor `layering.md`. It does edit `changelog/next.md`. The plan's line numbers are those of this base, with no offset of one: `packages/lib` is identical at `20e4c105b` and `f73c00eb6`.
+2. **`LayerManager.isBehindModal()` stays.** The plan speaks of "the planned removal of `isBehindModal`" in four places: the frontmatter comment on `FocusHistory.test.ts`, the "Merging" item of `## Potential Challenges`, the `isBehindModal` item of `## Non-Goals`, and the footnote on the layer watch. That removal is not happening for now. `nested-scroll-reveal` calls the method from `core/FocusReveal.ts`, which was not known when the plan was written, and the user has not decided again. This implementation neither removes the method nor uses it, and the existing case that calls it is unchanged. The frontmatter comment is corrected. The three passages in the body are left as written and are to be read with this correction. In the footnote that means one piece of work fewer edits `LayerManager.ts`; the argument for using the background-surface seam does not rest on that count.
+
+### Deviations
+
+3. **Two comments changed that the plan does not list.** The JSDoc of `enable` began "Installs the `focusin` + `keydown` listeners", and the comment on `_navigating` said the guard keeps the walk's `focusin` from being recorded. The plan's code made both incomplete. `enable` now names `focusout` as well, and the `_navigating` comment says the guard also keeps the walk's own focus events from firing `"change"` mid-walk.
+4. **No demo was added.** `## Non-Goals` rules out a back/forward toolbar in the demo.
+5. **The layer watch acts only when a modal layer has opened or closed.** Found by the review. The plan has the watch ignore its argument and call `fireChangeIfFlipped()` on every register and unregister of any layer. `LayerManager` closes a `dismissOn: "blur"` popover from its own `focusin` handler, so that layer unregisters in the middle of the focus move that closes it. The watch then computed the flags for a state between two elements, and `"change"` fired twice for one move, the first time with `true/true`:
+
+   | Trail, focus on, open | Move | `"change"` as planned | As built |
+   |---|---|---|---|
+   | `[A*, B]`, on `A`, a "blur" popover | `forward()` | `true/true`, then `true/false` | `true/false` |
+   | the same, with `LayerManager`'s `focusin` listener registered before the service's | focus moves to a new stop `C` | `true/true`, then `true/false` | `true/false` |
+
+   Both rows break what the plan itself decides: a walk fires once, at its end, and a focus move fires at most one event. The second row depends on listener order, which a layer open since before `enable()` reverses, so a `_navigating` test in the watch would have fixed the first row only. As built, `onLayersChanged` keeps the argument of its last call in `_modalWasOpen` and returns unless it has changed. The test has the shape of `Component.propagateEffectiveVisibility`, which the plan cites for `fireChangeIfFlipped()`: compare with the last value, return when equal. A modal layer does not close on a focus move, so the watch no longer runs inside one.
+
+   What this gives up: with the plan's watch, a non-modal layer that opened or closed was a moment at which `"change"` caught up with a stop that had left the document. It no longer is. The recipe's sentence on that now says "the next dialog or modal drawer that opens or closes" where the plan dictates "the next layer that opens or closes". The plan's row "a layer registered or unregistered" in the table of triggers, and its sentence that each trigger runs `fireChangeIfFlipped()` once, are to be read with this. No case of `## Expected Behaviour` changes: M2 already requires that a non-modal layer fires nothing. The call that ends `enable()` now does work of its own, since the watch stays silent when the modal state is as it last saw it (cases D1 and D2).
+
+   Four cases pin it, all written before the change and seen to fail with `true/true` first: two offline cases in the `"change"` block of `FocusHistory.test.ts`, and J10 and J11 with a real `Popover` in `FocusHistoryLayers.test.ts`.
+
+### What was run
+
+- **Red state, before step 6.** 29 of the then 94 cases of the two files failed, and they are the ones the plan marks: F1, F2, F3, F6, F8, M1, E1–E3, E6–E11, D1, R1–R7 (R3 once per layer mode) and J5–J9. The pins passed: F4, F5, F7, M2 in its three modes, E4, E5, D2, D3, R8 and R9.
+- **Each new part removed in turn**, with both files run against the result:
+
+  | Removed | Cases that fail |
+  |---|---|
+  | the layer watch | E7, E8, J6, J7 |
+  | the `focusout` listener | E3, J5 |
+  | the related-target test in `onFocusOut` | E4, J11 |
+  | the `_navigating` test in `onFocusOut` | E5 |
+  | the fire after a walk that moved nothing | E6 |
+  | the modal rule in `currentFlags` | M1, E7, E8, S4, S6, J4, J6, J7 |
+  | the guard in `fireChangeIfFlipped` | 12 cases, among them E1, E9, E11, R2, R5 |
+  | the fire for a focus move that records nothing | E2, S12, J8, J9 |
+  | the fire in `clear()` | E9 and the existing `clear()` case |
+  | `firstCandidate` in `canGoBack`, with `_index > 0` back in its place | 18 cases, among them F1–F3, F6, F8, W4 |
+  | `removeBackgroundSurface` in `disable()` | D1 |
+  | the `fireChangeIfFlipped()` that ends `enable()` | D1, D2 |
+  | the modal-change test in `onLayersChanged` | J10, J11 and the two offline cases of item 5 |
+
+  The table is from the code as built, with item 5 in it.
+- **Commands.** `npm run typecheck`, `typecheck:test` and `npm run lint` are clean. The full suite passes: 556 files, 9793 cases, 2 todo. `npm run docs:api` ends with no warning, and `npm run docs:llms:check` reports nothing unaccounted for.
+- **MV1–MV4, in headless Chromium 155** on the demo's `#/misc` page, served from this worktree on a port and a Vite cache of its own. The page was driven through the browser's debugging interface with focus emulation on: focus given by `element.focus()`, the keys and the click sent as real input. All four rows came out as the table says. MV1: the click on the empty page logged `true/false` with `<body>` focused, and `Alt+[` returned to the button and logged `false/false`. MV2: `Enter` logged nothing, focusing `Apply` logged `true/false`, `Escape` logged nothing and left `<body>` focused with `canGoBack()` `true`, and `Alt+[` landed on "Filters (PopupPanel)" and logged `false/false`. MV3: `Enter` logged `false/false`, and `Escape` logged `true/false` once with focus back on the dialog button. MV4: `Enter` logged nothing, and `Escape` logged `true/false` and then `false/false`. The four rows were run again after item 5, with the same result. One row beyond the plan's was run then: with `[S, D*]`, focus on "Dismiss on blur" and its popover open, `FocusHistory.back()` from the console closed the popover, landed on `S` and logged `false/true` once.
+- **MV5 was not run.** Neither Firefox nor a WebKitGTK browser is installed on this machine.
+
+Logs, the driver script and the mutation script are kept at `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/impl/can-go-back/`. The throwaway Vite config and the browser profile were removed.

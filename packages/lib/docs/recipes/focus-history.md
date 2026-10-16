@@ -45,9 +45,6 @@ import { ToolBar } from '@jimka/typescript-ui/component/menubar';
 const back = Button('←');
 const forward = Button('→');
 
-back.setEnabled(false);
-forward.setEnabled(false);
-
 back.on('action', () => FocusHistory.back());
 forward.on('action', () => FocusHistory.forward());
 
@@ -56,6 +53,10 @@ FocusHistory.on('change', ({ canGoBack, canGoForward }) => {
     forward.setEnabled(canGoForward);
 });
 
+// "change" is not fired on subscribing: read the starting state once.
+back.setEnabled(FocusHistory.canGoBack());
+forward.setEnabled(FocusHistory.canGoForward());
+
 const toolbar = new ToolBar();
 toolbar.addComponent(back);
 toolbar.addComponent(forward);
@@ -63,7 +64,21 @@ toolbar.addComponent(forward);
 
 Stops whose element has left the DOM are skipped and dropped automatically — a control of a window that has since been closed, for instance, is pruned the next time `back()`/`forward()` walks past it. A stop that is hidden or disabled is passed over and kept, so it works again once the control is back: the field of a minimised window, say.
 
-When focus has left the current stop — it is in a table cell's editor, or the focused control was removed — `back()` returns to that stop first, and only the next call goes to the stop before it. That first call fires `"change"` like any other navigation, with the flags as they were. `canGoBack` describes the trail only: with a single stop it stays `false` there, even though `back()` would move focus.
+When focus has left the current stop — it is in a table cell's editor, or the focused control was removed — `back()` returns to that stop first, and only the next call goes to the stop before it.
+
+`canGoBack` and `canGoForward` say what `back()` and `forward()` would do from where focus is now, so a button wired this way is enabled when its click has somewhere to go.
+
+| Trail (`*` marks the current stop) | Focus is on | `canGoBack` | `canGoForward` |
+| --- | --- | --- | --- |
+| `[A*]` | `A` | `false` | `false` |
+| `[A*]` | a table cell's editor, a control of a popup, or nothing because the focused control was removed | `true` (`back()` returns to `A`) | `false` |
+| `[A, B*]` | `B` | `true` | `false` |
+| `[A*, B]` | `A` | `false` | `true` |
+| any trail | anything, while a dialog or a modal drawer is open | `false` | `false` |
+
+`"change"` fires when either value changes, and only then. A focus move that records nothing fires it when it changes what `back()` would do. A recorded move that changes neither value does not.
+
+A stop that is still in the document counts even when it cannot take focus right now — it is hidden in a minimised window, or disabled — so `back()` can return `false` after `canGoBack` was `true`. A stop that leaves the document changes the flags with no event of its own: the two functions are right whenever they are called, and `"change"` catches up at the next focus move, the next `back()` / `forward()` call, or the next dialog or modal drawer that opens or closes. While the service is disabled the two functions keep answering, a focus move fires no `"change"`, and `enable()` fires it if a value changed in between.
 
 ## Override the accelerator
 
@@ -82,13 +97,13 @@ FocusHistory.enable({
 
 Opening and closing a menu, a dropdown, a dialog, a modal drawer, or a popover that an outside click or focus move closes leaves the trail as it was, forward part included. The control that opened it is the current stop before and after.
 
-| While open | `Alt+[` / `Alt+]` | `back()` / `forward()` |
-| --- | --- | --- |
-| A context menu, a menu bar's panel, a dropdown, a popup panel, a popover that an outside click or focus move closes | do nothing; the key is left to your application | walk the trail |
-| A dialog or a modal drawer, with or without a menu or a dropdown open inside it | do nothing; the key is left to your application | return `false` and move nothing |
-| A window, a non-modal drawer, a `dismissOn: "manual"` popover | walk the trail | walk the trail |
+| While open | `Alt+[` / `Alt+]` | `back()` / `forward()` | `canGoBack` / `canGoForward` |
+| --- | --- | --- | --- |
+| A context menu, a menu bar's panel, a dropdown, a popup panel, a popover that an outside click or focus move closes | do nothing; the key is left to your application | walk the trail | as with nothing open |
+| A dialog or a modal drawer, with or without a menu or a dropdown open inside it | do nothing; the key is left to your application | return `false` and move nothing | both `false` |
+| A window, a non-modal drawer, a `dismissOn: "manual"` popover | walk the trail | walk the trail | as with nothing open |
 
-The functions are not held back by a menu or a dropdown so that a toolbar button wired to `back()` still works when its click is what closes one. While a dialog or a modal drawer is open the trail is out of reach: its stops are controls of the application behind the modal.
+The functions are not held back by a menu or a dropdown so that a toolbar button wired to `back()` still works when its click is what closes one. The flags follow the functions, so that button stays enabled. While a dialog or a modal drawer is open the trail is out of reach: its stops are controls of the application behind the modal.
 
 ## See also
 
