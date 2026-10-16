@@ -5,6 +5,7 @@ import { Button } from '~/component/button/Button';
 import { HBox } from '~/layout/HBox';
 import { VBox } from '~/layout/VBox';
 import { DOM } from '~/core/DOM';
+import type { Rect } from '~/core/DOM';
 import { FocusReveal } from '~/core/FocusReveal';
 import { installTestDOM, setConnected } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -22,11 +23,42 @@ const CONFIG = {
 // reserve equals this value (or 0), not the literal as an opaque golden.
 const SCROLL_ARROW_SIZE = 24;
 
+let frames: FrameRequestCallback[];
+
+/** Runs every captured animation frame, including those a frame schedules. */
+function drainFrames(): void {
+    for (let guard = 0; guard < 10 && frames.length > 0; guard++) {
+        const pending = frames;
+
+        frames = [];
+
+        for (const callback of pending) {
+            callback(0);
+        }
+    }
+}
+
 beforeEach(() => {
     installTestDOM(CONFIG);
+
+    // A strip queues a layout pass when it is built, and a reveal through the
+    // broker waits for it. Capture the frame, so a case can run it and the
+    // teardown can drain it: a pass left queued stays in `Component`'s
+    // module-level queue for the tests that follow, and its frame handle
+    // swallows their own registration.
+    frames = [];
+    vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
+        frames.push(callback);
+
+        return frames.length;
+    });
 });
 
-afterEach(() => DOM.reset());
+afterEach(() => {
+    drainFrames();
+    vi.restoreAllMocks();
+    DOM.reset();
+});
 
 describe('ScrollStrip construction', () => {
     it('is a Panel', () => {
@@ -204,6 +236,314 @@ describe('ScrollStrip.revealItem arrow refresh (regression)', () => {
     });
 });
 
+describe('ScrollStrip.revealRect', () => {
+    // Cases X1 and X2 of plans/implemented/nested-scroll-reveal.md, and X3–X11
+    // the implementation added: a vertical strip, a hidden one, and the
+    // strip as the only scroller around a component. The strip is a
+    // scroller in the broker's scroll pass: it is handed a rectangle, scrolls
+    // its clip along its main axis by the least distance that shows it, and
+    // returns what the clip then shows of it.
+
+    /**
+     * A rectangle from its four edges.
+     *
+     * @param left - The left edge.
+     * @param top - The top edge.
+     * @param right - The right edge.
+     * @param bottom - The bottom edge.
+     * @returns The rectangle, with all eight fields.
+     */
+    function rect(left: number, top: number, right: number, bottom: number): Rect {
+        return { x: left, y: top, left, top, right, bottom, width: right - left, height: bottom - top };
+    }
+
+    /**
+     * A rectangle's four edges.
+     *
+     * @param r - The rectangle.
+     * @returns `[left, top, right, bottom]`.
+     */
+    function edges(r: Rect): number[] {
+        return [r.left, r.top, r.right, r.bottom];
+    }
+
+    /**
+     * A strip with one item, whose clip measures as 100 px along the strip's
+     * main axis and 20 px across it, from the window's origin.
+     *
+     * @param orientation - The strip's orientation.
+     * @returns The strip.
+     */
+    function stripWithClip(orientation: 'horizontal' | 'vertical' = 'horizontal'): ScrollStrip {
+        const strip = new ScrollStrip({ orientation });
+
+        strip.getClipElement(true); // realise the clip so the reveal passes its guard
+        strip.addItem(new Button({ text: 'Z' }));
+
+        const clip     = strip.getClipElement()!;
+        const clipRect = orientation === 'horizontal' ? rect(0, 0, 100, 20) : rect(0, 0, 20, 100);
+
+        vi.spyOn(DOM.source, 'getElementRect')
+            .mockImplementation(handle => handle === clip ? clipRect : rect(0, 0, 0, 0));
+
+        return strip;
+    }
+
+    it('X1: scrolls its clip along the main axis and returns what the clip then shows', () => {
+        const strip = stripWithClip();
+
+        // The rectangle ends 100 px past the clip's end: the clip scrolls by
+        // that, and the rectangle is then flush with the clip's end.
+        expect(edges(strip.revealRect(rect(150, 0, 200, 20)))).toEqual([50, 0, 100, 20]);
+        expect(strip.mainScroll()).toBe(100);
+
+        // In view: handed back as it is, and nothing moves.
+        expect(edges(strip.revealRect(rect(20, 0, 60, 20)))).toEqual([20, 0, 60, 20]);
+        expect(strip.mainScroll()).toBe(100);
+    });
+
+    it('X2: a reveal along the other axis scrolls nothing and cuts the rectangle to the clip', () => {
+        const strip = stripWithClip();
+
+        expect(edges(strip.revealRect(rect(150, 0, 200, 20), 'y'))).toEqual([100, 0, 100, 20]);
+        expect(strip.mainScroll()).toBe(0);
+
+        expect(edges(strip.revealRect(rect(150, 0, 200, 20), 'x'))).toEqual([50, 0, 100, 20]);
+        expect(strip.mainScroll()).toBe(100);
+    });
+
+    it('X3: a vertical strip scrolls its clip up and down, and moves the rectangle that way', () => {
+        const strip = stripWithClip('vertical');
+
+        // The rectangle ends 100 px below the clip's end.
+        expect(edges(strip.revealRect(rect(0, 150, 20, 200)))).toEqual([0, 50, 20, 100]);
+        expect(strip.mainScroll()).toBe(100);
+
+        expect(edges(strip.revealRect(rect(0, 20, 20, 60)))).toEqual([0, 20, 20, 60]);
+        expect(strip.mainScroll()).toBe(100);
+    });
+
+    it('X5: a hidden strip scrolls nothing and hands the rectangle on untouched', () => {
+        const strip = stripWithClip();
+
+        strip.setDisplayed(false);
+
+        expect(edges(strip.revealRect(rect(150, 0, 200, 20)))).toEqual([150, 0, 200, 20]);
+        expect(strip.mainScroll()).toBe(0);
+    });
+
+    it('X6: a strip says it has a scroll range along its main axis, and a row reveal inside it reaches the strip', () => {
+        const across = new ScrollStrip();
+        const down   = new ScrollStrip({ orientation: 'vertical' });
+        const fixed  = new ScrollStrip({ scrollable: false });
+
+        // `Panel`'s own answer is for the band, which never scrolls.
+        expect([across.hasScrollRange('x'), across.hasScrollRange('y'), across.hasScrollRange()]).toEqual([true, false, true]);
+        expect([down.hasScrollRange('x'), down.hasScrollRange('y'), down.hasScrollRange()]).toEqual([false, true, true]);
+        expect([fixed.hasScrollRange('x'), fixed.hasScrollRange()]).toEqual([false, false]);
+
+        const strip = stripWithClip();
+        const item  = new Button({ text: 'Y' });
+
+        strip.addItem(item);
+        item.getElement(true);
+        setConnected(strip.getElement(true)!, true);
+        drainFrames();
+
+        // What a component inside a strip item does after a keyboard move.
+        // The clip is no child component of the strip, so the strip is found
+        // from the element the clip is appended into.
+        FocusReveal.revealRectAround(item, () => rect(150, 0, 200, 20), 'x');
+
+        expect(strip.mainScroll()).toBe(100);
+    });
+
+    it('X7: a layout pass queued for the strip is run before a component inside it is revealed', () => {
+        const strip = stripWithClip();
+        const item  = new Button({ text: 'Y' });
+
+        strip.addItem(item);
+        item.getElement(true);
+        setConnected(strip.getElement(true)!, true);
+        drainFrames();
+
+        // The clip is no child component of the strip, so a pass queued for
+        // the strip is only found from the element the clip is appended into.
+        strip.scheduleLayout();
+
+        const laidOut  = vi.spyOn(strip, 'doLayout');
+        const relaidOut: boolean[] = [];
+
+        FocusReveal.revealRectAround(item, ran => {
+            relaidOut.push(ran);
+
+            return rect(150, 0, 200, 20);
+        }, 'x');
+
+        expect(laidOut).toHaveBeenCalledTimes(1);
+        expect(relaidOut).toEqual([true]);
+        expect(strip.mainScroll()).toBe(100);
+    });
+
+    it('X8: a scrolling panel inside a strip item scrolls before the strip does', () => {
+        const strip = stripWithClip();
+        const panel = new Panel({ autoScroll: 'x' });
+        const inner = new Button({ text: 'Y' });
+        const order: string[] = [];
+
+        panel.addComponent(inner);
+        strip.addItem(panel as never);
+        panel.getElement(true);
+        inner.getElement(true);
+        setConnected(strip.getElement(true)!, true);
+        drainFrames();
+
+        vi.spyOn(panel, 'revealRect').mockImplementation(shown => {
+            order.push('panel');
+
+            return shown;
+        });
+        vi.spyOn(strip, 'revealRect').mockImplementation(shown => {
+            order.push('strip');
+
+            return shown;
+        });
+
+        // The panel is found through the component tree, the strip from the
+        // element the clip is appended into. The strip is the outer one.
+        FocusReveal.revealRectAround(inner, () => rect(150, 0, 200, 20), 'x');
+
+        expect(order).toEqual(['panel', 'strip']);
+
+        // A scrolling panel stays in the reveal registry until it is
+        // disposed, and the next test's handle table reuses its number.
+        panel.dispose();
+    });
+
+    it('X9: of two passes queued around the strip, the outer one runs first', () => {
+        const strip = stripWithClip();
+        const band  = new Panel({ layoutManager: new HBox() });
+        const item  = new Button({ text: 'Y' });
+        const order: string[] = [];
+
+        band.addComponent(strip);
+        strip.addItem(item);
+        item.getElement(true);
+        setConnected(band.getElement(true)!, true);
+        setConnected(strip.getElement(true)!, true);
+        drainFrames();
+
+        const bandLayout  = band.doLayout.bind(band);
+        const stripLayout = strip.doLayout.bind(strip);
+
+        vi.spyOn(band, 'doLayout').mockImplementation(() => {
+            order.push('band');
+
+            return bandLayout();
+        });
+        vi.spyOn(strip, 'doLayout').mockImplementation(() => {
+            order.push('strip');
+
+            return stripLayout();
+        });
+
+        strip.scheduleLayout();
+        band.scheduleLayout();
+        FocusReveal.revealRectAround(item, () => rect(150, 0, 200, 20), 'x');
+
+        expect(order[0]).toBe('band');
+        expect(order.filter(name => name === 'strip')).toHaveLength(1);
+
+        band.dispose();
+    });
+
+    it('X10: a pass queued for the strip runs before one queued for the component inside it', () => {
+        const strip = stripWithClip();
+        const item  = new Button({ text: 'Y' });
+        const order: string[] = [];
+
+        strip.addItem(item);
+        item.getElement(true);
+        setConnected(strip.getElement(true)!, true);
+        drainFrames();
+
+        const stripLayout = strip.doLayout.bind(strip);
+        const itemLayout  = item.doLayout.bind(item);
+
+        vi.spyOn(strip, 'doLayout').mockImplementation(() => {
+            order.push('strip');
+
+            return stripLayout();
+        });
+        vi.spyOn(item, 'doLayout').mockImplementation(() => {
+            order.push('item');
+
+            return itemLayout();
+        });
+
+        item.scheduleLayout();
+        strip.scheduleLayout();
+        FocusReveal.revealRectAround(item, () => rect(150, 0, 200, 20), 'x');
+
+        // The strip is the outer one, found from the element its clip is
+        // appended into; the item is found through the component tree.
+        expect(order[0]).toBe('strip');
+        expect(order).toContain('item');
+    });
+
+    it('X11: an opener around the strip that is animating, or hides the strip, holds the step back', () => {
+        const strip = stripWithClip();
+        const item  = new Button({ text: 'Y' });
+        let settled = false;
+        let hides   = false;
+
+        strip.addItem(item);
+        item.getElement(true);
+        setConnected(strip.getElement(true)!, true);
+        drainFrames();
+
+        // An opener that is no ancestor of the item in the component tree:
+        // it is found from the element the clip is appended into.
+        const opener = {
+            getRevealElement: () => strip.getElement()!,
+            revealDescendant: () => {},
+            isRevealSettled:  () => settled,
+            hidesDescendant:  () => hides,
+        };
+
+        FocusReveal.register(opener);
+
+        try {
+            FocusReveal.revealRectAround(item, () => rect(150, 0, 200, 20), 'x');
+
+            expect(strip.mainScroll()).toBe(0);
+
+            settled = true;
+            hides   = true;
+            FocusReveal.revealRectAround(item, () => rect(150, 0, 200, 20), 'x');
+
+            expect(strip.mainScroll()).toBe(0);
+
+            hides = false;
+            FocusReveal.revealRectAround(item, () => rect(150, 0, 200, 20), 'x');
+
+            expect(strip.mainScroll()).toBe(100);
+        } finally {
+            FocusReveal.unregister(opener);
+        }
+    });
+
+    it('X4: a vertical strip takes "y" as its own axis and leaves "x" alone', () => {
+        const strip = stripWithClip('vertical');
+
+        expect(edges(strip.revealRect(rect(0, 150, 20, 200), 'x'))).toEqual([0, 100, 20, 100]);
+        expect(strip.mainScroll()).toBe(0);
+
+        expect(edges(strip.revealRect(rect(0, 150, 20, 200), 'y'))).toEqual([0, 50, 20, 100]);
+        expect(strip.mainScroll()).toBe(100);
+    });
+});
+
 describe('ScrollStrip.resetScroll arrow refresh (regression)', () => {
     // resetScroll moves the native scroll back to the origin outside any
     // layout pass. The deferred-resync plan's layoutItems only re-derives the
@@ -244,16 +584,22 @@ describe('ScrollStrip as a FocusRevealer (regression)', () => {
         const rect = (left: number, right: number) =>
             ({ left, right, top: 0, bottom: 20, width: right - left, height: 20, x: left, y: 0 } as any);
 
-        // revealItem reads the clip rect first, then the item rect — same
-        // fixture as the `revealItem` test above: the item sits fully to the
-        // right of the clip's own viewport, so it must scroll right.
+        // Same fixture as the `revealItem` test above: the item sits fully to
+        // the right of the clip's own viewport, so the strip must scroll
+        // right. The rectangles are staged per element, not by call order:
+        // the broker measures the item before the strip measures its clip.
         vi.spyOn(DOM.source, 'getElementRect')
-            .mockReturnValueOnce(rect(0, 100))
-            .mockReturnValueOnce(rect(150, 200));
+            .mockImplementation(handle => handle === itemEl ? rect(150, 200) : rect(0, 100));
 
         const before = strip.mainScroll();
 
+        // The strip's first layout pass is still queued, so the broker waits
+        // for it and scrolls after it.
         expect(FocusReveal.reveal(itemEl)).toBe(true);
+        expect(strip.mainScroll()).toBe(before);
+
+        drainFrames();
+
         expect(strip.mainScroll()).toBeGreaterThan(before);
     });
 

@@ -1961,31 +1961,63 @@ class Split extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * {@link FocusRevealer.isRevealSettled}: whether no pane is animating
+     * open or shut. While one is, the other panes are still moving, and an
+     * expanded pane has not yet been given back the scroll offsets it was
+     * collapsed with.
+     *
+     * @returns `false` from a collapse or an expand until its animation settles.
+     */
+    isRevealSettled(): boolean {
+        return !this._collapsing;
+    }
+
+    /**
      * {@link FocusRevealer.revealDescendant}: expands whichever pane is on the
      * DOM path to `target`, if it is currently collapsed.
      *
      * @param target - The element to reveal.
      */
     revealDescendant(target: Handle): void {
-        const container = this.getContainer();
+        const index     = this.paneAround(target);
+        const collapsed = index >= 0 && this.isPaneCollapsed(index);
 
-        if (!container) {
-            return;
+        if (collapsed) {
+            this.setPaneCollapsed(index, false);
         }
+    }
 
-        const panes = container.getLaidOutComponents();
+    /**
+     * {@link FocusRevealer.hidesDescendant}: whether `target` is in a pane
+     * that is collapsed.
+     *
+     * @param target - The element to test.
+     * @returns `true` when the pane holding `target` would have to expand.
+     */
+    hidesDescendant(target: Handle): boolean {
+        const index = this.paneAround(target);
+
+        return index >= 0 && this.isPaneCollapsed(index);
+    }
+
+    /**
+     * The pane whose element is on the DOM path to `target`.
+     *
+     * @param target - The element to look around.
+     * @returns The pane's index, or `-1` when `target` is in none.
+     */
+    private paneAround(target: Handle): number {
+        const panes = this.getContainer()?.getLaidOutComponents() ?? [];
 
         for (let i = 0; i < panes.length; i++) {
             const el = panes[i].getElement();
 
             if (el && DOM.source.contains(el, target)) {
-                if (this.isPaneCollapsed(i)) {
-                    this.setPaneCollapsed(i, false);
-                }
-
-                return;
+                return i;
             }
         }
+
+        return -1;
     }
 
     /**

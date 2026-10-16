@@ -670,6 +670,13 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * No-op when the node is not in the currently visible (flattened) set — e.g.
      * an ancestor is collapsed.
      *
+     * The node's row is scrolled into view in the tree. A scrolling panel
+     * around the tree is not touched: this is a state setter, and a page must
+     * not move because code set a selection. To bring the tree itself into
+     * view of the panels around it, call
+     * [`FocusReveal.reveal`](/api/core/namespaces/FocusReveal/functions/reveal)
+     * with the tree's element.
+     *
      * @param node - A node currently held by this tree.
      *
      * @returns This tree, for method chaining.
@@ -686,7 +693,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this._focusNode = node;
 
         this._updateSelectionStyle();
-        this._scrollIntoView(index);
+        this._scrollIntoView(index, false);
         this.renderWindow();
         this._updateActiveDescendant();
 
@@ -696,8 +703,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     /**
      * Finds the first node whose payload satisfies `predicate`, expanding every
      * ancestor on the path (loading lazy branches as needed) so the node becomes
-     * visible, then scrolls it into view. Returns the node, or `null` when no
-     * node matches.
+     * visible, then scrolls it into view in the tree. Returns the node, or
+     * `null` when no node matches. Like {@link selectNode}, it moves no
+     * scrolling panel around the tree.
      *
      * Unlike {@link selectNode} — which no-ops when the target sits under a
      * collapsed or not-yet-loaded ancestor — this walks the whole tree,
@@ -911,7 +919,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         const index = this._flatRows.findIndex(r => r.node === node);
 
         if (index >= 0) {
-            this._scrollIntoView(index);
+            this._scrollIntoView(index, false);
         }
     }
 
@@ -1823,8 +1831,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * Replaces the selection with the single node at `index`, resets the anchor and focus, and scrolls it into view.
      *
      * @param index - Zero-based index into `_flatRows`.
+     * @param around - Whether the scrolling panels around the tree follow the
+     *   row: `true` for a keyboard move, `false` for a click.
      */
-    private _selectAtIndex(index: number): void {
+    private _selectAtIndex(index: number, around: boolean): void {
         if (index < 0 || index >= this._flatRows.length) {
             return;
         }
@@ -1842,7 +1852,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this._focusNode = node;
 
         this._updateSelectionStyle();
-        this._scrollIntoView(index);
+        this._scrollIntoView(index, around);
         this.renderWindow();
         this._updateActiveDescendant();
         this._notifySelectionChange(before);
@@ -1869,8 +1879,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * the anchor.
      *
      * @param index - Zero-based index into `_flatRows` for the new focus position.
+     * @param around - Whether the scrolling panels around the tree follow the
+     *   row: `true` for a keyboard move, `false` for a click.
      */
-    private _extendSelectionTo(index: number): void {
+    private _extendSelectionTo(index: number, around: boolean): void {
         if (index < 0 || index >= this._flatRows.length) {
             return;
         }
@@ -1881,7 +1893,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         // The move is a plain one, as a Shift-click with no anchor is a plain
         // click.
         if (anchorIdx < 0) {
-            this._selectAtIndex(index);
+            this._selectAtIndex(index, around);
 
             return;
         }
@@ -1895,7 +1907,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this._focusNode = this._flatRows[index].node;
 
         this._updateSelectionStyle();
-        this._scrollIntoView(index);
+        this._scrollIntoView(index, around);
         this.renderWindow();
         this._updateActiveDescendant();
         this._notifySelectionChange(before);
@@ -1906,9 +1918,11 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * moving if it already is. Delegates to the shared base implementation.
      *
      * @param index - Zero-based index into `_flatRows`.
+     * @param around - Whether the scrolling panels around the tree follow:
+     *   `true` for a keyboard move, `false` for a click or a call from code.
      */
-    private _scrollIntoView(index: number): void {
-        this.scrollRowIntoView(index);
+    private _scrollIntoView(index: number, around: boolean): void {
+        this.scrollRowIntoView(index, around);
     }
 
     /**
@@ -1945,30 +1959,30 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
         if (e.key === 'ArrowDown') {
             const next = focusIdx < 0 ? 0 : Math.min(focusIdx + 1, flatRows.length - 1);
-            e.shiftKey ? this._extendSelectionTo(next) : this._selectAtIndex(next);
+            e.shiftKey ? this._extendSelectionTo(next, true) : this._selectAtIndex(next, true);
 
         } else if (e.key === 'ArrowUp') {
             const prev = focusIdx < 0 ? 0 : Math.max(focusIdx - 1, 0);
-            e.shiftKey ? this._extendSelectionTo(prev) : this._selectAtIndex(prev);
+            e.shiftKey ? this._extendSelectionTo(prev, true) : this._selectAtIndex(prev, true);
 
         } else if (e.key === 'Home') {
-            e.shiftKey ? this._extendSelectionTo(0) : this._selectAtIndex(0);
+            e.shiftKey ? this._extendSelectionTo(0, true) : this._selectAtIndex(0, true);
 
         } else if (e.key === 'End') {
             const last = flatRows.length - 1;
-            e.shiftKey ? this._extendSelectionTo(last) : this._selectAtIndex(last);
+            e.shiftKey ? this._extendSelectionTo(last, true) : this._selectAtIndex(last, true);
 
         } else if (e.key === 'PageDown') {
             const next = focusIdx < 0 ? 0 : Math.min(focusIdx + this.computePageSize(), flatRows.length - 1);
-            e.shiftKey ? this._extendSelectionTo(next) : this._selectAtIndex(next);
+            e.shiftKey ? this._extendSelectionTo(next, true) : this._selectAtIndex(next, true);
 
         } else if (e.key === 'PageUp') {
             const prev = focusIdx < 0 ? 0 : Math.max(focusIdx - this.computePageSize(), 0);
-            e.shiftKey ? this._extendSelectionTo(prev) : this._selectAtIndex(prev);
+            e.shiftKey ? this._extendSelectionTo(prev, true) : this._selectAtIndex(prev, true);
 
         } else if (e.key === 'ArrowRight') {
             if (focusIdx < 0) {
-                this._selectAtIndex(0);
+                this._selectAtIndex(0, true);
 
                 return { prevent: true };
             }
@@ -1982,7 +1996,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
             if (this._expandedNodes.has(node)) {
                 // Already expanded — move focus into the first child
-                this._selectAtIndex(focusIdx + 1);
+                this._selectAtIndex(focusIdx + 1, true);
             } else {
                 // Collapsed — expand without moving focus
                 this._onToggle(node);
@@ -2001,13 +2015,13 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
                 this._onToggle(node);
                 const newIdx = this._flatRows.findIndex(r => r.node === node);
                 if (newIdx >= 0) {
-                    this._scrollIntoView(newIdx);
+                    this._scrollIntoView(newIdx, true);
                 }
             } else if (depth > 0) {
                 // Collapsed or leaf — move to parent (nearest ancestor with depth - 1)
                 for (let i = focusIdx - 1; i >= 0; i--) {
                     if (flatRows[i].depth === depth - 1) {
-                        this._selectAtIndex(i);
+                        this._selectAtIndex(i, true);
                         break;
                     }
                 }
@@ -2064,7 +2078,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             const anchorIdx  = e.shiftKey ? this._visibleAnchorIndex() : -1;
 
             if (anchorIdx >= 0) {
-                this._extendSelectionTo(clickedIdx);
+                this._extendSelectionTo(clickedIdx, false);
             } else if (e.ctrlKey || e.metaKey) {
                 const before = new Set(this._selectedNodes);
 
@@ -2083,7 +2097,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
                 this.renderWindow();
                 this._notifySelectionChange(before);
             } else {
-                this._selectAtIndex(clickedIdx);
+                this._selectAtIndex(clickedIdx, false);
 
                 if (this.getExpandTrigger() === "click" && this._isExpandable(node)) {
                     this._onToggle(node);
@@ -2156,7 +2170,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
         // The same four calls `_selectAtIndex` makes after it moves the focus node.
         this.settleRowMotionIfEntering(index);
-        this._scrollIntoView(index);
+        this._scrollIntoView(index, true);
         this.renderWindow();
         this._updateActiveDescendant();
 

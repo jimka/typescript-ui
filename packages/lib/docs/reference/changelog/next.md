@@ -43,6 +43,18 @@ page resets to empty.
   `SpatialNavigation.configure({ targetModifiers: { ctrl: true, shift: true } })`.
   See [Migration](/reference/migration/next) for the full note.
 
+- **A `Panel` subclass that scrolls something of its own must override
+  `revealRect`, not only `revealDescendant`.** `FocusReveal.reveal` used to
+  call `revealDescendant(target)` on every scrolling panel around a control.
+  It now measures the control once and calls `revealRect(rect, axis?)` on
+  each of them, innermost first. A subclass that overrode
+  `revealDescendant` to scroll an inner element, as `ScrollStrip` does for
+  its clip, inherits `Panel.revealRect` and is no longer asked: focus
+  history and spatial navigation stop scrolling its content into view, with
+  no error. It also inherits `Panel.hasScrollRange`, which answers for the
+  panel and not for the inner element. Only such a subclass is affected;
+  see [Migration](/reference/migration/next) for what to override.
+
 - **`DOMSink` gains one required member: `createMouseEvent(type, init)`.**
   It builds a mouse event without dispatching it, so the event's `target` is
   `null` until something dispatches it. `Tree` and `List` use it for the
@@ -138,6 +150,30 @@ page resets to empty.
   screen reader announced an unnamed button. The label is now the button's
   accessible name as well, kept off its face. No consumer action is needed.
 
+- **A keyboard move in a `List`, `Tree`, `Table` or `TreeTable` also scrolls
+  a scrolling panel around the component.** An arrow key, `Home` / `End`,
+  `PageUp` / `PageDown`, type-ahead in a list, entering an edit in a table
+  (by a key or a double-click), and the keyboard context menu (`Shift+F10`)
+  used to scroll only the component's own rows. A scrolling `Panel` around
+  the component now follows, by the least distance that shows the current
+  row — or column, in a table — and nothing when it is already in view of
+  the panel. The panel moves inside the key press: a layout pass queued
+  around the component is run first, so what is measured is final. A key
+  pressed while a `Split` pane, `Border` region or `Accordion` section
+  around the component is still opening or closing scrolls the component
+  only, and the next key after the animation scrolls the panel as usual. A
+  component in a closed section, or one that is hidden, moves nothing
+  around it. A panel follows only when its last layout pass found its
+  content overflowing: content that has grown since without a pass of that
+  panel is not seen until the panel is laid out, as its scrollbar is not.
+  A state setter called from code scrolls
+  the component and nothing around it, as before: `List.setFocusedIndex`,
+  `Tree.selectNode`, `Tree.revealByPredicate`, `Table.selectRecord`. So does
+  a click that selects a row. To bring a row selected from code into view
+  of the panels around the component, call
+  `FocusReveal.reveal(component.getElement())` after the setter. No
+  consumer action is needed.
+
 ### Core
 
 - **`FocusHistory` records places, not popups.** A control inside a context
@@ -186,6 +222,33 @@ page resets to empty.
 
 - **`Tree` and the `Table` body show a focus ring when a spatial-navigation
   move lands on them.** Neither showed anything before.
+
+- **`FocusReveal.reveal` scrolls once the layout and any open animation
+  have settled, which can be after it returns.** It still selects the tab and
+  expands the pane, region or section inside the call, so the control can
+  take focus on the next line. The scroll used to run inside the call as
+  well; it now waits for a layout pass queued around the control and for
+  any `Accordion`, `Split` or `Border` around it that is still animating,
+  whether this reveal started the animation or not. A reveal
+  into a collapsed `Split` pane or `Border` region therefore scrolls when
+  the expand ends, about 200 ms later than before, and the pane is back at
+  the position it was left at by then. Under `prefers-reduced-motion:
+  reduce` there is no delay. A scroll that is still waiting is dropped when
+  the user has moved on: a newer reveal was asked for, focus was on the
+  control and has gone to another one, a modal layer has opened over it, or
+  the user has turned the wheel, pressed the pointer or a scrolling key, or
+  panned by touch, on a panel the scroll would move. `FocusHistory.back()` /
+  `forward()` and spatial navigation behave the same way. The scroll runs
+  after the first layout flush that finds no layout pass queued around the
+  control and no section, pane or region around it still moving. That is
+  not always the next flush: a panel that gains or loses a scrollbar in one
+  pass queues another. The wait is bounded: after 60 flushes, about a
+  second, the scroll runs with the geometry it finds. Consumer action: code
+  that reads a control's position on the line after `FocusReveal.reveal`
+  now reads it before the scroll. Read it in
+  `FocusReveal.afterReveal(callback)` instead: the callback runs once the
+  scroll is over, whether it ran or was dropped, and at once when no scroll
+  is waiting.
 
 ### Overlay
 
@@ -276,6 +339,19 @@ page resets to empty.
   against it, not against its own height, to tell whether the row is in
   view.
 
+- **`VirtualRowView.scrollRowIntoView` and
+  `AbstractSelectableList.scrollIndexIntoView` take an optional second
+  argument, `around`.** Both are `protected`, for a subclass. With `true`
+  the scrolling panels around the component follow the row, as they do for
+  a key. Without it the component scrolls alone, as it did before, so an
+  existing subclass call is unchanged.
+
+- **`VirtualScroller` gains `getViewportRect()`,** the visible window as a
+  rectangle in browser-viewport coordinates: the box the rows are clipped
+  to, `getViewportWidth()` wide and `getViewportHeight()` high. Unlike the
+  two size getters it measures the DOM, so it is for a reveal and not for a
+  scroll or render path.
+
 - **A modified tab is announced to assistive technology.** While
   `Tab.setTabModified` (or `TabButton.setModified`) marks a tab, its
   button carries `aria-description="Modified"`, so a screen reader
@@ -339,17 +415,57 @@ page resets to empty.
   and overwrites a value set from elsewhere on a layer or on a component
   added to `Body`; there is no options-bag field.
 
-- **`Panel` gains `getScrollViewportRect()` and `revealSpan()`.**
-  `getScrollViewportRect()` returns the visible window onto a scrolling
-  panel's content, in browser-viewport coordinates: the panel's box inside
-  its border, clear of its scrollbars, and the same rectangle under either
-  `scrollbarStyle`. It returns `null` for a panel that does not scroll
-  (`autoScroll: "none"`), is not rendered, or is hidden.
-  `revealSpan(axis, start, end)` scrolls the least distance that brings a
-  span of the content into that window along one axis; `start` and `end`
-  are positions in the content, so a caller that knows its own row
-  arithmetic need not measure an element. It leaves alone an axis the panel
-  does not scroll, and a hidden panel.
+- **`Panel` gains `getScrollViewportRect()`, `revealSpan()`,
+  `revealRect()` and `hasScrollRange()`.** `getScrollViewportRect()`
+  returns the visible window onto a scrolling panel's content, in
+  browser-viewport coordinates: the panel's box inside its border, clear of
+  its scrollbars, and the same rectangle under either `scrollbarStyle`. It
+  returns `null` for a panel that does not scroll (`autoScroll: "none"`),
+  is not rendered, or is hidden. `revealSpan(axis, start, end)` scrolls the
+  least distance that brings a span of the content into that window along
+  one axis; `start` and `end` are positions in the content, so a caller
+  that knows its own row arithmetic need not measure an element. It leaves
+  alone an axis the panel does not scroll, and a hidden panel. The
+  scrolling panels around the panel then scroll along the same axis to show
+  the span as well, inside the call: a layout pass queued around the panel
+  is run first, and while a pane, region or section around the panel is
+  still opening or closing the panels around it are left alone. Pass
+  `false` as a fourth argument to scroll this panel and nothing else.
+  `revealRect(rect, axis?)` does the same for a rectangle given in
+  browser-viewport coordinates, in this panel alone, and returns what the
+  panel then shows of it. `hasScrollRange(axis?)` says whether the content
+  overflowed the viewport when the panel was last laid out, without
+  measuring anything.
+
+- **`FocusRevealer` gains four optional members, and `FocusReveal` gains
+  `revealRectAround()` and `afterReveal()`.** A revealer that scrolls
+  implements `revealRect(rect, axis?)`: it scrolls the least distance that
+  shows a
+  rectangle, given in browser-viewport coordinates, and returns what it then
+  shows of it. It may also implement `hasScrollRange(axis?)`, to say
+  without measuring whether it has anything to scroll. A revealer whose
+  open animates implements `isRevealSettled()`, which is `false` while a
+  section, pane or region is still moving, and one that opens implements
+  `hidesDescendant(target)`, which says whether a control is in a part it
+  hides right now. `Panel` and `ScrollStrip` implement the first two;
+  `Accordion`, `Split` and `Border` implement the last two, and `Tab` the
+  last. `FocusReveal.revealRectAround(component, measure, axis?)`
+  lets a component that scrolls its own rows ask the scrolling panels
+  among its ancestors to show a rectangle it worked out. Everything
+  happens inside the call, and nothing waits. A layout pass queued around
+  the component is run first. Nothing moves while a pane, region or section
+  above the component is still opening or closing, while an opener hides
+  the component or the component is hidden, from inside a layout pass, or
+  when no panel has anything to scroll. `measure` is called only when the
+  panels are about to move and may return `null`; it is passed `true` when
+  a layout pass was run first, in which case the caller has to scroll its
+  own content again before it measures. `FocusReveal.afterReveal(callback)`
+  runs `callback` once the scroll of the latest `FocusReveal.reveal` is
+  over, and at once when none is waiting. A callback may ask for another
+  reveal, and one that throws is reported on the console without stopping
+  the others. A custom revealer that scrolls
+  should implement `revealRect`; without it, it is called before every
+  scroller.
 
 - **`Aria` gains `setDescribedBy` / `getDescribedBy` / `clearDescribedBy`,
   `clearLabelledBy`, and the `'alertdialog'` role.** The first three read and
@@ -591,6 +707,13 @@ page resets to empty.
   row in the selection where it used to replace the selection. No consumer
   action is needed.
 
+- **A `List`, `Tree`, `Table` or `TreeTable` in a scrolling panel keeps its
+  current row in view of that panel while the keyboard moves it.** A key or
+  `Shift+F10` scrolled only the component, so the current row could sit
+  below the panel's edge, out of sight. The panel now follows by the least
+  distance: up or down for a row, sideways for a table column. See the
+  entry under Changed for what follows and what does not.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
@@ -646,9 +769,26 @@ page resets to empty.
   taller than the panel lost its start. `Panel.revealDescendant` now
   re-reads the position, measures the visible window inside the border and
   clear of the scrollbars, moves only the axes the panel scrolls, and keeps
-  the start of a control that does not fit. Focus history, spatial
-  navigation and a `Menu`'s highlighted row all reveal through it. No
-  consumer action is needed.
+  the start of a control that does not fit. `Panel.revealRect` and
+  `Panel.revealSpan` apply the same rule: focus history and spatial
+  navigation reveal through `revealRect`, and a `Menu`'s highlighted row
+  through `revealDescendant`. No consumer action is needed.
+
+- **A control inside nested scrolling panels is scrolled into view in one
+  step.** The outer panel scrolled before the inner one, so the control
+  could end out of sight until a second attempt. A panel around a collapsed
+  `Split` pane, a collapsed `Border` region or a closed `Accordion` section
+  scrolled before the control had a box. The scroll ran while an `Accordion`
+  section was still opening and stopped short. A pane or region that had
+  just expanded lost the position it had been left at. And a reveal asked
+  for before a new panel's first layout did nothing. Now the tab, pane,
+  region or section opens first; then each scrolling panel moves, from the
+  innermost out, after the layout and any open animation have settled.
+  Focus history, spatial navigation and `FocusReveal.reveal` all use it.
+  `FocusReveal.reveal` still opens at once, and its scroll can follow after
+  the call returns; `FocusReveal.afterReveal` tells a caller when. A
+  control that is not rendered, and one behind a modal layer, scroll
+  nothing. No consumer action is needed.
 
 - **Focus history no longer stumbles over a menu or dialog that has
   closed.** The control that opened a context menu from the keyboard, or a

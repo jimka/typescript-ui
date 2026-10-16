@@ -119,3 +119,15 @@ export function classesRegisteringDragTargets() {
 export function classesBeginningPointerDrags() {
     return classesMatching(POINTER_DRAG_REGISTRATION);
 }
+
+/**
+ * The text of one library source file, for a test that counts call sites in
+ * it — `tests/component/shared/KeyboardRevealSites.test.ts` compares the
+ * number of keyboard call sites with the rows of its table.
+ *
+ * @param relativePath - The file, relative to the library source root.
+ * @returns The file as UTF-8 text.
+ */
+export function librarySourceText(relativePath) {
+    return readFileSync(join(SOURCE_ROOT, relativePath), 'utf8');
+}

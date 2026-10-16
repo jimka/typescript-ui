@@ -62,6 +62,8 @@ if (el) {
 | `arrowReserve(content, region)` | Per-end gutter (px): the arrow size when scrollable and the content overflows the region past a 1px slop, else 0. |
 | `layoutContent(reserve, endGap)` | Size the inner clip to the band's content box minus the gutters, lay out the items, and place/enable the arrows in the gutters (or hide them when `reserve` is 0). |
 | `revealItem(el)` | Scroll the minimum amount to bring the item element fully into view. |
+| `revealRect(rect, axis?)` | The same for a rectangle in browser-viewport coordinates, returning what the clip then shows of it. What `FocusReveal.reveal` calls on a strip; a hidden strip moves nothing. |
+| `hasScrollRange(axis?)` | Whether the strip can scroll along `axis`: `true` along its main axis while it is `scrollable`, `false` otherwise. Answered without measuring, so a key in a list, tree or table inside a strip item knows whether to ask the strip. |
 | `mainScroll()` / `setMainScroll(px)` | Read / write the native main-axis scroll offset (single source of truth). Follow a write made outside a layout pass with `refreshArrows()` — the next layout pass re-derives the arrows only when the strip's scroll clamp changed. |
 | `refreshArrows()` | Re-derive the arrows' enabled state from the live offset. |
 | `getClipElement(forceCreate?)` | The clip element, for raw-appended overlays that must scroll/clip with the items. |

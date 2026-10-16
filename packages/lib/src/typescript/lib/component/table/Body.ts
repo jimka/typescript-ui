@@ -2386,7 +2386,7 @@ class TableBody extends VirtualRowView<Row> {
         // As a keyboard row move does: a row an expand is still fading in
         // is rendered final first, so the menu is anchored at its resting box.
         this.settleRowMotionIfEntering(index);
-        this.scrollRowIntoView(index);
+        this.scrollRowIntoView(index, true);
         this.scrollColumnIntoView(this._focusedColIndex);
         this.renderWindow();
         this._updateActiveDescendant();
@@ -3235,14 +3235,17 @@ class TableBody extends VirtualRowView<Row> {
      * consumer use.
      */
     protected scrollRecordIntoView(record: ModelRecord): void {
-        this.scrollRowIntoView(this.getVisibleRecords().indexOf(record));
+        this.scrollRowIntoView(this.getVisibleRecords().indexOf(record), true);
     }
 
     /**
      * Scrolls the body horizontally so the column at `colIndex` is fully
      * visible inside the scroller's viewport — clear of a border and of the
      * vertical scrollbar — moving the least distance. The horizontal mirror
-     * of {@link scrollRecordIntoView}.
+     * of {@link scrollRecordIntoView}. Like it, this is for keyboard-driven
+     * navigation and for entering an edit — by a key or by a double-click —
+     * so a scrolling panel around the body then scrolls sideways to show the
+     * column as well.
      *
      * @param colIndex - The visible-column index to reveal.
      *
@@ -3254,10 +3257,25 @@ class TableBody extends VirtualRowView<Row> {
      * reuse it. Not for consumer use.
      */
     protected scrollColumnIntoView(colIndex: number): void {
+        const span = this.scrollColumnWithin(colIndex);
+
+        if (span !== null) {
+            this.revealSpanAround("x", () => this.scrollColumnWithin(colIndex));
+        }
+    }
+
+    /**
+     * The part of {@link scrollColumnIntoView} that concerns the body alone.
+     *
+     * @param colIndex - The visible-column index to reveal.
+     * @returns Where the column begins and ends in the content, or `null`
+     *   when there is no such column or no scroller.
+     */
+    private scrollColumnWithin(colIndex: number): [number, number] | null {
         const widths = this._lastColumnWidths;
 
         if (!this._scroller || colIndex < 0 || colIndex >= widths.length) {
-            return;
+            return null;
         }
 
         let left = 0;
@@ -3271,6 +3289,8 @@ class TableBody extends VirtualRowView<Row> {
         if (target !== scrollLeft) {
             this.setScrollX(target);
         }
+
+        return [left, left + widths[colIndex]];
     }
 }
 

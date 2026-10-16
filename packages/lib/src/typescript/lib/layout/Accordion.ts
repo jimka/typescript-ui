@@ -1222,31 +1222,62 @@ class Accordion extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * {@link FocusRevealer.isRevealSettled}: whether no section is animating
+     * open or shut. While one is, the sections below it are still moving.
+     *
+     * @returns `false` from a toggle until its height transition ends.
+     */
+    isRevealSettled(): boolean {
+        return this._toggleAnimations === 0;
+    }
+
+    /**
      * {@link FocusRevealer.revealDescendant}: opens whichever section is on
      * the DOM path to `target`, if it is currently closed.
      *
      * @param target - The element to reveal.
      */
     revealDescendant(target: Handle): void {
-        const container = this.getContainer();
+        const index  = this.sectionAround(target);
+        const closed = index >= 0 && !this.isSectionOpen(index);
 
-        if (!container) {
-            return;
+        if (closed) {
+            this.openSection(index);
         }
+    }
 
-        const components = container.getComponents();
+    /**
+     * {@link FocusRevealer.hidesDescendant}: whether `target` is in a section
+     * that is closed. A closed section keeps its content rendered inside a
+     * wrapper of no height, so nothing else says that it cannot be seen.
+     *
+     * @param target - The element to test.
+     * @returns `true` when the section holding `target` would have to open.
+     */
+    hidesDescendant(target: Handle): boolean {
+        const index = this.sectionAround(target);
+
+        return index >= 0 && !this.isSectionOpen(index);
+    }
+
+    /**
+     * The section whose content is on the DOM path to `target`.
+     *
+     * @param target - The element to look around.
+     * @returns The section's index, or `-1` when `target` is in none.
+     */
+    private sectionAround(target: Handle): number {
+        const components = this.getContainer()?.getComponents() ?? [];
 
         for (let i = 0; i < components.length; i++) {
             const el = components[i].getElement();
 
             if (el && DOM.source.contains(el, target)) {
-                if (!this.isSectionOpen(i)) {
-                    this.openSection(i);
-                }
-
-                return;
+                return i;
             }
         }
+
+        return -1;
     }
 
     /**

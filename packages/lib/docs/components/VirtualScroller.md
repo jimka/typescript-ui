@@ -64,6 +64,7 @@ class MyList extends Component {
 | `getRowsContainer()` | The `<div>` to append pool rows into. |
 | `getScrollX()` / `getScrollY()` | Current scroll positions. |
 | `getViewportWidth()` / `getViewportHeight()` | Size of the visible window: the owner's content box, less the track of a visible scrollbar on the other axis. Test a row or a column against this, not against the owner's own size, to tell whether it is in view. |
+| `getViewportRect()` | The visible window as a rectangle in browser-viewport coordinates. It measures the DOM: use it for a reveal, inside the `measure` callback of `FocusReveal.revealRectAround`, and not on a scroll or render path. |
 | `setScrollX(x)` / `setScrollY(y)` | Clamp against last-known content size, update transform, fire `onScroll`. |
 | `getContentHeight()` / `setContentHeight(h)` | Read or replace the last-known content height without clamping or re-laying out the scrollbars — for content that changed between renders, so a `setScrollY` before the next render clamps against the new height. |
 | `clampToContent(w, h)` | Loose clamp using full viewports. Call at the start of `renderWindow`. |

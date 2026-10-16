@@ -2340,18 +2340,44 @@ class Tab extends LayoutManager implements FocusRevealer {
      * @param target - The element to reveal.
      */
     revealDescendant(target: Handle): void {
+        const content = this.contentAround(target);
+        const hidden  = content !== null && this.getVisibleComponent() !== content;
+
+        if (content !== null && hidden) {
+            this.setActiveContent(content);
+            this.getContainer()?.doLayout();
+        }
+    }
+
+    /**
+     * {@link FocusRevealer.hidesDescendant}: whether `target` is in the
+     * content of a tab that is not the selected one.
+     *
+     * @param target - The element to test.
+     * @returns `true` when selecting another tab would be needed to see `target`.
+     */
+    hidesDescendant(target: Handle): boolean {
+        const content = this.contentAround(target);
+
+        return content !== null && this.getVisibleComponent() !== content;
+    }
+
+    /**
+     * The tab content whose element is on the DOM path to `target`.
+     *
+     * @param target - The element to look around.
+     * @returns The content component, or `null` when `target` is in none.
+     */
+    private contentAround(target: Handle): Component | null {
         for (const entry of this._contents) {
             const el = entry.component?.getElement();
 
             if (el && DOM.source.contains(el, target)) {
-                if (this.getVisibleComponent() !== entry.component) {
-                    this.setActiveContent(entry.component!);
-                    this.getContainer()?.doLayout();
-                }
-
-                return;
+                return entry.component!;
             }
         }
+
+        return null;
     }
 
     /**

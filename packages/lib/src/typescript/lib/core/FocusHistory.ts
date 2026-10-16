@@ -199,9 +199,10 @@ function record(handle: Handle): void {
 
 /**
  * Reveals `handle`'s ancestry (selecting hiding tabs, expanding collapsed
- * regions, scrolling it into view) then focuses it, the whole operation
- * guarded so any focus side effect the reveal triggers is not recorded as a
- * new trail entry.
+ * regions) then focuses it, the whole operation guarded so any focus side
+ * effect the reveal triggers is not recorded as a new trail entry. The
+ * reveal also scrolls `handle` into view: inside this call, or once the
+ * layout and any open animation around it have settled.
  *
  * @param handle - The stop to reveal and focus.
  * @returns True only when focus actually landed on `handle` — a still-hidden

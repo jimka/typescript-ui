@@ -3,8 +3,10 @@
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
+import type { ScrollAxis } from "~/core/SmoothScroller.js";
+import { FocusReveal } from "~/core/FocusReveal.js";
 import { VirtualScroller } from "~/component/container/VirtualScroller.js";
-import { nearestRevealOffset } from "~/core/ScrollReveal.js";
+import { nearestRevealOffset, spanRect } from "~/core/ScrollReveal.js";
 import { Animation } from "~/core/Animation.js";
 import { COLLAPSE_DURATION, COLLAPSE_EASE } from "~/layout/CollapseSupport.js";
 
@@ -1119,12 +1121,35 @@ abstract class VirtualRowView<
      * through {@link VirtualScroller} so the header translate + scrollbar
      * thumb stay in sync.
      *
+     * With `around`, the scrolling panels around the view then scroll to show
+     * the row as well (see {@link revealSpanAround}). That is for a move the
+     * user makes with the keyboard. Without it — the default, and what a
+     * state setter called from code wants — the view scrolls and nothing
+     * around it does, so that a page never moves under a user who is doing
+     * something else.
+     *
      * @param index - The data index of the row to reveal. A negative index is a
      *   no-op (the row is not in the current view).
+     * @param around - Whether the scrolling panels around the view follow.
      */
-    protected scrollRowIntoView(index: number): void {
+    protected scrollRowIntoView(index: number, around: boolean = false): void {
+        const span = this.scrollRowWithin(index);
+
+        if (span !== null && around) {
+            this.revealSpanAround("y", () => this.scrollRowWithin(index));
+        }
+    }
+
+    /**
+     * The part of {@link scrollRowIntoView} that concerns this view alone.
+     *
+     * @param index - The data index of the row to reveal.
+     * @returns Where the row begins and ends in the content, or `null` when
+     *   there is no such row or no scroller.
+     */
+    private scrollRowWithin(index: number): [number, number] | null {
         if (index < 0 || !this._scroller) {
-            return;
+            return null;
         }
 
         const rowHeight = this.getRowHeight();
@@ -1135,6 +1160,53 @@ abstract class VirtualRowView<
         if (target !== scrollTop) {
             this.scrollToCommittedY(target);
         }
+
+        return [top, top + rowHeight];
+    }
+
+    /**
+     * Asks every scrolling panel around this view to show a span of its
+     * content along one axis — a row, or a column — by the least scroll.
+     * Called after the view has scrolled the span into its own viewport: a
+     * panel around the view may still hide what the view now shows.
+     *
+     * Everything happens inside the call. The span's rectangle is worked out
+     * from the scroller's viewport and offset, so the row or cell need not
+     * be rendered. Nothing is measured when no panel around the view has
+     * anything to scroll. Nothing happens for a hidden view, or while a
+     * pane, region or section around the view is still opening.
+     *
+     * When a layout pass was queued around the view, it is run first, and
+     * `span` is then called again, so that the view scrolls the span into a
+     * viewport that has its final size.
+     *
+     * @param axis - The axis the span runs along.
+     * @param span - Scrolls the span into this view's own viewport and
+     *   returns where it begins and ends in the content, or `null` when it
+     *   is not there.
+     */
+    protected revealSpanAround(axis: ScrollAxis, span: () => [number, number] | null): void {
+        const scroller = this._scroller;
+
+        if (!scroller) {
+            return;
+        }
+
+        FocusReveal.revealRectAround(this, () => {
+            // The view has scrolled the span into itself before this call.
+            // Doing so again is free when nothing has changed since, and
+            // necessary when the layout pass that was queued has just run.
+            const shown = span();
+
+            if (shown === null) {
+                return null;
+            }
+
+            const view   = scroller.getViewportRect();
+            const origin = axis === "y" ? view.top - scroller.getScrollY() : view.left - scroller.getScrollX();
+
+            return spanRect(view, axis, origin + shown[0], origin + shown[1]);
+        }, axis);
     }
 
     /**

@@ -88,6 +88,8 @@ Inherits everything from [`Table`](/components/Table) (`ArrowUp` / `ArrowDown` f
 
 With a current row, `ArrowLeft` / `ArrowRight` act on the tree only. Where the key has no tree meaning — `ArrowRight` on a leaf, `ArrowLeft` on a top-level leaf or a top-level collapsed branch — it does nothing and the current cell stays in its column; `Tab` / `Shift+Tab` move along the row. With no current row yet, the two keys move the current column as in a `Table`.
 
+As in a `Table`, a key that moves the current row also scrolls a scrolling `Panel` around the tree table, by the least distance that shows the row; `selectRecord()` scrolls the tree table alone.
+
 ## ARIA
 
 The root element's role is `treegrid` (not `grid`). Pool rows carry the standard `aria-rowindex` plus `aria-level`, `aria-expanded`, `aria-setsize`, `aria-posinset` from the WAI-ARIA tree pattern.
