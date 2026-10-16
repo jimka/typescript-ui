@@ -216,6 +216,21 @@ Event.addListener(this, 'keydown', (e: KeyboardEvent): Event.ListenerResult => {
 });
 ```
 
+## Context menus from the keyboard
+
+Shift+F10 and the ContextMenu key open the same menu a right-click opens. Which item the menu is for depends on what holds focus:
+
+| Focus is on | The menu is for | It opens |
+| --- | --- | --- |
+| a control that holds focus itself — a button, a tab, a text field | that control | where the browser places the event: at the caret for a text field or an editor |
+| a [`Tree`](/components/Tree#context-menu) | its current row | under that row, scrolled into view first |
+| a [`List`](/components/List#context-menu) or a [`MultiSelectList`](/components/MultiSelectList) | its focused row | under that row; at the list's nearest edge when the row is scrolled out of view (see the [known limitation](/components/List#context-menu)) |
+| a [`Table`](/components/Table#keyboard) or a [`TreeTable`](/components/TreeTable) | its current cell | under that cell, scrolled into view first |
+
+A tree, a list and a table body each hold focus on their own element and mark the current row or cell with `aria-activedescendant`, so the browser sends the key's `contextmenu` event to the widget and not to a row. The widget answers it for its current item. With no current item — for example, focus arrived with `Tab` and no arrow key was pressed yet, or the widget is empty — nothing opens. Neither the mouse nor the keyboard changes the selection by opening the menu.
+
+The menu takes focus, is worked with the arrow keys, `Enter` and `Escape`, and returns focus to where it was when it closes — see [Menu: Keyboard](/components/Menu#keyboard).
+
 ## Building an accessible custom widget
 
 A custom selectable list is the simplest non-trivial case:
@@ -281,7 +296,7 @@ status.getAria().setRole('status');
 
 ## Testing
 
-- **Keyboard-only** — unplug your mouse and verify every interaction works with `Tab`, `Shift+Tab`, arrow keys, and `Space`/`Enter`; open a [context menu](/components/Menu#keyboard) with Shift+F10 and work it with the arrow keys, `Enter` and `Escape`; if [Tab traversal](#tab-traversal) is enabled, also check `Escape` then `Tab` escapes any Tab-key owner (an embedded editor, a table in edit mode); inside a [`Dialog`](/components/Dialog), check that `Escape` then `Tab` leaves an embedded editor whether or not Tab traversal is enabled; if [spatial focus navigation](#spatial-focus-navigation) is enabled, also check `Ctrl+Alt`+arrow and `Ctrl+Alt+Shift`+arrow move focus without disturbing a focused widget's own arrow-key behaviour.
+- **Keyboard-only** — unplug your mouse and verify every interaction works with `Tab`, `Shift+Tab`, arrow keys, and `Space`/`Enter`; open a [context menu](/components/Menu#keyboard) with Shift+F10 and work it with the arrow keys, `Enter` and `Escape`, including on a tree row, a list row and a table cell; if [Tab traversal](#tab-traversal) is enabled, also check `Escape` then `Tab` escapes any Tab-key owner (an embedded editor, a table in edit mode); inside a [`Dialog`](/components/Dialog), check that `Escape` then `Tab` leaves an embedded editor whether or not Tab traversal is enabled; if [spatial focus navigation](#spatial-focus-navigation) is enabled, also check `Ctrl+Alt`+arrow and `Ctrl+Alt+Shift`+arrow move focus without disturbing a focused widget's own arrow-key behaviour.
 - **Screen reader** — VoiceOver (macOS) and NVDA (Windows) are the two readers most commonly tested against. Both should announce roles and labels for built-in components correctly.
 - **Browser dev tools** — Chrome's "Accessibility" panel under DevTools shows the computed accessibility tree for each element.
 

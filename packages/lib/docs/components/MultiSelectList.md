@@ -36,6 +36,8 @@ panel.addComponent(tags);
 | `Ctrl`-`ArrowUp` / `Ctrl`-`ArrowDown` | Move focus without changing selection. |
 | `Ctrl`-`A` | Select every row. Disabled rows are skipped. |
 
+The context menu — a right-click, or `Shift+F10` / the ContextMenu key — is for the one row pointed at or focused, and does not change the selection; see [List: Context menu](/components/List#context-menu).
+
 A `Shift`-extension that crosses a disabled row drops it from the resulting selection — see [Disabled rows](#disabled-rows).
 
 A navigation key that leaves the selection as it was — `Shift`-`ArrowDown` on the last row, say — fires no `change`, and announces no `"action"` either.

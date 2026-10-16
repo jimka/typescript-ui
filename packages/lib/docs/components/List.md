@@ -39,6 +39,7 @@ The list root is focusable; rows are not. Focus tracks the active row via `aria-
 | `Enter` / `Space` | Commit the focused row. |
 | Printable character | Type-ahead — focus the first row whose label starts with the buffer. The buffer resets after a 700ms pause. |
 | `Escape` | Clear the type-ahead buffer. |
+| `Shift+F10` / ContextMenu key | Fire `"contextmenu"` for the focused row — see [Context menu](#context-menu). |
 
 A navigation key that leaves the selection where it was — `ArrowDown` on the last row,
 `Home` on the first — fires no `change`, and announces no `"action"` either. `Enter`,
@@ -70,6 +71,44 @@ fruits.setSelectedIndex(1, false); // nothing at all
 
 [`Checkbox`](/components/Checkbox) and [`Slider`](/components/Slider) follow the same
 contract: `"action"` is the user's own activation, `"change"` is every committed value.
+
+## Context menu
+
+`on("contextmenu", fn)` is the one subscription for a row's context menu. It fires for a
+right-click on a row and for `Shift+F10` or the ContextMenu key on the focused row, so the
+same listener serves the mouse and the keyboard:
+
+```typescript
+import { Menu } from '@jimka/typescript-ui/overlay';
+
+const menu = Menu();
+
+fruits.on("contextmenu", (index, event) => menu.show(event.clientX, event.clientY, [
+    { text: "Open",   action: () => open(fruits.getItems()[index]) },
+    { text: "Remove", action: () => remove(index) },
+]));
+```
+
+| Opened with | `index` | `event` |
+|---|---|---|
+| a right-click on a row | the row under the pointer | the browser's `contextmenu` event |
+| `Shift+F10` / ContextMenu key | the focused row | a synthetic `contextmenu` event whose `clientX` / `clientY` sit under the row; its `target` is `null` |
+
+Either way the browser's own menu is already suppressed — the listener need not call
+`preventDefault()`, which does nothing on the synthetic event — and the selection is left as
+it was; a listener that wants the row selected calls `setSelectedIndex(index)` itself. With no focused
+row (`getFocusedIndex()` is `-1`) — a list built from `items` before any arrow key or row
+click, an empty list, or a disabled one — the keys fire nothing, as a right-click on the
+list's empty area fires nothing. A read-only list ignores the arrow keys and row clicks, so
+its keyboard menu is for the row the host focused with `setFocusedIndex`, if any; a
+right-click on a row still fires for that row.
+
+**Known limitation:** a list with overlay scrollbars — the default — does not yet scroll its
+focused row into view, for the arrow keys or for this menu. When the focused row is scrolled
+out of view, the synthetic event's point is the list's nearest edge, so the menu opens there.
+
+A menu opened from the keyboard takes focus and is worked with the arrow keys; focus returns
+to the list when it closes — see [Menu: Keyboard](/components/Menu#keyboard).
 
 ## Store-backed lists
 

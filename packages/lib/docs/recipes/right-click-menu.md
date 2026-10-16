@@ -70,6 +70,7 @@ Event.addListener(myList, 'contextmenu', (e: MouseEvent): Event.ListenerResult =
 - `Menu` is appended to `document.documentElement` so it always layers above the rest of the UI.
 - The menu closes itself automatically; you don't need to call `hide` after an `action` runs.
 - The same handler serves the keyboard: Shift+F10 or the ContextMenu key on the focused component raises `contextmenu` too. The menu then takes focus, is worked with the arrow keys, `Enter` and `Escape`, and returns focus when it closes — nothing extra is wired. See [Menu: Keyboard](/components/Menu#keyboard).
+- For a [`Tree`](/components/Tree#context-menu) or a [`List`](/components/List#context-menu), subscribe to the widget's own `"contextmenu"` event instead of a DOM listener: `tree.on("contextmenu", (node, event) => menu.show(event.clientX, event.clientY, items))`. It names the row under the pointer for a right-click and the current row for Shift+F10, and its event is positioned for the menu in both cases.
 
 ## See also
 

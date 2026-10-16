@@ -5,6 +5,7 @@ import { Fit, Split } from '@jimka/typescript-ui/layout';
 import { Slider, Text, TextArea } from '@jimka/typescript-ui/component/input';
 import { Button } from '@jimka/typescript-ui/component/button';
 import { List } from '@jimka/typescript-ui/component/list';
+import { Menu, Notification } from '@jimka/typescript-ui/overlay';
 class SplitPanel extends Panel {
 
     constructor() {
@@ -38,6 +39,16 @@ class SplitPanel extends Panel {
         // and the text area / slider absorb the delta — a fixed sidebar beside
         // absorbing content. A user gutter-drag still resizes the list normally.
         southComponent.addComponent(list, { weight: 0 });
+
+        // One menu for a right-click on a row and for Shift+F10 / the
+        // ContextMenu key on the focused row: the list hands both the row
+        // index and an event positioned for the menu.
+        const listMenu = new Menu();
+
+        list.on("contextmenu", (index, e) => listMenu.show(e.clientX, e.clientY, [
+            { text: "Open",   action: () => Notification.show("Open " + index, "info") },
+            { text: "Rename", action: () => Notification.show("Rename " + index, "info") },
+        ]));
 
         list.addItem("One");
         list.addItem("Two");

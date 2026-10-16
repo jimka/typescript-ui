@@ -68,6 +68,23 @@ DOM.install({ sink: myRecordingSink });
 DOM.reset();
 ```
 
+## `DOMSink` gains `createMouseEvent`
+
+**What changed and why.** One more construction moved behind the seam.
+`createMouseEvent(type, init)` builds a mouse event and returns it without
+dispatching it. `Tree` and `List` call it for the `contextmenu` event they hand
+a `"contextmenu"` listener when the menu is opened with Shift+F10 or the
+ContextMenu key, so that no library code names the global `MouseEvent`
+constructor.
+
+**Who needs to act.** Only a consumer implementing its own `DOMSink`; the
+missing member is a compile error. In a browser, return
+`new MouseEvent(type, init)`. A sink that runs without a DOM returns a plain
+object carrying `type`, the `init` fields a listener reads (`clientX`,
+`clientY`, `button` and the four modifier flags, defaulting to `0` and
+`false`), a `null` `target`, and no-op `preventDefault()` /
+`stopPropagation()`.
+
 ## `Tree` and `TreeTable` no longer register `caret-down` / `caret-right`
 
 **What changed and why.** `Tree` and `TreeTable` row toggles are now one

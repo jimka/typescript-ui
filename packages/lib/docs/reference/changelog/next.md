@@ -43,6 +43,13 @@ page resets to empty.
   `SpatialNavigation.configure({ targetModifiers: { ctrl: true, shift: true } })`.
   See [Migration](/reference/migration/next) for the full note.
 
+- **`DOMSink` gains one required member: `createMouseEvent(type, init)`.**
+  It builds a mouse event without dispatching it, so the event's `target` is
+  `null` until something dispatches it. `Tree` and `List` use it for the
+  event they hand a `"contextmenu"` listener when the menu is opened from
+  the keyboard. Only a consumer implementing its own `DOMSink` is affected;
+  see [Migration](/reference/migration/next) for what to return.
+
 ### Data
 
 - **`JsonWriter` writes each `Date` in its field type's form.** A `date`
@@ -281,6 +288,23 @@ page resets to empty.
   still as an overlay that never moves the label. The 0.10.0 notes
   described this dot as trailing the label; since 0.10.0 it has been a
   badge on the glyph's corner.
+
+- **Shift+F10 opens the context menu of the current tree row, list row or
+  table cell.** Shift+F10 and the ContextMenu key opened nothing there: a
+  `Tree`, a `List` and a table body hold focus on their own element, so the
+  browser sends the key's `contextmenu` event to the widget and not to a
+  row or a cell. `Tree`, `List`, `MultiSelectList`, `Table` and `TreeTable`
+  now open the menu for the current row or cell and under it. A `Tree`, a
+  `Table` and a `TreeTable` scroll that item into view first. A `List` or
+  `MultiSelectList` with overlay scrollbars, the default, does not yet: it
+  does not scroll its focused row into view for the arrow keys either, and
+  the menu opens at the list's nearest edge when that row is out of view.
+  It is the menu a right-click on that item opens, the selection is not
+  changed, and with no current item nothing opens. One contract changes:
+  for a keyboard menu a `Tree` or `List` `"contextmenu"` listener receives
+  a synthetic event, with `clientX` / `clientY` under the row and a `null`
+  `target`. No consumer action is needed unless a listener reads
+  `event.target`.
 
 ### Core
 

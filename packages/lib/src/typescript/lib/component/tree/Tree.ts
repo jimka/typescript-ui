@@ -9,6 +9,7 @@ import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
 import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
+import { resolveContextMenuTarget, watchContextMenuInput } from "~/component/shared/resolveContextMenuTarget.js";
 import { TreeNode } from "~/component/tree/TreeNode.js";
 import { TreeRow } from "~/component/tree/TreeRow.js";
 import { TreeNodeRenderer } from "~/component/tree/TreeNodeRenderer.js";
@@ -289,6 +290,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         this.getAria().setRole("tree");
         this.getAria().setTabIndex(0);
         this.getAria().setMultiselectable(true);
+
+        // Shift+F10 opens the menu of the current row only when the key press
+        // is on record, and a consumer may build its `Menu` later than this.
+        watchContextMenuInput();
 
         this.subscribeTheme(() => this.onThemeReflow());
 
@@ -972,13 +977,19 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     on(event: "loaderror", listener: (node: TreeNode, error: unknown) => void): this;
 
     /**
-     * Registers a listener for a right-click on a node.
+     * Registers a listener for a context-menu request on a node, from the
+     * mouse or from the keyboard.
      *
      * @param event - `"contextmenu"` fires when a node row is right-clicked,
-     *   receiving the {@link TreeNode} under the cursor and the originating
-     *   `MouseEvent` (its `clientX`/`clientY` position a context menu). The
-     *   default browser menu is suppressed and the tree's selection is left
-     *   unchanged, so a right-click never opens a node the way a left-click does.
+     *   with the {@link TreeNode} under the cursor and the browser's
+     *   `MouseEvent`. It also fires when Shift+F10 or the ContextMenu key is
+     *   pressed while the tree has focus and a current row: the listener then
+     *   receives the current node and a synthetic `contextmenu` event whose
+     *   `clientX` / `clientY` sit under that row, which is scrolled into view
+     *   first; the synthetic event's `target` is `null`. Either way
+     *   `clientX` / `clientY` position a context menu, the browser's own menu
+     *   is suppressed, and the selection is left unchanged, so a context-menu
+     *   request never opens a node the way a left-click does.
      * @param listener - The callback to invoke when the event fires.
      *
      * @returns This tree, for method chaining.
@@ -2033,7 +2044,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
-     * Resolves the node under a right-click and emits the `"contextmenu"` event.
+     * Resolves the node a context-menu request is for and emits the
+     * `"contextmenu"` event: the node under a right-click, or the current
+     * node for Shift+F10 or the ContextMenu key.
      *
      * @remarks
      * Mirrors {@link _handleClick}'s row-matching but deliberately does not change
@@ -2042,11 +2055,16 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * left-click would. When a node row is hit the browser's native menu is
      * suppressed via `preventDefault` and `"contextmenu"` fires with the node and
      * the originating event; a right-click on empty space is left to the browser.
+     * A key-raised event targets the tree's own element, which is inside no
+     * row: it is resolved to the current row, scrolled into view first, and
+     * `"contextmenu"` fires with the current node and a synthetic event
+     * positioned under that row's label. With no current row it is left to
+     * the browser too.
      *
      * @param e - The contextmenu event whose target is inside the tree's subtree.
      */
     private _handleContextMenu(e: MouseEvent): Event.ListenerResult {
-        const target = e.target === null ? null : DOM.source.intern(e.target);
+        const at = resolveContextMenuTarget(this, e, () => this._revealFocusRow());
 
         for (const row of this._rowPool) {
             const node = row.getNode();
@@ -2055,14 +2073,43 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             }
 
             const rowEl = row.getElement();
-            if (!rowEl || (!DOM.source.contains(rowEl, target) && target !== rowEl)) {
+            const inRow = rowEl !== undefined && (at.target === rowEl || DOM.source.contains(rowEl, at.target));
+
+            if (!inRow) {
                 continue;
             }
 
-            this.emit("contextmenu", node, e);
+            this.emit("contextmenu", node, at.event);
 
             return { prevent: true };
         }
+    }
+
+    /**
+     * Scrolls the row of the focus node into view and returns the component
+     * a keyboard-opened context menu is anchored under: that row's renderer
+     * (its label), so the menu lines up with the text and not with the
+     * tree's left edge.
+     *
+     * @returns The renderer of the row showing the focus node, or `null`
+     *   when the tree has no focus node, or the node is no longer among the
+     *   visible rows.
+     */
+    private _revealFocusRow(): TreeNodeRenderer | null {
+        const focusNode = this._focusNode;
+        const index     = focusNode === null ? -1 : this._flatRows.findIndex(r => r.node === focusNode);
+
+        if (index < 0) {
+            return null;
+        }
+
+        // The same four calls `_selectAtIndex` makes after it moves the focus node.
+        this.settleRowMotionIfEntering(index);
+        this._scrollIntoView(index);
+        this.renderWindow();
+        this._updateActiveDescendant();
+
+        return this._focusPoolRow()?.getRenderer() ?? null;
     }
 
     /**
@@ -2148,30 +2195,37 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
 
     /**
      * Sets `aria-activedescendant` on the tree container to the pool row bound
-     * to `_focusNode`. Neither an undisplayed pool row (which keeps the node
-     * it last showed) nor a leaving row of a running collapse motion
-     * qualifies: both are hidden from assistive technology.
+     * to `_focusNode`, or clears it when no row shows that node.
      *
      * @remarks Must be called after `renderWindow()` so the pool slot is guaranteed in the DOM.
      */
     private _updateActiveDescendant(): void {
-        if (!this._focusNode) {
-            this.getAria().setActiveDescendant("");
+        this.getAria().setActiveDescendant(this._focusPoolRow()?.getId() ?? "");
+    }
 
-            return;
+    /**
+     * The pool row bound to `_focusNode`. Neither an undisplayed pool row
+     * (which keeps the node it last showed) nor a leaving row of a running
+     * collapse motion qualifies: both are hidden from assistive technology.
+     *
+     * @returns The row showing the focus node, or `null` when the tree has
+     *   no focus node or no bound row shows it.
+     */
+    private _focusPoolRow(): TreeRow | null {
+        if (!this._focusNode) {
+            return null;
         }
 
         for (let i = 0; i < this._rowPool.length; i++) {
-            const row = this._rowPool[i];
+            const row   = this._rowPool[i];
+            const shown = this._boundIndices[i] >= 0 && row.getNode() === this._focusNode && !this.isRowMotionLeavingSlot(i);
 
-            if (this._boundIndices[i] >= 0 && row.getNode() === this._focusNode && !this.isRowMotionLeavingSlot(i)) {
-                this.getAria().setActiveDescendant(row.getId());
-
-                return;
+            if (shown) {
+                return row;
             }
         }
 
-        this.getAria().setActiveDescendant("");
+        return null;
     }
 
     /**

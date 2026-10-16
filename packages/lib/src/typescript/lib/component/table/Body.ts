@@ -19,6 +19,7 @@ import { SpatialNavigation } from "~/core/SpatialNavigation.js";
 import { VirtualRowView } from "~/component/shared/VirtualRowView.js";
 import { reduceModifierSelection } from "~/component/shared/reduceModifierSelection.js";
 import { selectionsEqual } from "~/component/shared/selectionsEqual.js";
+import { resolveContextMenuTarget, watchContextMenuInput } from "~/component/shared/resolveContextMenuTarget.js";
 import { Util } from "~/core/Util.js";
 import type { ColumnConfig } from "~/component/table/ColumnConfig.js";
 import { Column } from "~/component/table/Column.js";
@@ -33,7 +34,8 @@ import { tableRowHeight } from "~/component/table/RowMetrics.js";
  * `"verticalscroll"` / `"horizontalscroll"` fire after the body's virtual
  * scroll position changes, carrying the new pixel offset. `"selection"`
  * fires when the selected-record set changes; `"cellclick"` fires when a data
- * cell is clicked; `"cellcontextmenu"` fires when a data cell is right-clicked.
+ * cell is clicked; `"cellcontextmenu"` fires when a context menu is asked for
+ * on a data cell, with a right-click or from the keyboard.
  */
 export type BodyEvent = "verticalscroll" | "horizontalscroll" | "selection" | "cellclick" | "cellcontextmenu";
 
@@ -341,9 +343,11 @@ class TableBody extends VirtualRowView<Row> {
     // mousedown and mouseup), so per ARCHITECTURE.md's DOM-write rule this gets
     // no `BodyOptions` field and no public setter.
     private _rangeDragWidened: boolean                    = false;
-    // The right-clicked cell, resolved fresh on every `"contextmenu"` and
-    // left untouched by anything else — right-click never mutates the
-    // persistent range (see the plan's right-click Architecture Decision).
+    // The cell the context menu was asked for — the right-clicked one, or
+    // the focused one for a keyboard request — resolved fresh on every
+    // `"contextmenu"` and left untouched by anything else: a context-menu
+    // request never mutates the persistent range (see the plan's right-click
+    // Architecture Decision).
     private _contextMenuCell : { record: ModelRecord, col: number } | null = null;
     // Formats off-screen values the way their cell renderer would, for a
     // copy range that spans outside the rendered pool. Owner-held, mirroring
@@ -365,6 +369,10 @@ class TableBody extends VirtualRowView<Row> {
         this.bindStore(store);
 
         this._rowHeight = tableRowHeight();
+
+        // Shift+F10 opens the menu of the focused cell only when the key press
+        // is on record, and a consumer may build its `Menu` later than this.
+        watchContextMenuInput();
 
         this.subscribeTheme(() => this.onThemeReflow());
     }
@@ -2308,15 +2316,21 @@ class TableBody extends VirtualRowView<Row> {
     }
 
     /**
-     * Resolves the right-clicked cell into the short-lived `_contextMenuCell`
-     * field and emits `"cellcontextmenu"` with the event's viewport
-     * coordinates — deliberately never touching `_rangeAnchor`/`_rangeFocus`
-     * or repainting the highlight, since a right-click does not change the
-     * selection (mirrors `Tree._handleContextMenu`'s same rule).
+     * Resolves the cell a context-menu request is for into the short-lived
+     * `_contextMenuCell` field and emits `"cellcontextmenu"` — deliberately
+     * never touching `_rangeAnchor`/`_rangeFocus` or repainting the
+     * highlight, since a context-menu request does not change the selection
+     * (mirrors `Tree._handleContextMenu`'s same rule).
      *
-     * A no-op — leaving the browser's native menu intact — when the
-     * right-click resolves to a separator row, an actively-editing cell, or
-     * no cell at all.
+     * For a right-click the cell is the one under the pointer and the event
+     * carries the pointer's viewport coordinates. Shift+F10 and the
+     * ContextMenu key raise the event on the body's own element, which is
+     * inside no cell: it is resolved to the focused cell, scrolled into view
+     * first, and the event carries the point under that cell.
+     *
+     * A no-op — leaving the browser's native menu intact — when the request
+     * resolves to a separator row, an actively-editing cell, or no cell at
+     * all, which includes a key press with no focused cell.
      *
      * @param e - The contextmenu event.
      *
@@ -2325,8 +2339,8 @@ class TableBody extends VirtualRowView<Row> {
      *   otherwise.
      */
     protected onCellContextMenu(e: MouseEvent): Event.ListenerResult {
-        const target  = e.target === null ? null : DOM.source.intern(e.target);
-        const located = this.locateCellFromTarget(target);
+        const at      = resolveContextMenuTarget(this, e, () => this.revealFocusedCell());
+        const located = this.locateCellFromTarget(at.target);
 
         if (!located || located.cell.isEditing()) {
             return;
@@ -2334,9 +2348,40 @@ class TableBody extends VirtualRowView<Row> {
 
         this._contextMenuCell = { record: located.record, col: located.col };
 
-        this.emit("cellcontextmenu", e.clientX, e.clientY);
+        this.emit("cellcontextmenu", at.x, at.y);
 
         return { prevent: true };
+    }
+
+    /**
+     * Scrolls the focused cell into view — its row, then its column — and
+     * returns it, as the component a keyboard-opened context menu is
+     * anchored under.
+     *
+     * @returns The cell at the anchor record and the focused column, or
+     *   `null` when no record is anchored, the anchor is no longer among the
+     *   visible records, or no cell is bound at that slot.
+     */
+    private revealFocusedCell(): Cell<any> | null {
+        const anchor = this._anchorRecord;
+        const index  = anchor === null ? -1 : this.getVisibleRecords().indexOf(anchor);
+
+        // `resolveFocusedCell` looks the anchor's row index up in
+        // `_boundIndices`. For a record that is no longer shown that index
+        // is -1, which is also the value of an unbound pool slot.
+        if (index < 0) {
+            return null;
+        }
+
+        // As a keyboard row move does: a row an expand is still fading in
+        // is rendered final first, so the menu is anchored at its resting box.
+        this.settleRowMotionIfEntering(index);
+        this.scrollRowIntoView(index);
+        this.scrollColumnIntoView(this._focusedColIndex);
+        this.renderWindow();
+        this._updateActiveDescendant();
+
+        return this.resolveFocusedCell() ?? null;
     }
 
     /**
@@ -2419,13 +2464,14 @@ class TableBody extends VirtualRowView<Row> {
      * column's field name and visible index, the cell value, the record's
      * row index in the visible-records view, and the raw mouse event;
      * `"cellcontextmenu"` fires when a data cell is right-clicked, carrying
-     * the event's viewport coordinates.
+     * the event's viewport coordinates, and when the keyboard asks for the
+     * focused cell's menu, carrying the point under that cell.
      *
      * @param event - The event name.
      * @param listener - Receives the new pixel offset along the scroll axis
      *   (scroll events), the selected records (`"selection"`), the
-     *   cell-click payload (`"cellclick"`), or the right-click viewport
-     *   coordinates (`"cellcontextmenu"`).
+     *   cell-click payload (`"cellclick"`), or the viewport coordinates to
+     *   open the menu at (`"cellcontextmenu"`).
      *
      * @returns This body, for method chaining.
      *
@@ -2438,7 +2484,7 @@ class TableBody extends VirtualRowView<Row> {
      * onScroll hook (see `init`) — the body uses transform-based virtual
      * scroll, so the native DOM `scroll` event never fires. `"cellcontextmenu"`
      * is used by `Table` to open the shared column-menu instance over the
-     * right-clicked cell.
+     * cell the menu was asked for.
      */
     on(event: "verticalscroll",   listener: (scrollTop: number) => void): this;
     on(event: "horizontalscroll", listener: (scrollLeft: number) => void): this;
@@ -2473,7 +2519,7 @@ class TableBody extends VirtualRowView<Row> {
      * @param event - The event to emit.
      * @param payload - The scroll offset (scroll events), the selected
      *   records (`"selection"`), the cell-click detail (`"cellclick"`), or
-     *   the right-click viewport coordinates (`"cellcontextmenu"`).
+     *   the viewport coordinates to open the menu at (`"cellcontextmenu"`).
      */
     protected emit(event: "verticalscroll" | "horizontalscroll", offset: number): void;
     protected emit(event: "selection", records: ModelRecord[]): void;

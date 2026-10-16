@@ -121,7 +121,7 @@ A context menu has no host control to forward keys to it, so what `show()` does 
 
 A key pressed with `Alt`, `Control` or `Meta` is left alone, so a browser or application chord such as `Alt+←` keeps working while the menu is open.
 
-When the menu closes, focus returns to the element that had it when the menu opened, with its selection or caret as it was. The same `contextmenu` handler serves both the mouse and the keyboard; nothing extra is wired.
+When the menu closes, focus returns to the element that had it when the menu opened, with its selection or caret as it was. The same `contextmenu` handler serves both the mouse and the keyboard; nothing extra is wired. A [`Tree`](/components/Tree#context-menu), [`List`](/components/List#context-menu), [`MultiSelectList`](/components/MultiSelectList#selection-model), [`Table`](/components/Table#keyboard) or [`TreeTable`](/components/TreeTable#keyboard) holds focus on its own element, not on a row or a cell, so it opens the menu for its current row or cell and under it.
 
 - **Focus returns before a closing row's `action` runs**, so an action that reads the selection, uses the clipboard, or opens a [`Dialog`](/components/Dialog) acts on the element the menu was opened for. An action that moves focus elsewhere keeps it: focus is returned only while it is still inside the menu. A row with `closeOnActivate: false` leaves the menu open and focused.
 - **Disabled rows can be highlighted**, so a keyboard user can find them. Activating one does nothing and leaves the menu open.

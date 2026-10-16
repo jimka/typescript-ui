@@ -1909,8 +1909,10 @@ class Table extends Component<TableOptions> {
     }
 
     /**
-     * Displays the body's right-click Cut/Copy/Paste menu over a data cell,
-     * reusing the same rebuild-mode `Menu` instance {@link showColumnMenu}
+     * Displays the body's Cut/Copy/Paste menu over a data cell: the
+     * right-clicked one, or the focused one when the menu is opened from the
+     * keyboard with Shift+F10 or the ContextMenu key. Reuses the same
+     * rebuild-mode `Menu` instance {@link showColumnMenu}
      * shows over a header cell — a column-header right-click and a body-cell
      * right-click never happen at once, and `Menu.show()` fully rebuilds its
      * item list on every call, so there is nothing to reset between uses.
