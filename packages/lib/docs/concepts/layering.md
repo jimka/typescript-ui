@@ -114,6 +114,9 @@ only on layers whose mode matches:
 - `"manual"` — never auto-dismissed; the host drives `hide()`. Used by windows
   and manual popovers.
 
+A *transient layer* is one whose mode is `"click-outside"` or `"blur"`: the
+user's next interaction elsewhere closes it.
+
 When the whole browser window loses focus — the user clicks another application
 or alt-tabs away — no in-page `pointerdown` or `focusin` fires, so the window
 `blur` handler stands in: it dismisses every `"click-outside"` and `"blur"`
@@ -241,11 +244,23 @@ document, and focus moved onto one would be dropped on `<body>`.
 A `Tab` pressed on an element outside the scope is never consumed, also when
 the scope has no stop. Such an element is live, so it is not the library's.
 
-Two queries read the same state: `LayerManager.hasModalLayer()` is `true` while
-any registered layer is modal, wherever it sits in the stack, and
-`LayerManager.isBehindModal(node)` is `true` when a modal is open and `node`
-lies outside its scope. [`FocusHistory`](/recipes/focus-history) and
-`FocusTraversal` use them to stand down.
+Four queries read the same state:
+
+- `LayerManager.hasModalLayer()` is `true` while any registered layer is modal,
+  wherever it sits in the stack.
+- `LayerManager.isBehindModal(node)` is `true` when a modal is open and `node`
+  lies outside its scope.
+- `LayerManager.isInTransientLayer(node)` is `true` when the layer `node` lives
+  in is [transient](#dismiss-modes). Only that layer is asked, not the one it
+  was opened from.
+- `LayerManager.hasActiveInputLayer()` is `true` while any layer is open that
+  is not `"manual"`.
+
+`FocusTraversal` stands down on the first.
+[`FocusHistory`](/recipes/focus-history) also uses the first: while a modal is
+open it records nothing, and its `back()` and `forward()` move nothing. It
+records nothing inside a transient layer either, and its accelerators stand
+down on `hasActiveInputLayer()`, as `SpatialNavigation` does.
 
 ## Implementing a new layer
 

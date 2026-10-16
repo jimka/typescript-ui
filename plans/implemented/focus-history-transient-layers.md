@@ -633,3 +633,126 @@ A stand-in for the new rules, run in the same page with real key presses, gave: 
 [^evidence]: No source file was changed to gather evidence. The Chromium runs used the worktree's demo on a spare port and real key presses through the browser's debugging interface; focus was given with `element.focus()`. The jsdom runs used a throwaway test file with real `Button`, `Menu` and `Dialog` components. The stand-in for the new rules was a script pasted into the page: it disabled the real service, mirrored the layer registry by wrapping `LayerManager.register` / `unregister`, and implemented the rules of this plan beside the real `LayerManager`, `FocusReveal`, `Menu`, `Dialog`, `PopupPanel` and `Drawer`. It is not the real code, so the offline cases above are still to be proven by the implementation.
     Kept at `~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/plans2/focus-history/`: `runtime-prototype.js`, `zz-focus-history-probe.test.ts`, `probe-out.log`.
     Not run: a popover, a `ComboBox` dropdown, a `MenuBar` panel, a menu opened with the mouse, and the two fade windows named under `## Potential Challenges`. Each is the same layer mode as a case that was run.
+
+---
+
+## Implementation Notes
+
+Built on `feature/tree-page-keys` (`9a8bd01a7`), the tip of the chain `feature/context-menu-keyboard-operation` → `feature/table-tree-keyboard-context-menu` → `feature/modal-dialog-focus-trap` → `feature/list-scroll-index-into-view` → `feature/scroll-reveal-geometry-fixes` → `feature/dialog-aria-semantics` → `feature/tree-page-keys`. The plan's rules had only been run as a stand-in script. Every case below was written against the real `FocusHistory` before the code changed, and seen to fail first.
+
+### Decided by the user on 2026-10-10
+
+The first two were implemented as planned. Neither was tested against an alternative, so they were the plan's two open calls. Each item ends with the decision.
+
+1. **`Alt+[` / `Alt+]` are disabled, not confined, while a modal or transient layer is open.** With a dialog, a modal drawer, a menu, a dropdown, a popup panel or a popover open, the two keys do nothing and are not consumed. Inside a dialog there is no trail to walk: its controls are not recorded, and `back()` / `forward()` return `false`. The alternative the plan rejected is a trail of its own per modal, thrown away on close. What a user loses: stepping back between a dialog's own fields with `Alt+[`. `Tab` still reaches them. A consequence seen in Chromium: with a `ComboBox` dropdown open and focus on the field, `Alt+[` is left to the browser, which does nothing with it on Linux; on macOS `Option+[` types a character into a text field. **Decision:** accepted as implemented.
+2. **`canGoBack()` and the `"change"` event describe the trail, not where focus is.** With one stop `[A*]` and focus off it (in a cell editor, or on `<body>` after a popup closed), `canGoBack()` is `false` and `back()` still moves focus to `A` and returns `true` (case W4). A toolbar "back" button wired to `canGoBack` is therefore disabled in the one state where it would work. The plan documents this and does not fix it; the recipe page and `canGoBack`'s JSDoc say so. A fix would have to fire `"change"` on focus moves that record nothing. **Decision:** to be fixed. The plan is `plans/focus-history-can-go-back-follows-focus.md` on master.
+
+A third call came out of the review, and is not as planned:
+
+3. **`LayerManager.isBehindModal()` has no caller left in the library.** `FocusHistory`'s walk was its only user, and deviation 10 replaced that per-stop test with one test for the whole walk. The query is public API from `modal-dialog-focus-trap`, documented in `layering.md` and the changelog, has its own cases, and has not been released. It was left in place: removing another branch's public member is not this plan's to decide. Keep it as a query for applications, or drop it before the release. **Decision:** drop it. **Not carried out.** "No caller" holds on this branch only. The next branch in the stack, `feature/nested-scroll-reveal`, calls the query again: the scroll pass of `FocusReveal` (`scrollIfSettled`) asks it, so that a page behind a modal layer is not scrolled. The branches below this one, from `feature/modal-dialog-focus-trap` up to `feature/tree-page-keys`, call it from `FocusHistory`. So no branch of the stack can remove it without breaking a caller, and it is still in place at the end of the stack. Whether it is dropped, and what the scroll pass asks instead, is open again.
+
+### What differed on the base
+
+The plan was drafted on `27c9b7157`. `git diff 27c9b7157 HEAD` was empty for `core/FocusHistory.ts`, `core/LayerManager.ts`, `tests/unit/core/FocusHistory.test.ts` and `tests/overlay/LayerManager.modalFocus.test.ts`, so every source and test line number in the plan matched.
+
+| File | What the newer base changed | Effect here |
+|---|---|---|
+| `docs/concepts/accessibility.md` | `dialog-aria-semantics` added `## Dialogs and windows`; `tree-page-keys` added `## Keys in trees, lists and tables` | the closing paragraph is at line 385, not 323; found by its text |
+| `docs/components/Dialog.md` | a screen-reader section above `### Keyboard` | the focus-return paragraph is at line 178, not 166 |
+| `docs/reference/changelog/next.md` | entries from both branches | `## Added` → `### Core` now ends with the `Aria` entry, not the `Panel` one; the new entry was appended after it. The other two were placed by heading |
+| `plans/in-progress/` | the directory did not exist on the base | created for the move |
+
+`dialog-aria-semantics` added no layer and changed no dismiss mode, and its hidden-`initialFocus` fallback only changes which control of a dialog takes focus, which is never recorded. `tree-page-keys` touches `Tree` only. Nothing in either changed what had to be done.
+
+### Expected Behaviour rows
+
+Every row held as written, with one adjustment to how a case is built:
+
+- **J4 builds its dialog with an explicit button.** `new Dialog({ title: 'T', message: 'M' })` cannot be constructed under jsdom: the default button carries a glyph, placing a glyph measures the font on a canvas, and jsdom has no canvas (`ProductionDOMSource.measureFontMetrics` throws). The case passes `buttons: [{ text: 'OK', result: 'confirm' }]`. What the row asserts is unchanged. The planner's probe had used a glyph-less button too.
+
+No row had to be bent, and one was strengthened: see deviation 7 for S13. Red state before the code change, kept in the run's notes: L1–L10 failed because the member did not exist, L11 passed; S3, K3, W3, W7 and W8 passed as pins of behaviour that stays; every other S, K and W case failed with the value the plan's addendum gives; J1–J4 failed against the old `FocusHistory.ts` and pass against the new one.
+
+### Deviations from the plan
+
+1. **The test file's teardown puts `maxSize` back.** Found while watching the new cases fail: W5 and W6 passed and W7 failed in the whole-file run, and the other way round alone. The existing case "bounds the trail at maxSize, keeping the newest entries" calls `enable({ maxSize: 2 })`, and `configure()` outlives `disable()` and `clear()`, so every later case in the file ran with a two-entry trail. The `afterEach` now calls `FocusHistory.configure({ maxSize: 50 })`. No existing expectation changed; the existing cases after it pass with either length.
+2. **J4's teardown does not dispose the dialog.** A dialog destroys itself as it closes, and a second `dispose()` throws on a released handle. The case clears its reference once the dialog has closed; the teardown disposes only a dialog a failed case left open.
+3. **The docs and the public JSDoc say "a control inside a table cell", not "a table cell".** A `Table` holds focus on its own body element for all its cells, and that element is a stop, as before. What rule 2 leaves out is a control inside a cell: a cell editor, an in-cell checkbox. Seen in Chromium: with focus on a table's body the trail gains it; with focus on an in-cell checkbox `Alt+[` returns to the table's body, then to the stop before. The rule itself is the plan's and is unchanged.
+4. **Extra cases** beyond `## Expected Behaviour`: S10 also for `<html>`; `forward()` moves and reveals nothing while a modal is open; K1 and K2 also assert that propagation is not stopped; L7 asserts `true` before the unregister; L8 asserts that the manual layer did link under the transient one; J4 asserts that no modal layer is left.
+5. **The recipe gives the "while open" rules as a table**, where the plan lists them as sentences, and `layering.md` lists the four queries as a list. Same content.
+6. **No demo was added.** The demo enables `FocusHistory` at startup and its `#/misc` page already has a control for every layer the rule names. The plan changes no component.
+7. **S13 also walks forward.** Found by the review. The row reads "`F` is recorded: `back()` lands on `B`", and since going back starts at the current stop, `back()` lands on `B` whether or not `F` was recorded. A version of `isHistoryStop` that refused every focus move while a transient layer was open passed the whole file. The case now also asserts that `forward()` returns to `F`, and that version fails it.
+8. **The docs carve out the `dismissOn: "manual"` popover wherever they list what is not a stop.** Found by the review. The sentence the plan gives for `accessibility.md` says a popover is never a stop and that the accelerators stand down while one is open. Both are false for a manual popover (cases S3 and K3). The sentence there, the `## Changed` entry and the recipe's section on menus and dialogs now say "a popover that an outside click or focus move closes".
+9. **More extra cases**, added after the review: `back()` from a current stop that is not the last one, which is the fourth row of the plan's "Going back" table, and `enable()` with focus on a control inside a table cell.
+10. **`navigate` returns `false` while a modal layer is open, and `revealAndFocus` lost its per-stop test.** The plan says `back()` and `forward()` "need no new code for the modal case", because "every stop then lies behind the modal" and `revealAndFocus` already passes such a stop. Found by the review: the premise is false. A layer that keeps its element between two openings, as a `Drawer` does, can hold a stop recorded while it was no part of a modal. Opened again as a modal layer, or from one, that stop lies inside the modal's scope, where `isBehindModal` does not exclude it. Reproduced under jsdom with a real `Drawer`: opened non-modal, a control focused, closed, `setModal(true)`, opened again — `back()` returned `true`. Reproduced offline for a `"manual"` layer registered again under a different modal. Both break the decision that the functions return `false` without moving or revealing anything, and that the trail is as the modal found it.
+    - `navigate` now asks `LayerManager.hasModalLayer()` once and returns `false`. Two offline cases were written first and failed with `true`.
+    - The `isBehindModal` test in `revealAndFocus` could no longer be reached, so it was removed with the sentence of its JSDoc. The existing case "back() skips, without revealing, an entry behind the topmost modal layer" passes unchanged.
+    - Two of the plan's checks read differently as a result: `hasModalLayer` is on two code lines of `FocusHistory.ts` (`isHistoryStop` and `navigate`), and `isBehindModal` on none. See also item 3 under *Decided by the user on 2026-10-10*.
+    - The JSDoc of `back()` and `forward()`, the recipe and the changelog say what the plan says: `false` while a dialog or a modal drawer is open.
+11. **The three older modal cases register through the draining helper.** The plan says existing cases keep their inline register and unregister. Found by the review: each unregisters on the last line of its body, so a failing assertion left a modal layer registered for every later case in the file, and under one faulty version of the code that made K1 and K2 pass for the wrong reason. They now call the file's `register`; their own `unregister` calls stay, and no expectation changed.
+12. **Small things the last review asked for.** `Alt+]` has its own stand-down case for each transient mode, since K1–K4 press only `Alt+[` and a stand-down for the back chord alone passed the file. A case pins that `back()` to the current stop fires `"change"` once with the flags unchanged, and the recipe says so. The comments on the two older modal cases describe the walk as it now is; the title "back() skips, without revealing, an entry behind the topmost modal layer" was kept, because this plan refers to the case by it. Three JSDoc tags were added that step 6 does not list: `@param` on `revealAndFocus` and `navigate`, `@returns` on `canGoForward`.
+
+### Existing tests whose expected value changed
+
+| Test | Change | Why |
+|---|---|---|
+| "disable() stops observing but preserves the trail" | the first `back()` lands on `b`, and a second one on `a` | case W9, as the plan says: focus is on `c`, which was never recorded, so going back returns to the current stop first |
+| "back() still walks between entries inside the modal layer" | replaced by S5: `back()` returns `false` and focus stays | step 5 of the plan. The case was added by `modal-dialog-focus-trap` and pinned behaviour that has not been released |
+
+No other existing case's expectation changed. The `afterEach` of `FocusHistory.test.ts` gained the layer drain and the `maxSize` reset (deviation 1), and three older modal cases register through the drain (deviation 11).
+
+### Verification that was run
+
+Whole check set from `packages/lib`: `typecheck`, `typecheck:test`, `lint`, the whole vitest suite (556 files, 9758 passed, 2 todo), `docs:api` (no warnings), `docs:llms:check`, `build:lib`. Of the plan's grep checks, two hold and one reads differently: `isInTransientLayer` is defined once and called once, `getLayerContaining` / `getLayers` appear nowhere under `src`, and `LayerManager.hasModalLayer()` appears twice in `FocusHistory.ts`, not once (deviation 10).
+
+Chromium on Linux through chrome-devtools, on this worktree's demo dev server (port 8093, its own Vite cache), page `#/misc`. Every key was a real, trusted key press; a capture listener recorded `code`, `altKey` and `defaultPrevented` for each. Focus was given with `element.focus()`. No console error or warning.
+
+| Case | Result |
+|---|---|
+| fresh page | `enable()` seeded nothing; after the first focus `canGoBack()` is `false` |
+| MV1 | Shift+F10 opens the menu with focus; `Alt+[` moves nothing, is not prevented, the menu stays open and focused; `Escape` returns focus to the button; one `Alt+[` lands on "Show diagnostics overlay" |
+| MV2 | the forward part survives the menu: `Alt+]` lands on "Show window with table (slow)!" |
+| MV3 | in the form dialog `Alt+[` moves nothing and is not prevented; `FocusHistory.back()` and `forward()` both return `false`; after `Escape`, `Alt+]` then two `Alt+[` land as the row says |
+| MV4 | `Alt+[` moves nothing with the panel open; after `Escape` with focus on `Apply` focus is on `<body>`; `Alt+[` lands on "Filters (PopupPanel)" |
+| MV5 | the drawer's `Close` took a real click; focus dropped to `<body>`; `Alt+[` lands on "Non-modal drawer (left)" |
+| MV6 | modal drawer: `Alt+[` moves nothing; `Escape` returns focus; one `Alt+[` reaches the stop before the button |
+| MV7 | menu over the form dialog: `Alt+[` moves nothing; with both closed, one `Alt+[` reaches the stop before the button |
+| MV8 | the minimised window's field is passed both ways and reached after the restore; the keys walk with the window open |
+| MV9 | page 1200 × 260, ten real `Tab`s, then ten `Alt+[`: every landing fully visible |
+| a control since removed | window closed with focus in its field: `Alt+[` lands on the window's button, `Alt+]` on the stop after |
+| a control since disabled | a button disabled by script is passed over and kept; enabled again, `Alt+]` lands on it |
+| `ComboBox` dropdown | `Alt+[` moves nothing while it is open; `ArrowDown`, `Enter` pick a row; the trail is as it was, forward part included, no repeated stop |
+| `Popover`, default dismiss | `Alt+[` moves nothing; its `OK` button, focused by script, is not recorded; `Escape` drops focus to `<body>`; `Alt+[` lands on the opener, `Alt+]` on the stop after |
+| `Popover`, `dismissOn: "manual"` | its `Close` button is a stop; the keys walk with it open; closed, `Alt+[` lands on the opener |
+| context menu opened by the mouse | opened with scripted `pointerdown` and `contextmenu` events, since the tool sends no right click; `Alt+[` moves nothing while it is open |
+| a control inside a table cell | not recorded; `Alt+[` returns to the table's body, then to the window's button (deviation 3) |
+
+MV1, MV3 and MV6 were run again in the same way on the final code, after the review's change to `navigate` (deviation 10), with the served `FocusHistory.ts` checked to be that version. Same results; in the dialog and in the modal drawer `FocusHistory.back()` returns `false`.
+
+**Not run.** Firefox and WebKit: manual. A `MenuBar` panel, a nested dialog and the two fade windows under `## Potential Challenges`. The `verify` skill drives the SQLAdmin application, which was not to be run.
+
+### Merging with `feature/spatial-navigation-redesign`
+
+A dry-run merge (`git merge-tree`) of this branch with that one (`28eb38020`) conflicts in three files. The same three files, with the same number of conflict hunks, conflict when `feature/tree-page-keys` alone is merged with it, so this branch adds no new conflict. It adds text inside two hunks that already existed:
+
+- `docs/reference/changelog/next.md`, `## Changed`: both sides add a `### Core` heading at the same place. Keep one heading and both sets of entries: this branch's `FocusHistory` entry and that branch's two `SpatialNavigation` entries.
+- `docs/reference/changelog/next.md`, `## Added` → `### Core`: both sides append. Keep both blocks; this branch's `isInTransientLayer` entry is the last of the chain's block.
+- `docs/concepts/accessibility.md`: the sentence that starts "The service stands down while a transient overlay", from `modal-dialog-focus-trap`. Resolution as that plan's notes say. This branch's edit to the page's last paragraph merges cleanly.
+- `core/Panel.ts`: from `scroll-reveal-geometry-fixes`; this branch does not touch the file.
+
+`core/LayerManager.ts` merges cleanly: `getLayerContaining()` and `getLayers()` land after `getTopLayer()`, `isInTransientLayer()` after `isBehindModal()`, and no name is shared. That branch does not touch `core/FocusHistory.ts`, either test file or the recipe. The merged tree was not type-checked or tested.
+
+### SQLAdmin
+
+Read, not run. `FocusHistory` appears nowhere in `/home/jika/typescript/sqladmin` outside `node_modules` and its plans: the application does not enable the service, so nothing changes for it. `LayerManager.isInTransientLayer` is new, so nothing there calls it.
+
+### Left as they are
+
+- **A `PopupPanel`, a `Popover` and a non-modal `Drawer` leave focus on `<body>` when they close with focus inside**, as the plan's non-goals say. Seen in Chromium for all three. One `Alt+[` now returns to the opener.
+- **`back()` fires `"change"` when it returns to the current stop**, with the flags it already had: the position did not move. It is a navigation, and `on`'s JSDoc promises the event after every one. A listener that only sets button states is not affected. Pinned by a case and stated in the recipe (deviation 12).
+- **`Alt+]` does nothing from `<body>` when the current stop is the last one**, and still consumes the key. Going forward always starts after the current stop.
+- **A hidden stop between two visits to one control** still makes `back()` "land" on the control focus is already on, as the plan's non-goals say.
+- **The two fade windows** (a dropdown still registered while it fades out, a menu already unregistered while its element is still in the document) are as the plan describes them. Neither was provoked.
+- **`accessibility.md`'s spatial-navigation section still says "a transient overlay — an open dropdown, a modal dialog"**, while `layering.md` now defines a transient layer as one that is not modal. Noted by the review. The plan says to leave that section alone, and the sentence is the one that already conflicts with `feature/spatial-navigation-redesign`. Reword it when that merge is resolved.
+- **The test of "is this mode transient" is written twice in `LayerManager.ts`**, in `isInTransientLayer` and inline in `handleOutside`, which the plan says not to touch. A shared private helper is a follow-up.
+- **`FocusHistory.test.ts` repeats the default trail length, 50**, to put it back after the case that changes it. The module exports neither the constant nor a reset, and the plan adds no public member to `FocusHistory`.
+- **`isHistoryStop` compares the tag name in upper case**, as `isInTableCell` beside it does and as the plan gives it. Other files compare against `DOM.source.getBody()` or lower-case the tag first.

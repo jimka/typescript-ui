@@ -138,6 +138,21 @@ page resets to empty.
   screen reader announced an unnamed button. The label is now the button's
   accessible name as well, kept off its face. No consumer action is needed.
 
+### Core
+
+- **`FocusHistory` records places, not popups.** A control inside a context
+  menu, dropdown, popup panel, popover, dialog or modal drawer is no longer
+  a stop of the trail; a popover built with `dismissOn: "manual"`, a window
+  and a non-modal drawer still are. `Alt+[` and `Alt+]` do nothing while a
+  menu, dropdown, popup panel, dialog or modal drawer is open, or a popover
+  that is not `dismissOn: "manual"`, and the key is not consumed. `back()`
+  and `forward()` return `false` and move nothing while a dialog or modal
+  drawer is open. When focus has left the current stop — it is in a table
+  cell's editor, or the focused control was removed — `back()` returns to
+  that stop first; `canGoBack` still describes the trail only. Consumer
+  action: none, unless code relied on `back()` reaching a dialog's own
+  controls.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
@@ -308,6 +323,11 @@ page resets to empty.
   one. `clearLabelledBy()` removes `aria-labelledby`, which `setLabelledBy`
   could set but nothing could take away; a browser prefers that reference
   over `aria-label`, so it has to go before `setLabel` can rename an element.
+
+- **`LayerManager.isInTransientLayer(node)`** says whether an element lies
+  inside a transient layer: one that an outside click or focus move
+  dismisses, such as a menu, a dropdown or a popover. Only the layer the
+  element lives in is asked, not the layer it was opened from.
 
 ### Data
 
@@ -583,6 +603,16 @@ page resets to empty.
   clear of the scrollbars, moves only the axes the panel scrolls, and keeps
   the start of a control that does not fit. Focus history, spatial
   navigation and a `Menu`'s highlighted row all reveal through it. No
+  consumer action is needed.
+
+- **Focus history no longer stumbles over a menu or dialog that has
+  closed.** The control that opened a context menu from the keyboard, or a
+  dialog, was left in the trail twice, so one `Alt+[` did nothing visible.
+  Opening either dropped the forward part of the trail. `Alt+[` with a menu
+  or a dropdown open moved focus to the page and left the menu or dropdown
+  open. After a popup or a drawer closed with focus inside it, `Alt+[`
+  skipped the control that opened it. And `enable()` with nothing focused
+  recorded `<body>`, so `canGoBack` reported `true` with nowhere to go. No
   consumer action is needed.
 
 ### Layouts

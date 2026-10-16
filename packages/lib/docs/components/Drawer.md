@@ -41,6 +41,7 @@ The `edge` option reuses the compass primitive [`Placement`](/api/primitive/enum
 | Escape | Closes the drawer | Ignored |
 | Focus | Moves to the drawer's first control when it opens — to the drawer itself when it holds none — wraps inside the drawer on `Tab` and `Shift+Tab`, and returns to the element that had it when the drawer has closed | Not moved |
 | App behind | Inert: cannot be focused, clicked or read by a screen reader | Interactive |
+| [Focus history](/recipes/focus-history) | Its controls are not recorded, and `Alt+[` / `Alt+]` are off while it is open | Its controls are recorded like the page's |
 | Closing | Scrim-click / Escape / public API | Public API only |
 | Stacking | Dialog band — above windows, popovers, menus and toasts | Drawer band — above the Rail, below windows |
 

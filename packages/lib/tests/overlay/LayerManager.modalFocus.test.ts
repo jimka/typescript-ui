@@ -714,3 +714,118 @@ describe('Layers mirror inert onto their own element', () => {
         layer.dispose();
     });
 });
+
+// focus-history-transient-layers plan, cases L1–L11. A transient layer is one
+// an outside click or focus move dismisses. `FocusHistory` asks this query to
+// keep a menu, a dropdown or a popover out of its trail.
+describe('LayerManager.isInTransientLayer', () => {
+    it('L1: is true for an element inside a "click-outside" layer', () => {
+        const layer = register(fakeLayer({ dismissMode: 'click-outside' }));
+        const node  = child(layer.element!);
+
+        expect(LayerManager.isInTransientLayer(node)).toBe(true);
+    });
+
+    it('L2: is true for an element inside a "blur" layer', () => {
+        const layer = register(fakeLayer({ dismissMode: 'blur' }));
+        const node  = child(layer.element!);
+
+        expect(LayerManager.isInTransientLayer(node)).toBe(true);
+    });
+
+    it('L3: is false for an element inside a "manual" layer', () => {
+        const layer = register(fakeLayer({ dismissMode: 'manual' }));
+        const node  = child(layer.element!);
+
+        expect(LayerManager.isInTransientLayer(node)).toBe(false);
+    });
+
+    it('L4: is false for an element inside a "modal" layer', () => {
+        const layer = register(modalLayer());
+        const node  = child(layer.element!);
+
+        expect(LayerManager.isInTransientLayer(node)).toBe(false);
+    });
+
+    it("L5: is true for a transient layer's own element", () => {
+        const layer = register(fakeLayer({ dismissMode: 'click-outside' }));
+
+        expect(LayerManager.isInTransientLayer(layer.element)).toBe(true);
+    });
+
+    it('L6: is false for an element inside no layer, and for null', () => {
+        register(fakeLayer({ dismissMode: 'click-outside' }));
+
+        const loose = DOM.sink.createElement('button');
+
+        expect(LayerManager.isInTransientLayer(loose)).toBe(false);
+        expect(LayerManager.isInTransientLayer(null)).toBe(false);
+    });
+
+    it('L7: is false once the layer has unregistered', () => {
+        const layer = register(fakeLayer({ dismissMode: 'click-outside' }));
+        const node  = child(layer.element!);
+
+        // Without this the case would pass before the query looked at
+        // anything.
+        expect(LayerManager.isInTransientLayer(node)).toBe(true);
+
+        unregister(layer);
+
+        expect(LayerManager.isInTransientLayer(node)).toBe(false);
+    });
+
+    // A non-modal drawer opened from a menu row links under the menu and keeps
+    // that link. Only the layer the element lives in is asked, so the drawer
+    // is not called transient for as long as it stays open.
+    it('L8: is false inside a "manual" layer that was opened from a transient one', () => {
+        const transient = register(fakeLayer({ dismissMode: 'click-outside' }));
+        const manual    = register(fakeLayer({ dismissMode: 'manual' }));
+        const node      = child(manual.element!);
+
+        // The manual layer names no anchor, so it linked under the transient
+        // one: an element inside it counts as inside the transient layer's
+        // subtree.
+        expect(LayerManager.containsAcrossLayers(transient, node)).toBe(true);
+        expect(LayerManager.isInTransientLayer(node)).toBe(false);
+    });
+
+    it('L9: is true inside a transient layer that was opened from a modal one', () => {
+        register(modalLayer());
+
+        const transient = register(fakeLayer({ dismissMode: 'click-outside' }));
+        const node      = child(transient.element!);
+
+        expect(LayerManager.isInTransientLayer(node)).toBe(true);
+    });
+
+    it('L10: is false, without throwing, for a transient layer that has no element', () => {
+        register(fakeLayer({ dismissMode: 'click-outside', withElement: false }));
+
+        const node = DOM.sink.createElement('button');
+
+        expect(() => LayerManager.isInTransientLayer(node)).not.toThrow();
+        expect(LayerManager.isInTransientLayer(node)).toBe(false);
+    });
+
+    // The modes the rule relies on, read off the real layers. None is shown.
+    const modes: Array<[string, () => { getDismissMode(): LayerDismissMode; dispose(): void }, LayerDismissMode]> = [
+        ['Menu',                             () => new Menu(),                                'click-outside'],
+        ['PopupPanel',                       () => new PopupPanel(),                          'click-outside'],
+        ['Popover',                          () => new Popover(),                             'click-outside'],
+        ['Popover with dismissOn "blur"',    () => new Popover({ dismissOn: 'blur' }),        'blur'],
+        ['Popover with dismissOn "manual"',  () => new Popover({ dismissOn: 'manual' }),      'manual'],
+        ['Window',                           () => new Window('W'),                           'manual'],
+        ['Drawer',                           () => new Drawer(),                              'manual'],
+        ['Dialog',                           () => new Dialog({ title: 'T', message: 'M' }),  'modal'],
+        ['modal Drawer',                     () => new Drawer({ modal: true }),               'modal'],
+    ];
+
+    it.each(modes)('L11: %s', (_name, make, expected) => {
+        const layer = make();
+
+        expect(layer.getDismissMode()).toBe(expected);
+
+        layer.dispose();
+    });
+});

@@ -8,7 +8,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { FocusHistory, type FocusHistoryChange } from '~/core/FocusHistory';
 import { FocusReveal } from '~/core/FocusReveal';
 import { DOM, type Handle } from '~/core/DOM';
-import { LayerManager, type DismissableLayer } from '~/core/LayerManager';
+import { LayerManager, type DismissableLayer, type LayerDismissMode } from '~/core/LayerManager';
 import { installTestDOM, makeEvent, setConnected } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -50,10 +50,71 @@ function keyDown(init: { code: string; altKey?: boolean; ctrlKey?: boolean; shif
     return event;
 }
 
+// The service's documented default trail length (`FocusHistoryOptions.maxSize`),
+// which the module does not export.
+const DEFAULT_MAX_SIZE = 50;
+
+// Every layer a case registers through `register`, so the draining afterEach
+// can remove it. LayerManager is a module singleton: a layer that outlives its
+// case would stop every later case's recording or accelerator.
+const registered: DismissableLayer[] = [];
+
+/** Registers `layer` with LayerManager and tracks it for the drain. */
+function register(layer: DismissableLayer): void {
+    LayerManager.register(layer);
+    registered.push(layer);
+}
+
+/** A fake layer of dismiss mode `mode` with an element of its own. Not registered. */
+function layerWith(mode: LayerDismissMode): { layer: DismissableLayer; element: Handle } {
+    const element = liveHandle();
+
+    const layer: DismissableLayer = {
+        getLayerElement: () => element,
+        getDismissMode:  () => mode,
+        requestClose:    () => {},
+    };
+
+    return { layer, element };
+}
+
+/** Mints a live handle inside `parent` — a control of the layer `parent` is the element of. */
+function controlIn(parent: Handle): Handle {
+    const handle = liveHandle();
+
+    DOM.sink.appendChild(parent, handle);
+
+    return handle;
+}
+
+/**
+ * Moves focus to `handle` with no `focusin`: models focus sitting on
+ * something that was never recorded, such as a table cell, or `<body>` after
+ * the focused control was removed.
+ */
+function focusSilently(handle: Handle): void {
+    DOM.sink.focus(handle);
+}
+
+/** Dispatches the default back chord, `Alt+[`. */
+function altBracketLeft(): { preventDefault: () => void; stopPropagation: () => void } {
+    return keyDown({ code: 'BracketLeft', altKey: true });
+}
+
 describe('FocusHistory', () => {
     afterEach(() => {
+        // Drain in reverse registration order; unregister is idempotent.
+        for (let i = registered.length - 1; i >= 0; i--) {
+            LayerManager.unregister(registered[i]);
+        }
+
+        registered.length = 0;
+
         FocusHistory.disable();
         FocusHistory.clear();
+        // configure() outlives disable() and clear(): without this, the case
+        // that bounds the trail at two entries would bound every later one.
+        FocusHistory.configure({ maxSize: DEFAULT_MAX_SIZE });
         DOM.reset();
     });
 
@@ -429,7 +490,7 @@ describe('FocusHistory', () => {
             requestClose:    () => {},
         };
 
-        LayerManager.register(modalLayer);
+        register(modalLayer);
 
         const event = keyDown({ code: 'BracketLeft', altKey: true });
 
@@ -463,8 +524,8 @@ describe('FocusHistory', () => {
             requestClose:    () => {},
         };
 
-        LayerManager.register(modalLayer);
-        LayerManager.register(menuLayer);
+        register(modalLayer);
+        register(menuLayer);
 
         const event = keyDown({ code: 'BracketLeft', altKey: true });
 
@@ -475,8 +536,9 @@ describe('FocusHistory', () => {
         LayerManager.unregister(modalLayer);
     });
 
-    // Case H2: the API skips an entry behind the modal without revealing it —
-    // a reveal selects tabs and expands regions of a page nobody can reach.
+    // Case H2: the API does not reveal an entry behind the modal — a reveal
+    // selects tabs and expands regions of a page nobody can reach. The walk
+    // no longer tests each entry: it does not start while a modal is open.
     it('back() skips, without revealing, an entry behind the topmost modal layer', () => {
         installTestDOM(CONFIG);
         FocusHistory.enable();
@@ -494,7 +556,7 @@ describe('FocusHistory', () => {
             requestClose:    () => {},
         };
 
-        LayerManager.register(modalLayer);
+        register(modalLayer);
         focusIn(inside);
 
         const reveal = vi.spyOn(FocusReveal, 'reveal');
@@ -515,30 +577,123 @@ describe('FocusHistory', () => {
         expect(DOM.source.getActiveElement()).toBe(behind);
     });
 
-    it('back() still walks between entries inside the modal layer', () => {
+    // focus-history-transient-layers plan, case S5. Nothing inside a modal
+    // layer is a stop, so the trail holds nothing to walk between there.
+    it('S5: back() does not walk between the controls of a modal layer', () => {
         installTestDOM(CONFIG);
         FocusHistory.enable();
 
-        const layerEl = liveHandle();
-        const first   = liveHandle();
-        const second  = liveHandle();
-        DOM.sink.appendChild(layerEl, first);
-        DOM.sink.appendChild(layerEl, second);
+        const modal = layerWith('modal');
 
-        const modalLayer: DismissableLayer = {
-            getLayerElement: () => layerEl,
+        register(modal.layer);
+
+        const first  = controlIn(modal.element);
+        const second = controlIn(modal.element);
+
+        focusIn(first);
+        focusIn(second);
+
+        expect(FocusHistory.back()).toBe(false);
+        expect(DOM.source.getActiveElement()).toBe(second);
+    });
+
+    // The forward half of the same rule: the trail is out of reach while a
+    // modal layer is open.
+    it('forward() moves and reveals nothing while a modal layer is open', () => {
+        installTestDOM(CONFIG);
+        FocusHistory.enable();
+
+        const a = liveHandle();
+        focusIn(a);
+        const b = liveHandle();
+        focusIn(b);
+
+        FocusHistory.back(); // [a*, b]
+
+        const modal = layerWith('modal');
+
+        register(modal.layer);
+
+        const control = controlIn(modal.element);
+
+        focusIn(control);
+
+        const reveal = vi.spyOn(FocusReveal, 'reveal');
+
+        reveal.mockClear();
+
+        expect(FocusHistory.forward()).toBe(false);
+        expect(reveal).not.toHaveBeenCalled();
+        expect(DOM.source.getActiveElement()).toBe(control);
+
+        reveal.mockRestore();
+    });
+
+    // A layer that keeps its element between two openings — a `Drawer` does —
+    // can hold a stop recorded while it was no part of a modal. Opened again
+    // as a modal layer, or from one, that stop is inside the modal's scope,
+    // not behind it. The trail is out of reach all the same.
+    it('back() does not reach a stop recorded in a layer that is open again as a modal layer', () => {
+        installTestDOM(CONFIG);
+        FocusHistory.enable();
+
+        const a = liveHandle();
+        focusIn(a);
+
+        const manual = layerWith('manual');
+        const field  = controlIn(manual.element);
+
+        register(manual.layer);
+        focusIn(field);
+        focusIn(a); // [a, field, a*]
+        LayerManager.unregister(manual.layer);
+
+        const reopened: DismissableLayer = {
+            getLayerElement: () => manual.element,
             getDismissMode:  () => 'modal',
             requestClose:    () => {},
         };
 
-        LayerManager.register(modalLayer);
-        focusIn(first);
-        focusIn(second);
+        register(reopened);
+        focusIn(field);
+
+        expect(FocusHistory.back()).toBe(false);
+        expect(FocusHistory.forward()).toBe(false);
+        expect(DOM.source.getActiveElement()).toBe(field);
+
+        // The trail is as the modal found it: the current stop is still `a`.
+        LayerManager.unregister(reopened);
 
         expect(FocusHistory.back()).toBe(true);
-        expect(DOM.source.getActiveElement()).toBe(first);
+        expect(DOM.source.getActiveElement()).toBe(a);
+    });
 
-        LayerManager.unregister(modalLayer);
+    it('back() does not reach a stop recorded in a layer that is open again from a modal layer', () => {
+        installTestDOM(CONFIG);
+        FocusHistory.enable();
+
+        const a = liveHandle();
+        focusIn(a);
+
+        const manual = layerWith('manual');
+        const field  = controlIn(manual.element);
+
+        register(manual.layer);
+        focusIn(field);
+        focusIn(a); // [a, field, a*]
+        LayerManager.unregister(manual.layer);
+
+        const modal   = layerWith('modal');
+        const control = controlIn(modal.element);
+
+        register(modal.layer);
+        // No anchor, so it links under the modal layer and is in its scope.
+        register(manual.layer);
+        focusIn(control);
+
+        expect(LayerManager.isBehindModal(field)).toBe(false);
+        expect(FocusHistory.back()).toBe(false);
+        expect(DOM.source.getActiveElement()).toBe(control);
     });
 
     it('disable() stops observing but preserves the trail', () => {
@@ -563,8 +718,12 @@ describe('FocusHistory', () => {
         // is untouched by the disabled service's ignored focus move to `c`.
         // back()/forward() are not gated by enablement, so this is checkable
         // directly without re-enabling (which would itself re-seed from the
-        // now-current active element, `c`).
+        // now-current active element, `c`). Focus has left the current stop,
+        // so the first back() returns to it and the second goes on to `a`
+        // (focus-history-transient-layers plan, case W9).
         expect(FocusHistory.canGoBack()).toBe(true);
+        expect(FocusHistory.back()).toBe(true);
+        expect(DOM.source.getActiveElement()).toBe(b);
         expect(FocusHistory.back()).toBe(true);
         expect(DOM.source.getActiveElement()).toBe(a);
     });
@@ -616,5 +775,550 @@ describe('FocusHistory', () => {
         expect(changes.at(-1)).toEqual({ canGoBack: false, canGoForward: true });
 
         FocusHistory.off('change', listener);
+    });
+
+    // focus-history-transient-layers plan, cases S1–S13. A stop is a place
+    // that stays: a control of the page, of a window, of a non-modal drawer.
+    // A transient layer (a menu, a dropdown, a popover) and a modal layer (a
+    // dialog, a modal drawer) are gone once closed, so nothing in one is
+    // recorded.
+    describe('what is recorded', () => {
+        const transientModes: LayerDismissMode[] = ['click-outside', 'blur'];
+
+        it.each(transientModes)('S1/S2: a control inside a "%s" layer is not a stop', (mode) => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+
+            const transient = layerWith(mode);
+
+            register(transient.layer);
+            focusIn(controlIn(transient.element));
+
+            expect(FocusHistory.canGoBack()).toBe(false);
+
+            LayerManager.unregister(transient.layer);
+
+            const b = liveHandle();
+            focusIn(b);
+
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+        });
+
+        it('S3: a control inside a "manual" layer is a stop', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+
+            const manual = layerWith('manual');
+
+            register(manual.layer);
+            focusIn(controlIn(manual.element));
+
+            expect(FocusHistory.canGoBack()).toBe(true);
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+        });
+
+        it('S4: nothing is a stop while a modal layer is open, inside it or not', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+
+            const modal = layerWith('modal');
+
+            register(modal.layer);
+            focusIn(controlIn(modal.element));
+
+            expect(FocusHistory.canGoBack()).toBe(false);
+
+            // An element in no layer at all: a field application code appended
+            // to the document by hand, which a modal does not make inert.
+            focusIn(liveHandle());
+
+            expect(FocusHistory.canGoBack()).toBe(false);
+        });
+
+        it('S6: a control of a "manual" layer opened from a modal layer is not a stop', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+
+            const modal  = layerWith('modal');
+            const manual = layerWith('manual');
+
+            register(modal.layer);
+            register(manual.layer);
+            focusIn(controlIn(manual.element));
+
+            expect(FocusHistory.canGoBack()).toBe(false);
+        });
+
+        it('S7: opening and closing a transient layer keeps the forward part of the trail', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+            const c = liveHandle();
+            focusIn(c);
+
+            FocusHistory.back(); // [a, b*, c]
+
+            const transient = layerWith('click-outside');
+
+            register(transient.layer);
+            focusIn(controlIn(transient.element));
+
+            // A menu returns focus to its invoker before it unregisters.
+            focusIn(b);
+            LayerManager.unregister(transient.layer);
+
+            expect(FocusHistory.canGoForward()).toBe(true);
+            expect(FocusHistory.forward()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(c);
+        });
+
+        it('S8: opening and closing a modal layer keeps the forward part of the trail', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+            const c = liveHandle();
+            focusIn(c);
+
+            FocusHistory.back(); // [a, b*, c]
+
+            const modal = layerWith('modal');
+
+            register(modal.layer);
+            focusIn(controlIn(modal.element));
+
+            // A dialog unregisters before it returns focus to its opener.
+            LayerManager.unregister(modal.layer);
+            focusIn(b);
+
+            expect(FocusHistory.canGoForward()).toBe(true);
+            expect(FocusHistory.forward()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(c);
+        });
+
+        it('S9: the control that opened a transient layer is in the trail once', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            const transient = layerWith('click-outside');
+
+            register(transient.layer);
+            focusIn(controlIn(transient.element));
+            focusIn(b);
+            LayerManager.unregister(transient.layer);
+
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+            expect(FocusHistory.canGoBack()).toBe(false);
+        });
+
+        it.each(['body', 'html'])('S10: enable() does not seed the trail with <%s>', (tag) => {
+            installTestDOM(CONFIG);
+
+            // What a browser reports as the focused element when nothing has
+            // focus. The modelled DOM mints a new handle on each getBody()
+            // call, so the case builds its own.
+            const root = DOM.sink.createElement(tag);
+
+            setConnected(root, true);
+            DOM.sink.focus(root);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+
+            expect(FocusHistory.canGoBack()).toBe(false);
+        });
+
+        const closingModes: LayerDismissMode[] = ['modal', 'click-outside'];
+
+        it.each(closingModes)('S11: enable() does not seed the trail with a control of a "%s" layer', (mode) => {
+            installTestDOM(CONFIG);
+
+            const open    = layerWith(mode);
+            const control = controlIn(open.element);
+
+            register(open.layer);
+            DOM.sink.focus(control);
+            FocusHistory.enable();
+            LayerManager.unregister(open.layer);
+
+            const a = liveHandle();
+            focusIn(a);
+
+            expect(FocusHistory.canGoBack()).toBe(false);
+        });
+
+        it('S12: a focus move into a transient layer fires no "change"', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const changes: FocusHistoryChange[] = [];
+            const listener = (c: FocusHistoryChange): void => { changes.push(c); };
+            FocusHistory.on('change', listener);
+
+            const a = liveHandle();
+            focusIn(a);
+
+            const transient = layerWith('click-outside');
+
+            register(transient.layer);
+            focusIn(controlIn(transient.element));
+
+            expect(changes).toEqual([{ canGoBack: false, canGoForward: false }]);
+
+            FocusHistory.off('change', listener);
+        });
+
+        it('S13: a page control focused from an open transient layer is a stop', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            const transient = layerWith('click-outside');
+
+            register(transient.layer);
+            focusIn(controlIn(transient.element));
+
+            // A menu row's action focuses a field of the page.
+            const f = liveHandle();
+            focusIn(f);
+
+            expect(DOM.source.getActiveElement()).toBe(f);
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(b);
+
+            // Going back lands on `b` whether or not `f` was recorded: an
+            // unrecorded `f` would have left `b` the current stop. Only the
+            // way forward again shows that `f` is in the trail.
+            expect(FocusHistory.forward()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(f);
+        });
+
+        it('enable() does not seed the trail with a control inside a table cell', () => {
+            installTestDOM(CONFIG);
+
+            const td = DOM.sink.createElement('td');
+
+            setConnected(td, true);
+
+            const cellEditor = controlIn(td);
+
+            DOM.sink.focus(cellEditor);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+
+            expect(FocusHistory.canGoBack()).toBe(false);
+        });
+    });
+
+    // Cases K1–K4. The accelerators stand down while any modal or transient
+    // layer is open, and leave the key to the application; the two modal cases
+    // are further up.
+    describe('the accelerators while a layer is open', () => {
+        const transientModes: LayerDismissMode[] = ['click-outside', 'blur'];
+
+        it.each(transientModes)('K1/K2: Alt+[ does nothing while a "%s" layer is open', (mode) => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            register(layerWith(mode).layer);
+
+            const event = altBracketLeft();
+
+            expect(event.preventDefault).not.toHaveBeenCalled();
+            expect(event.stopPropagation).not.toHaveBeenCalled();
+            expect(DOM.source.getActiveElement()).toBe(b);
+        });
+
+        it.each(transientModes)('Alt+] does nothing while a "%s" layer is open', (mode) => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            FocusHistory.back(); // [a*, b]
+            register(layerWith(mode).layer);
+
+            const event = keyDown({ code: 'BracketRight', altKey: true });
+
+            expect(event.preventDefault).not.toHaveBeenCalled();
+            expect(event.stopPropagation).not.toHaveBeenCalled();
+            expect(DOM.source.getActiveElement()).toBe(a);
+        });
+
+        it('K3: Alt+[ walks the trail while only a "manual" layer is open', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            register(layerWith('manual').layer);
+
+            const event = altBracketLeft();
+
+            expect(event.preventDefault).toHaveBeenCalled();
+            expect(DOM.source.getActiveElement()).toBe(a);
+        });
+
+        it('K4: Alt+[ walks the trail again once the transient layer has closed', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            const transient = layerWith('click-outside');
+
+            register(transient.layer);
+
+            const whileOpen = altBracketLeft();
+
+            expect(whileOpen.preventDefault).not.toHaveBeenCalled();
+            expect(DOM.source.getActiveElement()).toBe(b);
+
+            LayerManager.unregister(transient.layer);
+
+            const afterClose = altBracketLeft();
+
+            expect(afterClose.preventDefault).toHaveBeenCalled();
+            expect(DOM.source.getActiveElement()).toBe(a);
+        });
+    });
+
+    // Cases W1–W8. Focus can sit on something that is no stop: a table cell, a
+    // control of a layer, or <body> after the focused control was removed.
+    // Going back from there returns to the current stop first.
+    describe('walking when focus has left the current stop', () => {
+        it('W1: back() returns to the current stop first, then to the one before', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            focusSilently(liveHandle());
+
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(b);
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+        });
+
+        it('W2: back() lands on the stop before one that was removed while it had focus', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+            const d = liveHandle();
+            focusIn(d);
+
+            setConnected(d, false);
+            focusSilently(liveHandle());
+
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(b);
+        });
+
+        it('W3: forward() still goes to the stop after the current one', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            FocusHistory.back(); // [a*, b]
+            focusSilently(liveHandle());
+
+            expect(FocusHistory.forward()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(b);
+        });
+
+        // The fourth row of the plan's "Going back" table: the current stop is
+        // not the last one, and returning to it keeps what lies ahead.
+        it('back() returns to a current stop that is not the last one, and keeps the forward part', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            FocusHistory.back(); // [a*, b]
+            focusSilently(liveHandle());
+
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+            expect(FocusHistory.canGoBack()).toBe(false);
+            expect(FocusHistory.forward()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(b);
+        });
+
+        // "change" fires after every navigation, also one that returns to the
+        // current stop. The position did not move, so the flags are the same.
+        it('back() to the current stop fires "change" with the flags unchanged', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            focusSilently(liveHandle());
+
+            const changes: FocusHistoryChange[] = [];
+            const listener = (c: FocusHistoryChange): void => { changes.push(c); };
+            FocusHistory.on('change', listener);
+
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(b);
+            expect(changes).toEqual([{ canGoBack: true, canGoForward: false }]);
+
+            FocusHistory.off('change', listener);
+        });
+
+        it('W4: back() returns to a single stop, though canGoBack() describes the trail and is false', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+
+            focusSilently(liveHandle());
+
+            expect(FocusHistory.canGoBack()).toBe(false);
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+        });
+
+        it('W8: back() is not held back by an open transient layer', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+
+            register(layerWith('click-outside').layer);
+
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+        });
+    });
+
+    // Cases W5–W7. A stop that left the document between two visits to one
+    // control would leave that control in the trail twice in a row.
+    describe('a stop repeated next to itself', () => {
+        it('W5: is merged when the stop between the two visits is gone', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const x = liveHandle();
+            focusIn(x);
+            focusIn(a);
+
+            setConnected(x, false);
+
+            expect(FocusHistory.back()).toBe(false);
+            expect(DOM.source.getActiveElement()).toBe(a);
+            expect(FocusHistory.canGoBack()).toBe(false);
+        });
+
+        it('W6: is merged ahead of the current stop too', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const x = liveHandle();
+            focusIn(x);
+            focusIn(a);
+            const c = liveHandle();
+            focusIn(c);
+
+            FocusHistory.back();
+            FocusHistory.back();
+            FocusHistory.back(); // [a*, x, a, c]
+
+            expect(DOM.source.getActiveElement()).toBe(a);
+
+            setConnected(x, false);
+
+            expect(FocusHistory.forward()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(c);
+        });
+
+        it('W7: is kept when a live stop lies between the two visits', () => {
+            installTestDOM(CONFIG);
+            FocusHistory.enable();
+
+            const a = liveHandle();
+            focusIn(a);
+            const b = liveHandle();
+            focusIn(b);
+            focusIn(a);
+
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(b);
+            expect(FocusHistory.back()).toBe(true);
+            expect(DOM.source.getActiveElement()).toBe(a);
+        });
     });
 });

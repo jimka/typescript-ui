@@ -617,6 +617,30 @@ export namespace LayerManager {
     }
 
     /**
+     * Returns whether `node` lies inside a transient layer: a registered layer
+     * that an outside interaction dismisses, which is one whose dismiss mode is
+     * `"click-outside"` or `"blur"` — a menu, a dropdown, a popover. A window or
+     * a non-modal drawer (`"manual"`) is not transient, and neither is a modal
+     * layer. Only the layer whose own element holds `node` is asked; the layer
+     * it was opened from plays no part.
+     *
+     * @param node - The element to test.
+     * @returns `true` when `node` is inside a transient layer; `false` for
+     *   `null` and for an element inside no registered layer.
+     */
+    export function isInTransientLayer(node: Handle | null): boolean {
+        const owner = node === null ? null : nodeOwning(node);
+
+        if (owner === null) {
+            return false;
+        }
+
+        const mode = owner.layer.getDismissMode();
+
+        return mode === "click-outside" || mode === "blur";
+    }
+
+    /**
      * Registers a surface that is not a layer but must go inert while a modal
      * layer is open, and tells it the current state at once — so a surface
      * that appears while a modal layer is open comes up inert.
