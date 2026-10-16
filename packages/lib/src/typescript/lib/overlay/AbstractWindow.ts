@@ -3036,12 +3036,22 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
     /**
      * Returns the window's body host, finding it lazily on first use and
-     * caching the result in `_bodyHost`.
+     * caching the result in `_bodyHost`. A cached host that was removed from
+     * the window since is found again.
      *
      * @returns The body host component, or `null`.
      */
     private resolveBodyHost(): Component | null {
-        if (!this._bodyHost) {
+        const cached = this._bodyHost;
+
+        // The application may have replaced the content since the host was
+        // cached. `removeComponent` clears the child's parent link, which is
+        // what marks a replaced body. A child disposed without being removed
+        // stays listed among the window's components, so a lookup would hand
+        // back the same child; only removal makes the cache stale.
+        const stale = cached !== null && cached.getParentComponent() !== this;
+
+        if (cached === null || stale) {
             this._bodyHost = this.findBodyHost();
         }
 
@@ -3507,6 +3517,19 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
                     durationMs: WINDOW_ANIM_DURATION_MS,
                     onStep:     (rect: WindowRect): void => this.commitRect(rect),
                     onComplete: (): void => {
+                        // The body was replaced or removed during the glide.
+                        // `host` and `element` are then dead: there is nothing
+                        // to resume and nothing to fade back in.
+                        const current = this.resolveBodyHost();
+
+                        if (current !== host) {
+                            this._stateAnimHandle = null;
+                            this._bodyFadeActive  = false;
+                            onDone?.();
+
+                            return;
+                        }
+
                         // The one relayout the glide above deferred, paid now
                         // that the window is sitting at its final rect.
                         host.resumeLayout();

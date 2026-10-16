@@ -1024,3 +1024,29 @@ page resets to empty.
   the state the window starts in, and so do the button names: "Restore" on
   the matching button of a `Window` or a `TabWindow`. No consumer action is
   needed.
+
+- **A `Popover` whose anchor is disposed closes without an error.** Closing
+  the panel that held the anchor while the popover was open made the next
+  window resize, a `setTitle`, `setBody` or other relayout, an outside press
+  and the popover's own close throw `DOM handle … is not registered`. The
+  popover now closes and fires `onClose`; `show()` with a disposed anchor
+  warns and does nothing. `getAnchorElement()` now returns `null` for a
+  disposed anchor instead of its released handle. No other consumer action
+  is needed.
+
+- **Disposing a component in the middle of a drag from it ends the drag.**
+  The drag used to stay open for the life of the page: its ghost stayed on
+  screen and no other drag could start. The drag is abandoned: its source
+  hears neither `"dragend"` nor `onDragEnd`. A drop handler that disposes
+  the source no longer throws. A drag is also no longer in progress
+  (`DragManager.isDragging()` is `false`) by the time the source's
+  `onDragEnd` runs; it used to end afterwards. No consumer action is
+  needed.
+
+- **A `Window` whose content is replaced keeps working.** Replacing the body
+  during a maximise or restore animation threw and left the window unable to
+  change state, and a replacement made at any time stayed visible when the
+  window was minimized. No consumer action is needed.
+
+- **A menu closed just after the pointer reached a submenu item no longer
+  opens that submenu.** No consumer action is needed.

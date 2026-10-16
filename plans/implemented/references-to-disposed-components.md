@@ -469,3 +469,43 @@ No public API changes. `packages/lib/docs/reference/changelog/next.md`, under `#
 [^menu-timer]: Reproduced: `mouseover` on an item with a submenu, `Menu.close()` within 150 ms, and the timer still calls `handleItemOpenSubmenu`, which builds a submenu panel, sets `_openSubmenuPanel` and marks the item expanded on a menu that is detached. `Menu.clearItemHighlights` documents the missing `mouseout`: "the browser fires no `mouseout` for an element removed under a stationary pointer". The earlier sweep listed this site as undecided because the item is not disposed when its menu closes; the item's own `destructor` does clear the timer.
 
 [^test-dom-gap]: `RecordingDOMSink.addListener` and `removeListener` index their target handle without resolving it, so they accept a released one. `ProductionDOMSink.removeListener` ([DOM.ts:2350](packages/lib/src/typescript/lib/core/DOM.ts#L2350)) resolves the handle and throws. The resize path (P1) does throw offline, because `getElementRect` resolves in both.
+
+---
+
+## Implementation Notes
+
+Baseline (step 1, measured on the original start point `feature/collection-widget-keyboard-gaps`): 569 test files and 10241 tests passed, 2 todo. The branch was later rebased onto `feature/dialog-close-button-label` (`649a56527`), which adds tests of its own. Final run after review fix round 2: 572 files, 10282 passed, 2 todo. This branch adds 25 tests (10257 + 25 = 10282, where 10257 is derived, not re-measured): the plan's 16, plus P1b, plus the 6 added by review round 1 (A1, A2, L1, S6, S7, S8), plus the 2 added by round 2 (A3, S9).
+
+Owner sign-offs (2026-10-14): D1, D2 and D3 were all answered as recommended, and implemented as written.
+
+Deviations:
+
+- **Extra test P1b** in `tests/overlay/Popover.test.ts`. It asserts that `onClose` fires when the resize closes a popover whose anchor was disposed, which D2 requires and P1 to P4 do not cover. This accounts for 17 new tests rather than 16.
+- **M1 to M3 call the item's `_onMouseOver` handler directly** instead of dispatching a `mouseover` event. `Event.ts` caches one window-level base listener per event type for the life of the module, and the earlier cases in `Menu.test.ts` leave it bound to a sink that `DOM.reset()` discarded. A dispatched `mouseover` therefore reached nothing once the case ran after others, so M1 and M2 would have passed vacuously. Run alone, a dispatched event worked.
+- **`abandonSessionOf` sits before `enterNewTarget`** in `DragManager.ts` rather than after `tearDownDropTarget`. It is a hoisted function declaration, so behaviour is unchanged.
+- **Test file hygiene.** `DragManager.sourceDisposed.test.ts` registers `"dragend"` through `Event.addListener`, and `Popover.test.ts` gained `Panel` and `Handle` imports. The popover fixture gives the anchor a fixed rect (10, 10, 40 by 20) inside the panel, since the modelled DOM lays nothing out.
+- **Documentation commits:** one per functionality (four), each adding one bullet to `## Fixed` -> `### Overlay` in `next.md`, written in that file's blank-line-separated style and with a "No consumer action is needed." sentence. The bullets differ slightly in wording from the plan's draft (the Popover bullet mentions `onClose` and `show()`; the drag bullet mentions the drop handler; "minimised" is spelled "minimized").
+- **Review fix round 1.** Five blocking findings and the advisories were fixed:
+  - `positionArrow` read the anchor rect without an `isRegistered` check, and is reached from `doLayout()` and `_reflowIfOpen`, so `setTitle`, `setBody`, `clearTitle`, `addAction` or any relayout after the anchor was disposed threw. A shared private `closeIfAnchorDisposed()` now serves `_reposition` and `positionArrow`: it nulls the anchor and calls `hide()`, so `onClose` fires, which is the contract "closes without an error". Tests A1 and A2.
+  - `Popover.getAnchorElement()` could hand `LayerManager.handleOutside` (and `resolveParent`) a released handle, and the production `DOM.source.contains` throws on one before the dismiss-mode check, aborting the document `pointerdown` walk for every layer. It now returns `null` for a released anchor, so the throwing call is never reached. Test L1 spies `contains` to throw on unregistered handles, since the test DOM's `contains` is lenient.
+  - `endSession` called `onDragEnd` before clearing `activeSession`, so a source disposed inside its own `onDragEnd` (the cross-strip tab-dock path: `removeBarEntry` disposes the tab button, which is the drag source) re-entered `endSession` through `abandonSessionOf`. The target then heard a spurious `onDragLeave` after `onDrop`, and the ghost, feedback and indicator were disposed twice. `activeSession` is now cleared before the source is notified, so abandoning a session that is already ending is a no-op; the callback order is unchanged. The plan's "do not add a guard" advice covered only the `onDrop` variant. A side effect: `isDragging()` is `false` inside `onDragEnd`. Test S6.
+  - The `onDragLeave` call and the `tabDragRegistry.delete` branch of `abandonSessionOf` are now tested (S7, S8); each fails when its line is deleted.
+  - The `isDestroyed()` half of the stale test in `resolveBodyHost` did no work: a child disposed without being removed stays listed among the window's components, so the lookup returns the same child. The earlier note and comment claiming it covered that case were wrong. The check is now the parent link alone, which `removeComponent` clears.
+  - Deviation from the plan's text: `Popover.show()` with a disposed anchor warns "the anchor was disposed; call attachToComponent again." instead of the no-anchor text, so the two causes can be told apart. The no-anchor text is unchanged.
+- **Review fix round 2.** The window cache is dropped only when its host is no longer the window's child; the commit body and test header now say so, and the `isDestroyed()` half is gone. `closeIfAnchorDisposed` only nulls the anchor and closes while the popover is open, so a layout pass on a closed popover leaves the handle and a later `show()` still warns "the anchor was disposed" (A3). The `onDragEnd` JSDoc states the D1 exception. S4 pins that `isDragging()` is `false` inside `onDragEnd`, and S9 pins that disposing the source of a pressed but uncommitted session ends it. The changelog bullets mention the wider popover cases, the `getAnchorElement()` return-value change and the `isDragging()` ordering.
+- **Follow-up, out of scope:** `AnimatedDropdown.getAnchorElement` (`core/AnimatedDropdown.ts`) and `Menu.getAnchorElement` (`overlay/Menu.ts`) return their stored anchor handle unchecked, so they have the same latent stale-handle defect toward `LayerManager` that `Popover` had.
+- **Code commits:** one per functionality (four: Popover, DragManager, AbstractWindow, Menu plus MenuItem).
+
+Not done, by orchestrator instruction:
+
+- The audit loop was skipped; the orchestrator runs independent reviews.
+- The plan was left in `plans/in-progress/`; there is no move to `plans/implemented/`.
+- The orchestrator rebased the branch onto `feature/dialog-close-button-label` (`649a56527`); the branch was not rebased by the implementer.
+
+Manual checks not run (no browser or dev server was started):
+
+- Popover: open a popover anchored inside a closable dock tab, close the tab, resize the browser. Expected: the popover closes and the console stays clean.
+- Popover: with a popover open and its anchor disposed, click outside it. Expected: no error in the console and other layers still dismiss.
+- Drag: start dragging a dock tab, dispose its window from the console while holding the button, then release. Expected: the ghost is gone, no window is torn off, and another tab can be dragged afterwards.
+
+Verification run: `npm run typecheck`, `npm run typecheck:test`, `npm run lint`, `npm run docs:api` (zero warnings), `npm run docs:llms:check` and `npm run build:lib` all succeed; the full vitest run is green. `grep "clearTimeout(this._submenuTimer)"` in `MenuItem.ts` has one match, inside `cancelPendingSubmenu`.

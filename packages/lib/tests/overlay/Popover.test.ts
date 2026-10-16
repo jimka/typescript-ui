@@ -2,8 +2,9 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Popover, PopoverPlacement } from '~/overlay/Popover';
 import { LayerManager } from '~/core/LayerManager';
 import { Component } from '~/core/Component';
-import { DOM, type Rect } from '~/core/DOM';
-import { installTestDOM } from '../dom/TestDOM';
+import { Panel } from '~/core/Panel';
+import { DOM, type Handle, type Rect } from '~/core/DOM';
+import { installTestDOM, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -480,5 +481,187 @@ describe('Popover — accessible name', () => {
         popover.clearTitle();
 
         expect(popover.getAria().getLabel()).toBe('Row actions');
+    });
+});
+
+// A popover keeps the handle of its anchor and of the anchor's scrolling
+// ancestors. Disposing the panel that holds the anchor releases those handles;
+// every later read or write through one of them has to ask `isRegistered`.
+describe('Popover — anchor disposed while open', () => {
+    const FIXTURE_ANCHOR_SIZE = { width: 40, height: 20 };
+
+    /** Mounts the panel at (50, 50), 200 by 100, and gives the anchor a fixed rect inside it. */
+    function mountPanel(panelEl: Handle, anchorEl: Handle): void {
+        DOM.sink.apply(panelEl, { style: { left: '50px', top: '50px', width: '200px', height: '100px' } });
+        DOM.sink.apply(anchorEl, { style: { left: '10px', top: '10px', width: '40px', height: '20px' } });
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), panelEl);
+    }
+
+    /**
+     * Builds the fixture: a scrolling panel mounted on the document element
+     * holding an anchor component, with a popover attached to the anchor and
+     * shown. The modelled DOM reports no overflow, so the panel's element is
+     * reported as scrollable here and `_scrollAncestors` holds the panel and
+     * the document element.
+     *
+     * @param onClose - Passed to the popover as its `onClose`.
+     */
+    function openPopoverInPanel(onClose?: () => void): { panel: Panel; popover: Popover } {
+        installTestDOM(CONFIG);
+
+        const panel  = new Panel({ autoScroll: 'y' });
+        const anchor = new Component({ preferredSize: FIXTURE_ANCHOR_SIZE });
+
+        panel.addComponent(anchor);
+
+        const panelEl = panel.getElement(true)!;
+
+        mountPanel(panelEl, anchor.getElement(true)!);
+
+        const realOverflow = DOM.source.getComputedOverflow.bind(DOM.source);
+
+        vi.spyOn(DOM.source, 'getComputedOverflow').mockImplementation((handle) =>
+            handle === panelEl
+                ? { overflow: 'auto', overflowX: 'auto', overflowY: 'auto' }
+                : realOverflow(handle));
+
+        const popover = new Popover({ placement: 'bottom', onClose });
+
+        popover.setBody(new Component({ preferredSize: { width: 120, height: 20 } }));
+        popover.attachToComponent(anchor);
+        popover.show();
+
+        expect(popover.isOpen()).toBe(true);
+        expect((popover as any)._scrollAncestors).toHaveLength(2);
+
+        return { panel, popover };
+    }
+
+    afterEach(() => {
+        vi.restoreAllMocks();
+        DOM.reset();
+    });
+
+    it('P1: a window resize after the anchor is disposed closes the popover without throwing', () => {
+        const { panel, popover } = openPopoverInPanel();
+
+        panel.dispose();
+
+        expect(() => (popover as any)._onWindowResize()).not.toThrow();
+        expect(popover.isOpen()).toBe(false);
+    });
+
+    it('P2: closing after the anchor panel is disposed removes only live listeners', () => {
+        const { panel, popover } = openPopoverInPanel();
+        const removeListener = vi.spyOn(DOM.sink, 'removeListener');
+        const ancestors      = [...(popover as any)._scrollAncestors as Handle[]];
+        const documentEl     = ancestors[ancestors.length - 1];
+
+        panel.dispose();
+        popover.hide();
+
+        const handles = removeListener.mock.calls.map((call) => call[0]);
+
+        for (const handle of handles) {
+            const registered = DOM.source.isRegistered(handle);
+
+            expect(registered).toBe(true);
+        }
+
+        // The live ancestor's listener is still removed, not skipped with the dead one.
+        expect(handles).toContain(documentEl);
+    });
+
+    it('P3: show() with an anchor disposed since attachToComponent warns and stays closed', () => {
+        const { panel, popover } = openPopoverInPanel();
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        popover.hide();
+        panel.dispose();
+
+        expect(() => popover.show()).not.toThrow();
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('disposed');
+        expect(popover.isOpen()).toBe(false);
+    });
+
+    it('P4: control: a resize with the anchor alive keeps the popover open', () => {
+        const { popover } = openPopoverInPanel();
+
+        expect(() => (popover as any)._onWindowResize()).not.toThrow();
+        expect(popover.isOpen()).toBe(true);
+    });
+
+    it('P1b: onClose fires when the resize closes the popover', () => {
+        const onClose            = vi.fn();
+        const { panel, popover } = openPopoverInPanel(onClose);
+
+        panel.dispose();
+        (popover as any)._onWindowResize();
+
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('A1: setTitle after the anchor is disposed closes the popover without throwing', () => {
+        const onClose            = vi.fn();
+        const { panel, popover } = openPopoverInPanel(onClose);
+
+        panel.dispose();
+
+        expect(() => popover.setTitle('x')).not.toThrow();
+        expect(popover.isOpen()).toBe(false);
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('A2: a relayout after the anchor is disposed closes the popover without throwing', () => {
+        const onClose            = vi.fn();
+        const { panel, popover } = openPopoverInPanel(onClose);
+
+        panel.dispose();
+
+        expect(() => popover.doLayout()).not.toThrow();
+        expect(popover.isOpen()).toBe(false);
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('L1: a press outside the page after the anchor is disposed does not throw', () => {
+        const { panel, popover } = openPopoverInPanel();
+
+        // Production's `contains` resolves both handles and throws on a
+        // released one; the modelled DOM's walks the parent table and answers.
+        const realContains = DOM.source.contains.bind(DOM.source);
+
+        vi.spyOn(DOM.source, 'contains').mockImplementation((ancestor, node) => {
+            const registered = DOM.source.isRegistered(ancestor);
+
+            if (!registered) {
+                throw new Error(`DOM handle ${ancestor} is not registered`);
+            }
+
+            return realContains(ancestor, node);
+        });
+
+        const outside = DOM.sink.createElement('div');
+
+        DOM.sink.appendChild(DOM.source.getDocumentElement(), outside);
+        panel.dispose();
+
+        expect(() => DOM.sink.dispatchEvent(outside, makeEvent(outside, 'pointerdown'))).not.toThrow();
+        expect(popover.getAnchorElement()).toBeNull();
+    });
+
+    it('A3: a layout pass on a closed popover does not forget a disposed anchor', () => {
+        const { panel, popover } = openPopoverInPanel();
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        popover.hide();
+        panel.dispose();
+
+        expect(() => popover.doLayout()).not.toThrow();
+
+        popover.show();
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn.mock.calls[0][0]).toContain('disposed');
     });
 });

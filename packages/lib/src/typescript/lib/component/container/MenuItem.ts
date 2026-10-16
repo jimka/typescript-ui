@@ -327,11 +327,7 @@ class MenuItem extends MenuRow {
 
         this._onMouseOut = () => {
             this.setFocused(false);
-
-            if (this._submenuTimer !== null) {
-                clearTimeout(this._submenuTimer);
-                this._submenuTimer = null;
-            }
+            this.cancelPendingSubmenu();
         };
 
         this._onClick = () => {
@@ -538,12 +534,23 @@ class MenuItem extends MenuRow {
      * the rest of teardown.
      */
     protected destructor(): void {
+        this.cancelPendingSubmenu();
+
+        super.destructor();
+    }
+
+    /**
+     * Cancels the hover timer that would open this item's submenu. Called by
+     * the owning menu when it closes: no `mouseout` arrives for an item removed
+     * under a resting pointer.
+     *
+     * @internal
+     */
+    cancelPendingSubmenu(): void {
         if (this._submenuTimer !== null) {
             clearTimeout(this._submenuTimer);
             this._submenuTimer = null;
         }
-
-        super.destructor();
     }
 
     /**
