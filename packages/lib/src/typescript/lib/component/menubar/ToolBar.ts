@@ -94,6 +94,9 @@ const _defaultToolBarOptions: Partial<ToolBarOptions> = {
     // A tool bar is a distinct chrome region — coarse spatial navigation
     // should be able to jump into it directly.
     navigationTarget: true,
+    // A tool bar is one row of controls — the control chord stays in it
+    // while it has another control in the arrow's direction.
+    navigationGroup:  true,
 };
 
 /**

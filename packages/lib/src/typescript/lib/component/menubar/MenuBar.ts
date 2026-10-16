@@ -43,6 +43,9 @@ const _defaultMenuBarOptions: Partial<MenuBarOptions> = {
     // A menu bar is a distinct chrome region — coarse spatial navigation
     // should be able to jump into it directly, same as ToolBar/TabBar.
     navigationTarget: true,
+    // A menu bar is one row of menu buttons — the control chord stays in it
+    // while it has another button in the arrow's direction.
+    navigationGroup: true,
 };
 
 /**

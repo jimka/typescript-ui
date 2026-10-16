@@ -15,6 +15,14 @@ import { TreeRow } from "~/component/tree/TreeRow.js";
 import { TreeNodeRenderer } from "~/component/tree/TreeNodeRenderer.js";
 import { LabelTreeNodeRenderer } from "~/component/tree/renderer/Label.js";
 import { callable } from "~/core/Callable.js";
+import { registerNavigationLandingRing } from "~/component/input/focusRing.js";
+
+// A tree is one focus stop and paints nothing when its own element gains
+// focus (its row ring follows the current node, not DOM focus), so a
+// spatial-navigation landing would leave no sign of where focus went. Keyed
+// on the role rather than `.Tree`: the class token on the element is the leaf
+// class's, and an app's tree is usually a subclass.
+registerNavigationLandingRing('[role="tree"]');
 
 /**
  * String-literal union of the events emitted by {@link Tree}.

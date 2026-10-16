@@ -840,6 +840,47 @@ describe('isNavigationTarget folds a subclass navigationTarget default', () => {
     });
 });
 
+describe('isNavigationGroup folds a subclass navigationGroup default', () => {
+    class NavigationGroupByDefault extends Component {
+        constructor(options?: ComponentOptions) {
+            super(options, { navigationGroup: true } as Partial<ComponentOptions>);
+        }
+    }
+
+    it('a subclass defaulting navigationGroup:true reports true when never set', () => {
+        expect(new NavigationGroupByDefault().isNavigationGroup()).toBe(true);
+    });
+
+    it('a subclass defaulting navigationGroup:true also renders the marker attribute — the always-dispatch path, not just the folding getter', () => {
+        const c = new NavigationGroupByDefault();
+        expect(c.getDataAttribute('ts-ui-navigation-group')).toBe('true');
+    });
+
+    it('a plain Component is false; an explicit value still wins', () => {
+        expect(new Component({}).isNavigationGroup()).toBe(false);
+        const c = new NavigationGroupByDefault();
+        c.setNavigationGroup(false);
+        expect(c.isNavigationGroup()).toBe(false);
+    });
+
+    it('constructing with { navigationGroup: true } renders data-ts-ui-navigation-group="true"', () => {
+        const c = new Component({ navigationGroup: true });
+        expect(c.getDataAttribute('ts-ui-navigation-group')).toBe('true');
+    });
+
+    it('setNavigationGroup(false) removes the marker attribute', () => {
+        const c = new Component({ navigationGroup: true });
+        c.setNavigationGroup(false);
+        expect(c.getDataAttribute('ts-ui-navigation-group')).toBeUndefined();
+    });
+
+    it('is independent of navigationTarget — marking a group does not make it a region-chord target', () => {
+        const c = new Component({ navigationGroup: true });
+        expect(c.isNavigationTarget()).toBe(false);
+        expect(c.getDataAttribute('ts-ui-navigation-target')).toBeUndefined();
+    });
+});
+
 describe('clear*() suppresses a class-level default (does not revert to it)', () => {
     it('clearPadding suppresses a subclass padding default', () => {
         const field = new TextField() as any;

@@ -79,10 +79,8 @@ a single Tab stop however many tabs it holds. `ArrowLeft` / `ArrowRight` move
 focus along it and activate the tab they land on, and `Delete` closes the
 focused tab when that tab is `closeable` — on a tab that is not, the key does
 nothing and keeps propagating. A closeable tab's ✕ is a member of the same
-group rather than a Tab stop of its own, so it is reached with
-[spatial navigation](#spatial-focus-navigation) (`Ctrl+Alt`+arrow) rather than
-by tabbing, and `Delete` closes the tab from the ✕ just as it does from the tab
-button.
+group, so it is not a Tab stop of its own; `Delete` on the tab button closes
+the tab.
 
 A tab marked modified with
 [`setTabModified`](/api/layout/classes/Tab#settabmodified) carries
@@ -177,9 +175,9 @@ stands down while any modal layer is open.
 
 ## Spatial focus navigation
 
-[`SpatialNavigation`](/api/core/namespaces/SpatialNavigation) moves keyboard focus by *direction* rather than by document order, ranking every candidate's rectangle against the focused element's and jumping to the nearest one in the pressed direction. Two chords run the same geometric search over different candidate sets:
+[`SpatialNavigation`](/api/core/namespaces/SpatialNavigation) moves keyboard focus by *direction* rather than by document order. Two chords work at two scales — the **control chord** moves to a single control, the **region chord** to a whole region:
 
-- **`Ctrl+Alt`+arrow** (the **component** tier) moves to the nearest individual focusable element in that direction — a button, a field, a list row.
+- **`Ctrl+Alt`+arrow** (the **component** tier) moves to the control a person would point at as the next one in that direction. It only considers controls that are visible, and it leaves focus where it is when nothing qualifies.
 - **`Ctrl+Alt+Shift`+arrow** (the **target** tier) moves to the nearest container marked as a navigation target, and hands focus to that container's remembered — or first — focusable descendant.
 
 It's opt-in, matching [`FocusHistory`](#keyboard-navigation-rovingtabindex)'s stance:
@@ -201,6 +199,52 @@ Neither default chord touches native text editing, so `Ctrl+Shift+←`/`→` sti
 - **`Ctrl+Alt+↑`/`↓`** is [`CodeEditor`](/components/CodeEditor)'s add-cursor-above/below on Windows and Linux. While the service is enabled, the chord moves focus instead. Alt+drag still makes a rectangular selection. macOS is not affected.
 - **GNOME** binds `Ctrl+Alt`+arrow to switching workspace, and older releases bind `Ctrl+Alt+Shift`+arrow to moving the window to another workspace. The desktop takes the chord before the page sees it.
 
+### How the control chord chooses
+
+The control chord follows a fixed set of rules, so the same layout and the same focused control always give the same landing.
+
+**Which controls are candidates.** A control is a candidate only when all of these hold:
+
+- It is focusable, or a member of a [`RovingTabIndex`](#keyboard-navigation-rovingtabindex) group — every enabled button of a `ToolBar` counts, not only its current Tab stop — and it is not the focused control, nor inside it.
+- It is enabled: it has no `disabled` attribute, and `aria-disabled` is not `"true"`.
+- It is rendered: neither it nor an ancestor is `display: none` or `visibility: hidden`. A page behind an inactive tab is not.
+- It is in view: after clipping by every ancestor that clips its content and by the browser window, at least 4 pixels of it show on each axis — or all of it, when it is smaller than that. Content of a collapsed accordion section, a control scrolled out of a scrolling panel, and a control outside the window are not.
+- It is not covered: what shows of it is not wholly behind a floating window.
+
+A `Tree`, a `List` and a `Table` body are each one candidate, not one per row.
+
+**Where the move starts.** A `Tree` or `List` moves level with its current row and a `Table` level with its current cell, so `→` from a tree lands on a control beside the row you are on, and `↑` from a table lands above the column you are in. Along the arrow the move still starts at the widget's own edge, so `↓` from a tree lands on what is below the tree, whichever row is current. Any other control moves from its own visible box.
+
+**Where it looks, in order.** The move looks outward from the focused control, and the first place that has a candidate decides it:
+
+1. **Each group and each scrolling panel the focused control is inside, nearest first.** A tool bar inside a scrolling panel is searched before the panel; a tab inside a scrolling tab strip searches the strip's scrolling part before the rest of the strip.
+    - In a **group** — a row of controls — only a candidate in line with the focused control counts, so an arrow pressed along a tool bar stays in the tool bar while it has another control that way.
+    - In a **scrolling panel**, again only a candidate in line counts, but one scrolled out of the panel counts too: focus moves to it and it is scrolled into view.
+2. **Everything else** in the page, or in the floating window focus is in. Here a candidate counts when it is in line with the focused control, or at least as far forward as it is sideways, or in line with the focused control's group.
+
+*In line* means the two controls overlap on the other axis: for `→`, that they share some vertical extent.
+
+**How candidates are ordered.** Lowest score wins, and equal scores go to the control that comes first in the document:
+
+```text
+score = forward distance                                              (in line)
+score = forward distance + 2 × (sideways distance + half the focused control's size)   (otherwise)
+```
+
+A control in line counts by its distance alone; one off to the side costs twice its sideways distance, and is only considered when it is at least as far forward as sideways. The half-size term is the focused control's width for `↑`/`↓` and its height for `←`/`→`: almost everything is in line with a wide control, so one that still misses it is well off to the side.
+
+**When nothing qualifies.** Focus stays where it is. Nothing is focused, scrolled or opened, and the key press is still consumed.
+
+A `Tree` and a `Table` body show a focus ring when a move lands on them, since neither shows anything of its own until it has a current row or cell.
+
+`ToolBar`, `MenuBar`, `TabBar` and an accordion section's header are *navigation groups*: an arrow pressed along the row stays in the row while it has another control that way. Mark your own row of controls with `navigationGroup: true` or `setNavigationGroup(true)`:
+
+```typescript
+const actions = new Component({ navigationGroup: true });
+```
+
+### Navigation targets
+
 `ToolBar`, `MenuBar`, and `TabBar` are marked as navigation targets by
 default, since each is a self-contained chrome region a user would expect to
 jump straight into — nothing else is, and `Split` panes and `Border` regions
@@ -211,9 +255,9 @@ wants the coarse tier to reach with `setNavigationTarget(true)`:
 this.setNavigationTarget(true);
 ```
 
-A marked target remembers which descendant last held focus and returns focus there on the way back in; a target visited for the first time lands on its first focusable element instead. Navigating into a collapsed region or a scrolled-away control expands or scrolls it into view first, so a chord never lands focus somewhere invisible.
+A marked target remembers which descendant last held focus and returns focus there on the way back in; a target visited for the first time lands on its first focusable element instead. With the region chord, navigating into a collapsed region expands it first. The control chord never opens or switches anything: a hidden control is not a candidate, and a control scrolled out of the focused control's own panel is scrolled into view when focus lands on it.
 
-The service stands down while a transient overlay — an open dropdown, a modal dialog — is on top, so it never fights a combo-box list's own arrow handling or a modal layer's focus containment. It keeps working between controls inside a non-modal window, since a window's dismiss mode doesn't count as blocking.
+The service stands down while a transient overlay — an open dropdown, a modal dialog — is on top, so it never fights a combo-box list's own arrow handling or a modal layer's focus containment. Inside a non-modal window the chords stay inside that window, and chords pressed in the page behind it never enter it.
 
 Any new arrow-key handler you add to a component must guard itself against both chords, so the widget and the service don't act on the same keypress at once:
 

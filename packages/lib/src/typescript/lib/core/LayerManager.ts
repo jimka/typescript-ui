@@ -531,6 +531,31 @@ export namespace LayerManager {
     }
 
     /**
+     * Finds the registered layer `target` lives inside — the layer whose own
+     * element contains it. A node in the page behind every layer belongs to
+     * none.
+     *
+     * @param target - The element to locate.
+     * @returns The layer containing `target`, or null when no registered
+     *   layer does.
+     */
+    export function getLayerContaining(target: Handle): DismissableLayer | null {
+        return nodeOwning(target)?.layer ?? null;
+    }
+
+    /**
+     * Lists every currently-registered layer in registration order. The order
+     * says nothing about which layer paints in front — compare
+     * {@link getZIndex} for that. The list is a snapshot: changing it does not
+     * change the manager.
+     *
+     * @returns The registered layers, oldest registration first.
+     */
+    export function getLayers(): readonly DismissableLayer[] {
+        return _stack.map(node => node.layer);
+    }
+
+    /**
      * Finds the topmost layer eligible to own keyboard/input routing — the
      * same "topmost non-manual layer" the Escape handler below targets, shared
      * so {@link isTopmostInputLayer} answers consistently with it. A "manual"

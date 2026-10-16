@@ -172,6 +172,9 @@ export interface ComponentOptions {
     /** Marks this component as a coarse-tier spatial-navigation target — see
      *  `setNavigationTarget`. */
     navigationTarget?: boolean;
+    /** Marks this component as a spatial-navigation group — see
+     *  `setNavigationGroup`. */
+    navigationGroup?: boolean;
 }
 
 // Module-level state for the rAF-coalesced layout queue. Setters and event handlers call
@@ -514,13 +517,14 @@ const FRAMEWORK_BASELINE_KEYS: ReadonlySet<string> = new Set([
 // case-insensitively, ignoring surrounding whitespace.
 const STANDALONE_TRANSFORM_KEYWORD = /^\s*(?:none|inherit|initial|unset|revert-layer|revert)\s*$/i;
 
-// Mirrored onto the element by `setTabKeyOwner`, `setNavigationTarget`, and
-// `setClipFrame` respectively — exported so `FocusTraversal` and
-// `SpatialNavigation` read the exact same string they were written with,
-// instead of keeping their own hand-typed copy.
+// Mirrored onto the element by `setTabKeyOwner`, `setNavigationTarget`,
+// `setNavigationGroup`, and `setClipFrame` respectively — exported so
+// `FocusTraversal` and `SpatialNavigation` read the exact same string they
+// were written with, instead of keeping their own hand-typed copy.
 export const TAB_KEY_OWNER_ATTR         = "data-ts-ui-tab-key-owner";
 export const NAVIGATION_TARGET_ATTR     = "data-ts-ui-navigation-target";
 export const NAVIGATION_TARGET_SELECTOR = "[data-ts-ui-navigation-target]";
+export const NAVIGATION_GROUP_ATTR      = "data-ts-ui-navigation-group";
 export const CLIP_FRAME_ATTR            = "data-ts-ui-clip-frame";
 
 class Component<TOptions extends ComponentOptions = ComponentOptions> extends BaseObject {
@@ -992,6 +996,10 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // marker's only effect is the construction-time data-attribute write,
         // so a subclass default must fire the setter here.
         this.setNavigationTarget(options.navigationTarget ?? this.isNavigationTarget());
+        // Always-dispatch for the same reason as `tabKeyOwner` above: the
+        // marker's only effect is the construction-time data-attribute write,
+        // so a subclass default must fire the setter here.
+        this.setNavigationGroup(options.navigationGroup ?? this.isNavigationGroup());
 
         if (options.attributes !== undefined) {
             // The options bag's `attributes` is a raw-HTML-attribute escape
@@ -2377,6 +2385,44 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     isNavigationTarget(): boolean {
         return this._options.navigationTarget ?? this._defaultOptions.navigationTarget ?? false;
+    }
+
+    /**
+     * Marks (or unmarks) this component as a spatial-navigation group — one
+     * row or column of related controls. With focus on a control inside a
+     * group, the `Ctrl+Alt`+arrow chord looks along the group first, so a move
+     * along a tool bar stays in the tool bar while it has another control that
+     * way. A control outside a group also counts as reachable from inside it
+     * when it is in line with the group as a whole, which is what lets a move
+     * leave a tool bar for a field just below it. Mirrors the flag onto the
+     * element as `data-ts-ui-navigation-group` via {@link setDataAttribute}
+     * (present only while `value` is `true`), the same way
+     * {@link setNavigationTarget} mirrors its own. `ToolBar`, `MenuBar`,
+     * `TabBar` and `AccordionHeader` are groups by default.
+     *
+     * @param value - Whether this component is now a navigation group.
+     * @returns This component, for method chaining.
+     */
+    setNavigationGroup(value: boolean): this {
+        this._options.navigationGroup = value;
+
+        if (value) {
+            this.setDataAttribute(NAVIGATION_GROUP_ATTR, "true");
+        } else {
+            this.delDataAttribute(NAVIGATION_GROUP_ATTR);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns whether this component is currently a spatial-navigation
+     * group.
+     *
+     * @returns The cached `navigationGroup` flag, or the class default when never set.
+     */
+    isNavigationGroup(): boolean {
+        return this._options.navigationGroup ?? this._defaultOptions.navigationGroup ?? false;
     }
 
     /**

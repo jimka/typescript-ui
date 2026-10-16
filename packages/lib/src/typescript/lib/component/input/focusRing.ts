@@ -137,3 +137,47 @@ export function registerFocusVisibleRing(
         });
     });
 }
+
+/**
+ * Registers a focus ring that shows only when a `SpatialNavigation` move
+ * lands on the element — for a widget that is one focus stop and paints
+ * nothing of its own when its element gains focus (`Tree`, the `Table`
+ * body), so a landing there would otherwise leave no sign of where focus
+ * went.
+ *
+ * The same two rules as {@link registerFocusVisibleRing}, keyed on the
+ * `[data-ts-ui-focus-visible]` marker alone: the inset `::after` ring, and
+ * `outline: none` on the element itself. The marker is written by the service
+ * on every landing and removed on the element's next `focusout`, so nothing
+ * changes for a mouse click or an ordinary `Tab` — which is why the
+ * `:focus-visible` half of {@link registerFocusVisibleRing} is left out here.
+ *
+ * Both rules are queued together through {@link deferStyleSheetWrite} and
+ * written just before the library's first stylesheet write, so calling this
+ * helper from a module's top level touches no DOM.
+ *
+ * @param baseSelector - One or more comma-separated selectors (e.g.
+ *   `'[role="tree"]'` or `".X, .Y"`), without the attribute suffix. A
+ *   selector that matches every subclass — a role or a tag — is safer than a
+ *   class name, since the class token on an element is the leaf class's.
+ */
+export function registerNavigationLandingRing(baseSelector: string): void {
+    const bases = baseSelector.split(",").map(part => part.trim());
+
+    const bareSelector  = bases.map(part => `${part}[${FOCUS_VISIBLE_ATTR}]`).join(", ");
+    const afterSelector = bases.map(part => `${part}[${FOCUS_VISIBLE_ATTR}]::after`).join(", ");
+
+    deferStyleSheetWrite(() => {
+        new StyleRule({
+            scope:  "selector",
+            name:   bareSelector,
+            styles: { outline: "none" },
+        });
+
+        new StyleRule({
+            scope:  "selector",
+            name:   afterSelector,
+            styles: INSET_FOCUS_RING_STYLES,
+        });
+    });
+}

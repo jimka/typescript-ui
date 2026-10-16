@@ -458,6 +458,9 @@ const _defaultTabBarOptions: Partial<TabBarOptions> = {
     // A tab strip is a distinct chrome region — coarse spatial navigation
     // should be able to jump into it directly, same as ToolBar/MenuBar.
     navigationTarget: true,
+    // A tab strip is one row of tabs and strip tools — the control chord
+    // stays in it while it has another control in the arrow's direction.
+    navigationGroup: true,
 };
 
 /**

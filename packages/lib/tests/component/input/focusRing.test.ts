@@ -4,7 +4,7 @@
 // materialises, so the observable contract is that the helper registers a rule
 // for exactly the selector it was given.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { registerFocusWithinRing, registerFocusVisibleRing } from '~/component/input/focusRing';
+import { registerFocusWithinRing, registerFocusVisibleRing, registerNavigationLandingRing } from '~/component/input/focusRing';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -128,6 +128,62 @@ describe('registerFocusVisibleRing', () => {
     });
 });
 
+// registerNavigationLandingRing paints the same inset ring, but only while
+// the element carries the marker SpatialNavigation writes on a landing. A
+// Tree or a Table body shows a ring when a spatial-navigation move lands on
+// it and nothing new for a mouse click or an ordinary Tab.
+describe('registerNavigationLandingRing', () => {
+    /** The merged declarations every write recorded for `selector`. */
+    function declarationsFor(selector: string): Record<string, string | null> {
+        const declarations: Record<string, string | null> = {};
+
+        for (const w of sink.writes) {
+            if (w.op === 'setRuleStyles' && w.args[0] === selector) {
+                Object.assign(declarations, w.args[1]);
+            }
+        }
+
+        return declarations;
+    }
+
+    it('registers one ::after rule and one bare rule, each keyed on the marker attribute alone', () => {
+        registerNavigationLandingRing('.X, .Y');
+
+        const registered = sink.writes
+            .filter(w => w.op === 'ensureStyleRule')
+            .map(w => w.args[0] as string);
+
+        expect(registered.filter(name => name === '.X[data-ts-ui-focus-visible]::after, .Y[data-ts-ui-focus-visible]::after'))
+            .toHaveLength(1);
+        expect(registered.filter(name => name === '.X[data-ts-ui-focus-visible], .Y[data-ts-ui-focus-visible]'))
+            .toHaveLength(1);
+    });
+
+    it('never keys a rule on :focus or :focus-visible, so ordinary focus paints nothing new', () => {
+        registerNavigationLandingRing('.LandingOnly');
+
+        const registered = sink.writes
+            .filter(w => w.op === 'ensureStyleRule')
+            .map(w => w.args[0] as string)
+            .filter(name => name.includes('.LandingOnly'));
+
+        expect(registered).toHaveLength(2);
+        expect(registered.some(name => name.includes(':focus'))).toBe(false);
+    });
+
+    it('paints the shared inset ring on ::after and suppresses the native outline on the element', () => {
+        registerNavigationLandingRing('.Landing');
+
+        const ring = declarationsFor('.Landing[data-ts-ui-focus-visible]::after');
+        const bare = declarationsFor('.Landing[data-ts-ui-focus-visible]');
+
+        expect(ring.border).toBe('2px solid var(--ts-ui-indicator-focus, rgb(30, 100, 200))');
+        expect(ring.inset).toBe('0');
+        expect(ring.pointerEvents).toBe('none');
+        expect(bare.outline).toBe('none');
+    });
+});
+
 /**
  * Starts a fresh module graph and installs the modelled DOM before anything
  * else evaluates, so the fresh `~/core/StyleTarget` copy backing this fresh
@@ -138,6 +194,7 @@ describe('registerFocusVisibleRing', () => {
 async function freshFocusRing(): Promise<{
     registerFocusWithinRing:  typeof registerFocusWithinRing;
     registerFocusVisibleRing: typeof registerFocusVisibleRing;
+    registerNavigationLandingRing: typeof registerNavigationLandingRing;
     freshStyleRule:            typeof import('~/core/StyleTarget').StyleRule;
     freshSink:                 RecordingDOMSink;
 }> {
@@ -151,6 +208,7 @@ async function freshFocusRing(): Promise<{
     return {
         registerFocusWithinRing:  focusRing.registerFocusWithinRing,
         registerFocusVisibleRing: focusRing.registerFocusVisibleRing,
+        registerNavigationLandingRing: focusRing.registerNavigationLandingRing,
         freshStyleRule,
         freshSink,
     };
@@ -185,6 +243,52 @@ describe('focus-ring deferral', () => {
             '.DeferredWithin:focus-within::after',
             '.Trigger',
         ]);
+    });
+
+    it('F1b. the navigation landing ring queues the same way, and lands ahead of the first real write', async () => {
+        const { registerNavigationLandingRing: freshLanding, freshStyleRule, freshSink } = await freshFocusRing();
+
+        freshLanding('.DeferredLanding');
+
+        expect(freshSink.writes.some((w) => w.op === 'ensureStyleRule')).toBe(false);
+
+        new freshStyleRule({ scope: 'selector', name: '.Trigger', styles: { color: 'green' } });
+
+        const order = freshSink.writes
+            .filter((w) => w.op === 'ensureStyleRule')
+            .map((w) => w.args[0] as string);
+
+        expect(order).toEqual([
+            '.DeferredLanding[data-ts-ui-focus-visible]',
+            '.DeferredLanding[data-ts-ui-focus-visible]::after',
+            '.Trigger',
+        ]);
+    });
+
+    // The two widgets that are one focus stop and paint nothing on focus of
+    // their own register the landing ring when their module loads, keyed on
+    // a selector every subclass matches.
+    it.each([
+        { module: 'Tree',       load: () => import('~/component/tree/Tree'),  base: '[role="tree"]' },
+        { module: 'Table body', load: () => import('~/component/table/Body'), base: 'tbody' },
+    ])('F1c. importing the $module module registers the navigation landing ring for $base', async ({ load, base }) => {
+        vi.resetModules();
+
+        const { installTestDOM: freshInstallTestDOM } = await import('../../dom/TestDOM');
+        const freshSink = freshInstallTestDOM(CONFIG);
+
+        await load();
+
+        const { StyleRule: freshStyleRule } = await import('~/core/StyleTarget');
+
+        new freshStyleRule({ scope: 'selector', name: '.Trigger', styles: { color: 'green' } });
+
+        const registered = freshSink.writes
+            .filter((w) => w.op === 'ensureStyleRule')
+            .map((w) => w.args[0] as string);
+
+        expect(registered).toContain(`${base}[data-ts-ui-focus-visible]`);
+        expect(registered).toContain(`${base}[data-ts-ui-focus-visible]::after`);
     });
 
     // Deferral must not reorder the ring relative to the render-time rules it

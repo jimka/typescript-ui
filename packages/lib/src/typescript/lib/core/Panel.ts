@@ -636,6 +636,24 @@ class Panel<TOptions extends PanelOptions = PanelOptions> extends Container<TOpt
     }
 
     /**
+     * {@link FocusRevealer.getScrollViewportElement}: the element this panel's
+     * content scrolls inside — the inner scroll element under
+     * `scrollbarStyle: "overlay"`, the panel's own element otherwise.
+     *
+     * @returns The scrolling element, or null when the panel does not scroll
+     *   (`autoScroll: "none"`) or is not rendered yet.
+     */
+    getScrollViewportElement(): Handle | null {
+        const scrolls = this.getAutoScroll() !== "none";
+
+        if (!scrolls) {
+            return null;
+        }
+
+        return this.getScrollElement() ?? null;
+    }
+
+    /**
      * The panel's scroll viewport: the visible window onto its scrolled
      * content, as a rectangle in browser-viewport coordinates. It is the
      * panel's box inside its border, less the band each visible scrollbar

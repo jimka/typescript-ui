@@ -29,6 +29,15 @@ import { callable } from "~/core/Callable.js";
 import { TableExporter } from "~/component/table/TableExporter.js";
 import { CellTextResolver } from "~/component/table/cell/CellText.js";
 import { tableRowHeight } from "~/component/table/RowMetrics.js";
+import { registerNavigationLandingRing } from "~/component/input/focusRing.js";
+
+// A table body is one focus stop and paints a cell ring only once it has a
+// current cell, so a spatial-navigation landing on a body with none would
+// leave no sign of where focus went. Keyed on the tag, which every table body
+// renders as whatever its class. A `<tbody>` that is not a table body — a
+// `Markdown` table's — never matches: the rule also needs the marker the
+// service writes on a landing, and that element is not focusable.
+registerNavigationLandingRing("tbody");
 
 /**
  * String-literal union of the events emitted by the table {@link Body}.

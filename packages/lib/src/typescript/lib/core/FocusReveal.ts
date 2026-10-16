@@ -17,6 +17,16 @@ export interface FocusRevealer {
     getRevealElement(): Handle | null;
     /** Reveal whichever of this container's regions/children is on the DOM path to `target`. */
     revealDescendant(target: Handle): void;
+    /**
+     * Implemented only by a revealer that reveals by scrolling: the element
+     * whose box is the visible window onto its scrolled content. Null when
+     * unrendered. {@link SpatialNavigation} reads it to tell a control that is
+     * merely scrolled out of the focused control's own panel — still
+     * reachable, and scrolled into view on landing — from one that is hidden.
+     * A revealer that reveals by changing state (selecting a tab, expanding a
+     * region) leaves it unimplemented.
+     */
+    getScrollViewportElement?(): Handle | null;
 }
 
 const _revealers = new Set<FocusRevealer>();
