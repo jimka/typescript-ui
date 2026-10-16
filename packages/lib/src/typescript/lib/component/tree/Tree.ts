@@ -616,10 +616,14 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
-     * Returns the anchor node of the current selection (the last node selected by a plain click or
-     * arrow key without Shift), or null if there is no selection.
+     * Returns the anchor node of the current selection: the fixed end a Shift range extends
+     * from. It is the node last clicked without Shift (a Ctrl/Cmd-click included), moved to
+     * by a navigation key that did not extend a range (any key without Shift; ArrowLeft and
+     * ArrowRight always), or passed to {@link selectNode} — or the node a click or key with
+     * Shift landed on while there was no anchor among the visible rows.
      *
-     * @returns The anchor {@link TreeNode}, or null.
+     * @returns The anchor {@link TreeNode}, or null when nothing has been selected yet or
+     *   the anchor's node has since been removed.
      */
     getSelectedNode(): TreeNode | null {
         return this._anchorNode;
@@ -1837,7 +1841,24 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
+     * Finds the anchor among the visible rows. A `Shift` move or click has a
+     * range to extend only when this finds one.
+     *
+     * @returns Zero-based index into `_flatRows` of the anchor's row, or -1
+     *   when no anchor is set, its node was removed, or it is hidden under a
+     *   collapsed node.
+     */
+    private _visibleAnchorIndex(): number {
+        return this._anchorNode
+            ? this._flatRows.findIndex(r => r.node === this._anchorNode)
+            : -1;
+    }
+
+    /**
      * Extends the range selection from `_anchorNode` to `index`, moving only the focus end.
+     * With no anchor among the visible rows there is no range to extend, and
+     * the call is a plain {@link _selectAtIndex}: the row at `index` becomes
+     * the anchor.
      *
      * @param index - Zero-based index into `_flatRows` for the new focus position.
      */
@@ -1846,16 +1867,23 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             return;
         }
 
+        const anchorIdx = this._visibleAnchorIndex();
+
+        // No anchor among the visible rows, so there is no range to extend.
+        // The move is a plain one, as a Shift-click with no anchor is a plain
+        // click.
+        if (anchorIdx < 0) {
+            this._selectAtIndex(index);
+
+            return;
+        }
+
         // As in `_selectAtIndex`: only a keyboard move can reach an entering row.
         this.settleRowMotionIfEntering(index);
 
         const before = new Set(this._selectedNodes);
 
-        const anchorIdx = this._anchorNode
-            ? this._flatRows.findIndex(r => r.node === this._anchorNode)
-            : index;
-
-        this._rangeSelect(anchorIdx < 0 ? index : anchorIdx, index);
+        this._rangeSelect(anchorIdx, index);
         this._focusNode = this._flatRows[index].node;
 
         this._updateSelectionStyle();
@@ -1884,13 +1912,15 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * - `ArrowRight` — expand a collapsed node, or move into an already-expanded node's first child
      * - `ArrowLeft` — collapse an expanded node, or move to its parent
      * - `Home` / `End` — jump to first/last visible row (plain) or extend range to edge (Shift)
+     * - `PageDown` / `PageUp` — move down/up by one page of rows (plain) or extend range by a
+     *   page (Shift); not part of the ARIA pattern, they follow `List` and the table body
      *
      * @param e - The keyboard event fired on the tree element.
      */
     private _onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         if (SpatialNavigation.claimsKey(e)) { return; }
 
-        const navigable = new Set(['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End']);
+        const navigable = new Set(['ArrowDown', 'ArrowUp', 'ArrowLeft', 'ArrowRight', 'Home', 'End', 'PageDown', 'PageUp']);
         if (!navigable.has(e.key)) {
             return;
         }
@@ -1919,6 +1949,14 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         } else if (e.key === 'End') {
             const last = flatRows.length - 1;
             e.shiftKey ? this._extendSelectionTo(last) : this._selectAtIndex(last);
+
+        } else if (e.key === 'PageDown') {
+            const next = focusIdx < 0 ? 0 : Math.min(focusIdx + this.computePageSize(), flatRows.length - 1);
+            e.shiftKey ? this._extendSelectionTo(next) : this._selectAtIndex(next);
+
+        } else if (e.key === 'PageUp') {
+            const prev = focusIdx < 0 ? 0 : Math.max(focusIdx - this.computePageSize(), 0);
+            e.shiftKey ? this._extendSelectionTo(prev) : this._selectAtIndex(prev);
 
         } else if (e.key === 'ArrowRight') {
             if (focusIdx < 0) {
@@ -1978,7 +2016,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * Supports three selection modes via modifier keys:
      * - Plain click: replace selection with the clicked node
      * - Ctrl/Cmd+click: toggle the clicked node without disturbing others
-     * - Shift+click: range-select from the anchor to the clicked node
+     * - Shift+click: range-select from the anchor to the clicked node; with
+     *   no anchor among the visible rows Shift is ignored, so the click is a
+     *   plain one, or a Ctrl/Cmd+click when that key is held too
      *
      * When {@link getExpandTrigger} is `"click"`, a plain click (no
      * modifiers) on an expandable row's body also toggles its expansion
@@ -2011,8 +2051,11 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
             }
 
             const clickedIdx = this._flatRows.findIndex(r => r.node === node);
+            // Shift counts only while there is an anchor to extend from;
+            // without one the click is whatever it is without Shift.
+            const anchorIdx  = e.shiftKey ? this._visibleAnchorIndex() : -1;
 
-            if (e.shiftKey && this._anchorNode) {
+            if (anchorIdx >= 0) {
                 this._extendSelectionTo(clickedIdx);
             } else if (e.ctrlKey || e.metaKey) {
                 const before = new Set(this._selectedNodes);

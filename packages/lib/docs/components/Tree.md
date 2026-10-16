@@ -140,7 +140,12 @@ The tree is one focus stop: its own element holds focus, and the current row is 
 | `ArrowRight` | Expand a collapsed node, or move to an expanded node's first child. |
 | `ArrowLeft` | Collapse an expanded node, or move to the parent. |
 | `Home` / `End` | Move to the first / last visible row and select it. With `Shift`, extend the selection instead. |
+| `PageUp` / `PageDown` | Move up / down by one page — the number of whole rows the tree shows — and select that row. With `Shift`, extend the selection instead. With no current row yet, the first press lands on the first row. |
 | `Shift+F10` / ContextMenu key | Fire `"contextmenu"` for the current row — see [Context menu](#context-menu). |
+
+`Shift` extends from the anchor: the row last clicked without `Shift` (a `Ctrl`/`Cmd`-click included), moved to by a key that did not extend the selection (any key without `Shift`; `ArrowLeft` and `ArrowRight` always), or passed to `selectNode()`. [`getSelectedNode()`](/api/component/tree/classes/Tree#getselectednode) returns it. With no anchor among the visible rows — nothing selected yet, the anchor's node removed, or the anchor under a collapsed node — `Shift` is ignored: a `Shift` move or a `Shift`-click is a plain one, a `Ctrl`/`Cmd`+`Shift`-click is a `Ctrl`/`Cmd`-click, and the row it lands on becomes the anchor.
+
+A key that moves the current row is the tree's own even when the row cannot move: `PageDown` on the last row changes nothing, and the browser does not scroll what is behind the tree. See [Keys in trees, lists and tables](/concepts/accessibility#keys-in-trees-lists-and-tables).
 
 ## Context menu
 
@@ -207,7 +212,7 @@ Pass `expandTrigger: "click"` to switch a row's body to the IDE-sidebar conventi
 const tree = Tree({ expandTrigger: 'click' });
 ```
 
-Ctrl/Cmd-click and an anchored Shift-click never toggle in either mode — they keep their existing selection-only meaning. A Shift-click with no anchor set falls back to plain-click behaviour and does toggle, the same as an unmodified click.
+Ctrl/Cmd-click and an anchored Shift-click never toggle in either mode — they keep their existing selection-only meaning. A Shift-click with no anchor among the visible rows (see [Keyboard](#keyboard)) falls back to plain-click behaviour and does toggle, the same as an unmodified click.
 
 ## Preferred size
 

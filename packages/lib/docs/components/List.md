@@ -36,6 +36,7 @@ The list root is focusable; rows are not. Focus tracks the active row via `aria-
 | `ArrowUp` / `ArrowDown` | Move focus and selection by one row. With no row focused yet, the first press lands on the first row. |
 | `Home` / `End` | Jump to the first / last row. |
 | `PageUp` / `PageDown` | Jump by the number of whole rows the list shows. |
+| `Ctrl` (or `Cmd`) with any of the six keys above | Move focus without changing the selection. `Enter` or `Space` then selects the focused row. |
 | `Enter` / `Space` | Commit the focused row. |
 | Printable character | Type-ahead — focus the first row whose label starts with the buffer. The buffer resets after a 700ms pause. |
 | `Escape` | Clear the type-ahead buffer. |
