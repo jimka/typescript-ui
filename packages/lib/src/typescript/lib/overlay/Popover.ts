@@ -588,6 +588,17 @@ class Popover extends Container<PopoverOptions> implements DismissableLayer {
     }
 
     /**
+     * Mirrors the manager's inert decision onto the popover: `true` while a
+     * modal layer this popover does not belong to is open, `false` when it is live
+     * again.
+     *
+     * @param inert - Whether the popover must be inert now.
+     */
+    onInertChanged(inert: boolean): void {
+        this.setInertAttribute(inert);
+    }
+
+    /**
      * Returns the anchor element excluded from outside-interaction tests so a
      * click on the trigger does not immediately re-close the popover.
      *

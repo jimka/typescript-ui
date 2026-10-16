@@ -1016,6 +1016,17 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     }
 
     /**
+     * Mirrors the manager's inert decision onto the window: `true` while a
+     * modal layer this window does not belong to is open, `false` when it is live
+     * again.
+     *
+     * @param inert - Whether the window must be inert now.
+     */
+    onInertChanged(inert: boolean): void {
+        this.setInertAttribute(inert);
+    }
+
+    /**
      * Hides the window and destroys its DOM element when the close button is clicked.
      */
     onExitAction(): void {
@@ -1121,6 +1132,14 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         if (AbstractWindow.openWindows.delete(this)) {
             AbstractWindow.relayoutMinimizedStack();
         }
+
+        // The same holds for the layer tree: a window disposed without being
+        // closed must leave it here, as every other layer's destructor does.
+        // Left registered, it would be told to go inert by the next modal
+        // layer, through the element handle released below. Both calls do
+        // nothing for a window that was closed first.
+        LayerManager.unregister(this);
+        untrapWheel(this);
 
         // Before `super.destructor()` releases this window's element handle,
         // which every one of these animations' fallback timers would write to.

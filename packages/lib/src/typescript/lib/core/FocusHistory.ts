@@ -141,7 +141,9 @@ function record(handle: Handle): void {
  * Reveals `handle`'s ancestry (selecting hiding tabs, expanding collapsed
  * regions, scrolling it into view) then focuses it, the whole operation
  * guarded so any focus side effect the reveal triggers is not recorded as a
- * new trail entry.
+ * new trail entry. An entry behind the topmost modal layer is skipped before
+ * the reveal: it is inert, so focusing it would fail anyway, and revealing it
+ * would rearrange a page nobody can reach.
  *
  * @returns True only when focus actually landed on `handle` — a still-hidden
  *   element silently refuses focus, which is the operational "unrevealable" signal.
@@ -150,6 +152,12 @@ function revealAndFocus(handle: Handle): boolean {
     _navigating = true;
 
     try {
+        const behindModal = LayerManager.isBehindModal(handle);
+
+        if (behindModal) {
+            return false;
+        }
+
         if (!FocusReveal.reveal(handle)) {
             return false;
         }
@@ -234,8 +242,9 @@ function onFocusIn(e: FocusEvent): void {
 
 /**
  * Document `keydown` handler: drives `back()`/`forward()` on the configured
- * combos, suppressed while a modal layer is on top so the accelerator does
- * not fight the modal's own focus trap.
+ * combos, suppressed while any modal layer is open — also with a menu or a
+ * dropdown open above it — so the accelerator never reaches for the page
+ * behind the modal.
  *
  * @returns `{ stop: true, prevent: true }` when the key matches a navigation combo
  *   and no modal layer is suppressing it; nothing otherwise, so every other key
@@ -252,9 +261,9 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         return;
     }
 
-    const top = LayerManager.getTopLayer();
+    const modalOpen = LayerManager.hasModalLayer();
 
-    if (top && top.getDismissMode() === "modal") {
+    if (modalOpen) {
         return;
     }
 

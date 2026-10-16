@@ -439,6 +439,108 @@ describe('FocusHistory', () => {
         LayerManager.unregister(modalLayer);
     });
 
+    // modal-dialog-focus-trap plan, case H1: the old test asked whether the
+    // *top* layer was modal, which is false as soon as a menu or a dropdown is
+    // open above a dialog — and the accelerator then walked to a control of
+    // the page behind it.
+    it('suppresses back/forward while a modal layer is open beneath another layer', () => {
+        installTestDOM(CONFIG);
+        FocusHistory.enable();
+
+        const a = liveHandle();
+        focusIn(a);
+        const b = liveHandle();
+        focusIn(b);
+
+        const modalLayer: DismissableLayer = {
+            getLayerElement: () => null,
+            getDismissMode:  () => 'modal',
+            requestClose:    () => {},
+        };
+        const menuLayer: DismissableLayer = {
+            getLayerElement: () => null,
+            getDismissMode:  () => 'click-outside',
+            requestClose:    () => {},
+        };
+
+        LayerManager.register(modalLayer);
+        LayerManager.register(menuLayer);
+
+        const event = keyDown({ code: 'BracketLeft', altKey: true });
+
+        expect(event.preventDefault).not.toHaveBeenCalled();
+        expect(DOM.source.getActiveElement()).toBe(b); // unchanged
+
+        LayerManager.unregister(menuLayer);
+        LayerManager.unregister(modalLayer);
+    });
+
+    // Case H2: the API skips an entry behind the modal without revealing it —
+    // a reveal selects tabs and expands regions of a page nobody can reach.
+    it('back() skips, without revealing, an entry behind the topmost modal layer', () => {
+        installTestDOM(CONFIG);
+        FocusHistory.enable();
+
+        const behind = liveHandle();
+        focusIn(behind);
+
+        const layerEl = liveHandle();
+        const inside  = liveHandle();
+        DOM.sink.appendChild(layerEl, inside);
+
+        const modalLayer: DismissableLayer = {
+            getLayerElement: () => layerEl,
+            getDismissMode:  () => 'modal',
+            requestClose:    () => {},
+        };
+
+        LayerManager.register(modalLayer);
+        focusIn(inside);
+
+        const reveal = vi.spyOn(FocusReveal, 'reveal');
+
+        // An earlier case's spy on the same method is handed back with its
+        // call history, so start from none.
+        reveal.mockClear();
+
+        expect(FocusHistory.back()).toBe(false);
+        expect(reveal).not.toHaveBeenCalled();
+        expect(DOM.source.getActiveElement()).toBe(inside);
+
+        LayerManager.unregister(modalLayer);
+        reveal.mockRestore();
+
+        // With the modal closed the same entry is reachable again.
+        expect(FocusHistory.back()).toBe(true);
+        expect(DOM.source.getActiveElement()).toBe(behind);
+    });
+
+    it('back() still walks between entries inside the modal layer', () => {
+        installTestDOM(CONFIG);
+        FocusHistory.enable();
+
+        const layerEl = liveHandle();
+        const first   = liveHandle();
+        const second  = liveHandle();
+        DOM.sink.appendChild(layerEl, first);
+        DOM.sink.appendChild(layerEl, second);
+
+        const modalLayer: DismissableLayer = {
+            getLayerElement: () => layerEl,
+            getDismissMode:  () => 'modal',
+            requestClose:    () => {},
+        };
+
+        LayerManager.register(modalLayer);
+        focusIn(first);
+        focusIn(second);
+
+        expect(FocusHistory.back()).toBe(true);
+        expect(DOM.source.getActiveElement()).toBe(first);
+
+        LayerManager.unregister(modalLayer);
+    });
+
     it('disable() stops observing but preserves the trail', () => {
         installTestDOM(CONFIG);
         FocusHistory.enable();

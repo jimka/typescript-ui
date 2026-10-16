@@ -1553,7 +1553,8 @@ class Menu extends Component implements DismissableLayer {
      * enter its submenu, once per press — their auto-repeat is consumed and
      * does nothing; `ArrowRight` enters a submenu and `ArrowLeft` leaves one;
      * `Tab` closes the whole chain and lets the key continue, so focus moves
-     * on from the invoker. `Escape` is left to the layer manager, which
+     * on from the invoker — except at the edge of a modal layer, where focus
+     * wraps inside it instead. `Escape` is left to the layer manager, which
      * closes the topmost layer. Leaves alone any key `SpatialNavigation`
      * claims, and any key pressed with `Alt`, `Control` or `Meta`: those
      * chords belong to the browser or the application (`Alt+ArrowLeft` is
@@ -1617,7 +1618,9 @@ class Menu extends Component implements DismissableLayer {
             case "Tab":
                 this.rootMenu().dismissAll();
 
-                return;
+                // Focus is back on the invoker only now, so only now can the
+                // layer manager tell whether the key would leave a modal layer.
+                return LayerManager.containTab(e);
         }
 
         return;
@@ -1770,6 +1773,17 @@ class Menu extends Component implements DismissableLayer {
      */
     onZIndexChanged(zIndex: number): void {
         this.setZIndex(zIndex);
+    }
+
+    /**
+     * Mirrors the manager's inert decision onto the menu panel: `true` while a
+     * modal layer this menu does not belong to is open, `false` when it is live
+     * again.
+     *
+     * @param inert - Whether the menu panel must be inert now.
+     */
+    onInertChanged(inert: boolean): void {
+        this.setInertAttribute(inert);
     }
 
     /**

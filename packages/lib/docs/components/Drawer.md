@@ -39,8 +39,12 @@ The `edge` option reuses the compass primitive [`Placement`](/api/primitive/enum
 | Scrim | Draws a blocking `DialogBackdrop` | None |
 | Outside click | Captured; clicking the scrim closes the drawer | App stays interactive; outside clicks are ignored |
 | Escape | Closes the drawer | Ignored |
+| Focus | Moves to the drawer's first control when it opens — to the drawer itself when it holds none — wraps inside the drawer on `Tab` and `Shift+Tab`, and returns to the element that had it when the drawer has closed | Not moved |
+| App behind | Inert: cannot be focused, clicked or read by a screen reader | Interactive |
 | Closing | Scrim-click / Escape / public API | Public API only |
 | Stacking | Dialog band — above windows, popovers, menus and toasts | Drawer band — above the Rail, below windows |
+
+A modal drawer is a modal layer like a [`Dialog`](/components/Dialog): see [Dialog: Keyboard](/components/Dialog#keyboard) for what is inert behind it and what is not. Focus returns to the opener once the slide-out has finished; if that element was disposed or removed from the page meanwhile, focus stays where the browser put it.
 
 A non-modal drawer is deliberately *sticky* — a persistent side panel (navigation, filters) that vanished on the first click into the app behind it would be hostile. Callers who want outside-click-to-close on a non-modal drawer can wire it against the public API themselves.
 

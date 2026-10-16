@@ -972,6 +972,15 @@ class Tab extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * Returns the tab strip this manager mounts on its container.
+     *
+     * @returns The tab strip, as the only entry.
+     */
+    getChromeComponents(): readonly Component[] {
+        return [this._bar];
+    }
+
+    /**
      * Attaches to a container and raw-appends the tab strip element to it, then
      * subscribes to the strip's window-agnostic events.
      *

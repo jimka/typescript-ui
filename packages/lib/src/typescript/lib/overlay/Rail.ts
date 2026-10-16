@@ -4,6 +4,8 @@ import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Animation } from "~/core/Animation.js";
+import { LayerManager } from "~/core/LayerManager.js";
+import type { BackgroundSurface } from "~/core/LayerManager.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { StyleRule } from "~/core/StyleTarget.js";
 import { Position } from "~/primitive/Position.js";
@@ -257,7 +259,7 @@ interface WindowRegistration {
  *
  * @category Core
  */
-class Rail extends Component<RailOptions> {
+class Rail extends Component<RailOptions> implements BackgroundSurface {
 
     // In-flight animations, cancelled on teardown so their fallback timers
     // cannot fire against this rail's released element handle.
@@ -776,7 +778,8 @@ class Rail extends Component<RailOptions> {
     /**
      * Mounts the rail on `document.documentElement`: installs the handle-axis
      * layout manager, applies the divider border and resting geometry, attaches
-     * the element, and tracks viewport resizes. No-op if already mounted.
+     * the element, and tracks viewport resizes. A mounted rail is inert while
+     * a modal dialog or drawer is open. No-op if already mounted.
      *
      * @returns This rail, for method chaining.
      */
@@ -809,6 +812,9 @@ class Rail extends Component<RailOptions> {
         Event.addViewportListener(this, "resize", this._boundResizeHandler);
 
         this._mounted = true;
+        // The rail sits outside every layer and holds buttons, so it has to be
+        // told when a modal layer opens. Told the current state at once.
+        LayerManager.addBackgroundSurface(this);
         this.animateIn();
 
         return this;
@@ -833,6 +839,7 @@ class Rail extends Component<RailOptions> {
         Event.removeViewportListener(this, "resize", this._boundResizeHandler);
 
         this._mounted = false;
+        LayerManager.removeBackgroundSurface(this);
 
         // Slide the strip back off its edge, then detach. Under reduced motion
         // Animation.play runs the completion synchronously.
@@ -854,6 +861,17 @@ class Rail extends Component<RailOptions> {
         });
 
         return this;
+    }
+
+    /**
+     * Mirrors the layer manager's decision onto the rail: `true` while a
+     * modal layer is open, so the handles and the collapse chevron cannot be
+     * focused or clicked behind it, and `false` when the last one has closed.
+     *
+     * @param inert - Whether the rail must be inert now.
+     */
+    onInertChanged(inert: boolean): void {
+        this.setInertAttribute(inert);
     }
 
     /**
@@ -1379,6 +1397,9 @@ class Rail extends Component<RailOptions> {
         this._slideInAnimation = null;
 
         this._collapseButton.dispose();
+
+        // A rail disposed while mounted never went through unmount().
+        LayerManager.removeBackgroundSurface(this);
 
         super.destructor();
     }

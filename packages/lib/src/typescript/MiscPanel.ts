@@ -1138,9 +1138,12 @@ class MiscPanel extends Panel {
         leftColumn.addComponent(buttonBigTree);
 
         // Drawer demo — opens an edge-anchored sliding panel. Each drawer is a
-        // bare content host, so we stack a heading and a Close button into it
-        // via a VBox. The four modal buttons exercise all four geometries; the
-        // last button shows a non-modal drawer that leaves the app interactive.
+        // bare content host, so we stack a heading, a field and a Close button
+        // into it via a VBox. The four modal buttons exercise all four
+        // geometries; the last button shows a non-modal drawer that leaves the
+        // app interactive. A modal drawer takes focus when it opens — its
+        // field — keeps Tab inside itself, and hands focus back to the button
+        // that opened it when it closes; a non-modal one moves no focus.
         const openDemoDrawer = (edge: DrawerEdge, modal: boolean, label: string): void => {
             const drawer = new Drawer({ edge, modal, layoutManager: new VBox({ stretching: true }) });
 
@@ -1148,11 +1151,14 @@ class MiscPanel extends Panel {
             heading.setFontWeight("bold");
             heading.setPreferredSize({ width: 0, height: 28 });
 
+            const filterField = new TextField({ placeholder: "Filter", preferredSize: { width: 0, height: 28 } });
+
             const closeButton = new Button("Close");
             closeButton.setPreferredSize({ width: 0, height: 32 });
             closeButton.on("action", () => { drawer.close(); });
 
             drawer.addComponent(heading);
+            drawer.addComponent(filterField);
             drawer.addComponent(closeButton);
 
             drawer.open();
@@ -1566,6 +1572,35 @@ class MiscPanel extends Panel {
             Notification.show(`Dialog closed with: ${result}`, 'info');
         })());
         leftColumn.addComponent(buttonDialogNonDismissable);
+
+        // Focus containment demo — a form dialog whose last control in the
+        // body is a ComboBox, plus a button that opens a second dialog over
+        // it. Tab and Shift+Tab stay inside whichever dialog is on top: through
+        // the ComboBox's open dropdown and back to the first control, never
+        // onto the page behind, which is inert while the dialog is open.
+        const buttonDialogForm = new Button("Dialog — form (focus stays inside)");
+        buttonDialogForm.on("action", () => {
+            const nameField = new TextField({ placeholder: 'Name' });
+            const askButton = new Button("Ask a question…", {
+                listeners: {
+                    action: () => void Dialog.confirm('Nested dialog', 'This dialog is on top. The form behind it is inert until it closes.'),
+                },
+            });
+            const typeCombo = new ComboBox({ items: ["Alpha", "Beta", "Gamma", "Delta"] });
+
+            const content = new Panel({
+                layoutManager: new VBox({ stretching: true }),
+                components   : [nameField, askButton, typeCombo],
+                preferredSize: { width: 320, height: 110 },
+            });
+
+            void Dialog.show({
+                title           : 'Focus containment',
+                contentComponent: content,
+                buttons         : [{ text: 'Close', result: 'confirm' }],
+            });
+        });
+        leftColumn.addComponent(buttonDialogForm);
 
         // The severity-toned OK dialogs — one per Dialog.info/success/warning/error
         // shorthand (each tints the title bar and shows a matching glyph).

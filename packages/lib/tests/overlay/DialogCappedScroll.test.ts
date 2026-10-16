@@ -83,6 +83,10 @@ describe('Dialog scrolls content capped by a short viewport', () => {
         // could not shrink; the capped dialog fits the viewport allowance.
         expect(dialog.getHeight()).toBe(CAPPED_HEIGHT);
         expect(dialog.getHeight()).toBeLessThan(CONTENT_HEIGHT);
+
+        // Leaves the layer tree: a dialog left registered would be told to go
+        // inert, through a released handle, by the next case's dialog.
+        dialog.dispose();
     });
 
     it('makes the content container a vertical auto-scroll Panel', () => {
@@ -95,5 +99,7 @@ describe('Dialog scrolls content capped by a short viewport', () => {
 
         expect(container).toBeInstanceOf(Panel);
         expect((container as Panel).getAutoScroll()).toBe('y');
+
+        dialog.dispose();
     });
 });

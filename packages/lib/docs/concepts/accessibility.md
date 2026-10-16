@@ -131,7 +131,10 @@ expires the release without arming it a second time.
 first at the ends of the root; by default this only happens inside a modal
 overlay (where focus must not escape to the page behind it) — on `<body>`, the
 end of the traversal hands focus to the browser's own chrome, matching what a
-keyboard user expects when they reach the end of the page.
+keyboard user expects when they reach the end of the page. Inside a modal
+overlay that default now applies to `next()` and `previous()` only: a `Tab` key
+press there is wrapped by `LayerManager`, as described below, and the service
+leaves it alone.
 
 A *stop* is a focusable element — a `<button>`, `<a href>`, `<input>`,
 `<select>`, `<textarea>`, an element carrying `contenteditable`, or anything
@@ -144,22 +147,30 @@ including as native `<button>`s. A component that owns a third-party editing
 surface contributes one stop too, since such a surface marks itself
 `contenteditable` rather than carrying a `tabindex`.
 
-A modal [`Dialog`](/components/Dialog) traps Tab inside itself — wrapping from
-its last stop back to its first, and from its first back to its last — and
-follows the same Tab-key-owner rule while doing so. Whenever focus sits inside
-a descendant that claims Tab, the dialog's trap stands down and the descendant
-keeps the key, so a [`CodeEditor`](/components/CodeEditor),
+A modal layer — a [`Dialog`](/components/Dialog), or a
+[`Drawer`](/components/Drawer) built with `modal: true` — keeps the keyboard
+inside itself, whether or not Tab traversal is enabled.
+[`LayerManager`](/api/core/namespaces/LayerManager) does it, for every modal
+layer alike, in two parts. The rest of the application carries the HTML
+`inert` attribute, so the browser refuses to focus it by any route: `Tab`, a
+click, or `focus()` from code. And `Tab` wraps at the edges, from the last stop
+back to the first and from the first back to the last. A dropdown, menu or
+popover opened from the modal is inside it: its stops join the same ring. See
+[Modal scope](/concepts/layering#modal-scope) for what exactly goes inert.
+
+The wrap follows the same Tab-key-owner rule. Whenever focus sits inside a
+descendant that claims Tab, the wrap stands down and the descendant keeps the
+key, so a [`CodeEditor`](/components/CodeEditor),
 [`MarkdownEditor`](/components/MarkdownEditor) or [`Table`](/components/Table)
 placed first or last in a dialog still indents or moves between cells instead
-of having focus wrapped out from under it. The dialog's own claim over its
-whole subtree does not trigger this: the search stops at the dialog's element
-without testing it, so only a descendant's claim counts. `Escape` inside an
-editing surface releases it for one `Tab` instead of closing the dialog, and a
-second `Escape` closes it; inside a `Table` the first `Escape` does not close
-the dialog either, but the table's own `Tab` handling can pull focus back, so
-the `Tab` that follows is not guaranteed to leave it. Tab traversal stands
-down entirely while a dialog is the topmost layer, since the dialog runs this
-release itself.
+of having focus wrapped out from under it. A dialog's own claim over its whole
+subtree does not trigger this: the search stops at the layer's element without
+testing it, so only a descendant's claim counts. `Escape` inside an editing
+surface in a dialog releases it for one `Tab` instead of closing the dialog,
+and a second `Escape` closes it; inside a `Table` the first `Escape` does not
+close the dialog either, but the table's own `Tab` handling can pull focus
+back, so the `Tab` that follows is not guaranteed to leave it. Tab traversal
+stands down while any modal layer is open.
 
 ## Spatial focus navigation
 
@@ -199,7 +210,7 @@ this.setNavigationTarget(true);
 
 A marked target remembers which descendant last held focus and returns focus there on the way back in; a target visited for the first time lands on its first focusable element instead. Navigating into a collapsed region or a scrolled-away control expands or scrolls it into view first, so a chord never lands focus somewhere invisible.
 
-The service stands down while a transient overlay — an open dropdown, a modal dialog — is on top, so it never fights a combo-box list's own arrow handling or a dialog's focus trap. It keeps working between controls inside a non-modal window, since a window's dismiss mode doesn't count as blocking.
+The service stands down while a transient overlay — an open dropdown, a modal dialog — is on top, so it never fights a combo-box list's own arrow handling or a modal layer's focus containment. It keeps working between controls inside a non-modal window, since a window's dismiss mode doesn't count as blocking.
 
 Any new arrow-key handler you add to a component must guard itself against both chords, so the widget and the service don't act on the same keypress at once:
 
@@ -281,6 +292,8 @@ class SelectableList extends Component {
 
 The pattern: set the role, manage `aria-selected` on items, wire arrow keys via `addSubtreeListener`, and let `RovingTabIndex` handle tab focus.
 
+A custom overlay that mounts itself outside the component tree — on `<html>`, as the library's own overlays do — needs one more thing to behave around a modal dialog: it has to be a registered layer that implements `onInertChanged`, or a `BackgroundSurface`. Otherwise it stays focusable and clickable while a dialog is open, and when it is opened from a dialog its controls are not part of that dialog's `Tab` order. See [Modal scope](/concepts/layering#modal-scope).
+
 ## Live announcements
 
 For dynamic announcements (toasts, status messages), the framework's [`Notification`](/components/Notification) component is the right tool — it sets an ARIA live role on its container so screen readers announce new toasts as they appear. Error and warning toasts use `role="alert"` / `aria-live="assertive"` (they interrupt); info and success toasts use `role="status"` / `aria-live="polite"` (they wait their turn).
@@ -296,7 +309,7 @@ status.getAria().setRole('status');
 
 ## Testing
 
-- **Keyboard-only** — unplug your mouse and verify every interaction works with `Tab`, `Shift+Tab`, arrow keys, and `Space`/`Enter`; open a [context menu](/components/Menu#keyboard) with Shift+F10 and work it with the arrow keys, `Enter` and `Escape`, including on a tree row, a list row and a table cell; if [Tab traversal](#tab-traversal) is enabled, also check `Escape` then `Tab` escapes any Tab-key owner (an embedded editor, a table in edit mode); inside a [`Dialog`](/components/Dialog), check that `Escape` then `Tab` leaves an embedded editor whether or not Tab traversal is enabled; if [spatial focus navigation](#spatial-focus-navigation) is enabled, also check `Ctrl+Alt`+arrow and `Ctrl+Alt+Shift`+arrow move focus without disturbing a focused widget's own arrow-key behaviour.
+- **Keyboard-only** — unplug your mouse and verify every interaction works with `Tab`, `Shift+Tab`, arrow keys, and `Space`/`Enter`; open a [context menu](/components/Menu#keyboard) with Shift+F10 and work it with the arrow keys, `Enter` and `Escape`, including on a tree row, a list row and a table cell; if [Tab traversal](#tab-traversal) is enabled, also check `Escape` then `Tab` escapes any Tab-key owner (an embedded editor, a table in edit mode); inside a [`Dialog`](/components/Dialog), check that `Escape` then `Tab` leaves an embedded editor whether or not Tab traversal is enabled; with a dialog open, check that `Tab` and `Shift+Tab` never reach the page behind, including after a click on the dialog's text; if [spatial focus navigation](#spatial-focus-navigation) is enabled, also check `Ctrl+Alt`+arrow and `Ctrl+Alt+Shift`+arrow move focus without disturbing a focused widget's own arrow-key behaviour.
 - **Screen reader** — VoiceOver (macOS) and NVDA (Windows) are the two readers most commonly tested against. Both should announce roles and labels for built-in components correctly.
 - **Browser dev tools** — Chrome's "Accessibility" panel under DevTools shows the computed accessibility tree for each element.
 

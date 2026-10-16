@@ -444,6 +444,98 @@ describe('FocusTraversal keydown arbitration', () => {
         LayerManager.unregister(modal);
     });
 
+    // modal-dialog-focus-trap plan, cases F1 and F2. A modal layer that is not
+    // marked a Tab-key owner — a modal Drawer — used to be stepped by this
+    // service. LayerManager now wraps Tab for every modal layer, so with both
+    // acting one key press could move focus twice. The service stands down
+    // while any modal layer is open; which of the two listeners runs first
+    // then no longer matters.
+    describe('while a modal layer is open', () => {
+        function modalWithStops(): { modal: DismissableLayer; a: Handle; b: Handle; c: Handle } {
+            const layerEl = liveHandle();
+            const a = liveHandle(); const b = liveHandle(); const c = liveHandle();
+
+            for (const stop of [a, b, c]) {
+                DOM.sink.appendChild(layerEl, stop);
+            }
+
+            seedStops(layerEl, [a, b, c]);
+
+            const modal: DismissableLayer = { getLayerElement: () => layerEl, getDismissMode: () => 'modal', requestClose: () => {} };
+
+            return { modal, a, b, c };
+        }
+
+        it('F1: a Tab that is not at an edge is moved by neither the service nor the manager', () => {
+            installTestDOM(CONFIG);
+
+            const { modal, a } = modalWithStops();
+
+            // Enabled first, so the service's listener runs before the
+            // manager's — the order in which it would have stepped to `b`.
+            FocusTraversal.enable();
+            LayerManager.register(modal);
+            DOM.sink.focus(a);
+
+            const focus = vi.spyOn(DOM.sink, 'focus');
+            const event = dispatchKeyDown({ key: 'Tab' });
+
+            expect(focus).not.toHaveBeenCalled();
+            expect(DOM.source.getActiveElement()).toBe(a);
+            expect(event.preventDefault).not.toHaveBeenCalled();
+
+            LayerManager.unregister(modal);
+        });
+
+        it('F2: a Tab at the edge is wrapped once, by the manager', () => {
+            installTestDOM(CONFIG);
+
+            const { modal, a, c } = modalWithStops();
+
+            FocusTraversal.enable();
+            LayerManager.register(modal);
+            DOM.sink.focus(c);
+
+            const focus = vi.spyOn(DOM.sink, 'focus');
+            const event = dispatchKeyDown({ key: 'Tab' });
+
+            expect(focus).toHaveBeenCalledTimes(1);
+            expect(DOM.source.getActiveElement()).toBe(a);
+            expect(event.preventDefault).toHaveBeenCalledTimes(1);
+
+            LayerManager.unregister(modal);
+        });
+
+        it('stands down with a menu open above the modal layer too', () => {
+            installTestDOM(CONFIG);
+
+            const { modal, a } = modalWithStops();
+            const menuEl = liveHandle();
+            const item   = liveHandle();
+
+            DOM.sink.appendChild(menuEl, item);
+            seedStops(menuEl, [item]);
+
+            const menu: DismissableLayer = { getLayerElement: () => menuEl, getDismissMode: () => 'click-outside', requestClose: () => {} };
+
+            FocusTraversal.enable();
+            LayerManager.register(modal);
+            LayerManager.register(menu);
+            DOM.sink.focus(a);
+
+            const focus = vi.spyOn(DOM.sink, 'focus');
+
+            dispatchKeyDown({ key: 'Tab' });
+
+            // Without the stand-down the service would step inside the menu,
+            // the topmost layer, from a control that is not in it.
+            expect(focus).not.toHaveBeenCalled();
+
+            LayerManager.unregister(menu);
+            LayerManager.unregister(modal);
+        });
+    });
+
     it('disable() leaves a subsequent Tab entirely unhandled', () => {
         installTestDOM(CONFIG);
         FocusTraversal.enable();

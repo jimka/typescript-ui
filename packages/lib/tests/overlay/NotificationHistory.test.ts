@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Notification, NotificationRecord } from '~/overlay/Notification';
 import { DOM } from '~/core/DOM';
+import { LayerManager } from '~/core/LayerManager';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -27,12 +28,29 @@ function clearStatics(): void {
     (Notification as unknown as { history: unknown[]; activeNotifications: unknown[] }).activeNotifications = [];
 }
 
+/** Disposes every toast still live, which also takes it off the layer manager's list. */
+function disposeLiveToasts(): void {
+    const live = (Notification as unknown as { activeNotifications: Notification[] }).activeNotifications;
+
+    for (const toast of live.slice()) {
+        toast.dispose();
+    }
+}
+
 describe('Notification history capture', () => {
     beforeEach(() => {
         installTestDOM(CONFIG);
         clearStatics();
     });
-    afterEach(() => DOM.reset());
+    afterEach(() => {
+        // A toast left live, or a detail dialog left open, stays known to the
+        // layer manager across the reset below, and the next modal layer would
+        // tell it to go inert through a released handle.
+        disposeLiveToasts();
+        (LayerManager.getTopLayer() as { dispose(): void } | null)?.dispose();
+
+        DOM.reset();
+    });
 
     it('appends one record per show(), capturing message and type', () => {
         const before = Date.now();

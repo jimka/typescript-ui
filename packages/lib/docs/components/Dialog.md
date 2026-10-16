@@ -116,8 +116,10 @@ See [`DialogConfig`](/api/overlay/interfaces/DialogConfig) for the full option l
 
 A dialog focuses itself when it opens, so a form is ready to type into and Enter
 confirms it. The default order is the first focusable element in the body, then
-the primary button — which means a dialog whose body is a form needs no wiring at
-all:
+the primary button, then the first focusable element anywhere in the dialog —
+which means a dialog whose body is a form needs no wiring at all. A dialog with
+nothing focusable takes focus on its own element, rather than leaving it on the
+control that opened it:
 
 ```typescript
 const name = new TextField({ placeholder: 'Query name' });
@@ -144,9 +146,22 @@ await Dialog.show({
 
 ### Keyboard
 
-While a dialog is open, `Tab` and `Shift+Tab` are trapped inside it: tabbing
-past the last control wraps to the first, and shift-tabbing off the first wraps
-to the last, so focus cannot reach the page behind the dialog.
+While a dialog is open, the rest of the application is inert: it cannot be
+focused, clicked or read by a screen reader. That covers every component added
+to [`Body`](/components/Body), every window and other layer the dialog was not
+opened from, the [`Rail`](/components/Rail), and the dismiss button of each
+toast. `Tab` and `Shift+Tab` wrap inside the dialog: tabbing past the last
+control goes to the first, and shift-tabbing off the first goes to the last. A
+dropdown, menu or popover opened from the dialog is part of it, so `Tab` reaches
+it and wraps back into the dialog.
+
+The library marks its own containers, never the `<body>` element. Anything else
+in the document stays usable while the dialog is open: the inline menu a
+password manager shows beside a login field, for example. The same holds for an
+element your own code appends to `<body>` by hand, which is therefore still
+reachable. Build an overlay of your own as a [`Popover`](/components/Popover)
+or [`PopupPanel`](/components/PopupPanel) and it takes part like any other
+layer; see [Modal scope](/concepts/layering#modal-scope).
 
 When the dialog closes, focus returns to the element that had it when the
 dialog opened. If that element was disposed or removed from the page while
@@ -154,8 +169,8 @@ the dialog was open, focus stays on the page instead.
 
 An editing surface or a [`Table`](/components/Table) hosted in the dialog
 keeps `Tab` while focus is inside it — the editor indents, the table steps from
-cell to cell — and the dialog's trap stands down rather than wrapping focus out
-from under it. To leave an editing surface such as a
+cell to cell — and the wrap stands down rather than moving focus out from under
+it. To leave an editing surface such as a
 [`CodeEditor`](/components/CodeEditor) or
 [`MarkdownEditor`](/components/MarkdownEditor), press `Escape`. Inside the
 surface, `Escape` does not close the dialog; it releases the surface, so the

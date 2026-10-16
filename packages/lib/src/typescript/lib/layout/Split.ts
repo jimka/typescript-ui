@@ -1931,6 +1931,16 @@ class Split extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * Returns the gutters this manager has built, one per boundary between
+     * two panes.
+     *
+     * @returns The gutters as they exist now.
+     */
+    getChromeComponents(): readonly Component[] {
+        return this._gutters;
+    }
+
+    /**
      * Associates this layout manager with a container component, then
      * registers with {@link FocusReveal} so a hidden target inside a collapsed
      * pane can be revealed before it is focused.

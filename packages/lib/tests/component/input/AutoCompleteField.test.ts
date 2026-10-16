@@ -606,3 +606,23 @@ describe('AutoCompleteField timer teardown', () => {
         expect(querySpy).toHaveBeenCalledTimes(1);
     });
 });
+
+// modal-dialog-focus-trap plan: the field keeps DOM focus for as long as its
+// suggestions are open, and closes them on Tab. A `List` is a Tab stop by
+// default; as one, the suggestion list would take the Tab that leaves a field
+// placed last in a modal dialog, and lose focus when the dropdown goes.
+describe('AutoCompleteField suggestion list', () => {
+    beforeEach(() => { installTestDOM(CONFIG); });
+    afterEach(() => { DOM.reset(); });
+
+    it('is not a Tab stop', () => {
+        const field = new AutoCompleteField({ suggestions: ['Apple', 'Banana'] });
+        const list  = (field as any)._dropdown._list;
+
+        // -1: focusable from script, never a Tab stop.
+        expect(list.getAria().getTabIndex()).toBe(-1);
+
+        field.dispose();
+    });
+});
+

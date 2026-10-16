@@ -173,6 +173,22 @@ export abstract class LayoutManager extends BaseObject {
     }
 
     /**
+     * Returns the components this manager itself mounts on its container's
+     * element, beside the container's children: a tab strip, section headers,
+     * gutters. They are not in the container's `getComponents()`, so a
+     * container that has to reach everything mounted in it asks here — the
+     * page does, to make them inert behind a modal dialog. A manager that
+     * mounts a component of its own must report it, or it stays focusable
+     * there.
+     *
+     * @returns The manager's own components as they exist now; empty for a
+     *   manager that mounts none, which is the default.
+     */
+    getChromeComponents(): readonly Component[] {
+        return [];
+    }
+
+    /**
      * Returns the default preferred size.
      * Subclasses may override this method to compute the preferred size dynamically.
      *

@@ -7,6 +7,7 @@ import { Animation } from "~/core/Animation.js";
 import { Event } from "~/core/Event.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { LayerManager, DismissableLayer, LayerDismissMode } from "~/core/LayerManager.js";
+import { visibleFocusable } from "~/core/Focusable.js";
 import { trapWheel, untrapWheel } from "~/core/WheelTrap.js";
 import { Position } from "~/primitive/Position.js";
 import { Placement } from "~/primitive/Placement.js";
@@ -177,6 +178,34 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
     /** The modal scrim, created lazily on each modal open and torn down on close. */
     private _backdrop: DialogBackdrop | null = null;
 
+    /**
+     * The element that held focus when a modal drawer opened, to return focus
+     * to once it has closed. `null` for a non-modal drawer, which moves none.
+     */
+    private _previousFocus: Handle | null = null;
+
+    /**
+     * The pending move of focus into a modal drawer, queued past its first
+     * layout by `open()`. Held so a close or a dispose that lands first can
+     * withdraw it.
+     */
+    private _focusInsideLayout: { cancel(): void } | null = null;
+
+    /**
+     * Whether the drawer opened modal, held from `open()` until it has
+     * closed; `null` while closed. `setModal` takes effect on the next
+     * `open()`, and the layer tree reads the dismiss mode again on every
+     * register, so the mode an open drawer reports must not follow the option.
+     */
+    private _openedModal: boolean | null = null;
+
+    /**
+     * Whether `focusInside` made the drawer's own element focusable, so the
+     * close can take that back: the drawer is reused, and may hold a control
+     * or be non-modal the next time it opens.
+     */
+    private _focusableItself: boolean = false;
+
     /** Typed-event fan-out for `"open"` / `"close"` / `"beforeclose"`. */
     private _listeners: ListenerBag<DrawerEvent> = this.registerListenerBag(new ListenerBag<DrawerEvent>());
 
@@ -332,7 +361,9 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
     /**
      * Slides the drawer into view from its anchored edge. Registers with the
      * layer tree, draws the scrim when modal, mounts on `documentElement`, and
-     * animates in. No-op if already open.
+     * animates in. A modal drawer also takes keyboard focus: its first
+     * focusable control is focused once the drawer has laid out, or the
+     * drawer itself when it holds none. No-op if already open.
      *
      * @returns This drawer, for method chaining.
      */
@@ -341,12 +372,22 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
             return this;
         }
 
+        const modal = this.isModal();
+
+        this._openedModal = modal;
+
+        // Read before registering: a modal layer makes the rest of the
+        // application inert, and the browser then blurs whatever held focus.
+        if (modal) {
+            this._previousFocus = DOM.source.getActiveElement();
+        }
+
         LayerManager.register(this);
 
         const panelZ = LayerManager.getZIndex(this);
         this.setZIndex(panelZ);
 
-        if (this.isModal()) {
+        if (modal) {
             this.openBackdrop(panelZ - 1);
         }
 
@@ -361,6 +402,12 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
 
         this.scheduleLayout();
 
+        // Deferred past the scheduled layout, as Dialog does: the first layout
+        // re-parents a scrolling child into its frame, which silently blurs it.
+        if (modal) {
+            this._focusInsideLayout = Component.afterNextLayout(() => this.focusInside());
+        }
+
         this.animateIn();
 
         Event.addViewportListener(this, "resize", this._boundResizeHandler);
@@ -374,7 +421,10 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
     /**
      * Slides the drawer back off-screen and tears it down. Fires the cancelable
      * `"beforeclose"` event first; if a listener vetoes via `preventDefault()`
-     * the close is aborted. No-op if already closed.
+     * the close is aborted. A modal drawer returns focus to the element that
+     * held it when the drawer opened, once the slide has finished — unless
+     * that element has since been disposed or removed from the page. No-op if
+     * already closed.
      *
      * @returns This drawer, for method chaining.
      */
@@ -398,11 +448,81 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
 
         this._closing = true;
 
+        this._focusInsideLayout?.cancel();
+        this._focusInsideLayout = null;
+
         Event.removeViewportListener(this, "resize", this._boundResizeHandler);
 
         this.animateOutAndFinalize();
 
         return this;
+    }
+
+    /**
+     * Moves focus into a modal drawer: to its first stop — a visible, enabled,
+     * focusable element — or to the drawer's own element when it holds none,
+     * so focus is inside the drawer either way.
+     *
+     * @remarks Must run after the drawer's first layout, which can re-parent
+     * a child into its scroll frame and would blur anything focused before it.
+     */
+    private focusInside(): void {
+        this._focusInsideLayout = null;
+
+        const element = this.getElement();
+        const stops   = element ? visibleFocusable(element) : [];
+
+        if (stops.length > 0) {
+            // preventScroll: the panel is still sliding in from off-screen.
+            DOM.sink.focus(stops[0], { preventScroll: true });
+
+            return;
+        }
+
+        // Nothing in the drawer can take focus, so the drawer itself does.
+        // -1: focusable from script, never a Tab stop.
+        this.getAria().setTabIndex(-1);
+        this._focusableItself = true;
+        this.focus(true);
+    }
+
+    /**
+     * Ends what `open()` set up for the layer tree and for focus, once the
+     * drawer has left the tree: forgets the modality it opened with, and
+     * takes back the focusability `focusInside` gave the drawer's own
+     * element. Restores no focus.
+     */
+    private endOpenState(): void {
+        this._openedModal = null;
+
+        if (this._focusableItself) {
+            this._focusableItself = false;
+            this.getAria().setTabIndex(null);
+        }
+    }
+
+    /**
+     * Returns focus to the element that held it when a modal drawer opened.
+     * Skipped when nothing was recorded — a non-modal drawer records nothing —
+     * or when that element has since been disposed or removed from the page;
+     * focus is then left where the browser put it. Clears the stored handle
+     * either way.
+     */
+    private restorePreviousFocus(): void {
+        const previous = this._previousFocus;
+
+        this._previousFocus = null;
+
+        if (previous === null) {
+            return;
+        }
+
+        // isRegistered first: isConnected throws on a released handle.
+        const live = DOM.source.isRegistered(previous) && DOM.source.isConnected(previous);
+
+        if (live) {
+            DOM.sink.focus(previous);
+        }
     }
 
     /**
@@ -543,9 +663,10 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
 
     /**
      * Slides the panel back off-screen, then finalizes teardown (detach the
-     * element, destroy the scrim, leave the layer tree, emit `"close"`) in the
-     * transition's completion callback. Fades the scrim out concurrently. Under
-     * reduced motion {@link Animation.play} runs the completion synchronously.
+     * element, destroy the scrim, leave the layer tree, return focus, emit
+     * `"close"`) in the transition's completion callback. Fades the scrim out
+     * concurrently. Under reduced motion {@link Animation.play} runs the
+     * completion synchronously.
      */
     private animateOutAndFinalize(): void {
         const element = this.getElement();
@@ -555,6 +676,11 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
             this.teardownBackdrop();
             LayerManager.unregister(this);
             untrapWheel(this);
+            this.endOpenState();
+
+            // After the unregister: until then the opener is still inert, and
+            // focusing an inert element does nothing.
+            this.restorePreviousFocus();
 
             this._open    = false;
             this._closing = false;
@@ -702,14 +828,18 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
 
     /**
      * Returns the dismiss mode the document-level handlers consult: `"modal"`
-     * for a modal drawer (captures outside interaction, Escape closes it) and
-     * `"manual"` for a non-modal one (never auto-dismissed — closing is the
-     * caller's job).
+     * for a modal drawer (captures outside interaction, Escape closes it, the
+     * application behind it is inert) and `"manual"` for a non-modal one
+     * (never auto-dismissed — closing is the caller's job). An open drawer
+     * reports the modality it opened with, like its scrim: `setModal` takes
+     * effect on the next `open()`.
      *
      * @returns The layer dismiss mode.
      */
     getDismissMode(): LayerDismissMode {
-        return this.isModal() ? "modal" : "manual";
+        const modal = this._openedModal ?? this.isModal();
+
+        return modal ? "modal" : "manual";
     }
 
     /**
@@ -757,6 +887,17 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
     }
 
     /**
+     * Mirrors the manager's inert decision onto the drawer panel: `true` while a
+     * modal layer this drawer does not belong to is open, `false` when it is live
+     * again.
+     *
+     * @param inert - Whether the drawer panel must be inert now.
+     */
+    onInertChanged(inert: boolean): void {
+        this.setInertAttribute(inert);
+    }
+
+    /**
      * Cancels any in-flight panel / backdrop animation, then defers to the base
      * class. Cancelling first keeps their fallback timers from firing after
      * `super.destructor()` has released the animated element handles.
@@ -770,6 +911,10 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         this._backdropInAnimation = null;
         this._backdropOutAnimation?.cancel();
         this._backdropOutAnimation = null;
+        this._focusInsideLayout?.cancel();
+        this._focusInsideLayout = null;
+        // Disposal is not a close: focus is not returned to the opener.
+        this._previousFocus = null;
 
         // The close animation's completion callback is the only place these are
         // released, and cancelling above suppressed it: the backdrop is a
@@ -782,6 +927,7 @@ class Drawer extends Component<DrawerOptions> implements DismissableLayer {
         this.teardownBackdrop();
         LayerManager.unregister(this);
         untrapWheel(this);
+        this._openedModal = null;
 
         this._open    = false;
         this._closing = false;

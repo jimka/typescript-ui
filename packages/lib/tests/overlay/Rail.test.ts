@@ -4,6 +4,7 @@ import { Drawer } from '~/overlay/Drawer';
 import { Window } from '~/overlay/Window';
 import { Placement } from '~/primitive/Placement';
 import { DOM } from '~/core/DOM';
+import { LayerManager, type DismissableLayer } from '~/core/LayerManager';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -23,7 +24,20 @@ const CONFIG = {
     themeVars:       {},
 };
 
-afterEach(() => DOM.reset());
+// Every rail a case mounts. A mounted rail is known to the layer manager, so
+// one left mounted across the DOM reset would be told to go inert, through a
+// released handle, by a later case's modal layer.
+const mounted: Rail[] = [];
+
+afterEach(() => {
+    for (const rail of mounted) {
+        rail.dispose();
+    }
+
+    mounted.length = 0;
+
+    DOM.reset();
+});
 
 describe('Rail — edge', () => {
     it('defaults to WEST and round-trips via setter and constructor', () => {
@@ -165,7 +179,7 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
     it('single handle: the window is centred on the handle, not pinned to its corner', () => {
         installTestDOM(CONFIG);
         const rail = new Rail({ edge: Placement.WEST });
-        rail.mount();
+        mounted.push(rail.mount());
 
         const rect = { x: 10, y: 20, width: 200, height: 150 };
         const win  = new Window('A');
@@ -188,7 +202,7 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
     it('the Nth handle centres on its own laid-out slot, not slot 0 (handle-exists path)', () => {
         installTestDOM(CONFIG);
         const rail = new Rail({ edge: Placement.WEST });
-        rail.mount();
+        mounted.push(rail.mount());
 
         const rect = { x: 10, y: 20, width: 200, height: 150 };
         const windows = [0, 1, 2].map(i => {
@@ -211,7 +225,7 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
     it('folds a handle-in-flight translate into the reported offset (handle-exists path)', () => {
         installTestDOM(CONFIG);
         const rail = new Rail({ edge: Placement.WEST });
-        rail.mount();
+        mounted.push(rail.mount());
 
         const rect = { x: 10, y: 20, width: 200, height: 150 };
         const windows = [0, 1, 2].map(i => {
@@ -245,7 +259,7 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
     it('the collapse path predicts the slot where the next handle actually lands', () => {
         installTestDOM(CONFIG);
         const rail = new Rail({ edge: Placement.WEST });
-        rail.mount();
+        mounted.push(rail.mount());
 
         const first  = new Window('First');
         const second = new Window('Second');
@@ -281,7 +295,7 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
     it('EAST keeps the cross-axis target and gains the main-axis target', () => {
         installTestDOM(CONFIG);
         const rail = new Rail({ edge: Placement.EAST });
-        rail.mount();
+        mounted.push(rail.mount());
 
         const rect = { x: 900, y: 20, width: 200, height: 150 };
         const windows = [0, 1].map(i => {
@@ -308,7 +322,7 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
     it('SOUTH moves the main-axis target along X', () => {
         installTestDOM(CONFIG);
         const rail = new Rail({ edge: Placement.SOUTH });
-        rail.mount();
+        mounted.push(rail.mount());
 
         const rect = { x: 10, y: 500, width: 200, height: 150 };
         const windows = [0, 1].map(i => {
@@ -335,7 +349,7 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
     it('NORTH moves the main-axis target along X, with a 0 cross-axis target', () => {
         installTestDOM(CONFIG);
         const rail = new Rail({ edge: Placement.NORTH });
-        rail.mount();
+        mounted.push(rail.mount());
 
         const rect = { x: 10, y: 20, width: 200, height: 150 };
         const windows = [0, 1].map(i => {
@@ -362,7 +376,7 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
     it('an empty rail returns offset 0 for an unregistered window', () => {
         installTestDOM(CONFIG);
         const rail = new Rail({ edge: Placement.WEST });
-        rail.mount();
+        mounted.push(rail.mount());
 
         const win = new Window('Unregistered');
 
@@ -370,5 +384,86 @@ describe('Rail — handleMainAxisOffset / railGenieTransform', () => {
         expect(rail.handleMainAxisOffset(win)).toBe(0);
         // No handle to sample, so there is no length to centre against.
         expect(rail.handleMainAxisExtent(win)).toBe(0);
+    });
+});
+
+// modal-dialog-focus-trap plan, cases B1 and B2. The rail is mounted on
+// <html>, outside every layer, and holds buttons: without this it would be the
+// first thing the browser focuses when the user tabs back in from the address
+// bar while a dialog is open.
+describe('Rail — inert behind a modal layer', () => {
+    function modalLayer(): DismissableLayer {
+        return { getLayerElement: () => null, getDismissMode: () => 'modal', requestClose: () => {} };
+    }
+
+    it('B1: a mounted rail is inert while a modal layer is open', () => {
+        installTestDOM(CONFIG);
+
+        const rail  = new Rail();
+        const modal = modalLayer();
+
+        mounted.push(rail.mount());
+
+        expect(rail.getInertAttribute()).toBe(false);
+
+        LayerManager.register(modal);
+
+        expect(rail.getInertAttribute()).toBe(true);
+
+        LayerManager.unregister(modal);
+
+        expect(rail.getInertAttribute()).toBe(false);
+
+        rail.dispose();
+    });
+
+    it('B1b: a rail mounted while a modal layer is open comes up inert', () => {
+        installTestDOM(CONFIG);
+
+        const rail  = new Rail();
+        const modal = modalLayer();
+
+        LayerManager.register(modal);
+        mounted.push(rail.mount());
+
+        expect(rail.getInertAttribute()).toBe(true);
+
+        LayerManager.unregister(modal);
+
+        expect(rail.getInertAttribute()).toBe(false);
+
+        rail.dispose();
+    });
+
+    it('B2: an unmounted rail is no longer told', () => {
+        installTestDOM(CONFIG);
+
+        const rail  = new Rail();
+        const modal = modalLayer();
+
+        mounted.push(rail.mount());
+        rail.unmount();
+
+        LayerManager.register(modal);
+
+        expect(rail.getInertAttribute()).toBe(false);
+
+        LayerManager.unregister(modal);
+        rail.dispose();
+    });
+
+    it('B2b: a disposed rail is no longer told', () => {
+        installTestDOM(CONFIG);
+
+        const rail  = new Rail();
+        const modal = modalLayer();
+
+        mounted.push(rail.mount());
+        rail.dispose();
+
+        expect(() => LayerManager.register(modal)).not.toThrow();
+        expect(rail.getInertAttribute()).toBe(false);
+
+        LayerManager.unregister(modal);
     });
 });

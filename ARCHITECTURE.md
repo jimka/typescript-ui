@@ -48,6 +48,20 @@ There is one documented, provisional carve-out: the table cell-editor subsystem 
 
 Because every DOM-routed event reaches the framework through a single window-level capture handler, hover wiring must use the **bubbling** `mouseover` / `mouseout` pair, never the non-bubbling `mouseenter` / `mouseleave`. Non-bubbling events do not propagate to the window capture handler in Chrome, so `Event.addListener(this, "mouseenter", …)` silently never fires. When you need true enter/leave semantics (ignoring moves between descendants), filter on `event.target` / `event.relatedTarget` inside the `mouseover` / `mouseout` handler rather than reaching for the non-bubbling events.
 
+## Modal layers
+
+`LayerManager` is the only owner of modality. It decides which open layer is the topmost modal — a `Dialog`, or a `Drawer` built with `modal: true` — and, while one is open, tells every surface outside it to go inert and wraps `Tab` inside it (`LayerManager.containTab`). The modal's *scope* is the modal plus every layer opened from it; those stay live and their tab stops join the wrap. No component implements its own focus trap, and none decides for itself that it is inert: a surface writes the `inert` attribute, through the typed `Component.setInertAttribute`, only to carry out what its `onInertChanged` hook was last told. For most surfaces that is the hook itself. `Body` also gives a component mounted later the state the hook last reported, and takes it back from one that leaves.
+
+The attribute is never written to `<body>` or `<html>`. The library marks its own containers, so that whatever else is in the document — a password manager's inline menu beside a login dialog — stays usable. Everything the library mounts directly on `<html>` or `<body>` that can hold focus must therefore be reachable by the manager, through one of three routes:
+
+| Mounted as | Route |
+|---|---|
+| A portaled surface with a dismiss policy — a window, dropdown, menu, popover, dialog, drawer | a registered `DismissableLayer` that implements `onInertChanged` |
+| A portaled surface that is not a layer — the `Rail`, a `Notification` toast | a `BackgroundSurface`, registered with `LayerManager.addBackgroundSurface` |
+| A child of `Body`, or a component `Body`'s layout manager mounts beside its children | nothing for a child, which `Body` marks itself; a layout manager returns its own components from `getChromeComponents()` |
+
+A new surface that fits none of these is a hole: it stays focusable behind every dialog. A surface that holds nothing focusable — the tooltip, a drag ghost, a backdrop — needs no route. A modal layer that returns focus to its opener when it closes does so after `LayerManager.unregister`, because until then the opener is still inert and refuses focus. A layer disposed while open unregisters in its destructor: one left in the tree with a released element is written through by the next modal that opens. Consumer-facing version: [`packages/lib/docs/concepts/layering.md`](packages/lib/docs/concepts/layering.md).
+
 ## One DOM element per class
 
 A class owns exactly one DOM element. If a sub-element needs independent behaviour (event routing, its own CSS rule, layout), extract it into a `Component` subclass. Trivial non-interactive helpers (e.g. a resize-handle div) can stay as raw children.

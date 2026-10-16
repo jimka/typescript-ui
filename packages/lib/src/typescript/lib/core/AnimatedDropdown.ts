@@ -301,6 +301,30 @@ class AnimatedDropdown<TOptions extends AnimatedDropdownOptions = AnimatedDropdo
     }
 
     /**
+     * Mirrors the manager's inert decision onto the dropdown: `true` while a
+     * modal layer this dropdown does not belong to is open, `false` when it is live
+     * again.
+     *
+     * @param inert - Whether the dropdown must be inert now.
+     */
+    onInertChanged(inert: boolean): void {
+        this.setInertAttribute(inert);
+    }
+
+    /**
+     * Returns whether the dropdown has been told to hide and is still fading
+     * out. It stays registered for that long, so that a raise of its host
+     * re-stamps it; the layer manager reads this to keep its controls out of
+     * a modal layer's `Tab` ring meanwhile.
+     *
+     * @returns `true` from `hideAnimated()` until the fade has finished or a
+     *   fresh `showAnimated()` has cancelled it.
+     */
+    isLayerClosing(): boolean {
+        return this._dismissing;
+    }
+
+    /**
      * Returns whether the dropdown is currently open (showing or fading in).
      *
      * @returns true when the dropdown is open.

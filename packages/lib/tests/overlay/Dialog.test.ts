@@ -7,7 +7,7 @@ import { Component } from '~/core/Component';
 import { _Button as Button } from '~/component/button/Button';
 import { _DialogBackdrop as DialogBackdrop } from '~/component/container/DialogBackdrop';
 import { FOCUSABLE_SELECTOR } from '~/core/Focusable';
-import { installTestDOM, setConnected, setQuerySelectorAllResult } from '../dom/TestDOM';
+import { installTestDOM, setConnected, setQuerySelectorAllResult, setRenderedVisible } from '../dom/TestDOM';
 import { Diagnostics } from '~/core/Diagnostics';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -32,6 +32,14 @@ function applyDisposition(e: KeyboardEvent, result: unknown): void {
             e.stopPropagation();
         }
     }
+}
+
+/**
+ * Hands `e` to `LayerManager.containTab` and applies the disposition it
+ * returns, the way the manager's own viewport listener would.
+ */
+function containTab(e: KeyboardEvent): void {
+    applyDisposition(e, LayerManager.containTab(e));
 }
 
 // White-box seam: widen the private Enter-confirm helpers so the focus-guard
@@ -370,17 +378,17 @@ describe('Dialog — Enter confirms the primary button', () => {
     });
 });
 
-describe('Dialog — Tab focus trap', () => {
+describe('Dialog — Tab containment', () => {
     afterEach(() => DOM.reset());
 
-    // Registrar regression (viewport-event-propagation): Dialog must consume
-    // only the Tab it actually traps, not every keydown — otherwise a shown
-    // Dialog would silence keydown app-wide. getFocusable() reads via
+    // Registrar regression (viewport-event-propagation): only the Tab that is
+    // actually contained may be consumed, not every keydown — otherwise a shown
+    // Dialog would silence keydown app-wide. The containment is LayerManager's
+    // (modal-dialog-focus-trap plan, case D1). Stops are read via
     // querySelectorAll, which the offline DOM stubs to [] (see the TestDialog
-    // comment above), so offline the dialog always finds zero focusable
-    // elements and takes the "trap the whole dialog" branch of onKeyDown's Tab
-    // case — still a genuine consume (Tab must not leave an empty dialog),
-    // exercised here the same way onEnter's regression cases are.
+    // comment above), so offline an unseeded dialog holds zero stops and takes
+    // the "hold focus where it is" branch — still a genuine consume (Tab must
+    // not leave an empty dialog).
     it('consumes a trapped Tab', () => {
         installTestDOM(CONFIG);
 
@@ -388,9 +396,16 @@ describe('Dialog — Tab focus trap', () => {
         LayerManager.register(dialog);
         const { event, stopped } = keyDownEvent('Tab');
 
-        dialog.keyDown(event);
+        containTab(event);
 
         expect(stopped()).toBe(true);
+
+        // The dialog itself no longer consumes it.
+        const own = keyDownEvent('Tab');
+
+        dialog.keyDown(own.event);
+
+        expect(own.stopped()).toBe(false);
 
         LayerManager.unregister(dialog);
     });
@@ -474,7 +489,7 @@ function ownerDialog(config: Partial<DialogConfig> = {}): {
 // own Tab handling overridden. The trap now stands down while focus sits inside
 // a descendant carrying the Tab-key-owner marker — the same marker, and the same
 // stand-down, FocusTraversal already performs.
-describe('Dialog — the Tab trap stands down inside a Tab-key owner', () => {
+describe('Dialog — the Tab wrap stands down inside a Tab-key owner', () => {
     afterEach(() => DOM.reset());
 
     it('stands down on Shift+Tab from an owner seeded as the first stop', () => {
@@ -488,6 +503,7 @@ describe('Dialog — the Tab trap stands down inside a Tab-key owner', () => {
         const { event, prevented, stopped } = keyDownEvent('Tab', true);
 
         dialog.keyDown(event);
+        containTab(event);
 
         expect(prevented()).toBe(false);
         expect(stopped()).toBe(false);
@@ -507,6 +523,7 @@ describe('Dialog — the Tab trap stands down inside a Tab-key owner', () => {
         const { event, prevented, stopped } = keyDownEvent('Tab');
 
         dialog.keyDown(event);
+        containTab(event);
 
         expect(prevented()).toBe(false);
         expect(stopped()).toBe(false);
@@ -526,6 +543,7 @@ describe('Dialog — the Tab trap stands down inside a Tab-key owner', () => {
         const { event, prevented, stopped } = keyDownEvent('Tab');
 
         dialog.keyDown(event);
+        containTab(event);
 
         expect(prevented()).toBe(false);
         expect(stopped()).toBe(false);
@@ -533,6 +551,8 @@ describe('Dialog — the Tab trap stands down inside a Tab-key owner', () => {
         LayerManager.unregister(dialog);
     });
 
+    // D1: the wrap at the dialog's edges is LayerManager's. The dialog's own
+    // handler leaves the key alone.
     it('still wraps to the first stop on Tab from a plain last stop', () => {
         installTestDOM(CONFIG);
 
@@ -541,9 +561,17 @@ describe('Dialog — the Tab trap stands down inside a Tab-key owner', () => {
         seed([plainA, inner, plainB]);
         DOM.sink.focus(plainB);
 
+        const own = keyDownEvent('Tab');
+
+        dialog.keyDown(own.event);
+
+        expect(own.prevented()).toBe(false);
+        expect(own.stopped()).toBe(false);
+        expect(DOM.source.getActiveElement()).toBe(plainB);
+
         const { event, prevented, stopped } = keyDownEvent('Tab');
 
-        dialog.keyDown(event);
+        containTab(event);
 
         expect(prevented()).toBe(true);
         expect(stopped()).toBe(true);
@@ -560,9 +588,17 @@ describe('Dialog — the Tab trap stands down inside a Tab-key owner', () => {
         seed([plainA, inner, plainB]);
         DOM.sink.focus(plainA);
 
+        const own = keyDownEvent('Tab', true);
+
+        dialog.keyDown(own.event);
+
+        expect(own.prevented()).toBe(false);
+        expect(own.stopped()).toBe(false);
+        expect(DOM.source.getActiveElement()).toBe(plainA);
+
         const { event, prevented, stopped } = keyDownEvent('Tab', true);
 
-        dialog.keyDown(event);
+        containTab(event);
 
         expect(prevented()).toBe(true);
         expect(stopped()).toBe(true);
@@ -582,6 +618,7 @@ describe('Dialog — the Tab trap stands down inside a Tab-key owner', () => {
         const { event, prevented, stopped } = keyDownEvent('Tab');
 
         dialog.keyDown(event);
+        containTab(event);
 
         expect(prevented()).toBe(false);
         expect(stopped()).toBe(false);
@@ -589,48 +626,27 @@ describe('Dialog — the Tab trap stands down inside a Tab-key owner', () => {
         LayerManager.unregister(dialog);
     });
 
-    it('wraps as before for a marked owner that is not a descendant of the dialog', () => {
-        installTestDOM(CONFIG);
-
-        const { dialog, plainA, plainB, seed } = ownerDialog();
-
-        // A CodeEditor on the page behind the dialog: marked, focused, but
-        // outside the dialog's subtree, so the `contains` bound rules it out
-        // before the ancestor walk ever runs.
-        const outside = DOM.sink.createElement('div');
-        markTabKeyOwner(outside);
-
-        seed([plainA, plainB, outside]);
-        DOM.sink.focus(outside);
-
-        const { event, prevented, stopped } = keyDownEvent('Tab');
-
-        dialog.keyDown(event);
-
-        expect(prevented()).toBe(true);
-        expect(stopped()).toBe(true);
-        expect(DOM.source.getActiveElement()).toBe(plainA);
-
-        LayerManager.unregister(dialog);
-    });
-
     it('still consumes Tab in a dialog with no focusable elements', () => {
         installTestDOM(CONFIG);
 
-        // Focus deliberately outside the owner: the stand-down runs before
-        // `getFocusable()`, so an owner-focused Tab would never reach the
-        // empty-dialog branch this row is about.
         const { dialog, plainA, seed } = ownerDialog();
 
         seed([]);
         DOM.sink.focus(plainA);
 
+        const own = keyDownEvent('Tab');
+
+        dialog.keyDown(own.event);
+
+        expect(own.stopped()).toBe(false);
+
         const { event, prevented, stopped } = keyDownEvent('Tab');
 
-        dialog.keyDown(event);
+        containTab(event);
 
         expect(prevented()).toBe(true);
         expect(stopped()).toBe(true);
+        expect(DOM.source.getActiveElement()).toBe(plainA);
 
         LayerManager.unregister(dialog);
     });
@@ -779,6 +795,83 @@ describe('Dialog — Escape releases a Tab-key owner', () => {
         dialog.keyDown(event);
 
         expect(DOM.source.getActiveElement()).toBe(plainB);
+
+        LayerManager.unregister(dialog);
+    });
+
+    // D3: the release and LayerManager's wrap never act on the same key,
+    // whichever listener runs first. With the manager first, focus is inside
+    // an owner, so it stands down and the dialog steps past.
+    it('leaves a released owner\'s Tab to the dialog when LayerManager is asked first', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+
+        seed([plainA, plainB, inner]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+
+        const { event, prevented, stopped } = keyDownEvent('Tab');
+
+        containTab(event);
+
+        expect(prevented()).toBe(false);
+        expect(DOM.source.getActiveElement()).toBe(inner);
+
+        dialog.keyDown(event);
+
+        expect(DOM.source.getActiveElement()).toBe(plainA);
+        expect(prevented()).toBe(true);
+        expect(stopped()).toBe(true);
+
+        LayerManager.unregister(dialog);
+    });
+
+    // ...and with the dialog first, the manager sees a key already handled.
+    it('leaves a released owner\'s Tab alone in LayerManager when the dialog ran first', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, inner, plainA, plainB, seed } = ownerDialog();
+
+        seed([inner, plainA, plainB]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+
+        dialog.keyDown(keyDownEvent('Tab', true).event);
+
+        // Shift+Tab from the first stop wrapped to the last: an edge of the
+        // dialog, where the manager would wrap again if it acted.
+        expect(DOM.source.getActiveElement()).toBe(plainB);
+
+        const handled = { key: 'Tab', shiftKey: true, defaultPrevented: true } as unknown as KeyboardEvent;
+
+        expect(LayerManager.containTab(handled)).toBeUndefined();
+        expect(DOM.source.getActiveElement()).toBe(plainB);
+
+        LayerManager.unregister(dialog);
+    });
+
+    // D4: the old step read every match of the selector, hidden ones included,
+    // so it could consume the key and leave focus where it was.
+    it('never steps onto a stop that is not rendered', () => {
+        installTestDOM(CONFIG);
+
+        const { dialog, dialogEl, inner, plainA, seed } = ownerDialog();
+        const hidden = DOM.sink.createElement('button');
+
+        DOM.sink.appendChild(dialogEl, hidden);
+        setRenderedVisible(hidden, false);
+
+        seed([plainA, inner, hidden]);
+        DOM.sink.focus(inner);
+        dialog.requestClose();
+
+        const { event, prevented } = keyDownEvent('Tab');
+
+        dialog.keyDown(event);
+
+        expect(DOM.source.getActiveElement()).toBe(plainA);
+        expect(prevented()).toBe(true);
 
         LayerManager.unregister(dialog);
     });
@@ -1045,6 +1138,8 @@ describe('Dialog — dismissable', () => {
         void dialog.show();
 
         expect(addClickListener).toHaveBeenCalled();
+
+        dialog.dispose();
     });
 
     it('dismissable: false suppresses the title-bar close button', () => {
@@ -1074,6 +1169,8 @@ describe('Dialog — dismissable', () => {
         void dialog.show();
 
         expect(addClickListener).not.toHaveBeenCalled();
+
+        dialog.dispose();
     });
 
     it('dismissable: false keeps getDismissMode() at "modal" (Escape is swallowed, not delegated)', () => {
@@ -1115,6 +1212,115 @@ describe('Dialog — initial focus', () => {
         scheduled.forEach(cb => cb());
 
         expect(focusFirst).toHaveBeenCalledTimes(1);
+
+        // Leaves the layer tree: a dialog left registered would be told to go
+        // inert, through a released handle, by the next test's modal.
+        dialog.dispose();
+    });
+
+    // D5: with nothing focusable, focus used to stay on the opener behind the
+    // backdrop, where Space activated it again.
+    it('focuses the dialog itself when it holds nothing focusable', () => {
+        installTestDOM(CONFIG);
+
+        const scheduled: Array<() => void> = [];
+        vi.spyOn(Component, 'afterNextLayout').mockImplementation((cb: () => void) => {
+            scheduled.push(cb);
+
+            return { cancel: () => {} };
+        });
+
+        const dialog = new TestDialog({ title: 'T', message: 'M', buttons: [], dismissable: false });
+
+        void dialog.show();
+
+        expect(dialog.getAria().getTabIndex()).toBeNull();
+
+        scheduled.forEach(cb => cb());
+
+        expect(DOM.source.getActiveElement()).toBe(dialog.getElement());
+        // -1: focusable from script, never a Tab stop.
+        expect(dialog.getAria().getTabIndex()).toBe(-1);
+
+        dialog.dispose();
+    });
+
+    it('leaves its own element unfocusable when it holds a stop', () => {
+        installTestDOM(CONFIG);
+
+        const scheduled: Array<() => void> = [];
+        vi.spyOn(Component, 'afterNextLayout').mockImplementation((cb: () => void) => {
+            scheduled.push(cb);
+
+            return { cancel: () => {} };
+        });
+
+        const dialog   = new TestDialog({ title: 'T', message: 'M' });
+        const dialogEl = dialog.getElement(true)!;
+        const stop     = DOM.sink.createElement('button');
+
+        DOM.sink.appendChild(dialogEl, stop);
+        setQuerySelectorAllResult(dialogEl, FOCUSABLE_SELECTOR, [stop]);
+
+        void dialog.show();
+        scheduled.forEach(cb => cb());
+
+        expect(DOM.source.getActiveElement()).toBe(stop);
+        expect(dialog.getAria().getTabIndex()).toBeNull();
+
+        dialog.dispose();
+    });
+
+    it('skips a content control that is not rendered when choosing the first focus', () => {
+        installTestDOM(CONFIG);
+
+        const scheduled: Array<() => void> = [];
+        vi.spyOn(Component, 'afterNextLayout').mockImplementation((cb: () => void) => {
+            scheduled.push(cb);
+
+            return { cancel: () => {} };
+        });
+
+        const dialog    = new TestDialog({ title: 'T', message: 'M' });
+        const contentEl = dialog.getContentComponent().getElement(true)!;
+        const hidden    = DOM.sink.createElement('input');
+        const shown     = DOM.sink.createElement('input');
+
+        DOM.sink.appendChild(contentEl, hidden);
+        DOM.sink.appendChild(contentEl, shown);
+        setRenderedVisible(hidden, false);
+        setQuerySelectorAllResult(contentEl, FOCUSABLE_SELECTOR, [hidden, shown]);
+
+        void dialog.show();
+        scheduled.forEach(cb => cb());
+
+        expect(DOM.source.getActiveElement()).toBe(shown);
+
+        dialog.dispose();
+    });
+
+    // D6: a dialog is a modal layer for exactly as long as it is registered.
+    it('makes the page inert while shown and live again once disposed', () => {
+        installTestDOM(CONFIG);
+
+        const page = { onInertChanged: vi.fn<(inert: boolean) => void>() };
+
+        LayerManager.addBackgroundSurface(page);
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+
+        void dialog.show();
+
+        expect(LayerManager.hasModalLayer()).toBe(true);
+        expect(page.onInertChanged).toHaveBeenLastCalledWith(true);
+        expect(dialog.getInertAttribute()).toBe(false);
+
+        dialog.dispose();
+
+        expect(LayerManager.hasModalLayer()).toBe(false);
+        expect(page.onInertChanged).toHaveBeenLastCalledWith(false);
+
+        LayerManager.removeBackgroundSurface(page);
     });
 
     it('requestedFocusElement() is null when no initialFocus is configured', () => {
@@ -1269,6 +1475,46 @@ describe('Dialog — focus restore on close', () => {
         expect(focus).toHaveBeenCalledTimes(1);
         expect(focus).toHaveBeenCalledWith(openerEl);
         expect(settled).toBe('confirm');
+    });
+
+    // The two orderings the inert page makes load-bearing. Offline an inert
+    // element does not refuse focus, so each is pinned by what a browser
+    // would do at that moment.
+    it('1b. reads the opener before the page goes inert, and refocuses it only once the page is live again', () => {
+        installTestDOM(CONFIG);
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+
+        const opener   = new Button({ text: 'Open' });
+        const openerEl = opener.getElement(true)!;
+        setConnected(openerEl, true);
+        DOM.sink.focus(openerEl);
+
+        const order: string[] = [];
+        const page = {
+            onInertChanged: (inert: boolean): void => {
+                order.push(`page inert=${inert}`);
+
+                // What a browser does to a focused element that goes inert.
+                if (inert) {
+                    DOM.sink.focus(DOM.source.getBody());
+                }
+            },
+        };
+
+        LayerManager.addBackgroundSurface(page);
+
+        const dialog = new TestDialog({ title: 'T', message: 'M' });
+
+        void dialog.show();
+        order.length = 0;
+
+        vi.spyOn(DOM.sink, 'focus').mockImplementation((handle) => { order.push(handle === openerEl ? 'focus opener' : 'focus other'); });
+
+        dialog.hide('confirm');
+
+        expect(order).toEqual(['page inert=false', 'focus opener']);
+
+        LayerManager.removeBackgroundSurface(page);
     });
 
     it('2. a disposed opener (released handle) is not refocused and hide does not strand the promise', async () => {

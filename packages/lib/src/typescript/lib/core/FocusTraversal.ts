@@ -126,11 +126,21 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
         return;
     }
 
+    // LayerManager contains Tab inside a modal layer, and a Dialog runs its
+    // own Escape release there. Acting as well would move focus twice on one
+    // key press.
+    const modalOpen = LayerManager.hasModalLayer();
+
+    if (modalOpen) {
+        return;
+    }
+
     const root = focusScopeRoot();
 
-    // A layer that claims Tab for its whole subtree (an open `Dialog`) runs
-    // its own trap and Escape release; a second release armed here would move
-    // focus a second time on the same Tab.
+    // A layer that claims Tab for its whole subtree runs its own Tab handling
+    // and Escape release; a second release armed here would move focus a
+    // second time on the same Tab. (An open `Dialog` makes that claim too, and
+    // is already ruled out above as a modal layer.)
     if (ownsTabKey(root)) {
         return;
     }
@@ -187,9 +197,10 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
  * marked via {@link Component.setTabKeyOwner} while focus is inside it, so a
  * third-party editor or `Table`'s own cell-to-cell Tab handling keeps working
  * unmodified; `Escape` then `Tab`/`Shift+Tab` steps past it. Stands down
- * entirely while the topmost layer claims the Tab key for its whole subtree —
- * an open `Dialog`, which runs its own trap and Escape release. Opt-in, matching
- * {@link FocusHistory}'s stance — call {@link enable} to start.
+ * entirely while any modal layer is open — a `Dialog`, a modal `Drawer` —
+ * also with a menu or a dropdown open above it: `LayerManager` keeps `Tab`
+ * inside a modal layer, and a `Dialog` runs its own Escape release. Opt-in,
+ * matching {@link FocusHistory}'s stance — call {@link enable} to start.
  *
  * @category Core
  */

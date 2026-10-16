@@ -3,6 +3,7 @@
 import { Component } from "~/core/Component.js";
 import { Event } from "~/core/Event.js";
 import { LayerManager } from "~/core/LayerManager.js";
+import type { BackgroundSurface } from "~/core/LayerManager.js";
 import { Animation } from "~/core/Animation.js";
 import { Text } from "~/component/input/Text.js";
 import { SelectableText } from "~/component/input/SelectableText.js";
@@ -94,7 +95,7 @@ const ENTRANCE_DURATION_MS: number = 200;
  *
  * @category Core
  */
-export class Notification extends Component {
+export class Notification extends Component implements BackgroundSurface {
 
     // In-flight entrance / dismiss animations, cancelled on teardown so their
     // fallback timers cannot fire against this notification's released handle.
@@ -275,6 +276,10 @@ export class Notification extends Component {
         n.scheduleLayout();
 
         LayerManager.mount(el);
+        // A toast sits outside every layer and its dismiss button is a Tab
+        // stop, so it has to be told when a modal layer opens. Told the
+        // current state at once, so a toast shown over a dialog starts inert.
+        LayerManager.addBackgroundSurface(n);
 
         Notification.restack();
         n.animateIn();
@@ -705,6 +710,19 @@ export class Notification extends Component {
     }
 
     /**
+     * Mirrors the layer manager's decision onto the dismiss button: `true`
+     * while a modal layer is open, so the button cannot be focused or clicked
+     * behind it, and `false` when the last one has closed. Only the button is
+     * marked. The toast's own element is a live region, and making it inert
+     * would keep a screen reader from announcing the message.
+     *
+     * @param inert - Whether the dismiss button must be inert now.
+     */
+    onInertChanged(inert: boolean): void {
+        this._closeButton.setInertAttribute(inert);
+    }
+
+    /**
      * Cancels a pending auto-dismiss and any in-flight entrance / dismiss
      * animation, then defers to the base class. Cancelling first keeps every
      * one of their deferred callbacks from firing after `super.destructor()`
@@ -738,6 +756,8 @@ export class Notification extends Component {
                 Notification.uninstallResizeListener();
             }
         }
+
+        LayerManager.removeBackgroundSurface(this);
 
         super.destructor();
     }

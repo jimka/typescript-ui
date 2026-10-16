@@ -36,7 +36,9 @@ DOM subtree physically contains that anchor, regardless of registration order
 or which band currently paints in front: neither says anything about which
 layer a given anchor actually lives inside once more than one root band
 exists (see below). A layer with no anchor to resolve falls back to the
-last-registered layer. Because a nested layer always draws a fresh, higher
+last-registered layer — while a modal layer is open, to the last-registered
+layer of its [scope](#modal-scope), since the user can open nothing from a
+layer that is inert. Because a nested layer always draws a fresh, higher
 counter within the band it inherits, it lands above its opener in the z-order
 automatically.
 
@@ -105,9 +107,10 @@ only on layers whose mode matches:
 - `"blur"` — closed by an outside `pointerdown` **or** an outside focus move.
   Used by blur-dismiss popovers.
 - `"modal"` — never dismissed by an outside interaction (it captures the
-  interaction); only Escape, routed through the keydown handler, closes it. Used
-  by dialogs, which keep their own Tab focus-trap. Modal surfaces — `Dialog` and
-  a modal `Drawer` — stack in the Dialog band.
+  interaction); only Escape, routed through the keydown handler, closes it.
+  While one is open the manager also makes everything outside it inert and
+  wraps `Tab` inside it — see [Modal scope](#modal-scope). Modal surfaces —
+  `Dialog` and a modal `Drawer` — stack in the Dialog band.
 - `"manual"` — never auto-dismissed; the host drives `hide()`. Used by windows
   and manual popovers.
 
@@ -123,6 +126,122 @@ bespoke animation and re-entrancy guard. `requestClose()` may return `false` to
 decline, in which case the manager leaves the Escape unhandled so it reaches the
 focused content — `Dialog` does this to release an embedded editor.
 
+## Modal scope
+
+`LayerManager` owns modality. No surface keeps its own idea of "am I the modal
+on top", and no component implements a focus trap.
+
+The *topmost modal* is the last-registered layer whose dismiss mode is
+`"modal"`, whatever is stacked above it. Its *scope* is that layer plus every
+layer opened from it, directly or through another layer — the same
+"opened-from" edge the layer tree already keeps. The manager works both out
+again on every `register` and `unregister`.
+
+| Open layers, in the order they opened | Topmost modal | Scope | Inert |
+|---|---|---|---|
+| window `W` | none | — | nothing |
+| `W`, dialog `D1` opened from `W` | `D1` | `D1` | the page, `W`, the `Rail`, toast dismiss buttons |
+| `W`, `D1`, dropdown `P` opened from `D1` | `D1` | `D1`, `P` | the page, `W`, … |
+| `W`, `D1`, dialog `D2` opened from `D1` | `D2` | `D2` | the page, `W`, `D1`, … |
+| `W`, `D1`, window `W2` shown while `D1` is open | `D1` | `D1` | the page, `W`, `W2`, … |
+
+A window is always a top-level layer, so `W2` is not in `D1`'s scope. It is
+drawn under `D1`'s backdrop.
+
+### What goes inert
+
+Everything outside the scope carries the HTML `inert` attribute, so the browser
+itself refuses it focus — by `Tab`, by a click, and by `focus()` from code —
+pointer input, and a place in the accessibility tree. The manager decides, and
+each surface writes its own element:
+
+- **Every registered layer outside the scope**, through the optional
+  [`onInertChanged(inert)`](/api/core/interfaces/DismissableLayer#oninertchanged)
+  hook. A layer that registers while a modal is open is told at once.
+- **The page**: every component added to [`Body`](/components/Body), and each
+  component the body's layout manager mounts beside them — a `Tab` manager's
+  tab strip, an `Accordion`'s headers, a gutter. A component added while a
+  modal is open comes up inert.
+- **The [`Rail`](/components/Rail)**, while it is mounted.
+- **The dismiss button of each toast.** The toast itself is a live region and
+  stays readable, so a screen reader still announces it.
+
+The last three are *background surfaces*: they are not layers, and register
+with `LayerManager.addBackgroundSurface(surface)`, which calls the surface's
+`onInertChanged` with the current state at once.
+
+Both hooks are called again on every later register and unregister of any
+layer, also when the value has not changed for that surface, so keep them cheap
+to repeat; `setInertAttribute` returns early for a value it already has. For
+the same reason a value your own code sets with `setInertAttribute` on a layer
+or on a component added to `Body` does not last: the manager writes its own
+the next time any layer opens or closes.
+
+Nothing is ever written to `<body>` or `<html>`. The library marks its own
+containers and leaves the rest of the document alone, so what a browser
+extension injects next to them keeps working: the inline menu a password
+manager shows beside a login field in a dialog is the case this protects. It
+also means an element your own code appends to `<body>` or `<html>` by hand is
+not inert while a dialog is open. Build an overlay as a
+[`Popover`](/components/Popover) or [`PopupPanel`](/components/PopupPanel), or
+register it yourself as a layer or a background surface. A modal's own backdrop
+is never inert, so `closeOnBackdrop` keeps working.
+
+`element.focus()` on something behind a modal does nothing until the modal
+closes. A modal surface that returns focus to its opener must therefore do so
+after it has unregistered, as `Dialog` and `Drawer` do. And a layer disposed
+while it is open must unregister in its destructor: left in the tree with its
+element gone, it is written to when the next modal opens.
+
+### Tab wraps at the edges
+
+`inert` keeps focus from landing behind the modal, but it does not wrap: `Tab`
+from the last control would go on to the browser's own toolbar.
+[`LayerManager.containTab(e)`](/api/core/namespaces/LayerManager/functions/containTab)
+does the wrap, and the manager's `keydown` listener calls it for every `Tab`.
+
+A *stop* is a visible, enabled, focusable element. Each layer of the scope has
+its own list of stops, and the lists are joined — the modal first, then the
+layers opened from it — into one ring. Take a dialog with stops `Close`, `Name`
+and `Type`, and a dropdown opened from `Type` with one stop, `List`:
+
+| Focus is on | Key | Result | Consumed |
+|---|---|---|---|
+| `Name` | `Tab` | the browser moves focus to `Type` | no |
+| `Type` (last stop of its layer) | `Tab` | `List` | yes |
+| `List` (last stop of the ring) | `Tab` | `Close` | yes |
+| `Close` (first stop of its layer) | `Shift+Tab` | `List` | yes |
+| `List` | `Shift+Tab` | `Type` | yes |
+| a stop inside a Tab-key owner | `Tab` | the editor or table keeps the key | no |
+| `<body>`, or an element that is not a stop | `Tab` | the browser moves focus | no |
+| anything in the scope or `<body>`, and the scope has no stop | `Tab` | nothing moves | yes |
+| anything, and an earlier listener already handled the key | `Tab` | nothing | no |
+| anything | `Ctrl+Tab`, `Alt+Tab`, `Meta+Tab` | nothing: not focus traversal | no |
+
+The function acts only at a layer's first or last stop; every other `Tab` stays
+with the browser. From `<body>` — where focus rests after a click on a dialog's
+text — the browser moves focus by itself, and with the application inert the
+only places it can land are inside the scope, in the browser's own toolbar, or
+on an element that is not the library's.
+
+A layer that closes itself on `Tab` and hands focus back to its opener calls
+`containTab(e)` itself and returns the result, because only then is focus on a
+stop. `Menu`'s keyboard session does.
+
+A layer that stays registered while it closes — a dropdown does, for the
+length of its fade-out — returns `true` from the optional `isLayerClosing()`
+for that time. Its stops are left out of the ring: they are about to leave the
+document, and focus moved onto one would be dropped on `<body>`.
+
+A `Tab` pressed on an element outside the scope is never consumed, also when
+the scope has no stop. Such an element is live, so it is not the library's.
+
+Two queries read the same state: `LayerManager.hasModalLayer()` is `true` while
+any registered layer is modal, wherever it sits in the stack, and
+`LayerManager.isBehindModal(node)` is `true` when a modal is open and `node`
+lies outside its scope. [`FocusHistory`](/recipes/focus-history) and
+`FocusTraversal` use them to stand down.
+
 ## Implementing a new layer
 
 ```typescript
@@ -133,6 +252,7 @@ class MyOverlay extends Component implements DismissableLayer {
     getDismissMode(): LayerDismissMode    { return "click-outside"; }
     getBand(): number                     { return LayerManager.Band.Dropdown; }
     requestClose(): void                  { this.hide(); }
+    onInertChanged(inert: boolean): void  { this.setInertAttribute(inert); }
 
     show(): void {
         LayerManager.register(this);
@@ -147,8 +267,13 @@ class MyOverlay extends Component implements DismissableLayer {
 }
 ```
 
+A layer without `onInertChanged` stays focusable and clickable behind a modal
+dialog, so implement it: one line, as above.
+
 [`Menu`](/api/overlay/classes/Menu) is on the manager too.
 [`Tooltip`](/api/overlay/classes/Tooltip) and `Notification` portal without
 registering — neither is dismissable and neither opens anything — and take
 their z from `LayerManager.Band.Tooltip` and `LayerManager.Band.Notification`
-rather than from the allocator.
+rather than from the allocator. A toast holds a button, so it registers as a
+background surface instead (see [Modal scope](#modal-scope)); a tooltip holds
+nothing focusable and is left alone.

@@ -45,7 +45,7 @@ export type { AnimatedDropdownOptions } from '~/core/AnimatedDropdown.js';
 export { fadeShow, fadeHideAndDetach } from '~/core/OverlayFade.js';
 export type { FadeOptions } from '~/core/OverlayFade.js';
 export { LayerManager } from '~/core/LayerManager.js';
-export type { DismissableLayer, LayerDismissMode } from '~/core/LayerManager.js';
+export type { BackgroundSurface, DismissableLayer, LayerDismissMode } from '~/core/LayerManager.js';
 export { FocusHistory } from '~/core/FocusHistory.js';
 export type { FocusHistoryOptions, FocusHistoryKeyCombo, FocusHistoryEvent, FocusHistoryChange } from '~/core/FocusHistory.js';
 export { FocusReveal } from '~/core/FocusReveal.js';
