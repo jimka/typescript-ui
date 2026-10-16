@@ -32,6 +32,9 @@ export type { AutoScrollMode, PanelOptions, ScrollbarStyle } from '~/core/Panel.
 // `Split`, `Accordion` and a window, and `Table.setResizeMode` on a table,
 // whose options bag never reaches a consumer.
 export type { ResizeMode } from '~/core/ResizeDrag.js';
+// Only the table's type: the table itself, in `core/BuiltInStrings.ts`, is
+// framework-internal, reached through `Body.setStrings`.
+export type { BuiltInStrings } from '~/core/BuiltInStrings.js';
 export { Form } from '~/core/Form.js';
 export type { FormOptions } from '~/core/Form.js';
 export { Aria } from '~/core/Aria.js';

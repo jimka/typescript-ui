@@ -397,6 +397,8 @@ The library's own title-bar buttons are built this way: a dialog's close button,
 
 A window renames its minimize and maximize buttons to "Restore" as its state changes, but only while a button still carries a name the library gave it. A button you renamed keeps your name in every state.
 
+A dialog's close button can also be named without reaching it: `closeButtonLabel` in the config names it for one dialog, and `strings.dialogClose` on `Body` names it for all of them. The window buttons are not in `Body`'s built-in strings yet.
+
 A tool added to a [`Tab`](/layouts/Tab#tab-tools) strip from a descriptor is named by the descriptor's `label` in the same way.
 
 ### Why no `aria-modal`

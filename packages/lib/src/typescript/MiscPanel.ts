@@ -1624,7 +1624,8 @@ class MiscPanel extends Panel {
         leftColumn.addComponent(buttonDialogError);
 
         // Screen-reader semantics demo — `role` and `ariaLabel`, the two
-        // DialogConfig fields a custom dialog uses to say what it is. The
+        // DialogConfig fields a custom dialog uses to say what it is, and
+        // `closeButtonLabel`, which names the title-bar close button. The
         // title is short, so `ariaLabel` gives the fuller name a screen reader
         // announces, and `role: 'alertdialog'` marks it as a prompt that needs
         // an answer; the message is read as its description. Cancel is
@@ -1632,11 +1633,12 @@ class MiscPanel extends Panel {
         const buttonDialogAria = new Button("Dialog — alert with an accessible name");
 
         buttonDialogAria.on("action", () => void Dialog.show({
-            title    : 'Delete?',
-            message  : 'Record 42 will be removed. This cannot be undone.',
-            role     : 'alertdialog',
-            ariaLabel: 'Delete record 42',
-            buttons  : [
+            title           : 'Delete?',
+            message         : 'Record 42 will be removed. This cannot be undone.',
+            role            : 'alertdialog',
+            ariaLabel       : 'Delete record 42',
+            closeButtonLabel: 'Keep the record',
+            buttons         : [
                 { text: 'Cancel', result: 'cancel', primary: true },
                 { text: 'Delete', result: 'confirm' },
             ],

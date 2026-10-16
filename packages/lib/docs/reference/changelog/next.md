@@ -402,6 +402,10 @@ page resets to empty.
 
 ### Core
 
+- **`Body.init({ strings })`, `Body.setStrings`, `Body.getStrings` and the
+  `BuiltInStrings` type** — an application-wide table of the library's
+  built-in strings, holding the dialog close button's name.
+
 - **`LayerManager.Band` gains `Drawer`** (8950, between the `Rail`'s fixed
   8900 and `Window`).
 
@@ -549,6 +553,10 @@ page resets to empty.
   therefore now read by two managers rather than one.
 
 ### Overlay
+
+- **`DialogConfig.closeButtonLabel`** names the title-bar close button of one
+  dialog, including one built by `Dialog.show`. See
+  [Dialog: Screen readers](/components/Dialog#screen-readers).
 
 - **`WindowOptions.autoFocus`, `setAutoFocus` and `isAutoFocus`** choose
   whether a window takes keyboard focus when code shows or raises it. The

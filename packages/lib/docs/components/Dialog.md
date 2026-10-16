@@ -115,6 +115,7 @@ See [`DialogConfig`](/api/overlay/interfaces/DialogConfig) for the full option l
 | `initialFocus` | — | Component to focus on open, overriding the default (the first focusable element in the body). |
 | `role` | `'dialog'` | How a screen reader announces the dialog. `'alertdialog'` is for a message that interrupts and needs an answer. |
 | `ariaLabel` | the title | Accessible name, replacing the title as the name a screen reader announces. |
+| `closeButtonLabel` | `"Close"`, or the application's `strings.dialogClose` | Accessible name and tooltip of the title-bar close button, for this dialog. |
 
 ### Initial focus
 
@@ -250,11 +251,27 @@ await dialog.show();
 ```
 
 **Close button.** The title-bar close button is named "Close" and shows that
-name as a tooltip. To give it another name, call
-`dialog.getTitleBar().getCloseButton()?.setText(…)` on a constructed dialog.
+name as a tooltip. `closeButtonLabel` renames it for one dialog and works with
+`Dialog.show(config)`. `Body.init({ strings: { dialogClose: … } })` renames it
+for every dialog, including the ones `Dialog.confirm`, `info`, `success`,
+`warning` and `error` build. The first non-empty value wins:
 
-`role` and `ariaLabel` are read once, when the dialog is constructed. After
-that the values live in `dialog.getAria()`.
+| `closeButtonLabel` | `strings.dialogClose` | Name |
+| --- | --- | --- |
+| not set | not set | `Close` |
+| not set | `'Stäng'` | `Stäng` |
+| `'Discard'` | `'Stäng'` | `Discard` |
+| `''` | `'Stäng'` | `Stäng` |
+| not set | `''` | `Close` |
+| `'Discard'`, with `dismissable: false` | any | no close button exists |
+
+An empty string counts as not set at both levels, so the button is never left
+without a name. To rename the button of a constructed dialog afterwards, call
+`dialog.getTitleBar().getCloseButton()?.setText(…)`.
+
+`role`, `ariaLabel` and `closeButtonLabel` are read once, when the dialog is
+constructed. After that the values live in `dialog.getAria()` and on the
+button.
 
 A dialog does not carry `aria-modal`. It is modal because everything outside it
 is inert, which already takes the page away from a screen reader. See

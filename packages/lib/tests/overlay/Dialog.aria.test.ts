@@ -10,6 +10,7 @@ import { _Dialog as Dialog, DialogButtons } from '~/overlay/Dialog';
 import type { DialogConfig } from '~/overlay/Dialog';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
+import { setAppBuiltInStrings } from '~/core/BuiltInStrings';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -212,7 +213,17 @@ describe('Dialog — description', () => {
 });
 
 describe('Dialog — title-bar close button', () => {
-    afterEach(() => DOM.reset());
+    afterEach(() => {
+        // Module state in core/BuiltInStrings.ts outlives DOM.reset().
+        setAppBuiltInStrings({});
+        vi.restoreAllMocks();
+        DOM.reset();
+    });
+
+    /** The accessible name of a dialog's title-bar close button. */
+    function closeName(dialog: Dialog): string {
+        return dialog.getTitleBar().getCloseButton()!.getAria().getLabel()!;
+    }
 
     // D11
     it('is named "Close", with the name kept off its face', () => {
@@ -236,6 +247,112 @@ describe('Dialog — title-bar close button', () => {
         close.setText('Stäng');
 
         expect(close.getAria().getLabel()).toBe('Stäng');
+
+        dialog.dispose();
+    });
+
+    it('D2. takes the name closeButtonLabel gives it', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new Dialog({ title: 'T', message: 'M', closeButtonLabel: 'Discard' });
+
+        expect(closeName(dialog)).toBe('Discard');
+        expect(dialog.getTitleBar().getCloseButton()!.isShowText()).toBe(false);
+
+        dialog.dispose();
+    });
+
+    it('D3. treats an empty closeButtonLabel as not set', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new Dialog({ title: 'T', message: 'M', closeButtonLabel: '' });
+
+        expect(closeName(dialog)).toBe('Close');
+
+        dialog.dispose();
+    });
+
+    it('D4. builds no close button for a non-dismissable dialog with a label', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new Dialog({ title: 'T', message: 'M', closeButtonLabel: 'Discard', dismissable: false });
+
+        expect(dialog.getTitleBar().getCloseButton()).toBeNull();
+
+        dialog.dispose();
+    });
+
+    it('D5. takes the application-wide name when the config has none', () => {
+        installTestDOM(CONFIG);
+
+        setAppBuiltInStrings({ dialogClose: 'Stäng' });
+
+        const dialog = new Dialog({ title: 'T', message: 'M' });
+
+        expect(closeName(dialog)).toBe('Stäng');
+
+        dialog.dispose();
+    });
+
+    it('D6. prefers the config name over the application-wide one', () => {
+        installTestDOM(CONFIG);
+
+        setAppBuiltInStrings({ dialogClose: 'Stäng' });
+
+        const dialog = new Dialog({ title: 'T', message: 'M', closeButtonLabel: 'Discard' });
+
+        expect(closeName(dialog)).toBe('Discard');
+
+        dialog.dispose();
+    });
+
+    it('D7. leaves an open dialog with the name it was built with', () => {
+        installTestDOM(CONFIG);
+
+        const first = new Dialog({ title: 'T', message: 'M' });
+
+        setAppBuiltInStrings({ dialogClose: 'Stäng' });
+
+        const second = new Dialog({ title: 'T', message: 'M' });
+
+        expect(closeName(first)).toBe('Close');
+        expect(closeName(second)).toBe('Stäng');
+
+        first.dispose();
+        second.dispose();
+    });
+
+    it('D9. names the close button of a shortcut dialog from the application-wide name', async () => {
+        installTestDOM(CONFIG);
+
+        setAppBuiltInStrings({ dialogClose: 'Stäng' });
+
+        const names: string[] = [];
+
+        // Builds the dialog the way the real Dialog.show does, from the config
+        // the shortcut hands it, and reads the name off the close button.
+        vi.spyOn(Dialog, 'show').mockImplementation(async (config: DialogConfig) => {
+            const dialog = new Dialog(config);
+
+            names.push(closeName(dialog));
+            dialog.dispose();
+
+            return 'confirm';
+        });
+
+        await Dialog.confirm('T', 'M');
+
+        expect(names).toEqual(['Stäng']);
+    });
+
+    it('D8. can still be renamed afterwards through setText', () => {
+        installTestDOM(CONFIG);
+
+        const dialog = new Dialog({ title: 'T', message: 'M', closeButtonLabel: 'Discard' });
+
+        dialog.getTitleBar().getCloseButton()!.setText('Later');
+
+        expect(closeName(dialog)).toBe('Later');
 
         dialog.dispose();
     });

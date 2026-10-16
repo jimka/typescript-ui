@@ -1800,7 +1800,7 @@ describe('DialogTitleBar leading-glyph swap', () => {
 
     /** Renders a title bar, swaps its glyph twice, clears it, and disposes. */
     function driveGlyphs(): void {
-        const bar = new DialogTitleBar('T', () => {}, false);
+        const bar = new DialogTitleBar('T', () => {}, false, 'Close');
 
         bar.getElement(true);
         bar.setGlyph('unicode-arrow-up');
@@ -1812,7 +1812,7 @@ describe('DialogTitleBar leading-glyph swap', () => {
     it('a second setGlyph renames the same leading-glyph instance', () => {
         installTestDOM(CONFIG);
 
-        const bar = new DialogTitleBar('T', () => {}, false);
+        const bar = new DialogTitleBar('T', () => {}, false, 'Close');
 
         bar.getElement(true);
         bar.setGlyph('unicode-arrow-up');
