@@ -61,7 +61,7 @@ There is no inner `Panel` and no second `Tab` — the `TabWindow`'s own `Tab` *i
 | Method | Purpose |
 | --- | --- |
 | `createTab(content)` | Add a content component as a new tab (and as a window child, for layout and serialization). The first tab added supplies the window's title. |
-| `show()` | Display the window and bring it to the front. |
+| `show()` | Display the window, bring it to the front and move focus into it; see [`Window` › Focus](/components/Window#focus). |
 | `setSize(w, h)` / `setPosition(x, y)` | Initial geometry. |
 | `toggleMinimize()` / `toggleMaximize()` | Drive the matching lifecycle transition — the same actions the trailing controls invoke. |
 | `requestClose()` | Begin the close teardown — the action the trailing close control invokes. |

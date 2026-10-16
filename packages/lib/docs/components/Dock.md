@@ -69,7 +69,7 @@ Once a panel is docked, the gestures come from the composed primitives:
 | Gesture | Result | Owned by |
 | --- | --- | --- |
 | Drag a tab within its strip | Reorder | [`Tab`](/api/layout/classes/Tab) |
-| Drag a tab off the strip | Tear off into a floating [`Window`](/components/Window) that is itself a **mini-dock** | [`Tab`](/api/layout/classes/Tab) + `Dock` |
+| Drag a tab off the strip | Tear off into a floating [`Window`](/components/Window) that is itself a **mini-dock**. The float takes keyboard focus; a float rebuilt by a layout restore does not | [`Tab`](/api/layout/classes/Tab) + `Dock` |
 | Drop a tab on a region **edge** | Split the region, new pane gets the panel | [`DockRegion`](/api/layout/classes/DockRegion) |
 | Drop a tab on a region **centre** | Dock as a tab | [`DockRegion`](/api/layout/classes/DockRegion) |
 | Drop a tab into another window | Dock there, and that window is raised and activated | [`DockRegion`](/api/layout/classes/DockRegion) |

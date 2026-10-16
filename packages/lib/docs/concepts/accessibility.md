@@ -372,6 +372,8 @@ Every layer that behaves like a dialog has the `dialog` role, so a screen reader
 | [`Popover`](/components/Popover) with a title | `aria-labelledby` → the title | yes, `setTitle(…)` |
 | `Popover` without a title, [`Drawer`](/components/Drawer) | nothing by default | you call `getAria().setLabel(…)` |
 
+A `Dialog` and a modal `Drawer` move focus to a control inside them. A `Window` and a `TabWindow` take focus themselves when shown, and return it to where it came from when they close; a non-modal `Drawer` and a `Popover` move no focus. See [`Window` › Focus](/components/Window#focus).
+
 A name given by reference follows the text it points at with no further code. It also outranks `aria-label` in a browser's name computation, so to replace it you remove the reference first: `window.getAria().clearLabelledBy().setLabel(…)`. A `Dialog` built from a `message` also points `aria-describedby` at that message, which a screen reader reads after the name and role. See [Dialog: Screen readers](/components/Dialog#screen-readers).
 
 `Aria` has the accessors these need: `setDescribedBy(id)` / `getDescribedBy()` / `clearDescribedBy()` for `aria-describedby`, `clearLabelledBy()` as the removing companion of `setLabelledBy(id)`, and `'alertdialog'` among the roles.

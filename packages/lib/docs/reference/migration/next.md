@@ -5,6 +5,46 @@ this page is not tied to a version number yet. Once this release is tagged,
 any note here moves onto its own numbered page (see
 [Migration](/reference/migration)) and this page resets to empty.
 
+## A Window takes focus when it is shown
+
+**What changed and why.** A shown window was announced by a screen reader
+only when focus happened to enter it. `show()` now moves focus to the window
+after its first layout; `bringToFront()` moves it at once, also when the window
+is already the active one; closing a window that holds focus returns focus to
+the element it came from. Pass `autoFocus: false` to a window that should not
+take focus.
+
+| Call | Before | Now |
+| --- | --- | --- |
+| `win.show()` | focus stays on the opener | focus moves to the window |
+| `win.bringToFront()` on the active window | focus stays | focus moves to the window |
+| closing a focused window | focus on `<body>` | focus on the opener |
+
+**Who needs to act.** Code that shows a window while the user keeps working
+elsewhere: a tool palette, a log or status window, a window opened from a
+timer or a network reply. Build it with `autoFocus: false`. Code that focuses
+its own field right after `show()` needs no change, because focus arrives
+after the window's first layout.
+
+`autoFocus: false` opts a window out of the new focus moves; it does not
+bring back every old behaviour.
+
+| Call | Before | With `autoFocus: false` |
+| --- | --- | --- |
+| `win.show()` | focus stays on the opener | focus stays on the opener |
+| `win.bringToFront()` on the active window | focus stays | focus stays |
+| `win.bringToFront()` on an inactive window | focus moves to the window | focus stays |
+| a press inside the window, or `restore()` | focus moves to the window | focus moves to the window |
+| closing a window that holds focus | focus on `<body>` | focus on the element it took focus from, when a press or `restore()` activates it |
+
+```typescript
+// Before
+new Window("Log").show();               // focus stayed where it was
+
+// After — keep it out of the way
+new Window("Log", { autoFocus: false }).show();
+```
+
 ## A restore that interrupts a rail minimize fires the `minimize` it owed first
 
 **What changed and why.** A window minimizing into a

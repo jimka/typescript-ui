@@ -152,7 +152,8 @@ export class DockRegion {
 
     /**
      * Raises and activates the region's host window, if any. A no-op for an
-     * in-document region and harmless when the window is already frontmost.
+     * in-document region. For a window with `autoFocus` enabled the raise also
+     * moves keyboard focus into it, even when it is already frontmost.
      */
     private raiseHostWindow(): void {
         this.hostWindow()?.bringToFront();

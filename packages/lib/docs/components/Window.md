@@ -51,6 +51,7 @@ win.show();
 | `snapThreshold`     | `number` | Cursor-to-edge distance (pixels) under which a border becomes the snap target. Default `12`. |
 | `snapModifier`      | `"ctrl" \| "meta" \| "alt" \| "shift"` | Modifier key that activates snap-resize detection. Default `"ctrl"`. |
 | `constrainToViewport` | `boolean` | Keep the whole window inside the viewport while dragging — every border stops at the edge. When `false`, the window may travel off-screen but its header stays grabbable. Default `true`. |
+| `autoFocus` | `boolean` | Take keyboard focus when code shows or raises the window. Default `true`. Pass `false` for a window opened in the background. |
 
 Inherits all [`PanelOptions`](/api/core/interfaces/PanelOptions) / [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields. Geometry defaults mean `Window(title).show()` produces a 400 × 300 window at `(50, 50)` without further setters.
 
@@ -60,7 +61,7 @@ Inherits all [`PanelOptions`](/api/core/interfaces/PanelOptions) / [`ComponentOp
 | --- | --- |
 | `setHeaderText(text)` | Title-bar text. |
 | `getHeader()` | The internal [`WindowHeader`](/api/component/container/classes/WindowHeader) — call `setGlyph(name)` on it for the title icon, or listen on its close button. |
-| `show()` | Display the window and bring it to the front. |
+| `show()` | Display the window, bring it to the front and move focus into it. |
 | `setSize(w, h)` / `setPosition(x, y)` | Initial geometry. |
 | `setResizeFps(fps)` | Throttle resize-driven layout (default 60). |
 | `setResizeMode(mode)` | `'outline'` moves a frame during an edge drag and lays the window out once on release. |
@@ -123,9 +124,41 @@ const win = Window('Report', { resizeMode: 'outline' });
 
 A window with no `resizeMode` of its own follows the app-wide default set through [`Body.init`](/components/Body#resize-mode). `setResizeFps` caps live frames only — an outline frame runs no layout, so capping it would just make the frame lag the pointer. Moving a window by its header is unaffected: it already only translates.
 
+## Focus
+
+A window takes keyboard focus when code shows it, so a screen reader announces it and a keyboard user lands in it. The window's own element takes focus, and `Tab` then moves to its first control; the library focuses no control inside it.
+
+### `autoFocus` — an option at construction, default `true`
+
+| How the window comes forward | `autoFocus: true` (default) | `autoFocus: false` |
+| --- | --- | --- |
+| `show()` | takes focus after the next layout | focus stays where it is |
+| `bringToFront()` | takes focus at once, also when the window is already the active one | focus stays where it is |
+| a pointer press inside it | focus moves to the window when the press activates it | the same |
+| `restore()` from minimized | takes focus | takes focus |
+| focus moves in by `Tab` or by the application's own `focus()` call | nothing more happens | the same |
+
+Focus arrives after the window's first layout, so a field the application focuses right after `show()` keeps focus. Pass `autoFocus: false` to a window opened in the background, such as a tool palette, a log window or one opened from a timer, so that it does not take the caret from what the user is typing in. `setAutoFocus` / `isAutoFocus` change and read it later.
+
+### Focus returns to where it came from when the window closes
+
+The window remembers the element focus was on when it last took focus. When it closes with focus inside it, focus goes back there.
+
+| As the window closes | Focus afterwards |
+| --- | --- |
+| focus inside the window; it took focus from button `X`, which is still on the page | `X` |
+| focus inside the window; `X` was disposed or removed | where the browser puts it (`<body>`) |
+| focus is on the page (the user moved on, or code closed a background window) | unchanged |
+| the window never took focus (`autoFocus: false`, and no press or `restore()` activated it) | unchanged |
+| a `"close"` listener moves focus itself | that move wins: focus returns first, then the event fires |
+| a `"beforeclose"` listener vetoes the close | unchanged |
+| the window is disposed without being closed | unchanged |
+
+A window that does not take focus is not announced. An application that wants one announced shows a [`Notification`](/components/Notification) or writes to its [`StatusBar`](/components/StatusBar).
+
 ## Screen readers
 
-A window is announced as a dialog. It is not modal: the page behind it stays usable, and the window carries no `aria-modal`.
+A window is announced as a dialog, as it opens, because it takes focus. It is not modal: the page behind it stays usable, and the window carries no `aria-modal`.
 
 - **Name.** The window is named by its header text. The name is a reference to the header's title, so `setHeaderText` renames the window with no further call. Because the name is a reference, `getAria().setLabel(…)` alone does not change it: a browser prefers the reference. Remove it first with `win.getAria().clearLabelledBy().setLabel('Storage inspector')`.
 - **Header buttons.** The three buttons are named "Minimize", "Maximize" and "Close", and each shows its name as a tooltip. The minimize button reads "Restore" while the window is minimized, and the maximize button reads "Restore" while it is maximized, including on a window constructed in that state. These are the words the [title-icon menu](#title-icon-menu) uses for the same actions.
@@ -138,7 +171,7 @@ The title icon opens the window menu on a click but is not a button, so the keyb
 - A `Window` is not added to its parent's layout flow. It floats in absolute coordinates and you control its position via `setPosition` / `setSize`.
 - Calling `show()` is what registers it with the active-window tracking. Without `show()`, drag and focus behavior won't activate.
 - Use `setResizeFps(0)` to disable throttling during resize if you need every frame.
-- A window is non-modal and does not hold focus: `Tab` from its last control moves on to the page. While a modal [`Dialog`](/components/Dialog) or modal [`Drawer`](/components/Drawer) is open, every window is inert, and a window shown meanwhile appears behind the backdrop, inert until the modal closes.
+- A window is non-modal and does not trap focus: `Tab` from its last control moves on to the page. While a modal [`Dialog`](/components/Dialog) or modal [`Drawer`](/components/Drawer) is open, every window is inert, and a window shown meanwhile appears behind the backdrop, inert until the modal closes. It does not take focus when the modal closes: the modal returns focus to its own opener.
 - **Removed:** `setTearOffStripBody` / `isTearOffStripBody` no longer exist. They marked a window as a strip-mode tear-off body so the header re-dock gesture stayed inert over it; that role is now handled structurally by the headerless [`TabWindow`](/components/TabWindow) (it has no header re-dock path at all), so the flag was deleted from the public surface.
 
 ## See also

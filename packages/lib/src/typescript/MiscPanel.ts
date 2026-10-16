@@ -1816,6 +1816,18 @@ class MiscPanel extends Panel {
         });
         rightColumn.addComponent(buttonGlyphWindow);
 
+        const buttonBackgroundWindow = new Button("Show window without focus");
+        buttonBackgroundWindow.on("action", () => {
+            const win = new Window("Background window", { autoFocus: false });
+            win.setX(260);
+            win.setY(220);
+            win.setWidth(300);
+            win.setHeight(140);
+            win.addComponent(new TextField());
+            win.show();
+        });
+        rightColumn.addComponent(buttonBackgroundWindow);
+
         const buttonOverlaySpinner = new Button("Overlay spinner on this panel for 2 s");
         buttonOverlaySpinner.on("action", () => {
             const overlay = new ProgressSpinner(48);

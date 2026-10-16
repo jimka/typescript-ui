@@ -195,6 +195,13 @@ export interface WindowOptions extends ContainerOptions {
     snapModifier?:      WindowSnapModifier;
     constrainToViewport?: boolean;
     /**
+     * Whether the window takes keyboard focus when code shows it (`show()`)
+     * or raises it (`bringToFront()`). Defaults to `true`. Pass `false` for a
+     * window opened in the background — a tool palette, a log window — so
+     * that it does not take the caret from what the user is typing in.
+     */
+    autoFocus?: boolean;
+    /**
      * How an edge or corner drag shows its progress. Omit it to follow the
      * app-wide default set through `Body.setResizeMode`.
      */
@@ -232,6 +239,7 @@ const _defaultWindowOptions: Partial<WindowOptions> = {
     snapThreshold:     12,
     snapModifier:      "ctrl",
     constrainToViewport: true,
+    autoFocus:         true,
 };
 
 // z-index for the eight resize handles, lifting them above the window's content
@@ -359,6 +367,19 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private _closeAnimation:        Animation.CancelHandle | null = null;
     private _railCollapseAnimation: Animation.CancelHandle | null = null;
     private _railExpandAnimation:   Animation.CancelHandle | null = null;
+
+    // The element focus was on the last time the window took focus, to return
+    // focus to when the window closes with focus inside it.
+    private _previousFocus: Handle | null = null;
+
+    // The pending move of focus into a window just shown, queued past the next
+    // layout flush; null when none is pending.
+    private _takeFocusLayout: { cancel(): void } | null = null;
+
+    // False only while code raises the window without wanting focus moved, so
+    // that the activation that raise causes moves none.
+    private _focusOnActivation: boolean = true;
+
     private _viewportResizeBound: boolean = false;
 
     private _snapEnabled:       boolean = false;
@@ -378,7 +399,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     private readonly _boundOnViewportResize: () => void                = () => this.onViewportResize();
     private readonly _boundOnSnapBlur:       () => void                = () => this.clearSnapState();
     private readonly _boundOnBorderResize:   (border: WindowBorder, e: MouseEvent) => void = (border, e) => this.onResize(border, e);
-    private readonly _boundOnBringToFront:   () => void                = () => this.bringToFront();
+    private readonly _boundOnPressRaise:     () => void                = () => this.raise(true);
     // Bound `action` handlers for the window menu's Minimize/Maximize/Close
     // rows — a lazily-created, rebuild-mode Menu (see `openWindowMenu`).
     private readonly _boundToggleMinimize: () => void = () => this.toggleMinimize();
@@ -440,7 +461,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.setContain("layout");
 
         // Focusable as a unit so activation can move keyboard focus to the
-        // window (see onActivate / focusSelf). -1 keeps it out of the Tab order
+        // window (see onActivate / takeFocus). -1 keeps it out of the Tab order
         // — focus is driven programmatically on activation, not by tabbing.
         this.getAria().setTabIndex(-1);
 
@@ -449,8 +470,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.getAria().setRole("dialog");
 
         // Any button brings the window to front — a right-click should raise
-        // it before its context menu opens too, not just a left-click.
-        Event.addSubtreeListener(this, "mousedown", { button: "any", handler: this._boundOnBringToFront });
+        // it before its context menu opens too, not just a left-click. A press
+        // raises and activates, and leaves focus to the activation and to the
+        // browser, so a press on a field inside moves focus only once.
+        Event.addSubtreeListener(this, "mousedown", { button: "any", handler: this._boundOnPressRaise });
     }
 
     /**
@@ -549,6 +572,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this.setSnapModifier(options.snapModifier ?? this.getSnapModifier());
 
         this.setConstrainToViewport(options.constrainToViewport ?? this.isConstrainToViewport());
+        this.setAutoFocus(options.autoFocus ?? this.isAutoFocus());
 
         // Writes no DOM, so it is safe inside the `super()` cascade; with no
         // class default there is nothing to fold, and an unset option leaves
@@ -788,6 +812,10 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * a two-rAF yield via [`Animation.materialize`](/api/core/namespaces/Animation/functions/materialize).
      * The entrance scale-in and the spinner pause run concurrently, so by the
      * time the window finishes scaling in the spinner is already on screen.
+     *
+     * Unless `autoFocus` is `false`, the window takes keyboard focus once it
+     * has laid out, so a field the application focuses right after `show()`
+     * keeps focus.
      */
     show(): this {
         const el = this.getElement(true)!;
@@ -804,7 +832,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         trapWheel(this);
 
         this.doLayout();
-        this.bringToFront();
+        this.raise(false);
 
         AbstractWindow.openWindows.add(this);
         this.attachViewportResizeListener();
@@ -865,6 +893,17 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
             this.attachSnapKeyboardListeners();
         }
 
+        // Past the next layout, when the element is in the document and a
+        // browser accepts the focus call; a field the application focuses
+        // right after show() is then inside the window and keeps focus.
+        const autoFocus = this.isAutoFocus();
+
+        this._takeFocusLayout?.cancel();
+
+        this._takeFocusLayout = autoFocus
+            ? Component.afterNextLayout(() => this.takeFocusAfterShow())
+            : null;
+
         return this;
     }
 
@@ -919,13 +958,40 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * Raises this window above all other windows by assigning it the highest z-index,
      * and marks it as the active window, updating the title bar appearance on both
      * the previously active window and this one.
+     *
+     * @remarks A shown window with `autoFocus` enabled also takes keyboard focus,
+     * even when it is already the active window; one with `autoFocus` disabled,
+     * and one that is not shown, moves no focus.
      */
     bringToFront(): void {
+        const shown     = AbstractWindow.openWindows.has(this);
+        const takeFocus = shown && this.isAutoFocus();
+
+        this.raise(takeFocus);
+
+        if (takeFocus) {
+            this.takeFocus();
+        }
+    }
+
+    /**
+     * Raises and activates the window through the layer manager.
+     *
+     * @param takeFocus - False to keep the activation this raise causes from
+     *   moving focus into the window.
+     */
+    private raise(takeFocus: boolean): void {
         // Route the raise through the manager: it re-allocates the z-stamp
         // (mirrored back via onZIndexChanged) and marks this window active,
         // which deactivates the previously-active window's title bar through
         // onActivate. No local activeWindow / setActive bookkeeping is needed.
-        LayerManager.bringToFront(this);
+        this._focusOnActivation = takeFocus;
+
+        try {
+            LayerManager.bringToFront(this);
+        } finally {
+            this._focusOnActivation = true;
+        }
     }
 
     // ----- DismissableLayer -----
@@ -966,25 +1032,82 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         if (active) {
             // Before the focus move: the name is announced as focus arrives.
             this.reflectAccessibleName();
-            this.focusSelf();
+
+            if (this._focusOnActivation) {
+                this.takeFocus();
+            }
+
             this.emit("activate");
         }
     }
 
     /**
-     * Moves keyboard focus to the window when it is activated, unless focus is
-     * already inside it (so a click that lands on a child input keeps that
-     * input focused rather than yanking focus up to the window root). Uses
-     * `preventScroll` because the window is an absolutely-positioned overlay —
-     * a native focus scroll would jolt any `overflow: hidden` ancestor.
+     * The one place the library moves focus into this window. Does nothing
+     * when the window has no element, is inert behind a modal layer, or focus
+     * is already inside it or a layer opened from it (so a click that lands on
+     * a child input keeps that input focused rather than yanking focus up to
+     * the window root). Otherwise it remembers the focused element as the
+     * place to return to when the window closes, refreshes the accessible
+     * name, and focuses the window's own element.
      */
-    private focusSelf(): void {
+    private takeFocus(): void {
         const element = this.getElement();
-        if (!element || DOM.source.contains(element, DOM.source.getActiveElement())) {
+
+        const inert = this.getInertAttribute();
+
+        if (!element || inert) {
             return;
         }
 
+        const active = DOM.source.getActiveElement();
+        const inside = LayerManager.containsAcrossLayers(this, active);
+
+        if (inside) {
+            return;
+        }
+
+        this._previousFocus = active;
+        this.reflectAccessibleName();
+        // preventScroll: the window is a fixed overlay; a native focus scroll
+        // would jolt an overflow-hidden ancestor.
         this.focus(true);
+    }
+
+    /**
+     * Runs past the first layout after `show()`: takes focus unless the
+     * window was minimized in the meantime.
+     */
+    private takeFocusAfterShow(): void {
+        this._takeFocusLayout = null;
+
+        const minimized = this.isMinimized();
+
+        if (minimized) {
+            return;
+        }
+
+        this.takeFocus();
+    }
+
+    /**
+     * Returns focus to the element the window last took it from, unless that
+     * element was disposed or left the page.
+     */
+    private restorePreviousFocus(): void {
+        const previous = this._previousFocus;
+
+        this._previousFocus = null;
+
+        if (previous === null) {
+            return;
+        }
+
+        // isRegistered first: isConnected throws on a released handle.
+        const live = DOM.source.isRegistered(previous) && DOM.source.isConnected(previous);
+
+        if (live) {
+            DOM.sink.focus(previous, { preventScroll: true });
+        }
     }
 
     /**
@@ -1061,9 +1184,11 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * Hides the window and destroys its DOM element when the close button is clicked.
      */
     onExitAction(): void {
-        // Notify subscribers (e.g. a Rail) before teardown, so a rail handle
-        // representing this window is removed as the window closes.
-        this.emit("close");
+        // Read before anything is torn down or unregistered.
+        const heldFocus = LayerManager.containsAcrossLayers(this, DOM.source.getActiveElement());
+
+        this._takeFocusLayout?.cancel();
+        this._takeFocusLayout = null;
 
         this._resizeDrag.cancel();
 
@@ -1073,7 +1198,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         // A close arriving inside a rail minimize's 150ms genie ends this
         // window's animated life, so the pair goes too — the way `destructor`
         // and `setRail` cancel it. Left running, the collapse's completion
-        // emits `"minimize"` after the `"close"` above, on a window whose rail
+        // emits `"minimize"` after the `"close"` below, on a window whose rail
         // has already dropped it, and writes its own `transform` / `opacity`
         // over the close fade below. A superseded expansion no longer has a
         // clear of its own to land — `Animation`'s `finish` leaves the
@@ -1108,6 +1233,17 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         LayerManager.unregister(this);
         untrapWheel(this);
+
+        // Returned as the close starts, so no key press reaches a window that
+        // is fading out.
+        if (heldFocus) {
+            this.restorePreviousFocus();
+        }
+
+        // Notify subscribers (e.g. a Rail) so a rail handle representing this
+        // window is removed as the window closes. After focus has returned, so
+        // a "close" listener that moves focus has the last word.
+        this.emit("close");
 
         AbstractWindow.openWindows.delete(this);
 
@@ -1178,6 +1314,9 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         this._stateAnimHandle = null;
         this._showAnimation?.cancel();
         this._showAnimation = null;
+        this._takeFocusLayout?.cancel();
+        this._takeFocusLayout = null;
+        this._previousFocus = null;
         this._materializeAnimation?.cancel();
         this._materializeAnimation = null;
         this._closeAnimation?.cancel();
@@ -1534,7 +1673,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
 
         this.setWindowState(this._preMinimizeState);
         this.bringToFront();
-        this.focus(true);
+        this.takeFocus();
 
         return this;
     }
@@ -2205,6 +2344,31 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      */
     isConstrainToViewport(): boolean {
         return this._options.constrainToViewport ?? this._defaultOptions.constrainToViewport!;
+    }
+
+    /**
+     * Sets whether code that shows the window (`show()`) or raises it
+     * (`bringToFront()`) also moves keyboard focus into it. A pointer press
+     * inside the window and `restore()` move focus regardless.
+     *
+     * @param value - True to take focus when shown or raised from code.
+     *
+     * @returns This window, for method chaining.
+     */
+    setAutoFocus(value: boolean): this {
+        this._options.autoFocus = value;
+
+        return this;
+    }
+
+    /**
+     * Returns whether code that shows or raises the window also moves
+     * keyboard focus into it.
+     *
+     * @returns True when the window takes focus as it is shown or raised.
+     */
+    isAutoFocus(): boolean {
+        return this._options.autoFocus ?? this._defaultOptions.autoFocus!;
     }
 
     /**

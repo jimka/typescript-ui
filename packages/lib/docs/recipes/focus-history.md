@@ -30,6 +30,8 @@ A focus move is recorded when it lands on a place that stays:
 | A control of a [`Dialog`](/components/Dialog) or a modal `Drawer`, or anything else focused while one is open | no |
 | A control inside a table cell, such as a cell editor | no |
 
+A window records itself as a stop when it takes focus, as it is shown, raised, pressed or restored, and closing it with focus inside returns focus to the element it took focus from.
+
 A menu, a dropdown, a popover and a dialog are gone once closed, so a stop inside one would lead nowhere. A [`Table`](/components/Table) holds focus on its own element for all of its cells, and that element is a stop; what is left out is a control inside a cell.
 
 If nothing has focus when `enable()` runs, the trail starts empty.

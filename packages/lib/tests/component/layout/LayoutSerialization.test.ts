@@ -12,6 +12,7 @@ import { serializeLayout, restoreLayout, type LayoutFactory, type LayoutState, t
 import { Glyph } from '~/component/display/Glyph';
 import { circle_check } from '~/glyphs/solid/circle_check';
 import { DOM } from '~/core/DOM';
+import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
@@ -1016,5 +1017,34 @@ describe('a reordered Tab strip survives save and restore', () => {
         expect(tab.indexOfContent(c)).toBe(0);
         expect(tab.indexOfContent(b)).toBe(1);
         expect(tab.getActiveContent()).toBe(b);
+    });
+
+    it('L1 — a restored floating window does not take focus when shown', () => {
+        installTestDOM(CONFIG);
+
+        const b = new Component({}); b.setId('b');
+        const freshRoot = new Container({});
+
+        const state: LayoutState = {
+            version: 1 as const,
+            root:    { kind: 'panel' as const, panelId: 'a', glyph: null },
+            windows: [{
+                kind:        'window' as const,
+                panelId:     'b',
+                header:      'Float',
+                rect:        { x: 10, y: 10, width: 300, height: 200 },
+                state:       'normal' as const,
+                restoreRect: null,
+            }],
+        } as LayoutState;
+
+        restoreLayout(freshRoot, state, instanceFactory({ a: new Component({}), b }));
+
+        const floats = [...AbstractWindow.getOpenWindows()].filter(w => w.getTitle() === 'Float');
+
+        expect(floats).toHaveLength(1);
+        expect(floats[0].isAutoFocus()).toBe(false);
+
+        floats.forEach(w => w.dispose());
     });
 });

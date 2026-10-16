@@ -55,6 +55,7 @@ import { ParentHeaderCell } from '~/component/table/cell/ParentHeader';
 import { ToolBarSeparator } from '~/component/menubar/ToolBarSeparator';
 import { ChartLegend } from '~/component/chart/ChartLegend';
 import { Drawer } from '~/overlay/Drawer';
+import { Window } from '~/overlay/Window';
 import { Popover } from '~/overlay/Popover';
 import { PopupPanel } from '~/overlay/PopupPanel';
 import { AnimatedDropdown } from '~/core/AnimatedDropdown';
@@ -401,6 +402,7 @@ const DEFAULT_RESOLUTION: Array<{ label: string; resolve: () => unknown; expecte
     { label: 'Glyph minSize',                resolve: () => new Glyph('unicode-arrow-up').getMinSizeConstraint(),       expected: { width: 16, height: 16 } },
     { label: 'Popover placement',            resolve: () => new Popover().getPlacement(),                               expected: 'auto' },
     { label: 'Drawer edge',                  resolve: () => new Drawer().getEdge(),                                     expected: 'west' },
+    { label: 'Window autoFocus',             resolve: () => new Window('W').isAutoFocus(),                               expected: true },
     { label: 'Button flat',                  resolve: () => new Button({ text: 'x' }).isFlat(),                         expected: false },
     { label: 'TabCloseButton glyph',         resolve: () => new TabCloseButton().getGlyph()?.getGlyphName(),            expected: 'xmark' },
     { label: 'TabCloseButton preferredSize', resolve: () => sizeTuple(new TabCloseButton().getPreferredSize()),         expected: [16, 16] },

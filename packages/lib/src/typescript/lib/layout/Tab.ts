@@ -1513,7 +1513,9 @@ class Tab extends LayoutManager implements FocusRevealer {
      * Strip `"dockhover"` handler: a foreign tab has dwelt over this strip long
      * enough to spring-load a raise. Surfaces the strip's window so a backgrounded
      * float can be aimed at, mirroring the dwell-raise a dock region performs over
-     * its body — a no-op for an in-document strip or a window already frontmost.
+     * its body — a no-op for an in-document strip. For a window with `autoFocus`
+     * enabled the raise also moves keyboard focus into it, even when it is
+     * already frontmost.
      */
     private _onBarDockHover = (): void => {
         this.ancestorWindow()?.bringToFront();
