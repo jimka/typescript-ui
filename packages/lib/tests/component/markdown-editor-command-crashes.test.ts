@@ -2364,6 +2364,140 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
     });
 });
 
+describe('a range that takes a list item\'s text whole is removed the same way on every route (CI rows)', () => {
+    /** A second item holding a paragraph, a nested list and a paragraph. */
+    const A = '- ab\n- cd\n\n  pq\n  - nn\n\n  rr\n- z';
+    /** A second item holding two paragraphs. */
+    const B = '- ab\n- cd\n\n  pq\n\n  rr\n- z';
+    /** What every removing route leaves of {@link A} for the range `ab`@1 to `pq`@1. */
+    const A_REMOVED = '- aq\n  - nn\n\n  rr\n\n- z';
+
+    /**
+     * Loads `source` and selects the range `ab`@1 to `pq`@1.
+     *
+     * @param source - The Markdown to load.
+     * @returns The editor.
+     */
+    function loadWithRange(source: string): MarkdownEditor {
+        const editor = load(source);
+
+        selectText(editor, ['ab', 1], ['pq', 1]);
+
+        return editor;
+    }
+
+    it('CI70: paste() over the range', async () => {
+        const editor = loadWithRange(A);
+
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('zc');
+        await editor.paste();
+
+        expect(editor.getValue()).toBe('- azcq\n  - nn\n\n  rr\n\n- z');
+    });
+
+    it('CI71: a native cut (CUT_COMMAND) copies, then removes the range', async () => {
+        const editor = loadWithRange(A);
+
+        lexicalOf(editor).dispatchCommand(CUT_COMMAND, null);
+
+        await vi.waitFor(() => expect(editor.getValue()).toBe(A_REMOVED));
+        expect(copyToClipboard).toHaveBeenCalledTimes(1);
+    });
+
+    it('CI72: a tab replaces the range', () => {
+        const editor = loadWithRange(A);
+
+        lexicalOf(editor).dispatchCommand(INSERT_TAB_COMMAND, undefined);
+
+        expect(editor.getValue()).toBe('- a\tq\n  - nn\n\n  rr\n\n- z');
+    });
+
+    it('CI73: a word delete removes the range', () => {
+        const editor = loadWithRange(A);
+
+        lexicalOf(editor).dispatchCommand(DELETE_WORD_COMMAND, false);
+
+        expect(editor.getValue()).toBe(A_REMOVED);
+    });
+
+    it('CI74: REMOVE_TEXT_COMMAND removes the range', () => {
+        const editor = loadWithRange(A);
+
+        lexicalOf(editor).dispatchCommand(REMOVE_TEXT_COMMAND, null);
+
+        expect(editor.getValue()).toBe(A_REMOVED);
+    });
+
+    it('CI75: typing over a range that starts in bold text types bold', () => {
+        const editor = load('- **ab**\n- cd\n\n  pq\n\n  rr\n- z');
+
+        selectText(editor, ['ab', 1], ['pq', 1]);
+        lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'x');
+
+        expect(editor.getValue()).toBe('- **ax**q\n\n  rr\n\n- z');
+    });
+
+    it('CI76: typing dispatched in the update of the removal lands in the item\'s text', () => {
+        const editor = load(B);
+        const lexical = lexicalOf(editor);
+
+        selectText(editor, ['ab', 0], ['pq', 2]);
+        lexical.update(() => {
+            lexical.dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'x');
+        }, { discrete: true });
+
+        expect(editor.getValue()).toBe('- x\n\n  rr\n\n- z');
+    });
+
+    it('CI77: a delete dispatched inside one update is one undo step', () => {
+        const editor = loadWithRange(A);
+        const lexical = lexicalOf(editor);
+
+        lexical.update(() => {
+            lexical.dispatchCommand(DELETE_CHARACTER_COMMAND, false);
+        }, { discrete: true });
+
+        expect(editor.getValue()).toBe(A_REMOVED);
+
+        lexical.dispatchCommand(UNDO_COMMAND, undefined);
+
+        expect(editor.getValue()).toBe(load(A).getValue());
+    });
+
+    it('CI78: cut() writes the text copy() writes', () => {
+        const written: string[] = [];
+
+        vi.spyOn(DOM.sink, 'writeClipboardText').mockImplementation((text: string) => { written.push(text); });
+
+        loadWithRange(A).cut();
+        loadWithRange(A).copy();
+
+        expect(written).toHaveLength(2);
+        expect(written[0]).toBe(written[1]);
+    });
+
+    it('CI79: a paste that brings no node changes nothing', () => {
+        const editor = loadWithRange(A);
+        const lexical = lexicalOf(editor);
+
+        lexical.update(() => { $insertGeneratedNodes(lexical, [], $getSelection()!); }, { discrete: true });
+
+        expect(editor.getValue()).toBe(load(A).getValue());
+        expect(rangeOf(editor)).toBe('"ab"@1 -> "pq"@1');
+    });
+
+    it('CI80: a declined Shift+Enter over a range into a table changes nothing', () => {
+        const source = '- ab\n- cd\n\n  | h |\n  | --- |\n  | pq |\n\n  rr\n- z';
+        const editor = load(source);
+
+        selectText(editor, ['ab', 1], ['pq', 1]);
+        lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+
+        expect(editor.getValue()).toBe(load(source).getValue());
+        expect(rangeOf(editor)).toBe('"ab"@1 -> "pq"@1');
+    });
+});
+
 describe('upstream canaries: the Lexical bugs the guards work around still reproduce (U rows)', () => {
     // When this fails after a Lexical upgrade, the upstream bug is fixed —
     // delete the matching guard in `MarkdownEditor.ts` (the stale-focus range

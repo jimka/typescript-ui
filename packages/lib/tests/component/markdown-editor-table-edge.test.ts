@@ -676,16 +676,17 @@ describe('deleting a range across a table\'s edge takes the whole table and stop
 
     // A list item cannot be empty, and Lexical's removal takes an element that says so once it has emptied it. A
     // range that covers every block of the item at whose table it starts or ends leaves that item, emptied, as a
-    // range into the end of an item's text does (D18).
+    // range into the end of an item's text does (D18), unless the range also takes the item's text whole from a
+    // block that text would join, as in D32.
     it.each<[string, string, End, End, string, string]>([
         // Two documents the list-edit fuzz threw on (`Expected node … to have a parent`): the range ends in a table
         // that is the last block of a list item.
         ['D31: into a table that is all a list item holds, from a block of the item before',
             '| t9 |\n| --- |\n| u10 |\n\n+ w0\n\n\n  ::: {align=center}\n  f1\n  :::\n  ***\n+ | h2 |\n  | --- |\n  | c3 |\n\n```\nk5\n```',
             ['f1', 1], ['c3', 1], '| t9 |\n| --- |\n| u10 |\n\n+ w0\n\n  ::: {align=center}\n  f\n  :::\n\n+\n\n```\nk5\n```', '"f"@1'],
-        ['D32: into a table that ends a list item, from the text of the item before: the item\'s text goes with its table',
+        ['D32: into a table that ends a list item, from the text of the item before: the item is joined away with its text',
             '[d]: /first\n\n- w0\n\n\n  [d]: /u1 "t\n\n  u2"\n- w3\n\n  | h4 |\n  | --- |\n  | c5 |\n- * n6\n\n    p7\n\n# g12',
-            ['w0', 1], ['c5', 1], '[d]: /first\n\n- w\n\n-\n\n- * n6\n\n    p7\n\n# g12', '"w"@1'],
+            ['w0', 1], ['c5', 1], '[d]: /first\n\n- w\n\n- * n6\n\n    p7\n\n# g12', '"w"@1'],
         ['D33: from a paragraph into a table that is all the list\'s last item holds, over the item before it',
             `p\n\n- x\n- ${T.replace(/\n/g, '\n  ')}`, ['p', 1], ['c1', 1], 'p\n\n-', '"p"@1'],
         ['D34: from a table that is all a list\'s first item holds to the end of the next item\'s text',
@@ -696,6 +697,12 @@ describe('deleting a range across a table\'s edge takes the whole table and stop
             '"tail"@0'],
         ['D35: into a table that is all a nested item holds',
             `- k\n  - ${T.replace(/\n/g, '\n    ')}\n- z`, ['k', 1], ['c1', 1], '- k\n  *\n- z', '"k"@1'],
+        ['D37: into a table of a list item that holds more, from the text of the item before: what is left follows into that item',
+            '- ab\n- cd\n\n  | h |\n  | --- |\n  | pq |\n\n  rr\n- z', ['ab', 1], ['pq', 1], '- a\n\n  rr\n\n- z', '"a"@1'],
+        ['D38: from a table into a later block of a list item: nothing joins, and the item keeps what is left',
+            '| h |\n| --- |\n| ab |\n\n- cd\n\n  pq\n  - nn\n\n  rr\n- z', ['ab', 1], ['pq', 1], '- q\n  - nn\n\n  rr\n\n- z', '"q"@0'],
+        ['D39: from a heading that opens the document into a table that ends a list item: the item is joined away, and the emptied heading stays, as after any table-edge removal',
+            '# ab\n\n- cd\n\n  | h |\n  | --- |\n  | pq |\n- z', ['ab', 0], ['pq', 1], '#\n\n- z', 'heading@0'],
     ])('%s', (_name, source, anchor, focus, saved, caret) => {
         for (const isBackward of [true, false]) {
             const editor = deleteRange(source, anchor, focus, isBackward);
