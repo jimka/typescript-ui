@@ -2017,6 +2017,12 @@ page resets to empty.
   characters of one text. What is shown and saved is unchanged. No consumer
   action is needed.
 
+- **`MarkdownEditor`: the indent command leaves a block that is no list
+  item alone.** `INDENT_CONTENT_COMMAND` gave a paragraph, a heading, a
+  quote, a code block or a raw block an indent that was drawn and never
+  saved, and added an undo step. No key or method of the editor sends the
+  command. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
