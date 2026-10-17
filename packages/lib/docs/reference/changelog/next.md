@@ -543,6 +543,17 @@ page resets to empty.
   hide the emphasis around it. What the viewer shows for a save does not
   change. No consumer action is needed.
 
+- **`Markdown` and `MarkdownEditor` read `<br>` in a table cell as a line
+  break.** `<br>`, `<br/>` or `<br />` in a cell's text showed as that
+  literal text in the viewer and in the editor; it now renders, and loads,
+  as a line break in the cell, and the editor saves a line break in a cell
+  as `<br>`. Outside a table, and inside a code span, it stays literal text.
+  A cell's paragraphs (Enter, a merged cell) are still saved as `\n\n`.
+  Once a cell is edited, a `<br>` inside marks is saved outside them
+  (`**a<br>b**` becomes `**a**<br>**b**`) and every other form
+  (`<br/>`, `<br />`, `<br >`, in any letter case) becomes `<br>`; the cell reloads as it shows. No
+  consumer action is needed.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
@@ -1995,6 +2006,11 @@ page resets to empty.
   blank lines from a list the selection did not touch. The joined list is
   now loose when one of the lists is, as documented. No consumer action is
   needed.
+
+- **`MarkdownEditor`: Shift+Enter in a table cell keeps its line break
+  through a save.** The break was saved as the cell paragraph break `\n\n`
+  and loaded back as a second paragraph of the cell. It is now saved as
+  `<br>` and loads as a line break. No consumer action is needed.
 
 ### Core
 

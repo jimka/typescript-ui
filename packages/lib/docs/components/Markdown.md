@@ -64,6 +64,7 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | pipe table | `<table>` with `<thead>`/`<tbody>` |
 | delimiter cell `{width=240}` | `<colgroup>` / `<col style="width:240px">` — see [Extension syntax](#extension-syntax) |
 | body cell `<<` / `^^` | merges into the preceding cell as `colspan`/`rowspan` — see [Extension syntax](#extension-syntax) |
+| `<br>` (or `<br/>`, `<br />`) inside a table cell | `<br>` — a line break in the cell; elsewhere, and inside a code span, it is literal text like any other HTML |
 | `\n\n` inside a table cell (backslash, `n`, twice) | `<br>` — a line break in the cell; a single `\n` stays literal text |
 | `::: {align=... gap=...}` … `:::`, columns split by `\|\|\|` | one `<div>` region holding one `<div>` per column, laid out with flexbox — see [Extension syntax](#extension-syntax) |
 | `![alt](src){width=... height=...}` | `<img>`, or nothing at all when `src` fails the scheme allow-list — see [Extension syntax](#extension-syntax) |
