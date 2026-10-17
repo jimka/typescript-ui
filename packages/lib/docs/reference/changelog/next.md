@@ -2012,6 +2012,11 @@ page resets to empty.
   and loaded back as a second paragraph of the cell. It is now saved as
   `<br>` and loads as a line break. No consumer action is needed.
 
+- **`MarkdownEditor`: a code block made into a paragraph, a heading, a
+  quote or a list item holds line breaks.** Its text kept the line ends as
+  characters of one text. What is shown and saved is unchanged. No consumer
+  action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
