@@ -1898,12 +1898,13 @@ page resets to empty.
   its block where the block shows nothing at all, and where the block
   holds, beside the caret or after it, text Markdown's lexer hands back
   otherwise than it is written, so that its place in the source is not
-  found: a list item's line that a tab indents and that shows as spaces, a
-  task item whose checkbox is followed by more than one space in a list with
-  blank lines between its items, text of a list item that begins as a link
-  reference definition repeated before it does, or a character reference
-  such as `&#35;`, which shows as the character it stands for. No consumer
-  action is needed.
+  found: a code line or an HTML line whose container prefix holds a tab, or
+  a paragraph line made of list markers and tabs, which show as the spaces
+  the tabs stand for, a task item whose checkbox is followed by more than
+  one space in a list with blank lines between its items, text of a list
+  item that begins as a link reference definition repeated before it does,
+  or a character reference such as `&#35;`, which shows as the character it
+  stands for. No consumer action is needed.
 
 - **`MarkdownEditor` joins a list item away when a selection takes its
   text whole.** A selection from one item's text into a later block of
@@ -1926,6 +1927,23 @@ page resets to empty.
   length: a list of 1,000 items took seconds to load or to toggle. These now
   grow with the length. Pasting a list is about twice as fast but still slows
   with the square of the list's length. What is saved is unchanged.
+
+- **Tabs in Markdown indentation count as CommonMark counts them.**
+  `Markdown` and `MarkdownEditor` read a tab that starts a later line of a
+  list item as four columns wherever it started, read the rest of a line
+  after `>` and a tab from column zero, and took characters, not columns,
+  off the lines under a fenced code block indented by one to three spaces. A
+  line indented by two spaces and a tab under `- a` was a code block, an
+  item nested by a space and a tab put its text one column too far right,
+  `>`, a space and a tab made the rest of the line code, and a fence
+  indented by one space dropped a line's leading tab. A tab now reaches the
+  next multiple of four columns from the start of its line. One reading
+  still differs from CommonMark: inside a list item or blockquote, a tab in
+  the indentation of a code or HTML line, or right after a marker character
+  that starts such a line, is read as the spaces that reach its tab stop. So
+  is a tab after a marker character that starts a paragraph continuation
+  line, which changes only the whitespace the tab stands for in that
+  paragraph. No consumer action is needed.
 
 ### Core
 
