@@ -1809,3 +1809,71 @@ describe('large documents: what the edits leave', () => {
     `labelClosedAfter` uses the same `readsOtherwiseAfter` and is left as it is. Its first test lets a block through only when the block ends inside an open label or title, and no document of the survey holds one.
 
     **Rejected: stop the lexer after the token in question.** That would bound the cost for every block, the open ones too. `marked` has no way to stop early, and a tokenizer that looks for a closing line or a closing `]` reads to the end of what it is given when there is none.
+
+---
+
+## Implementation Notes
+
+Built on `f367b2063`, which holds the three plans in `depends-on` and also the join-escapes, cross-item range removal, raw-block range-edit resumption and tab-column branches. Part C was accepted by the owner. Commits: part A (`markdownSerializer.ts`, `markdownWritable.ts`), part B (`markdownListItemNode.ts`), part C (`MarkdownEditor.ts` with the test file), then the changelog.
+
+**What differed from the plan, and what was done.**
+
+- A fifth caller of `$collectDefinitions` existed: `$writeRestOfBlock` in `markdownSerializer.ts`, which the range-edits branch added. Step 1's grep therefore found six matches (the definition and five sites), not five. The plan's intent is that no caller is left, so `$writeRestOfBlock` now takes `$definitionsReader(true)(nodes)` for the nodes it writes, like `$serializeInlineNodes`, and `$collectDefinitions` is deleted.
+- `$showRawBlockAsSaved` on this base has one more step than the plan printed, `$showBlankRawBlockAsParagraph`, after the sibling check. The new `$showSiblings` parameter takes the place of `$showSiblingRawBlocksAsWritten` in the second position of the list of steps, and the other steps are as they were.
+- The looseness plan's change to `registerMarkdownListTransforms` and the tab-column work (`markdownTabs.ts`, the load-only paragraph blank drop) were not touched. Line numbers in the plan are stale; every site was found by name.
+- The test file was added unchanged from the addendum and failed 20 and passed 8 rows before any code, as step 3 expects; all 28 pass after parts A, B and C. It went in with part C's commit, so no commit holds a failing row.
+- The browser check of *Manual check* was not done. The headless timings below stand in for it.
+
+**Timings on this base**, in ms, the edit and the save that follows, median of three runs with the lowest and highest in brackets (one run at 8,000 blocks), one vitest process on an otherwise idle machine, `marked` as installed. Before is `f367b2063`, after is the tip.
+
+| Edit | Blocks | Before | After |
+|---|---|---|---|
+| Paste of the whole document, plain paragraphs | 500 | 383 [378-395] | 46 [43-53] |
+| | 2,000 | 5,554 [5,513-5,591] | 227 [221-234] |
+| | 8,000 | 88,186 | 2,374 |
+| Bold over every paragraph | 500 | 252 [246-268] | 52 [50-71] |
+| | 2,000 | 3,317 [3,259-3,335] | 195 [186-196] |
+| | 8,000 | 41,269 | 793 |
+| Every paragraph made a code block | 500 | 231 [213-233] | 26 [25-34] |
+| | 2,000 | 3,226 [3,194-3,234] | 102 [97-103] |
+| `setBlockType("h2")` over one tight list | 500 | 200 [199-203] | 46 [44-48] |
+| | 2,000 | 2,829 [2,790-2,859] | 179 [179-183] |
+| | 8,000 | 43,539 | 800 |
+| Bulleted toggle over a list whose items each hold a paragraph | 500 | 256 [253-259] | 53 [51-53] |
+| | 2,000 | 3,617 [3,610-3,635] | 215 [213-216] |
+| | 8,000 | 61,681 | 881 |
+| Numbered toggle over one tight list | 500 | 66 [65-66] | 61 [61-65] |
+| | 2,000 | 380 [375-382] | 271 [265-279] |
+| | 8,000 | 4,075 | 1,007 |
+| A typed letter in a document of `:::` column blocks | 500 | 177 [172-179] | 11 [11-12] |
+| | 2,000 | 2,714 [2,633-2,748] | 47 [45-48] |
+| | 8,000 | 45,828 | 185 |
+| The load of raw blocks | 50 | 131 [129-155] | 8 [7-33] |
+| | 100 | 922 [917-929] | 8 [6-9] |
+| | 200 | 7,118 [7,096-7,316] | 8 [7-10] |
+| The load of reference links, a definition after each | 50 | 161 [157-171] | 9 [8-16] |
+| | 100 | 1,174 [1,170-1,190] | 13 [13-18] |
+| | 200 | 9,160 [9,147-9,320] | 27 [22-28] |
+| A typed letter in that document | 50 | 4 [4-6] | 2 [2-3] |
+| | 100 | 11 [11-11] | 3 [3-4] |
+| | 200 | 38 [35-38] | 6 [6-7] |
+
+These agree with the plan's table. Beyond it: on this base the undo and redo of a `:::` column document (typed letter, Enter, toggles, block types) also grew with the square of the document before and grow with it after (for example the undo of the bulleted toggle over 2,000 `:::` blocks: 2,998 before, 283 after). The numbered toggle at 8,000 blocks was measured at 1,007 where the plan has 841; that row did not need the change to be about linear, and it grows with exponent 1.0 to 1.1 between 500 and 8,000 in these runs. The survey's raw data and summaries are in `scratch-keep/impl/large-doc/` (`timings-T1.txt`, `timings-T2.txt`, `timings-T3-8000.txt`).
+
+**The differential**, parent `f367b2063` against the tip, each in a private `git archive` copy with `node_modules` symlinked, one vitest process at a time (so one job where the plan ran two), by the plan's scripts and probes (copied, with their paths rewritten, to `scratch-keep/impl/large-doc/k/`). Parts A, B and C were not run apart, only the whole branch against its parent, compared with `CANON=1` (every node named by where it first appears, because part B changes node keys). Result of `cmpall.sh parent tip` and `cmprows.py parent tip`:
+
+| Family | Result |
+|---|---|
+| Aimed and fence sets, 75,076 cases | records differ in nothing but the selection's node keys; 3,414,394 updates: 3,413,972 the same, 422 differ in the flag of one dirty element alone, 0 otherwise |
+| Looseness set and its extra set, 35,541 cases | the same; 1,963,635 + 89,930 updates: 630 + 5 differ in the flag alone, 0 otherwise |
+| Seeded fuzz: list-edit and reviewer 7 | 16 result files byte-identical; 1,130,350 updates: 130 differ in the flag alone, 0 otherwise |
+| Seeded fuzz: paste, table edge | 44 result files byte-identical; 4,273,011 updates the same, none differs |
+| List toggle sets, 58 record files | 57 byte-identical; `dxb2.jsonl` differs in one record, `dxb124/tod-lor`, with the same tree and the save loose where it was tight (`cmprows.py`: `1 record(s) looser with the same tree, 0 differing otherwise`). 2,031,789 updates: 10,939 differ in the flag alone and 9 otherwise, all 9 in `dxb2` |
+
+Every flag difference is a list flagged `false` where it was `true` (and, in some, the list item or column that holds the joined lists), which is part C's one change. These are the figures the plan expected. The five sets of review 5 (`r5w-*`) were not run: they need a 6 GB heap each and the machine was shared. The whole comparison output is `scratch-keep/impl/large-doc/cmp-canon.txt`.
+
+**Checks.** `npm run typecheck`, `typecheck:test`, `lint`, `docs:api`, `docs:llms:check` and `build:lib` are clean. The full suite passes: 574 files, 21,765 tests (21,737 at the base, plus the 28 rows), 2 todo.
+
+**Review fixes.** The plan's *Documentation Impact* wording said a document of several hundred `:::` blocks took seconds for every typed letter. Measured before-times are 0.14 to 0.18 s at 500 blocks and 2.0 to 2.7 s at 2,000, so the changelog says it took seconds from about two thousand blocks, and it now names what still grows faster than the document (the plan's *What still grows faster than the document*: a paste of 1,000 reference links with their definitions, about 28 s; blocks of thousands of lines). Row `D9` was added: a copy of a block that holds a reference link, in a document whose only definition no reference link uses, is written inline (`[a](/u)`). It fails when `$definitionsReader(true)` is swapped for `false` at `$serializeBlock`, `$serializeInlineNodes` or `$writeRestOfBlock`; the sites in `$readsBackAsShown` (`true`) and `$runsReadingOtherwise` (`false`) give the same result either way for such a block, so no row separates them and only the differential guards them.
+
+Two guards are pinned by no test, and no case that reaches either was found, so the differential alone guards them: the walk back of `$showRawBlocksBeforeAsWritten` that checks the raw blocks before a changed block (`markdownWritable.ts`), and the guard in `$holdsPointAt` for a selection point on the parent (`markdownListItemNode.ts`). The comments of `$writesSomething`, `$showSiblingsOnceWhole` and `$makeItemsOfRun` were corrected, and `$showSiblingsOnceWhole` now says its bound does not hold for a run of changed empty paragraphs after a raw block.
