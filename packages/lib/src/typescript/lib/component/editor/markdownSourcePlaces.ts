@@ -154,6 +154,39 @@ const NO_INLINES: readonly SourceInline[] = [];
  * @returns The place, or `null` when it is not found.
  */
 export function $placeOfSourceOffset(text: string, offset: number, block: LexicalNode, start: number, end: number): SourcePlace | null {
+    const { walk, analysis, isRawBlock } = $locatedWalk(text, block, start, end);
+    const source = text.slice(start);
+
+    // A block that shows something elsewhere: one that shows nothing at all has no neighbour to be mistaken for.
+    const empty = isRawBlock || walk.units.length === 0 ? null : $emptyBlockAt(block, source, offset - start, analysis, end - start);
+
+    if (empty !== null) {
+        return { node: empty, offset: 0 };
+    }
+
+    const place = $placeAmongUnits(walk.units, offset - start, source, walk.inlines);
+
+    return place === null ? null : $placeOutsideSourceNode(place);
+}
+
+/** A block's units with their source found, the analysis they were found from, and whether the block is a raw block. */
+interface LocatedWalk {
+    readonly walk:       UnitWalk;
+    readonly analysis:   SourceAnalysis;
+    readonly isRawBlock: boolean;
+}
+
+/**
+ * Finds the source of what a block shows: the walk both directions of the
+ * mapping between a block's Markdown and what it shows read.
+ *
+ * @param text - The Markdown the block was built of, with the blocks beside it.
+ * @param block - The block a load built of `text` from `start` to `end`.
+ * @param start - The block's first offset in `text`.
+ * @param end - The offset past its last.
+ * @returns The walk, the analysis it was found from, and whether the block is a raw block.
+ */
+function $locatedWalk(text: string, block: LexicalNode, start: number, end: number): LocatedWalk {
     // The block's Markdown with all that follows it: what ends the block's last line may lie past `end`, and the
     // blocks after it read apart from it.
     const source = text.slice(start);
@@ -170,16 +203,86 @@ export function $placeOfSourceOffset(text: string, offset: number, block: Lexica
         locateByEntries(walk, analysis, end - start);
     }
 
-    // A block that shows something elsewhere: one that shows nothing at all has no neighbour to be mistaken for.
-    const empty = isRawBlock || walk.units.length === 0 ? null : $emptyBlockAt(block, source, offset - start, analysis, end - start);
+    return { walk, analysis, isRawBlock };
+}
 
-    if (empty !== null) {
-        return { node: empty, offset: 0 };
+/** A point of a block, as Lexical names one. */
+export interface BlockPoint {
+    /** The node the point is in. */
+    readonly node:   LexicalNode;
+    /** The offset in a text node, or the child index in an element. */
+    readonly offset: number;
+    /** Whether `node` is a text node or an element. */
+    readonly type:   "text" | "element";
+}
+
+/**
+ * Where a point of a block stands in the block's Markdown: the start of the source of the first thing the block shows
+ * at or after the point, else the end of the source of the last thing it shows before it. The reverse of
+ * {@link $placeOfSourceOffset}, read from the same walk.
+ *
+ * @param text - The Markdown the block was built of, with the blocks beside it.
+ * @param block - The block a load built of `text` from `start` to `end`.
+ * @param start - The block's first offset in `text`.
+ * @param end - The offset past its last.
+ * @param point - The point, in `block`.
+ * @returns The offset in `text`, or `null` when the block shows nothing there or that thing's source is not found.
+ */
+export function $sourceOffsetOfPoint(text: string, block: LexicalNode, start: number, end: number, point: BlockPoint): number | null {
+    const { walk } = $locatedWalk(text, block, start, end);
+    const offset = point.type === "text" ? sourceOffsetInText(walk.units, point) : sourceOffsetInElement(walk.units, point);
+
+    return offset === null ? null : start + offset;
+}
+
+/**
+ * The offset in a block's Markdown of a point in a text node.
+ *
+ * @param units - The block's units, their source found.
+ * @param point - The point.
+ * @returns The offset in the block's Markdown, or `null` when there is no unit or its source is not found.
+ */
+function sourceOffsetInText(units: readonly ShownUnit[], point: BlockPoint): number | null {
+    const own = units.filter((unit) => unit.node.is(point.node));
+    const atPoint = own.find((unit) => unit.offset === point.offset);
+    const last = own[own.length - 1];
+    // A source node that shows nothing (a link with no text, kept as written) is one unit and no character: a caret
+    // in it stands after the source it keeps, as a place is only ever given there.
+    const isEmptySource = atPoint !== undefined && atPoint.char === "" && $isMarkdownSourceTextNode(atPoint.node);
+
+    if (isEmptySource) {
+        return atPoint.end === NOT_FOUND ? null : atPoint.end;
     }
 
-    const place = $placeAmongUnits(walk.units, offset - start, source, walk.inlines);
+    if (atPoint !== undefined) {
+        return atPoint.start === NOT_FOUND ? null : atPoint.start;
+    }
 
-    return place === null ? null : $placeOutsideSourceNode(place);
+    const isAtEnd = last !== undefined && last.offset + 1 === point.offset;
+
+    return isAtEnd && last.end !== NOT_FOUND ? last.end : null;
+}
+
+/**
+ * The offset in a block's Markdown of a point between the children of an element.
+ *
+ * @param units - The block's units, their source found.
+ * @param point - The point.
+ * @returns The offset in the block's Markdown, or `null` when the children beside the point show nothing or their source is not found.
+ */
+function sourceOffsetInElement(units: readonly ShownUnit[], point: BlockPoint): number | null {
+    const element = point.node as ElementNode;
+    const after = element.getChildAtIndex(point.offset);
+    const before = element.getChildAtIndex(point.offset - 1);
+    const first = after === null ? undefined : units.find((unit) => unit.node.is(after) || after.isParentOf(unit.node));
+
+    if (first !== undefined) {
+        return first.start === NOT_FOUND ? null : first.start;
+    }
+
+    const last = before === null ? undefined : units.findLast((unit) => unit.node.is(before) || before.isParentOf(unit.node));
+
+    return last === undefined || last.end === NOT_FOUND ? null : last.end;
 }
 
 /**

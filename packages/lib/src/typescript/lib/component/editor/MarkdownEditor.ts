@@ -64,7 +64,7 @@ import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent } from "@lexica
 import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
 import {
-    $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $serializeRestOfBlock, $writtenListMarker,
+    $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $serializeMarkdownWithPlaces, $serializeRestOfBlock, $writtenListMarker,
 } from "~/component/editor/markdownSerializer.js";
 import {
     $breakRuleContainerOf, $contentFollows, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
@@ -94,20 +94,35 @@ import {
 } from "~/component/editor/markdownBlockNode.js";
 import { $createMarkdownImageNode, $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { cssTextToAttributes, resolveImageSpec } from "~/component/display/markdownAttributes.js";
+import { readSourceSelectionState } from "~/component/editor/markdownSourceEdits.js";
+import type { MarkdownSourceEdit, MarkdownSourceTransform } from "~/component/editor/markdownSourceEdits.js";
+import { paragraphAroundBlockSource, tableSource } from "~/component/editor/markdownSourceLines.js";
 import {
-    BOLD_SOURCE, ITALIC_SOURCE, UNDERLINE_SOURCE, STRIKETHROUGH_SOURCE, INLINE_CODE_SOURCE,
-    REMOVE_LINK_SOURCE, CLEAR_FORMAT_SOURCE, linkSource, spanStyleSource, readSourceSelectionState, imageSource,
-} from "~/component/editor/markdownSourceEdits.js";
-import type { MarkdownSourceTransform } from "~/component/editor/markdownSourceEdits.js";
-import {
-    FENCED_CODE_SOURCE, blockPrefixSource, listSource, paragraphAroundBlockSource, tableSource,
-} from "~/component/editor/markdownSourceLines.js";
+    $selectSourceRange, $sourceRangeOfSelection, smallestEdit, sourceWindow, wholeDocumentWindow,
+} from "~/component/editor/markdownSourceModel.js";
+import type { SourceWindow } from "~/component/editor/markdownSourceModel.js";
 
 /**
  * The clipboard type Lexical writes its own copied nodes under (the
  * `@lexical/clipboard` copy format); a paste carrying it inserts those nodes.
  */
 const LEXICAL_CLIPBOARD_TYPE = "application/x-lexical-editor";
+
+/** The model editor a source-mode command runs on, with the source map of its import. */
+interface ModelEditor {
+    /** The headless editor holding the imported window. */
+    readonly editor:    LexicalEditor;
+    /** The source map of the import, which the save takes to write unedited blocks as loaded. */
+    readonly sourceMap: MarkdownSourceMap;
+    /** Removes the editor's registrations. */
+    readonly release:   () => void;
+}
+
+/** Returned when the definition blocks a window carried are not written back unchanged: the run is repeated on the whole document. */
+const WINDOW_LOST: unique symbol = Symbol("window lost");
+
+/** What one run on the model gives: an edit of the document, nothing to do, or a window whose carried parts did not come back. */
+type ModelResult = MarkdownSourceEdit | null | typeof WINDOW_LOST;
 
 /** Shown when a context-menu Paste finds the clipboard read unavailable. */
 const CLIPBOARD_READ_DENIED_MESSAGE = "Clipboard read blocked by the browser — press Ctrl/Cmd+V to paste.";
@@ -393,27 +408,8 @@ function $copyBlockAsCodeSource(block: ElementNode, code: ElementNode): void {
 }
 
 /**
- * Builds the source-mode transform for a {@link MarkdownEditor.setBlockType}
- * call: `"code"` fences the selected blocks, and every other type converts
- * them to the block its prefix writes — `""` for `"paragraph"`, `"> "` for
- * `"quote"`, `"#".repeat(level) + " "` for `h1`–`h6` (see
- * `markdownSourceLines.ts`).
- *
- * @param type - The requested block type.
- * @returns The source-mode transform.
- */
-function sourceTransformForBlockType(type: MarkdownBlockType): MarkdownSourceTransform {
-    switch (type) {
-        case "code":      return FENCED_CODE_SOURCE;
-        case "paragraph": return blockPrefixSource("");
-        case "quote":     return blockPrefixSource("> ");
-        default:          return blockPrefixSource("#".repeat(Number(type.slice(1))) + " ");
-    }
-}
-
-/**
  * Builds the `{ width?, height? }` attribute record `insertImage` passes to
- * `resolveImageSpec` / `imageSource`, from its own `options` parameter.
+ * `resolveImageSpec`, from its own `options` parameter.
  *
  * @param options - The caller-supplied `width`/`height`, if any.
  * @returns The attribute record.
@@ -7244,6 +7240,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     private _unregister: (() => void) | null = null;
 
     /**
+     * While a source-mode command runs through the model: the model editor the command acts on in place of the
+     * WYSIWYG editor. `null` otherwise.
+     */
+    private _commandEditor: LexicalEditor | null = null;
+
+    /**
      * The teardown for {@link registerTableSelectionObserver}, registered only
      * once the WYSIWYG view actually mounts (its mutation listener needs a real
      * table element in the document) and cleared on {@link dispose}.
@@ -7409,12 +7411,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Whether the raw-Markdown source surface is the one currently shown. A
      * command with no source-mode behaviour returns early on this, so it never
-     * mutates the Lexical document that surface is not showing.
+     * mutates the Lexical document that surface is not showing. While a
+     * source-mode command runs on its model ({@link editSourceThroughModel})
+     * the answer is `false`, so the command takes its WYSIWYG path against the
+     * model.
      *
-     * @returns `true` in `"source"` mode.
+     * @returns `true` in `"source"` mode, outside a run on the model.
      */
     private isSourceMode(): boolean {
-        return this.getMode() === "source";
+        return this._commandEditor === null && this.getMode() === "source";
     }
 
     /**
@@ -7422,7 +7427,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * is the one shown, and restores focus to it afterwards — a toolbar click or
      * a menu row blurs the editing surface before the command runs. The range is
      * read from the `CodeEditor`'s own state rather than the DOM selection, which
-     * a blurred surface no longer carries.
+     * a blurred surface no longer carries. A read-only editor refuses the edit
+     * before the transform runs ({@link refuseSourceEditIfReadOnly}).
      *
      * @param transform - The edit rule to run against the raw Markdown.
      * @returns `true` when the source surface handled the command, so the caller
@@ -7434,16 +7440,240 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             return false;
         }
 
-        const selection = this._codeEditor.getSelection();
-        const edit = transform(this._codeEditor.getValue(), selection.from, selection.to);
+        const refused = this.refuseSourceEditIfReadOnly();
 
-        if (edit !== null) {
-            this._codeEditor.replaceRange(edit.from, edit.to, edit.insert, edit.selection);
+        if (!refused) {
+            const selection = this._codeEditor.getSelection();
+            const edit = transform(this._codeEditor.getValue(), selection.from, selection.to);
+
+            if (edit !== null) {
+                this._codeEditor.replaceRange(edit.from, edit.to, edit.insert, edit.selection);
+            }
         }
 
         this._codeEditor.focus(true);
 
         return true;
+    }
+
+    /**
+     * Refuses a source-mode command that edits text in a read-only editor,
+     * before it reads or imports any text. The refusal is handed to the source
+     * editor as an empty replacement at its selection, which a read-only
+     * `CodeEditor` refuses with its own `"readonlyedit"` event and wash.
+     *
+     * @returns Whether the editor is read-only, so that the caller must not edit.
+     */
+    private refuseSourceEditIfReadOnly(): boolean {
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) {
+            const { from } = this._codeEditor.getSelection();
+
+            // A read-only CodeEditor refuses any replacement with its own "readonlyedit" and wash; the editor relays the event.
+            this._codeEditor.replaceRange(from, from, "");
+        }
+
+        return readOnly;
+    }
+
+    /**
+     * Runs a command on the Markdown around the source surface's selection, as
+     * the WYSIWYG surface runs it, when that surface is not the one shown: the
+     * command is called again against a model of that Markdown (a short-lived
+     * headless editor), and only the text it changes is written back to the
+     * source editor, with the caret where the WYSIWYG command leaves it. Keyboard
+     * focus goes back to the source editor afterwards, as a toolbar click or a
+     * menu row blurred it.
+     *
+     * @param command - The command, which calls itself again on the model.
+     * @returns `true` when the source surface handled the command, so the caller
+     *   must return; `false` otherwise, so the caller falls through to its
+     *   WYSIWYG path.
+     */
+    private editSourceThroughModel(command: () => unknown): boolean {
+        const sourceMode = this.isSourceMode();
+
+        if (!sourceMode) {
+            return false;
+        }
+
+        const refused = this.refuseSourceEditIfReadOnly();
+
+        if (!refused) {
+            this.editThroughModel(command);
+        }
+
+        this._codeEditor.focus(true);
+
+        return true;
+    }
+
+    /**
+     * Imports the window around the source selection into a model, runs the
+     * command there and writes the change back. A window whose carried
+     * definitions did not come back is run again on the whole document.
+     *
+     * @param command - The command to run on the model.
+     */
+    private editThroughModel(command: () => unknown): void {
+        const text = this._codeEditor.getValue();
+        const selection = this._codeEditor.getSelection();
+        // Only the cached text of a source editor not mounted yet holds one; the import rewrites it, so no offset would match.
+        const holdsCarriageReturn = text.includes("\r");
+
+        if (holdsCarriageReturn) {
+            return;
+        }
+
+        const window = sourceWindow(text, selection.from, selection.to);
+        const windowed = this.runOnModel(text, selection, window, command);
+        const result = windowed === WINDOW_LOST ? this.runOnModel(text, selection, wholeDocumentWindow(text), command) : windowed;
+
+        if (result !== null && result !== WINDOW_LOST) {
+            this._codeEditor.replaceRange(result.from, result.to, result.insert, result.selection);
+        }
+    }
+
+    /**
+     * Runs a command on a model of a window of the document.
+     *
+     * @param text - The document.
+     * @param selection - The source selection.
+     * @param window - The part of the document to import.
+     * @param command - The command to run on the model.
+     * @returns The edit of the document, `null` when the command does nothing, or {@link WINDOW_LOST}.
+     */
+    private runOnModel(text: string, selection: { from: number; to: number }, window: SourceWindow, command: () => unknown): ModelResult {
+        const imported = window.before + text.slice(window.start, window.end) + window.after;
+        // An offset of the imported text plus `shift` is the same offset of the document.
+        const shift = window.start - window.before.length;
+        const model = this.buildModelEditor(imported);
+
+        try {
+            const applies = this.selectInModel(model, imported, selection.from - shift, selection.to - shift);
+
+            if (!applies) {
+                return null;
+            }
+
+            const before = model.editor.getEditorState();
+
+            this.runOnCommandEditor(model.editor, command);
+
+            const changed = model.editor.getEditorState() !== before;
+
+            return changed ? this.editOfModel(model, text, window) : null;
+        } finally {
+            model.release();
+        }
+    }
+
+    /**
+     * Places the source selection in the model.
+     *
+     * @param model - The model editor.
+     * @param imported - The text the model imported.
+     * @param from - The selection's start offset in `imported`.
+     * @param to - The selection's end offset in `imported`.
+     * @returns `true` when the selection was placed and touches no raw block.
+     */
+    private selectInModel(model: ModelEditor, imported: string, from: number, to: number): boolean {
+        let applies = false;
+
+        model.editor.update(() => {
+            const placed = $selectSourceRange(imported, model.sourceMap, from, to);
+
+            applies = placed && !$selectionTouches($isMarkdownRawBlockNode);
+        }, { discrete: true });
+
+        return applies;
+    }
+
+    /**
+     * Calls the command with the model standing in for the WYSIWYG editor.
+     *
+     * @param editor - The model editor.
+     * @param command - The command.
+     */
+    private runOnCommandEditor(editor: LexicalEditor, command: () => unknown): void {
+        this._commandEditor = editor;
+
+        try {
+            command();
+        } finally {
+            this._commandEditor = null;
+        }
+    }
+
+    /**
+     * The edit of the document a command made on the model.
+     *
+     * @param model - The model editor, after the command.
+     * @param text - The document.
+     * @param window - The part of the document the model imported.
+     * @returns The edit with the selection to leave; `null` when the text is as it was; {@link WINDOW_LOST} when the definitions the window carried are not written back unchanged.
+     */
+    private editOfModel(model: ModelEditor, text: string, window: SourceWindow): ModelResult {
+        const { saved, range } = model.editor.read(() => {
+            const written = $serializeMarkdownWithPlaces(model.sourceMap);
+
+            return { saved: written, range: $sourceRangeOfSelection(written.text, written.places) };
+        });
+
+        const carriedBack = saved.text.length >= window.before.length + window.after.length
+            && saved.text.startsWith(window.before) && saved.text.endsWith(window.after);
+
+        if (!carriedBack) {
+            return WINDOW_LOST;
+        }
+
+        const written = saved.text.slice(window.before.length, saved.text.length - window.after.length);
+        const change = smallestEdit(text.slice(window.start, window.end), written);
+
+        if (change === null) {
+            return null;
+        }
+
+        const endOfChange = change.from + change.insert.length;
+        const inWritten = (offset: number | null | undefined): number => (
+            offset === null || offset === undefined ? endOfChange : Math.max(0, Math.min(offset - window.before.length, written.length))
+        );
+
+        const ends = [inWritten(range?.from), inWritten(range?.to)];
+
+        return {
+            from:      change.from + window.start,
+            to:        change.to + window.start,
+            insert:    change.insert,
+            selection: { from: Math.min(...ends) + window.start, to: Math.max(...ends) + window.start },
+        };
+    }
+
+    /**
+     * Builds the model editor a source-mode command runs on: loaded as
+     * {@link buildEditor} loads the WYSIWYG editor, with the same rules, and
+     * reporting nothing.
+     *
+     * @param markdown - The Markdown to import.
+     * @returns The model editor, its source map and the call that releases its registrations.
+     */
+    private buildModelEditor(markdown: string): ModelEditor {
+        const editor = createEditor({ nodes: EDITOR_NODES, theme: EDITOR_THEME, onError: reportEditorError });
+        const unregisterWritableStateRules = registerWritableStateRules(editor);
+        let sourceMap: MarkdownSourceMap = EMPTY_SOURCE_MAP;
+
+        editor.update(() => {
+            sourceMap = $importMarkdown(markdown);
+        }, { discrete: true });
+
+        const release = mergeRegister(unregisterWritableStateRules, this.registerEditorRules(editor, null));
+
+        // Registering a node transform marks every node of its type dirty in an update of its own, which the WYSIWYG
+        // editor commits before a command can act; the model commits it here, before the selection goes in.
+        editor.update(() => {}, { discrete: true });
+
+        return { editor, sourceMap, release };
     }
 
     /**
@@ -7839,6 +8069,11 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     private refocusSurface(preventScroll: boolean = false): this {
+        // A run on the model leaves keyboard focus where the source editor has it.
+        if (this._commandEditor !== null) {
+            return this;
+        }
+
         const readOnly = this.getReadOnly();
 
         if (readOnly) {
@@ -8254,18 +8489,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * source. Whole table cells selected take the format cell by cell under
      * the same rules, a cell holding such a run being left as it is.
      *
-     * In `"source"` mode, toggles bold (`**bold**`, or a `__bold__` run
-     * already there) around the raw-Markdown selection instead, reading the selection's formats as the viewer does; no-op
-     * where the markers would read back as literal text — straight after a
-     * backslash, or where Markdown's flanking rules stop them pairing
-     * (`**hello.**b`) — and where they would cut another construct (half of
-     * a run, an autolink, a code block). See *Source / WYSIWYG mode* in the
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
      * component docs.
      *
      * @returns This component, for method chaining.
      */
     toggleBold(): this {
-        const handledBySource = this.editSource(BOLD_SOURCE);
+        const handledBySource = this.editSourceThroughModel(() => this.toggleBold());
 
         if (handledBySource) { return this; }
 
@@ -8279,18 +8511,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * a run kept as Markdown source. Whole table cells selected take the
      * format cell by cell, as {@link MarkdownEditor.toggleBold} describes.
      *
-     * In `"source"` mode, toggles italic (`*italic*`, or an `_italic_` run
-     * already there) around the raw-Markdown selection instead, reading the selection's formats as the viewer does; no-op
-     * where the markers would read back as literal text — straight after a
-     * backslash, or where Markdown's flanking rules stop them pairing
-     * (`**hello.**b`) — and where they would cut another construct (half of
-     * a run, an autolink, a code block). See *Source / WYSIWYG mode* in the
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
      * component docs.
      *
      * @returns This component, for method chaining.
      */
     toggleItalic(): this {
-        const handledBySource = this.editSource(ITALIC_SOURCE);
+        const handledBySource = this.editSourceThroughModel(() => this.toggleItalic());
 
         if (handledBySource) { return this; }
 
@@ -8305,16 +8534,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * cells selected take the format cell by cell, as
      * {@link MarkdownEditor.toggleBold} describes.
      *
-     * In `"source"` mode, toggles the `` `code` `` marker around the
-     * raw-Markdown selection instead; refuses a selection that still contains
-     * a backtick, one straight after a backslash, which would escape the
-     * opening backtick, one whose text would read differently as code, and one
-     * that would cut another construct (half of a run, an autolink).
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @returns This component, for method chaining.
      */
     toggleInlineCode(): this {
-        const handledBySource = this.editSource(INLINE_CODE_SOURCE);
+        const handledBySource = this.editSourceThroughModel(() => this.toggleInlineCode());
 
         if (handledBySource) { return this; }
 
@@ -8328,18 +8556,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * it holds a run kept as Markdown source. Whole table cells selected take
      * the format cell by cell, as {@link MarkdownEditor.toggleBold} describes.
      *
-     * In `"source"` mode, toggles strikethrough (`~~strikethrough~~`, or a
-     * `~struck~` run already there) around the raw-Markdown selection instead, reading the selection's formats as the viewer does; no-op
-     * where the markers would read back as literal text — straight after a
-     * backslash, or where Markdown's flanking rules stop them pairing
-     * (`**hello.**b`) — and where they would cut another construct (half of
-     * a run, an autolink, a code block). See *Source / WYSIWYG mode* in the
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
      * component docs.
      *
      * @returns This component, for method chaining.
      */
     toggleStrikethrough(): this {
-        const handledBySource = this.editSource(STRIKETHROUGH_SOURCE);
+        const handledBySource = this.editSourceThroughModel(() => this.toggleStrikethrough());
 
         if (handledBySource) { return this; }
 
@@ -8353,17 +8578,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * a run kept as Markdown source. Whole table cells selected take the
      * format cell by cell, as {@link MarkdownEditor.toggleBold} describes.
      *
-     * In `"source"` mode, toggles the dialect's `++underline++` marker around
-     * the raw-Markdown selection instead, reading the selection's formats as
-     * the viewer does; no-op where the markers would not read back as
-     * underline, and where they would cut another construct (half of a run,
-     * an autolink, a code block). See *Source / WYSIWYG mode* in the
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
      * component docs.
      *
      * @returns This component, for method chaining.
      */
     toggleUnderline(): this {
-        const handledBySource = this.editSource(UNDERLINE_SOURCE);
+        const handledBySource = this.editSourceThroughModel(() => this.toggleUnderline());
 
         if (handledBySource) { return this; }
 
@@ -8380,22 +8603,17 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * *Colour, font, and size are refused inside a link* in the plan's
      * Architecture Decisions) — a styled span can never nest inside `[text](url)`.
      *
-     * In `"source"` mode this writes the `[text]{…}` styled span into the raw
-     * Markdown instead, inside any emphasis around the selection
-     * (`**[hello]{…}**`, the form WYSIWYG saves), merging into an existing
-     * span rather than nesting inside it. The raw text is read as the viewer
-     * reads it, so only a selection the span would break is refused: one that
-     * crosses a line break, touches a link of any form or an image (an
-     * image's `{width=…}` group included), lies in a code span, a code block,
-     * a `:::` fence line or a table delimiter row, cuts through a run's
-     * markers, or would put a bracket straight after an escaping backslash.
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @param patch - Kebab-case CSS property names mapped to their new value,
      *   or `null` to remove that property.
      * @returns This component, for method chaining.
      */
     private patchSelectionStyle(patch: Record<string, string | null>): this {
-        const handledBySource = this.editSource(spanStyleSource(patch));
+        const handledBySource = this.editSourceThroughModel(() => this.patchSelectionStyle(patch));
 
         if (handledBySource) {
             return this;
@@ -8427,15 +8645,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * code block or holds a run kept as Markdown source, or when it sits
      * inside a link.
      *
-     * In `"source"` mode this writes the `[text]{…}` styled span into the raw
-     * Markdown instead, inside any emphasis around the selection
-     * (`**[hello]{…}**`, the form WYSIWYG saves), merging into an existing
-     * span rather than nesting inside it. The raw text is read as the viewer
-     * reads it, so only a selection the span would break is refused: one that
-     * crosses a line break, touches a link of any form or an image (an
-     * image's `{width=…}` group included), lies in a code span, a code block,
-     * a `:::` fence line or a table delimiter row, cuts through a run's
-     * markers, or would put a bracket straight after an escaping backslash.
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @param color - A CSS colour value, or `null` to clear the override.
      * @returns This component, for method chaining.
@@ -8451,15 +8664,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * code block or holds a run kept as Markdown source, or when it sits
      * inside a link.
      *
-     * In `"source"` mode this writes the `[text]{…}` styled span into the raw
-     * Markdown instead, inside any emphasis around the selection
-     * (`**[hello]{…}**`, the form WYSIWYG saves), merging into an existing
-     * span rather than nesting inside it. The raw text is read as the viewer
-     * reads it, so only a selection the span would break is refused: one that
-     * crosses a line break, touches a link of any form or an image (an
-     * image's `{width=…}` group included), lies in a code span, a code block,
-     * a `:::` fence line or a table delimiter row, cuts through a run's
-     * markers, or would put a bracket straight after an escaping backslash.
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @param family - A CSS `font-family` value, or `null` to clear the override.
      * @returns This component, for method chaining.
@@ -8475,15 +8683,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * code block or holds a run kept as Markdown source, or when it sits
      * inside a link.
      *
-     * In `"source"` mode this writes the `[text]{…}` styled span into the raw
-     * Markdown instead, inside any emphasis around the selection
-     * (`**[hello]{…}**`, the form WYSIWYG saves), merging into an existing
-     * span rather than nesting inside it. The raw text is read as the viewer
-     * reads it, so only a selection the span would break is refused: one that
-     * crosses a line break, touches a link of any form or an image (an
-     * image's `{width=…}` group included), lies in a code span, a code block,
-     * a `:::` fence line or a table delimiter row, cuts through a run's
-     * markers, or would put a bracket straight after an escaping backslash.
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @param size - A CSS font-size value (e.g. `"1.2em"`), or `null` to clear
      *   the override.
@@ -8507,14 +8710,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * No-op without a range selection, and when the selection touches a
      * table cell (whole cells selected included), which holds text only.
      *
-     * In `"source"` mode, does the same to the blocks the raw Markdown's
-     * selected lines touch, except that the blocks an item holds after its
-     * text stay in the list, in an item of their own.
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @returns This component, for method chaining.
      */
     toggleUnorderedList(): this {
-        const handledBySource = this.editSource(listSource("unordered"));
+        const handledBySource = this.editSourceThroughModel(() => this.toggleUnorderedList());
 
         if (handledBySource) { return this; }
 
@@ -8541,14 +8745,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * No-op without a range selection, and when the selection touches a
      * table cell (whole cells selected included), which holds text only.
      *
-     * In `"source"` mode, does the same to the blocks the raw Markdown's
-     * selected lines touch, except that the blocks an item holds after its
-     * text stay in the list, in an item of their own.
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @returns This component, for method chaining.
      */
     toggleOrderedList(): this {
-        const handledBySource = this.editSource(listSource("ordered"));
+        const handledBySource = this.editSourceThroughModel(() => this.toggleOrderedList());
 
         if (handledBySource) { return this; }
 
@@ -8573,18 +8778,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Markdown source. With a URL, a caret with no word under it and outside
      * a link is a no-op too, as there is nothing to link.
      *
-     * In `"source"` mode, wraps the raw-Markdown selection in `[text](url)`,
-     * or re-points the link of any form enclosing it instead — an inline link
-     * keeps its title as written, and a reference link or autolink becomes an
-     * inline link (a reference link keeping its title); no-op inside an
-     * image's alt text, and for a selection holding a link or cutting another
-     * construct.
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @param url - The link target, or `null` to remove the link.
      * @returns This component, for method chaining.
      */
     toggleLink(url: string | null): this {
-        const handledBySource = this.editSource(linkSource(url));
+        const handledBySource = this.editSourceThroughModel(() => this.toggleLink(url));
 
         if (handledBySource) { return this; }
 
@@ -8656,14 +8859,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * how much of it (if any) is currently selected. No-op (without throwing)
      * when there is no range selection, or it is not inside a link.
      *
-     * In `"source"` mode, removes the raw-Markdown link of any form enclosing
-     * the selection, unwrapping it back to plain text, instead; an autolink's
-     * text gets its `:`, `.` or `@` escaped, so it is not linked again.
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @returns This component, for method chaining.
      */
     removeLink(): this {
-        const handledBySource = this.editSource(REMOVE_LINK_SOURCE);
+        const handledBySource = this.editSourceThroughModel(() => this.removeLink());
 
         if (handledBySource) { return this; }
 
@@ -8702,17 +8906,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * and any other Lexical text format) from the current selection, leaving
      * plain text. No-op without a range selection. Block type is untouched.
      *
-     * In `"source"` mode, removes the markers of every emphasis run (any
-     * form the viewer reads, `__bold__` and `_italic_` included) and code span
-     * the raw-Markdown selection touches instead — both sides of a run
-     * together, even when the selection reaches only one — leaving links and
-     * `[text]{…}` styled spans alone; no-op when the selection touches no
-     * run.
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @returns This component, for method chaining.
      */
     clearFormatting(): this {
-        const handledBySource = this.editSource(CLEAR_FORMAT_SOURCE);
+        const handledBySource = this.editSourceThroughModel(() => this.clearFormatting());
 
         if (handledBySource) { return this; }
 
@@ -8916,14 +9118,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * range that stands there into the nearest block of text inside the
      * range, as the list toggles move them.
      *
-     * In `"source"` mode, converts the raw Markdown's selected blocks instead —
-     * see `sourceTransformForBlockType`.
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @param type - The target block type.
      * @returns This component, for method chaining.
      */
     setBlockType(type: MarkdownBlockType): this {
-        const handledBySource = this.editSource(sourceTransformForBlockType(type));
+        const handledBySource = this.editSourceThroughModel(() => this.setBlockType(type));
 
         if (handledBySource) { return this; }
 
@@ -9227,13 +9431,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * leaves the caret at a raw block or a code block next to it, the image
      * goes into a new paragraph where the table was.
      *
-     * In `"source"` mode, inserts the raw-Markdown `![alt](src)` — plus a
-     * `{width=… height=…}` attribute block when either dimension is set —
-     * at the selection instead; no-op there when either end of the selection
-     * sits inside an image or inside a link's syntax beyond its text — its
-     * destination, a reference link's label, or an autolink — or when the
-     * selection reaches outside one table cell or onto a `:::` fence's own
-     * lines.
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @param src - The image source (a relative path, `http:`/`https:` URL,
      *   or an allow-listed `data:image/…` base64 URI).
@@ -9246,7 +9447,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (altHoldsBracket) { return this; }
 
-        const handledBySource = this.editSource(imageSource(src, options?.alt ?? "", imageAttributes(options)));
+        const handledBySource = this.editSourceThroughModel(() => this.insertImage(src, options));
 
         if (handledBySource) { return this; }
 
@@ -9735,6 +9936,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns The live (headless-capable) Lexical editor.
      */
     private ensureEditor(): LexicalEditor {
+        if (this._commandEditor !== null) {
+            return this._commandEditor;
+        }
+
         if (this._editor) {
             return this._editor;
         }
@@ -9783,11 +9988,34 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             this._cleanValue = editor.read(() => $serializeMarkdown(this._sourceMap));
         }
 
+        this._unregister = mergeRegister(
+            unregisterWritableStateRules,
+            this.registerEditorRules(editor, () => {
+                this.handleChange();
+                this.updateSelectionState();
+            }),
+        );
+
+        this._editor = editor;
+
+        return editor;
+    }
+
+    /**
+     * Registers the rules that make an editor this editor's: the rich-text,
+     * list, table, history and typing rules, the paste and range guards, and
+     * the read-only guard. The WYSIWYG editor and the model a source-mode
+     * command runs on both register them here, so they cannot drift apart.
+     *
+     * @param editor - The editor to register on, already loaded.
+     * @param onCommit - Called on each committed update, or `null` for an editor that reports nothing.
+     * @returns The call that removes every registration.
+     */
+    private registerEditorRules(editor: LexicalEditor, onCommit: (() => void) | null): () => void {
         // Before `registerRichText`, whose handler of the text-insertion command, at the same priority, inserts the text.
         const typedTextMarks = registerTypedTextMarks(editor);
 
-        this._unregister = mergeRegister(
-            unregisterWritableStateRules,
+        return mergeRegister(
             typedTextMarks.unregister,
             editor.registerCommand(COMPOSITION_START_COMMAND, $moveCaretOutOfLinkEdge, COMMAND_PRIORITY_CRITICAL),
             registerRichText(editor),
@@ -9804,17 +10032,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             registerItemTextPaste(editor),
             registerRangeGuards(editor),
             registerWritableFormatCommand(editor),
-            editor.registerUpdateListener(() => {
-                this.handleChange();
-                this.updateSelectionState();
-            }),
+            ...(onCommit === null ? [] : [editor.registerUpdateListener(onCommit)]),
             // Last: its listeners go in front of every other one for their commands.
             registerReadOnlyGuard(editor, () => this.getReadOnly(), () => this.signalReadOnlyEdit()),
         );
-
-        this._editor = editor;
-
-        return editor;
     }
 
     /**

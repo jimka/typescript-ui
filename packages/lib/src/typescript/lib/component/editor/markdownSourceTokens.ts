@@ -353,17 +353,6 @@ export function entryFormat(entry: SourceEntry, without?: ReadonlySet<SourceInli
 }
 
 /**
- * Adds one mark letter to a format.
- *
- * @param format - The format.
- * @param letter - The letter to add, from {@link MARK_LETTERS}.
- * @returns The new format.
- */
-export function withMark(format: EntryFormat, letter: string): EntryFormat {
-    return { ...format, marks: orderedMarks(new Set([...format.marks, letter])) };
-}
-
-/**
  * Writes a set of mark letters in {@link MARK_ORDER}.
  *
  * @param letters - The letters.
@@ -381,7 +370,7 @@ function orderedMarks(letters: ReadonlySet<string>): string {
  * @param attributes - The span's attributes.
  * @returns The canonical attribute text, `""` when nothing resolves.
  */
-export function canonicalSpanStyle(attributes: Record<string, string>): string {
+function canonicalSpanStyle(attributes: Record<string, string>): string {
     return formatAttributes(spanStyleToAttributes(resolveSpanStyle(attributes)));
 }
 

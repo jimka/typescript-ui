@@ -103,3 +103,49 @@ describe('CodeEditor.replaceRange and undo', () => {
         expect(view.state.doc.toString()).toBe('one two');
     });
 });
+
+describe('a source-mode MarkdownEditor command and undo', () => {
+    const DOC = 'hello world\n\nnext';
+
+    /**
+     * Mounts the source surface of a source-mode editor, types `x` after `hello` and leaves the caret where typing put it.
+     *
+     * @returns The editor and its live view.
+     */
+    function mountAfterTyping(): { editor: MarkdownEditor; view: EditorView } {
+        const editor = new MarkdownEditor(DOC, { mode: 'source' });
+        const view = mountView((editor as unknown as { _codeEditor: CodeEditor })._codeEditor);
+
+        editors.push(editor);
+        typeAt(view, 5, 'x');
+
+        return { editor, view };
+    }
+
+    it.each([
+        ['1.2: bold', (editor: MarkdownEditor) => editor.toggleBold(), '**hellox** world\n\nnext'],
+        ['1.3: a heading', (editor: MarkdownEditor) => editor.setBlockType('h2'), '## hellox world\n\nnext'],
+        ['1.3: a bulleted list', (editor: MarkdownEditor) => editor.toggleUnorderedList(), '- hellox world\n\nnext'],
+    ])('%s pressed right after typing is one undo step of its own', (_title, command, expected) => {
+        const { editor, view } = mountAfterTyping();
+
+        command(editor);
+        expect(view.state.doc.toString()).toBe(expected);
+
+        undo(view);
+        expect(view.state.doc.toString()).toBe('hellox world\n\nnext');
+        expect(view.state.selection.main.head).toBe(6);
+    });
+
+    it('1.5: a command reports one change, and the selection state at most once', () => {
+        const { editor } = mountAfterTyping();
+        const events: string[] = [];
+
+        editor.on('change', () => { events.push('change'); });
+        editor.on('selectionstate', () => { events.push('selectionstate'); });
+        editor.toggleBold();
+
+        expect(events.filter((event) => event === 'change')).toHaveLength(1);
+        expect(events.filter((event) => event === 'selectionstate').length).toBeLessThanOrEqual(1);
+    });
+});

@@ -6,7 +6,7 @@ import {
 } from "lexical";
 import type { ElementNode, LexicalNode, NodeKey, TextFormatType, TextNode } from "lexical";
 import { Lexer } from "marked";
-import type { Links, Token, Tokens } from "marked";
+import type { Links, Token, Tokens, TokensList } from "marked";
 import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text";
 import type { HeadingTagType, QuoteNode } from "@lexical/rich-text";
 import { $createListItemNode, $createListNode, $isListNode } from "@lexical/list";
@@ -257,6 +257,41 @@ export function $importMarkdown(markdown: string): MarkdownSourceMap {
     }
 
     return $recordSourceMap(source, located);
+}
+
+/** One top-level block of a document, as a load locates it. */
+export interface TopLevelBlock {
+    /** The block's start offset in the document. */
+    readonly start:                number;
+    /** The block's end offset in the document. */
+    readonly end:                  number;
+    /** Whether the block holds link reference definitions and nothing else. */
+    readonly holdsOnlyDefinitions: boolean;
+}
+
+/** A document's top-level blocks and its link reference definitions, from one lex. */
+export interface TopLevelBlocks {
+    /** The blocks, in document order. */
+    readonly blocks:      readonly TopLevelBlock[];
+    /** The document's link reference definitions. */
+    readonly definitions: Links;
+}
+
+/**
+ * Locates the top-level blocks a load of the Markdown builds, and reads the
+ * document's definitions, from one lex of the text.
+ *
+ * @param markdown - The Markdown, with `\n` line ends only.
+ * @returns The blocks and the definitions.
+ */
+export function locateTopLevelBlocks(markdown: string): TopLevelBlocks {
+    const tokens = lexMarkdown(markdown);
+    const blocks = locateBlocks(markdown, tokens).map((entry) => ({
+        start: entry.start, end: entry.end, holdsOnlyDefinitions: holdsOnlyDefinitions(entry),
+    }));
+
+    // `lexMarkdown` returns `marked`'s token list, which carries the definitions it read.
+    return { blocks, definitions: (tokens as TokensList).links };
 }
 
 /**
