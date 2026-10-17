@@ -274,3 +274,54 @@ describe('the editor shows what its save reloads to: a line end inside a text', 
         expectShownAndReloaded(editor, 'code("axb")'.replace('axb', 'ax\\nb'), '```\nax\nb\n```');
     });
 });
+
+describe('the editor shows what its save reloads to: an indent', () => {
+    it('I1: the indent command leaves a paragraph as it is, and adds no undo step', () => {
+        const editor = load('p0\n\np1');
+
+        select(editor, 'p1', 1);
+        type(editor, 'x');
+        lexicalOf(editor).dispatchCommand(INDENT_CONTENT_COMMAND, undefined);
+
+        expectShownAndReloaded(editor, 'paragraph("p0") | paragraph("px1")', 'p0\n\npx1');
+
+        lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+
+        expect(editor.getValue()).toBe('p0\n\np1');
+    });
+
+    it('I2: over a list item and a paragraph it moves the item alone, in one undo step', () => {
+        const editor = load('- a\n- b\n\np0');
+
+        select(editor, 'b', 1, 'p0', 1);
+        lexicalOf(editor).dispatchCommand(INDENT_CONTENT_COMMAND, undefined);
+
+        expectShownAndReloaded(editor, 'tight(markdown-list-item(markdown-list-item-text("a"), tight(markdown-list-item(markdown-list-item-text("b"))))) | paragraph("p0")', '- a\n  - b\n\np0');
+
+        lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+
+        expect(editor.getValue()).toBe('- a\n- b\n\np0');
+    });
+
+    it('I3: a further paragraph of an item takes none either', () => {
+        const editor = load('- a\n\n  more\n- b');
+
+        select(editor, 'more', 1);
+        lexicalOf(editor).dispatchCommand(INDENT_CONTENT_COMMAND, undefined);
+
+        expectShownAndReloaded(editor, 'loose(markdown-list-item(markdown-list-item-text("a"), paragraph("more")), markdown-list-item(markdown-list-item-text("b")))', '- a\n\n  more\n- b');
+    });
+
+    it('I4: the indent and outdent of a list item move it as before', () => {
+        const editor = load('- a\n- b');
+
+        select(editor, 'b', 1);
+        lexicalOf(editor).dispatchCommand(INDENT_CONTENT_COMMAND, undefined);
+
+        expect(editor.getValue()).toBe('- a\n  - b');
+
+        lexicalOf(editor).dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined);
+
+        expect(editor.getValue()).toBe('- a\n- b');
+    });
+});
