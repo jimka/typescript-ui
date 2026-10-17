@@ -3750,6 +3750,84 @@ describe('built-in markdown language typing', () => {
         });
     }
 
+    /** A syntax tree node, as far as an outline reads it. */
+    interface OutlineNode { readonly name: string; readonly firstChild: OutlineNode | null; readonly nextSibling: OutlineNode | null }
+
+    /** The Markdown block nodes an outline names, and the name it gives each. Headings are matched apart. */
+    const BLOCK_NAMES: Readonly<Record<string, string>> = {
+        Paragraph: 'p', Blockquote: 'quote', BulletList: 'ul', OrderedList: 'ol', ListItem: 'li',
+        CodeBlock: 'code', FencedCode: 'code', HTMLBlock: 'raw', HorizontalRule: 'raw',
+    };
+
+    /** The outline names that hold no blocks. */
+    const LEAF_NAMES: ReadonlySet<string> = new Set(['p', 'code', 'raw']);
+
+    /**
+     * Writes the Markdown blocks under a syntax node as one line, in the round-trip harness's outline form without
+     * text: `ul[li[p ul[li[p]]]]`.
+     *
+     * @param node - The document node, or a block that holds blocks.
+     * @returns The outline of its blocks.
+     */
+    function treeOutline(node: OutlineNode): string {
+        const parts: string[] = [];
+
+        for (let child = node.firstChild; child !== null; child = child.nextSibling) {
+            const heading = /^(?:ATX|Setext)Heading(\d)$/.exec(child.name);
+            const name = heading === null ? BLOCK_NAMES[child.name] : `h${heading[1]}`;
+
+            if (name === undefined) {
+                continue;
+            }
+
+            const isLeaf = heading !== null || LEAF_NAMES.has(name);
+
+            parts.push(isLeaf ? name : `${name}[${treeOutline(child)}]`);
+        }
+
+        return parts.join(' ');
+    }
+
+    /**
+     * Reads the block outline the built-in `"markdown"` language gives a document.
+     *
+     * @param doc - The document.
+     * @returns The outline of its syntax tree.
+     */
+    async function languageOutline(doc: string): Promise<string> {
+        const state = settle(await buildTypingState('markdown', doc));
+
+        return treeOutline(syntaxTree(state).topNode as unknown as OutlineNode);
+    }
+
+    it('TAB1: a tab after two spaces continues an item as a paragraph', async () => {
+        expect(await languageOutline('- a\n\n  \tb')).toBe('ul[li[p p]]');
+    });
+
+    it('TAB2: a nested item after a space and a tab holds a six-space line', async () => {
+        expect(await languageOutline('- a\n \t- b\n\n      x')).toBe('ul[li[p ul[li[p p]]]]');
+    });
+
+    it('TAB3: a tab after a nested marker counts from the line start', async () => {
+        expect(await languageOutline('- a\n  -\tb\n\n\tx')).toBe('ul[li[p ul[li[p p]]]]');
+    });
+
+    it('TAB4: three levels of items written with tabs', async () => {
+        expect(await languageOutline('-\ta\n\t-\tb\n\t\t-\tc')).toBe('ul[li[p ul[li[p ul[li[p]]]]]]');
+    });
+
+    it('TAB5: a tab after a quote marker and a space is not code', async () => {
+        expect(await languageOutline('> \tfoo')).toBe('quote[p]');
+    });
+
+    it('TAB6: two tabs after a quote marker are code', async () => {
+        expect(await languageOutline('>\t\tfoo')).toBe('quote[code]');
+    });
+
+    it('TAB7: a tab after one space indents a code line', async () => {
+        expect(await languageOutline(' \tfoo')).toBe('code');
+    });
+
     it('M35: Enter between two tags on an item marker line indents the rest of the line to the item content', async () => {
         expect(await typed('markdown', '- <div>|<p>x</p>', '\n')).toBe('- <div>\n  |<p>x</p>');
     });

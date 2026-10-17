@@ -5,7 +5,7 @@ import type { CorpusCase } from './types';
  * documents the typing rows of `code-editor.test.ts` end with, each named by its row, some with text typed on the new
  * line, and one whose lines all carry a space-and-tab prefix. Every new line starts with the
  * prefix of the line Enter was pressed on, so it stays in the quote or list item of that line
- * (`markdown-roundtrip.test.ts` checks that on the viewer's reading, and names the one document it does not hold for).
+ * (`markdown-roundtrip.test.ts` checks that on the viewer's reading).
  */
 export const ENTER_INSIDE_HTML_CASES: readonly CorpusCase[] = [
     { name: 'Enter in quoted HTML (M33)', source: '> <div>\n> \n> x', known: { surface: 'quoteBlocks' } },

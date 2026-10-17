@@ -16,5 +16,6 @@ export interface CorpusCase {
     readonly name:   string;                                         // unique test title
     readonly source: string;                                         // the document exactly as authored
     readonly links?: readonly string[];                              // link targets the viewer must read, in order
+    readonly blocks?: string;                                         // the outline the viewer must read (blockOutline)
     readonly known?: Partial<Record<HarnessCheck, DivergenceId>>;    // checks the current editor fails
 }

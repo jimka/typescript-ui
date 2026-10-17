@@ -28,6 +28,7 @@ import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
 import { needsAngleBrackets } from "~/component/display/markdownDestinations.js";
 import { headingSlug } from "~/component/display/markdownHeadingIds.js";
 import { holdsLineContent } from "~/component/display/markdownLineContent.js";
+import { prefixTabLines } from "~/component/display/markdownTabs.js";
 import {
     decodeEscapesAndCharacterReferences, escapeCharacterReferences, startsWithCharacterReference,
 } from "~/component/display/markdownCharacterReferences.js";
@@ -2175,6 +2176,9 @@ export function withoutBlankEdges(text: string): string {
  * (`keepsContent`): an indentation `marked` reads as part of a block — of an
  * HTML block's later lines, of a definition's title — stays.
  *
+ * A dedented form that moves a line holding a tab in its container prefix is
+ * not kept either: the tab would reach its tab stop from another column.
+ *
  * @param source - The block's Markdown.
  * @param isList - Whether the block is a list. `false` also tries the first
  *   line at the margin, which is kept when the block reads the same.
@@ -2198,7 +2202,17 @@ export function rawBlockAtMargin(source: string, isList: boolean, keepsContent: 
     }
 
     const reading = readingInBlockList(source, keepsContent);
-    const atMargin = candidates.find((candidate) => candidate === source || readingInBlockList(candidate, keepsContent) === reading) ?? source;
+    const lines = source.split("\n");
+    const keepsReading = (candidate: string): boolean => {
+        if (candidate === source) {
+            return true;
+        }
+
+        const movesATab = movesLineWithPrefixTab(lines, candidate);
+
+        return !movesATab && readingInBlockList(candidate, keepsContent) === reading;
+    };
+    const atMargin = candidates.find(keepsReading) ?? source;
 
     if (AT_MARGIN.size >= RUNS_ON_CACHE_SIZE) {
         AT_MARGIN.clear();
@@ -2207,6 +2221,22 @@ export function rawBlockAtMargin(source: string, isList: boolean, keepsContent: 
     AT_MARGIN.set(key, atMargin);
 
     return atMargin;
+}
+
+/**
+ * Tells whether a dedented form of a block moves a line that holds a tab in
+ * its container prefix. Such a tab reaches its tab stop from wherever the
+ * line starts, so the moved line would be read with another indentation.
+ *
+ * @param lines - The block's lines as written.
+ * @param candidate - A dedented form of the block.
+ * @returns `true` when a changed line holds such a tab.
+ */
+function movesLineWithPrefixTab(lines: readonly string[], candidate: string): boolean {
+    const moved = candidate.split("\n");
+    const hasPrefixTab = prefixTabLines(lines);
+
+    return lines.some((line, index) => line !== moved[index] && hasPrefixTab[index]);
 }
 
 /**

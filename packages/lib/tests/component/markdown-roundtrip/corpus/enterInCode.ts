@@ -18,7 +18,7 @@ export interface EnterInCodeCase extends CorpusCase {
  * `code-editor.test.ts` end with, each named by its row, and some with text typed on the new line. Every new line
  * starts with the prefix of the line Enter was pressed on, so it stays in the code block and in the quote or list item
  * of that line. `reads` says so for each: one code block where the row started with one, holding the new line.
- * `markdown-roundtrip.test.ts` checks it on the viewer's reading, and names the one document it does not hold for.
+ * `markdown-roundtrip.test.ts` checks it on the viewer's reading.
  */
 export const ENTER_IN_CODE_CASES: readonly EnterInCodeCase[] = [
     // A fenced block in a blockquote.
