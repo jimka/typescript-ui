@@ -126,6 +126,14 @@ const NO_STYLE: MarkdownSpanStyle = { color: null, fontFamily: null, fontSize: n
 const IMPORT_DEFINITIONS: { current: Links | null } = { current: null };
 
 /**
+ * Whether a document is being loaded from its source. Only then are the blanks
+ * a paragraph line opens with dropped: they are not part of its text. A block
+ * read again in the middle of an edit keeps them, because there the blanks
+ * may be ones the edit did not remove, which only became a line's opening.
+ */
+const LOADING_DOCUMENT: { current: boolean } = { current: false };
+
+/**
  * `marked`'s own patterns for a full reference (`[text][label]`) and for a
  * collapsed or shortcut one (`[label][]`, `[label]`) — the patterns that
  * produced a reference's `link` token, so a label holding an escaped bracket
@@ -227,6 +235,7 @@ export function $importMarkdown(markdown: string): MarkdownSourceMap {
 
     $addUpdateTag(MARKDOWN_IMPORT_TAG);
     IMPORT_DEFINITIONS.current = lexMarkdownLinkDefinitions(source);
+    LOADING_DOCUMENT.current = true;
 
     const located = locateBlocks(source, lexMarkdown(source));
     let blocks: LexicalNode[];
@@ -235,6 +244,7 @@ export function $importMarkdown(markdown: string): MarkdownSourceMap {
         blocks = located.map($buildLocatedBlock);
     } finally {
         IMPORT_DEFINITIONS.current = null;
+        LOADING_DOCUMENT.current = false;
     }
 
     root.clear();
@@ -1623,8 +1633,15 @@ function appendTextToken(target: InlineTarget, token: Tokens.Text, context: Inli
 }
 
 /**
+ * The spaces and tabs a paragraph line opens with, which CommonMark strips: the viewer shows none of them. Blanks
+ * that stand alone before another inline token are kept, as inline HTML after them keeps its indentation.
+ */
+const LEADING_BLANKS = /^[ \t]+/;
+
+/**
  * Appends text, with a soft-break source node (showing a space, saving a
- * newline) for each newline in it.
+ * newline) for each newline in it. The blanks a line opens
+ * with, the block's first line included, are dropped, as the viewer drops them.
  *
  * @param target - Where nodes are appended.
  * @param text - The text.
@@ -1636,8 +1653,13 @@ function appendText(target: InlineTarget, text: string, context: InlineContext):
             appendLeaf(target, formatted($createMarkdownSourceTextNode(SOFT_BREAK_DISPLAY, SOFT_BREAK_SOURCE), context), context);
         }
 
-        if (piece !== "") {
-            appendLeaf(target, styledText(piece, context), context);
+        const opensBlock = index === 0 && target.block.getChildrenSize() === 0;
+        const stripped = piece.replace(LEADING_BLANKS, "");
+        const dropsBlanks = LOADING_DOCUMENT.current && (index > 0 || opensBlock) && stripped !== "";
+        const text = dropsBlanks ? stripped : piece;
+
+        if (text !== "") {
+            appendLeaf(target, styledText(text, context), context);
         }
     });
 }

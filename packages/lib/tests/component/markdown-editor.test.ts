@@ -2111,6 +2111,31 @@ describe('MarkdownEditor raw blocks in a list item keep their tabs', () => {
     });
 });
 
+// CommonMark strips the whitespace a paragraph line opens with, and the viewer shows none of it. The WYSIWYG
+// surface's text holds none either, whether the document writes the indentation as spaces or as a tab. The
+// round-trip harness collapses whitespace, so it cannot see the difference; this reads the text as it is.
+describe('MarkdownEditor WYSIWYG text of paragraph lines', () => {
+    it.each<[string, string, string]>([
+        ['W1: a quote whose lines follow a marker and spaces', '>   foo bar\n>   baz', 'foo bar baz'],
+        ['W2: a quote whose lines follow a marker and a tab', '>\tfoo bar\n>\tbaz', 'foo bar baz'],
+        ['W3: a quote line continued after a space and a tab', '> one\n> \ttwo', 'one two'],
+        ['W4: an item line indented by spaces', '- a\n   b', 'a b'],
+        ['W5: an item line indented by a tab', '- a\n\tb', 'a b'],
+        ['W6: a paragraph line indented by spaces', 'a\n   b', 'a b'],
+        // W7 is a guard row: it passes without the blank-dropping too, and keeps a hard break's line from losing its text.
+        ['W7: a line after a hard break', 'a  \n   b', 'a\nb'],
+    ])('%s', (_title, source, expected) => {
+        const editor = new MarkdownEditor();
+
+        editor.setValue(source);
+
+        const text = lexicalOf(editor).getEditorState().read(() => $getRoot().getTextContent());
+
+        expect(text).toBe(expected);
+        editor.dispose();
+    });
+});
+
 // These cover the mode API's offline-observable behaviour (get/set mode, the
 // mode-aware value, cross-surface round-tripping, and change suppression on a
 // no-op switch). Source-mode *change emission* — a `setValue`/user edit in
