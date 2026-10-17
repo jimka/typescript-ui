@@ -8,6 +8,7 @@ import { lexMarkdown } from "~/component/display/markdownExtensions.js";
 import { containerRanges, expandPrefixTabs } from "~/component/display/markdownTabs.js";
 import type { TabExpansion } from "~/component/display/markdownTabs.js";
 import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
+import { CELL_LINE_BREAK_TAG } from "~/component/display/markdownTableExtension.js";
 import type { MdTableToken } from "~/component/display/markdownTableExtension.js";
 
 /**
@@ -152,6 +153,8 @@ interface Builder {
     readonly inlineBlocks: SourceInlineBlock[];
     readonly inlines:      SourceInline[];
     readonly entries:      SourceEntry[];
+    /** Whether the run of inline text being walked is a table cell's, where a `<br>` is a line break. */
+    inTableCell:           boolean;
 }
 
 /**
@@ -189,7 +192,7 @@ export function analyzeMarkdownSource(text: string): SourceAnalysis {
 function buildAnalysis(text: string): SourceAnalysis {
     const expansion = expandContainerTabs(text);
     const read = expansion.text;
-    const builder: Builder = { text: read, cursor: 0, tree: [], parent: null, inlineBlocks: [], inlines: [], entries: [] };
+    const builder: Builder = { text: read, cursor: 0, tree: [], parent: null, inlineBlocks: [], inlines: [], entries: [], inTableCell: false };
 
     walkBlocks(builder, lexMarkdown(read), read.length);
     restoreSourceOffsets(builder, expansion.offsets);
@@ -953,6 +956,7 @@ function walkInlineText(builder: Builder, tokens: readonly Token[], limit: numbe
         builder.cursor = map[needle.length]!;
     }
 
+    builder.inTableCell = cell;
     walkInline(builder, tokens, map, 0, []);
 }
 
@@ -1007,7 +1011,7 @@ function walkInlineToken(
     } else if (children.length > 0 || CONTAINER_TYPES.has(token.type)) {
         walkInline(builder, children, content === -1 ? null : map, position + Math.max(content, 0), inside);
     } else {
-        pushAtomLeaves(builder, leafText(token), inline, inside);
+        pushAtomLeaves(builder, leafText(token, builder.inTableCell), inline, inside);
     }
 }
 
@@ -1145,14 +1149,17 @@ function pushAtomLeaves(builder: Builder, text: string, inline: SourceInline, an
 
 /**
  * The visible text, or for a non-text atom the signature, of a leaf token.
+ * A table cell's `<br>` is a line break, as the viewer and the importer read it.
  *
  * @param token - The token.
+ * @param inTableCell - Whether the token is in a table cell's text.
  * @returns The leaf text.
  */
-function leafText(token: Token): string {
+function leafText(token: Token, inTableCell: boolean): string {
     switch (token.type) {
         case "escape":  return (token as Tokens.Escape).text;
         case "br":      return "br";
+        case "html":    return inTableCell && CELL_LINE_BREAK_TAG.test((token as Tokens.HTML).text) ? "br" : `${token.type}:${token.raw}`;
         default:        return `${token.type}:${token.raw}`;
     }
 }

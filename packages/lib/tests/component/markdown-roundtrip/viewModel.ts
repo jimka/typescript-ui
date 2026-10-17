@@ -10,6 +10,7 @@ import type { TableCellNode, TableNode } from '@lexical/table';
 import { $isLinkNode } from '@lexical/link';
 import { lexMarkdown } from '~/component/display/markdownExtensions';
 import type { MdBlockToken } from '~/component/display/markdownExtensions';
+import { CELL_LINE_BREAK_TAG } from '~/component/display/markdownTableExtension';
 import type { MdTableBodyCell, MdTableHeaderCell, MdTableToken } from '~/component/display/markdownTableExtension';
 import { extractMarkdownHeadings } from '~/component/display/Markdown';
 import {
@@ -512,6 +513,18 @@ function viewerInlineToken(runs: Run[], token: Token, context: RunContext): void
         case 'br':
             runs.push({ kind: 'break' });
             break;
+        case 'html': {
+            const text = (token as Tokens.HTML).text;
+            const isCellLineBreak = context.inCell && CELL_LINE_BREAK_TAG.test(text);
+
+            if (isCellLineBreak) {
+                runs.push({ kind: 'break' });
+            } else {
+                pushText(runs, text, context);
+            }
+
+            break;
+        }
         default:
             pushText(runs, (token as Tokens.Generic).text ?? token.raw ?? '', context);
     }

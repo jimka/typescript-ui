@@ -2979,7 +2979,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             ['inside a paragraph', 'abc', ['abc', 1], 'a\\\nbc'],
             ['at the start of a paragraph', 'abc', ['abc', 0], '\\\nabc'],
             ['inside a level 2 heading, written setext', '## abc', ['abc', 1], 'a\\\nbc\n---'],
-            ['at the end of a table cell', '| a |\n| --- |\n| b |', ['b', 1], '| a |\n| --- |\n| b\\n\\n |'],
+            ['at the end of a table cell', '| a |\n| --- |\n| b |', ['b', 1], '| a |\n| --- |\n| b<br> |'],
         ];
 
         for (const [name, source, at, saved] of kept) {

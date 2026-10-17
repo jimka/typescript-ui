@@ -1629,6 +1629,33 @@ describe('Markdown table', () => {
         expect(childTagsOf('th').filter((tag) => tag === 'BR')).toHaveLength(2);
     });
 
+    it.each([
+        ['<br>'], ['<br/>'], ['<br />'], ['<BR>'],
+    ])('V1: renders a cell\'s %s as a <br> between the two runs of text', (tag) => {
+        new Markdown(`| a${tag}b | c |\n| --- | --- |\n| 1 | 2 |`).getElement(true);
+
+        expect(childTagsOf('th').filter((t) => t === 'BR')).toHaveLength(1);
+        expect(textWrites()).toEqual(expect.arrayContaining(['a', 'b']));
+        expect(textWrites().some((t) => t.includes('<'))).toBe(false);
+    });
+
+    it('V2: renders a <br> inside bold text of a cell as a <br> inside the <strong>', () => {
+        new Markdown('| **a<br>b** | c |\n| --- | --- |\n| 1 | 2 |').getElement(true);
+
+        expect(childTagsOf('strong')).toContain('BR');
+    });
+
+    it.each([
+        ['in a code span of a cell', '| `a<br>b` | c |\n| --- | --- |\n| 1 | 2 |', 'a<br>b'],
+        ['escaped in a cell', '| a\\<br>b | c |\n| --- | --- |\n| 1 | 2 |', '<'],
+        ['outside a table', 'a<br>b', '<br>'],
+    ])('V3: keeps a <br> %s as literal text', (_name, source, literal) => {
+        new Markdown(source).getElement(true);
+
+        expect(createdTags()).not.toContain('br');
+        expect(textWrites()).toContain(literal);
+    });
+
     it('does not split an escaped newline outside a table cell', () => {
         new Markdown('a\\nb').getElement(true);
 

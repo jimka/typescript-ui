@@ -1716,8 +1716,8 @@ function $placeCaret(blocks: readonly LexicalNode[], offset: number, last: Lexic
  * the blocks that hold inline content ({@link $dropUnwritableBreaks}) turn
  * a break any other edit leaves there — a paste, a deletion, a code block
  * converted — into what the save writes: nothing at a block's end, a space
- * in a level 3–6 heading. A table cell keeps every break: its cell break
- * shows anywhere.
+ * in a level 3–6 heading. A table cell keeps every break: its line break
+ * (`<br>`) shows anywhere.
  *
  * @param editor - The editor.
  * @returns The unregister function.

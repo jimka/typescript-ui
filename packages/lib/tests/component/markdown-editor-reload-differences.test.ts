@@ -163,3 +163,85 @@ describe('the editor shows what its save reloads to: text typed in the block a r
         expectShownAndReloaded(editor, 'loose(markdown-list-item(markdown-list-item-text("a"), markdown-raw-block("<div>x")), markdown-list-item(markdown-list-item-text("b")))', '- a\n\n  <div>x\n\n- b');
     });
 });
+
+describe('the editor shows what its save reloads to: a line break in a table cell', () => {
+    const TABLE = '| t0 |\n| --- |\n| t1 |';
+    const cells = (...body: string[]): string => `table(tablerow(tablecell(paragraph("t0"))), tablerow(tablecell(${body.join(', ')})))`;
+
+    it('C1: Shift+Enter inside a cell keeps a line break, saved as <br>', () => {
+        const editor = load(TABLE);
+
+        select(editor, 't1', 1);
+        lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+
+        expectShownAndReloaded(editor, cells('paragraph("t", linebreak, "1")'), '| t0 |\n| --- |\n| t<br>1 |');
+    });
+
+    it('C2: text typed after Shift+Enter at a cell\'s end follows the break, and two undos give the cell back', () => {
+        const editor = load(TABLE);
+
+        select(editor, 't1', -1);
+        lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+        type(editor, 'y');
+
+        expectShownAndReloaded(editor, cells('paragraph("t1", linebreak, "y")'), '| t0 |\n| --- |\n| t1<br>y |');
+
+        lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+        lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+
+        expect(editor.getValue()).toBe(TABLE);
+    });
+
+    it('C3: Shift+Enter in a paragraph outside a table still makes a hard break', () => {
+        const editor = load('ab');
+
+        select(editor, 'ab', 1);
+        lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+
+        expectShownAndReloaded(editor, 'paragraph("a", linebreak, "b")', 'a\\\nb');
+    });
+
+    it('C4: Enter inside a cell still makes a new paragraph of the cell, saved as the cell paragraph break', () => {
+        const editor = load(TABLE);
+
+        select(editor, 't1', 1);
+        lexicalOf(editor).dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
+
+        expectShownAndReloaded(editor, cells('paragraph("t")', 'paragraph("1")'), '| t0 |\n| --- |\n| t\\n\\n1 |');
+    });
+
+    it.each([
+        ['<br>'], ['<br/>'], ['<br />'], ['<BR>'],
+    ])('C5: a cell\'s %s loads as a line break, and an edit of the cell saves it as <br>', (tag) => {
+        const source = `| t0 |\n| --- |\n| a${tag}b |`;
+        const editor = load(source);
+
+        expect(shown(editor)).toBe(cells('paragraph("a", linebreak, "b")'));
+        expect(editor.getValue()).toBe(source);
+
+        select(editor, 'b', 1);
+        type(editor, 'x');
+
+        expectShownAndReloaded(editor, cells('paragraph("a", linebreak, "bx")'), '| t0 |\n| --- |\n| a<br>bx |');
+    });
+
+    it.each([
+        ['in a code span of a cell', '| t0 |\n| --- |\n| `a<br>b` |', cells('paragraph("a<br>b")')],
+        ['escaped in a cell', '| t0 |\n| --- |\n| a\\<br>b |', cells('paragraph("a<br>b")')],
+        ['outside a table', 'a<br>b', 'paragraph("a", "<br>", "b")'],
+    ])('C6: a <br> %s stays text', (_name, source, expectedTree) => {
+        const editor = load(source);
+
+        expect(shown(editor)).toBe(expectedTree);
+        expect(editor.getValue()).toBe(source);
+    });
+
+    it('C7: the text <br> typed into a cell is saved escaped and reloads as text', () => {
+        const editor = load(TABLE);
+
+        select(editor, 't1', 1);
+        type(editor, '<br>');
+
+        expectShownAndReloaded(editor, cells('paragraph("t<br>1")'), '| t0 |\n| --- |\n| t\\<br>1 |');
+    });
+});

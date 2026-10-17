@@ -32,6 +32,7 @@ import { prefixTabLines } from "~/component/display/markdownTabs.js";
 import {
     decodeEscapesAndCharacterReferences, escapeCharacterReferences, startsWithCharacterReference,
 } from "~/component/display/markdownCharacterReferences.js";
+import { CELL_LINE_BREAK_TAG } from "~/component/display/markdownTableExtension.js";
 import type { MdTableToken } from "~/component/display/markdownTableExtension.js";
 import { $isMarkdownBlockNode, $isMarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import type { MarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
@@ -224,12 +225,20 @@ const CELL_LINE_BREAK = "\\n";
 
 /**
  * Two {@link CELL_LINE_BREAK}s: what a table cell writes between two of its
- * paragraphs and for a line break or a newline inside it. Mirrors the
- * viewer's own `CELL_PARAGRAPH_BREAK`, the only sequence it splits a cell's
- * text on (one `<br>` per boundary) — a lone {@link CELL_LINE_BREAK} renders
- * as literal text — and the importer reads it back as a paragraph boundary.
+ * paragraphs. Mirrors the viewer's own `CELL_PARAGRAPH_BREAK`, the only
+ * sequence it splits a cell's text on (one `<br>` per boundary) — a lone
+ * {@link CELL_LINE_BREAK} renders as literal text — and the importer reads it
+ * back as a paragraph boundary.
  */
 const CELL_PARAGRAPH_BREAK = CELL_LINE_BREAK + CELL_LINE_BREAK;
+
+/**
+ * What a table cell writes for a line break, or a newline, inside one of its
+ * paragraphs: the HTML line break GFM uses in a cell, which the viewer
+ * renders as a line break there and the importer loads as one
+ * ({@link CELL_LINE_BREAK_TAG}).
+ */
+const CELL_HARD_BREAK = "<br>";
 
 /**
  * The bullet a bullet list is written with when its first line is a bare
@@ -421,7 +430,7 @@ const BLANK_LINE_IN_TITLE = /\n[ \t]*\n/;
 interface InlineContext {
     /** The content cannot span lines (headings, table cells). */
     readonly singleLine: boolean;
-    /** Escape every `|`; a `\` before `n` is escaped; a `LineBreakNode` writes the cell paragraph break. */
+    /** Escape every `|`; a `\` before `n` is escaped; a `LineBreakNode` writes `<br>`. */
     readonly inTableCell: boolean;
     /**
      * Leave a `~` unescaped unless another `~` touches it. An escaped `\~` is
@@ -4146,7 +4155,7 @@ function normalizedAttributes(attributes: Record<string, string>): string {
  * after it is dropped; one before the first content is a hard break after an
  * empty line, which a paragraph, quote or list item can open with, so it is
  * kept there, and dropped in a heading, whose breaks are spaces. A table
- * cell keeps them all: the viewer renders its cell break at either edge. A
+ * cell keeps them all: the viewer renders its `<br>` at either edge. A
  * break ending a link's text is moved after the link. A source segment of
  * whitespace only (a soft break) with no content before it, or none after
  * it, is dropped: it is whitespace at the block's edge.
@@ -5001,14 +5010,6 @@ function syncMarks(writer: InlineWriter, target: readonly Mark[], leading: strin
     const holdsLeading = leading !== "" && missing.includes("underline");
 
     const open = (mark: Mark): void => {
-        const previous = writer.pieces.at(-1);
-
-        // The cell break ends in a letter, against which a delimiter before punctuation cannot open; a space after
-        // it is collapsed at the start of the line it makes.
-        if (previous?.kind === "syntax" && previous.text === CELL_PARAGRAPH_BREAK && mark !== "underline") {
-            writer.pieces.push({ kind: "text", text: " " });
-        }
-
         writer.stack.push(mark);
         writer.pieces.push({ kind: "delimiter", text: MARK_DELIMITERS[mark], mark, opens: true });
     };
@@ -5062,9 +5063,9 @@ function flushPending(writer: InlineWriter): void {
 }
 
 /**
- * The piece a line break writes: the cell paragraph break in a table cell (a
- * line break the viewer reads, which loads back as a paragraph boundary), a
- * space in a heading, else a hard break with its marker.
+ * The piece a line break writes: `<br>` in a table cell
+ * ({@link CELL_HARD_BREAK}), a space in a heading, else a hard break with its
+ * marker.
  *
  * @param marker - The break's authored marker.
  * @param context - Where it is written.
@@ -5072,7 +5073,7 @@ function flushPending(writer: InlineWriter): void {
  */
 function writeBreak(marker: string, context: InlineContext): Piece {
     if (context.inTableCell) {
-        return { kind: "syntax", text: CELL_PARAGRAPH_BREAK };
+        return { kind: "syntax", text: CELL_HARD_BREAK };
     }
 
     return context.singleLine ? { kind: "text", text: " " } : { kind: "break", marker };
@@ -5456,12 +5457,33 @@ function pushTokenReading(
             case "text":       pushTextReading(reading, token as Tokens.Text, scope, context, spans); break;
             case "escape":     pushCharacterReading(reading, (token as Tokens.Escape).text, scope, context); break;
             case "br":         pushBreakReading(reading); break;
+            case "html":       pushHtmlReading(reading, token as Tokens.HTML, scope, context); break;
             case "mdimage":    reading.push(imageReading((token as unknown as { src: string }).src, scope.link)); break;
             // As the viewer shows any other token: its text (a `marked` image the dialect's image rule declined shows its alt text), else its source.
             default:           pushCharacterReading(reading, (token as Tokens.Generic).text ?? token.raw, scope, context);
         }
 
         spans?.set(token, [start, reading.length]);
+    }
+}
+
+/**
+ * Appends the reading of inline HTML: a break for a `<br>` in a table cell
+ * ({@link CELL_LINE_BREAK_TAG}), as the viewer renders it there; else its
+ * characters, as the viewer shows them.
+ *
+ * @param reading - The reading units so far. Extended in place.
+ * @param token - The `html` token.
+ * @param scope - What it inherits.
+ * @param context - Where it is written.
+ */
+function pushHtmlReading(reading: string[], token: Tokens.HTML, scope: ReadingScope, context: InlineContext): void {
+    const isCellLineBreak = context.inTableCell && CELL_LINE_BREAK_TAG.test(token.text);
+
+    if (isCellLineBreak) {
+        pushBreakReading(reading);
+    } else {
+        pushCharacterReading(reading, token.text, scope, context);
     }
 }
 
