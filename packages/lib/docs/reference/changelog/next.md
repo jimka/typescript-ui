@@ -560,6 +560,25 @@ page resets to empty.
   the caret is right after it, and goes when the next character is typed.
   No consumer action is needed.
 
+- **`MarkdownEditor`'s source-mode commands give the WYSIWYG result.** The
+  format toggles, `toggleLink`, `removeLink`, `clearFormatting`, the style
+  setters, `insertImage`, `setBlockType` and the list toggles now run the
+  WYSIWYG command on the Markdown around the selection and write back the
+  text it changes, so both surfaces give the same document for the same
+  selection. A command writes the top-level block it changes in the
+  editor's own form, as a WYSIWYG edit does (`* one` / `    * inner` /
+  `* two` with `two` bolded saves `* one` / `  * inner` / `* **two**`). A
+  command on text the WYSIWYG surface keeps as a raw Markdown block does
+  nothing, where source mode converted some of those lines before
+  (`> - one`). A command also does nothing with the caret on several empty
+  items, rows, cells or columns of one block (`-` / `-` / `-`), on the blank
+  lines between blocks or before the first block, and where the editor does
+  not find the source of what a block shows beside the selection (the cases
+  the component page lists). A read-only editor refuses every source-mode
+  command that edits text, `insertTable` and the two paragraph inserts
+  included, with `"readonlyedit"` up front, also where the command would
+  have done nothing. No consumer action is needed.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
