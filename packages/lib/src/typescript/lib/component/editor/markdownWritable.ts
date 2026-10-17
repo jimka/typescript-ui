@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import {
-    $addUpdateTag, $createParagraphNode, $createRangeSelection, $createTextNode, $findMatchingParent, $formatText, $getNodeByKey, $getRoot,
-    $getSelection, $getState,
+    $addUpdateTag, $createLineBreakNode, $createParagraphNode, $createRangeSelection, $createTextNode, $findMatchingParent, $formatText,
+    $getNodeByKey, $getRoot, $getSelection, $getState,
     $hasUpdateTag, COMMAND_PRIORITY_CRITICAL, CUT_COMMAND, DELETE_CHARACTER_COMMAND, DELETE_LINE_COMMAND, DELETE_WORD_COMMAND, DROP_COMMAND,
     INSERT_PARAGRAPH_COMMAND, PASTE_COMMAND, REMOVE_TEXT_COMMAND, SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, TEXT_TYPE_TO_FORMAT,
     $isDecoratorNode, $isElementNode, $isLineBreakNode, $isParagraphNode, $isRangeSelection, $isRootNode, $isTextNode,
@@ -1717,7 +1717,8 @@ function $placeCaret(blocks: readonly LexicalNode[], offset: number, last: Lexic
  * a break any other edit leaves there — a paste, a deletion, a code block
  * converted — into what the save writes: nothing at a block's end, a space
  * in a level 3–6 heading. A table cell keeps every break: its line break
- * (`<br>`) shows anywhere.
+ * (`<br>`) shows anywhere. A text node transform turns a line end inside a
+ * text into a line break node ({@link $keepLineEndsOutOfText}).
  *
  * @param editor - The editor.
  * @returns The unregister function.
@@ -1735,6 +1736,7 @@ function registerLineBreakRules(editor: LexicalEditor): () => void {
         editor.registerNodeTransform(MarkdownListItemTextNode, dropInContainer),
         editor.registerNodeTransform(HeadingNode, dropInContainer),
         editor.registerNodeTransform(QuoteNode, dropInContainer),
+        editor.registerNodeTransform(TextNode, $keepLineEndsOutOfText),
         editor.registerNodeTransform(TextNode, (text) => {
             const container = $breakRuleContainerOf(text);
 
@@ -1751,6 +1753,41 @@ function registerLineBreakRules(editor: LexicalEditor): () => void {
             }
         }),
     );
+}
+
+/**
+ * Turns each line end inside a text of a block of text into a line break
+ * node, which is what a load builds for the hard break a save writes there.
+ * Only a code block and a raw block hold a line end as a character of their
+ * text; a block made of one — a code block set to a paragraph, a heading, a
+ * quote or a list item — takes its text node as it is, line ends and all.
+ * A caret keeps its place in the text.
+ *
+ * @param text - The text node that changed.
+ */
+function $keepLineEndsOutOfText(text: TextNode): void {
+    const content = text.getTextContent();
+    const holdsLineEnd = content.includes("\n") && !$isMarkdownSourceTextNode(text);
+    const block = holdsLineEnd ? $findEnclosingBlock(text) : null;
+    const keepsLineEnds = block === null || $isMarkdownRawBlockNode(block) || $isCodeNode(block);
+
+    if (keepsLineEnds) {
+        return;
+    }
+
+    const offsets: number[] = [];
+
+    for (let at = content.indexOf("\n"); at !== -1; at = content.indexOf("\n", at + 1)) {
+        offsets.push(at, at + 1);
+    }
+
+    for (const piece of text.splitText(...offsets)) {
+        const isLineEnd = piece.getTextContent() === "\n";
+
+        if (isLineEnd) {
+            piece.replace($createLineBreakNode());
+        }
+    }
 }
 
 /**

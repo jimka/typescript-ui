@@ -245,3 +245,32 @@ describe('the editor shows what its save reloads to: a line break in a table cel
         expectShownAndReloaded(editor, cells('paragraph("t<br>1")'), '| t0 |\n| --- |\n| t\\<br>1 |');
     });
 });
+
+describe('the editor shows what its save reloads to: a line end inside a text', () => {
+    it('N1: a code block of two lines made a paragraph holds a line break', () => {
+        const editor = load('```\na\nb\n```');
+
+        lexicalOf(editor).update(() => { $getRoot().getAllTextNodes()[0]!.select(1, 1); }, { discrete: true });
+        editor.setBlockType('paragraph');
+
+        expectShownAndReloaded(editor, 'paragraph("a", linebreak, "b")', 'a\\\nb');
+    });
+
+    it('N2: a code block of two lines made a list item holds a line break', () => {
+        const editor = load('```\na\nb\n```');
+
+        lexicalOf(editor).update(() => { $getRoot().getAllTextNodes()[0]!.select(1, 1); }, { discrete: true });
+        editor.toggleUnorderedList();
+
+        expectShownAndReloaded(editor, 'tight(markdown-list-item(markdown-list-item-text("a", linebreak, "b")))', '- a\\\n  b');
+    });
+
+    it('N3: a code block keeps its line ends as text', () => {
+        const editor = load('```\na\nb\n```');
+
+        lexicalOf(editor).update(() => { $getRoot().getAllTextNodes()[0]!.select(1, 1); }, { discrete: true });
+        type(editor, 'x');
+
+        expectShownAndReloaded(editor, 'code("axb")'.replace('axb', 'ax\\nb'), '```\nax\nb\n```');
+    });
+});
