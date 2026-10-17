@@ -85,7 +85,7 @@ import { keptSourceState, listLooseState, nestedLinkState } from "~/component/ed
 import { EDITOR_NODES } from "~/component/editor/editorNodes.js";
 import {
     $createMarkdownListItemTextNode, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $liftItemOut, $movePointsBetween, $outdentItem,
-    $splitItemAfterText, $splitItemBefore,
+    $removeUnwalked, $splitItemAfterText, $splitItemBefore,
 } from "~/component/editor/markdownListItemNode.js";
 import type { MarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
 import { EDITOR_THEME, ensureMarkdownEditorClassRules } from "~/component/editor/editorTheme.js";
@@ -4252,7 +4252,9 @@ function $makeItemsOf(groups: LexicalNode[][], type: ListType): void {
  * Makes the groups of one run the items of one list of a kind, where the
  * run stands: a list of that kind right before the run, which they are
  * appended to; else one right after it, which they are put at the start of;
- * else a new list.
+ * else a new list. When lists of that kind stand both right before and
+ * right after the run and write the same marker, the list after it is joined
+ * into the list before it at once, not left for the list rule.
  *
  * @param run - The run's groups, in document order.
  * @param type - The kind of list.
@@ -4275,7 +4277,7 @@ function $makeItemsOfRun(run: LexicalNode[][], type: ListType): void {
         first.insertBefore(list);
     }
 
-    // The list transform joins `below` into `above` when their markers match; a loose one makes the whole list loose.
+    // `below` is joined into `above` below when their markers match; a loose one makes the whole list loose.
     const meetsLoose = joinsAbove && joinsBelow && $getState(below, listLooseState) && $writtenListMarker(below) === $writtenListMarker(above);
 
     if (meetsLoose) {
@@ -4283,6 +4285,14 @@ function $makeItemsOfRun(run: LexicalNode[][], type: ListType): void {
     }
 
     list.splice(joinsAbove ? list.getChildrenSize() : 0, 0, run.map($itemOfBlocks));
+
+    // The list rule would join `below` into `above` in its own time; a toggle over many blocks would leave it a list for each.
+    const joinsBoth = joinsAbove && joinsBelow && $writtenListMarker(below) === $writtenListMarker(above);
+
+    if (joinsBoth) {
+        above.splice(above.getChildrenSize(), 0, below.getChildren());
+        $removeUnwalked(below);
+    }
 }
 
 /**
