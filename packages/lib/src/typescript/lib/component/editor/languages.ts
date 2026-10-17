@@ -21,6 +21,7 @@ import { registerLanguage } from "~/component/editor/LanguageRegistry.js";
 import type { LanguageOptions } from "~/component/editor/LanguageRegistry.js";
 import { formatWithPrettier } from "~/component/editor/formatters/prettier.js";
 import { formatWithSql } from "~/component/editor/formatters/sql.js";
+import { MARKDOWN_TAB_STOPS, readQuoteContinuationTabs } from "~/component/editor/markdownTabStops.js";
 import { collectSyntaxErrors } from "~/component/editor/syntaxDiagnostics.js";
 
 /** Loads the babel + estree plugins Prettier's `babel-ts` and `json` parsers need. */
@@ -493,7 +494,13 @@ registerLanguage({
             html({ autoCloseTags: false }).support,
         );
 
-        const support = markdown({ htmlTagLanguage: literalHtml });
+        // Markdown counts a tab after `#` or `>` to the next of its four-column
+        // stops; the stock parser does not (see markdownTabStops.ts). The
+        // parser markdown() configured here is this language's own, so the
+        // second call changes no other language.
+        const support = markdown({ htmlTagLanguage: literalHtml, extensions: MARKDOWN_TAB_STOPS });
+
+        readQuoteContinuationTabs(support.language.parser);
 
         // Listed ahead of the support, so this Enter binding is tried before
         // Markdown's own: in an indented code block and at the end of an HTML
