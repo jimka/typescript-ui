@@ -10,7 +10,7 @@ import {
     ParagraphNode, RootNode, TextNode,
 } from "lexical";
 import type {
-    EditorState, ElementNode, LexicalEditor, LexicalNode, PointType, RangeSelection, SerializedElementNode,
+    EditorState, ElementNode, LexicalEditor, LexicalNode, NodeKey, PointType, RangeSelection, SerializedElementNode,
     SerializedLexicalNode, TextFormatType,
 } from "lexical";
 import type { Links, Tokens } from "marked";
@@ -344,6 +344,14 @@ function $keepItemTextInPlace(text: MarkdownListItemTextNode): void {
     }
 }
 
+/** The lists whose looseness a changed item has read whole in one update. */
+interface ListsReadWhole {
+    /** The committed state the update started from. */
+    readonly from:  EditorState;
+    /** The keys of the lists read whole. */
+    readonly lists: Set<NodeKey>;
+}
+
 /**
  * Replaces `@lexical/list`'s own `ListNode` transform, which joins a list
  * with the next one of its type whatever their markers, by
@@ -358,11 +366,72 @@ function $keepItemTextInPlace(text: MarkdownListItemTextNode): void {
  * `ListNode` transforms holds only that one (no plugin has added any), so it
  * is cleared and {@link $normalizeList} takes its place.
  *
+ * An update that changes many items of one list — a load, a toggle over the
+ * list, a paste, the renumbering after Enter — runs the item rule for each
+ * changed item, each changed item text and each renumbered item (119 calls
+ * for a toggle over 40 items). The first call reads the whole list, and each
+ * one after it reads its own item alone ({@link $keepLoosenessThroughItem}),
+ * so the cost of this rule grows with the items changed and not with their
+ * number times the list's length; the rest of the update is not covered. The lists read whole are kept for one update: an
+ * update listener forgets them at each commit.
+ *
  * @param editor - The editor.
  * @returns The unregister function.
  */
 function registerMarkdownListTransforms(editor: LexicalEditor): () => void {
     editor.getRegisteredNode(ListNode).transforms.clear();
+
+    let readWhole: ListsReadWhole | null = null;
+
+    /**
+     * Keeps a list's looseness writable as one of its items changes: its
+     * shape, its blocks, or a block of it that a deletion empties. The
+     * first such change of a list in an update reads the whole list
+     * ({@link $keepLoosenessWritable}), which also takes in what other
+     * items have come to hold since the list was last read; each later one
+     * reads the changed item alone ({@link $keepLoosenessThroughItem}).
+     *
+     * @param list - The list.
+     * @param item - The item that changed, as its rule found it in the list.
+     */
+    const $keepLoosenessAfterItemChange = (list: ListNode, item: ListItemNode): void => {
+        const from = editor.getEditorState();
+
+        if (readWhole?.from !== from) {
+            readWhole = { from, lists: new Set() };
+        }
+
+        const key = list.getKey();
+        const isReadWhole = readWhole.lists.has(key);
+        // The shape rule puts an item of the editor's own class in the place of one of Lexical's, which then is no item of the list.
+        const isItemOfList = item.getParent()?.is(list) === true;
+
+        if (!isReadWhole || !isItemOfList) {
+            readWhole.lists.add(key);
+            $keepLoosenessWritable(list);
+
+            return;
+        }
+
+        $keepLoosenessThroughItem(list, item);
+    };
+
+    /**
+     * Keeps a list's looseness writable as a block of one of its items
+     * changes: an item's text, a paragraph or a raw block that a deletion
+     * empties writes nothing, so its item holds one block less.
+     *
+     * @param block - The item text, paragraph or raw block that changed.
+     */
+    const $keepLoosenessOfItemHolding = (block: ElementNode): void => {
+        const item = block.getParent();
+        const list = item?.getParent() ?? null;
+        const isItemOfList = $isListItemNode(item) && $isListNode(list);
+
+        if (isItemOfList) {
+            $keepLoosenessAfterItemChange(list, item);
+        }
+    };
 
     return mergeRegister(
         editor.registerNodeTransform(ListNode, $normalizeList),
@@ -372,7 +441,7 @@ function registerMarkdownListTransforms(editor: LexicalEditor): () => void {
             $keepItemShape(item);
 
             if ($isListNode(list)) {
-                $keepLoosenessWritable(list);
+                $keepLoosenessAfterItemChange(list, item);
             }
         }),
         editor.registerNodeTransform(MarkdownListItemTextNode, $keepItemTextInPlace),
@@ -380,23 +449,11 @@ function registerMarkdownListTransforms(editor: LexicalEditor): () => void {
         // A deletion that empties a block removes its text node, so no text transform runs for it.
         ...[ParagraphNode, MarkdownListItemTextNode, MarkdownRawBlockNode]
             .map((klass) => editor.registerNodeTransform(klass, $keepLoosenessOfItemHolding)),
+        // An undo can bring back the very state an update started from; the next update starts afresh.
+        editor.registerUpdateListener(() => {
+            readWhole = null;
+        }),
     );
-}
-
-/**
- * Keeps a list's looseness writable as a block of one of its items changes:
- * an item's text, a paragraph or a raw block that a deletion empties writes
- * nothing, so its item holds one block less.
- *
- * @param block - The item text, paragraph or raw block that changed.
- */
-function $keepLoosenessOfItemHolding(block: ElementNode): void {
-    const item = block.getParent();
-    const list = $isListItemNode(item) ? item.getParent() : null;
-
-    if ($isListNode(list)) {
-        $keepLoosenessWritable(list);
-    }
 }
 
 /**
@@ -408,12 +465,8 @@ function $keepLoosenessOfItemHolding(block: ElementNode): void {
  * blocks reads loose. Other text — the text of an item that holds nothing
  * else — cannot change what the list's save reads as.
  *
- * The list's looseness is read ({@link $keepLoosenessWritable}, which reads
- * every item) only where the answer can differ from what the list has: a
- * loose list of several items reads loose whatever this block holds, and a
- * tight one reads loose only once this item holds two blocks, the other
- * items being as they were. So a keystroke in a long list costs the same
- * however long the list is.
+ * The list is read through the item alone ({@link $keepLoosenessThroughItem}),
+ * so a keystroke in a long list costs the same however long the list is.
  *
  * @param text - The text node that changed.
  */
@@ -428,6 +481,21 @@ function $keepLoosenessAfterTyping(text: TextNode): void {
         return;
     }
 
+    $keepLoosenessThroughItem(list, item);
+}
+
+/**
+ * Keeps a list's looseness writable after a change of one of its items,
+ * reading the whole list ({@link $keepLoosenessWritable}, which reads every
+ * item) only where the answer can differ from what the list has: a loose
+ * list of several items reads loose whatever this item holds, and a tight
+ * one reads loose only once this item's blocks need a blank line between
+ * them, the other items being as they were when the list was last read.
+ *
+ * @param list - The list.
+ * @param item - The item of it that changed.
+ */
+function $keepLoosenessThroughItem(list: ListNode, item: ListItemNode): void {
     const isLoose = $getState(list, listLooseState);
     const staysAsItIs = isLoose ? list.getChildrenSize() > 1 : !$itemReadsLoose(item);
 
