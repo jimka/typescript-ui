@@ -1945,6 +1945,15 @@ page resets to empty.
   line, which changes only the whitespace the tab stands for in that
   paragraph. No consumer action is needed.
 
+- **`MarkdownEditor`'s WYSIWYG surface no longer shows the blanks a
+  paragraph line opens with.** CommonMark strips the whitespace a paragraph
+  line opens with, and the `Markdown` viewer shows none of it, but the
+  editor kept it: a quote written `>`, three spaces and `foo bar` showed two
+  spaces before `foo bar`, and a list item's second line indented by a tab
+  showed its indentation inside the text. The editor now drops those blanks
+  when a document loads, so it shows the text the viewer shows. A block that
+  is not edited is still saved as written. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
