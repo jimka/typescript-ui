@@ -1923,10 +1923,9 @@ page resets to empty.
   found: a code line or an HTML line whose container prefix holds a tab, or
   a paragraph line made of list markers and tabs, which show as the spaces
   the tabs stand for, a task item whose checkbox is followed by more than
-  one space in a list with blank lines between its items, text of a list
-  item that begins as a link reference definition repeated before it does,
-  or a character reference such as `&#35;`, which shows as the character it
-  stands for. No consumer action is needed.
+  one space in a list with blank lines between its items, or text of a list
+  item that begins as a link reference definition repeated before it does.
+  No consumer action is needed.
 
 - **`MarkdownEditor` joins a list item away when a selection takes its
   text whole.** A selection from one item's text into a later block of
@@ -2033,6 +2032,12 @@ page resets to empty.
   quote, a code block or a raw block an indent that was drawn and never
   saved, and added an undo step. No key or method of the editor sends the
   command. No consumer action is needed.
+
+- **`MarkdownEditor` keeps the caret's place beside a character
+  reference.** After an edit made a raw Markdown block show as its blocks,
+  the caret went to the block's end when the block held a character
+  reference such as `&#35;`. It now stays where it was. No consumer action
+  is needed.
 
 ### Core
 
