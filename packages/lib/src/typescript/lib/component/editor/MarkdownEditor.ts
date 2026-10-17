@@ -63,7 +63,9 @@ import { mergeRegister, $getNearestNodeOfType, $handleIndentAndOutdent } from "@
 import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent } from "@lexical/selection";
 import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
-import { $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $writtenListMarker } from "~/component/editor/markdownSerializer.js";
+import {
+    $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $serializeRestOfBlock, $writtenListMarker,
+} from "~/component/editor/markdownSerializer.js";
 import {
     $breakRuleContainerOf, $contentFollows, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
     $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $selectionHasFormat, $showRawBlockAsSaved, $takeBlocksOutOf, RUN_EDGE_TAG,
@@ -3383,8 +3385,12 @@ function $copyTableEdgeRange(event: CommandPayloadType<typeof COPY_COMMAND>, edi
  * it, as that block's Markdown: its formatting, links, images and escapes
  * become text of the block, which saves its text as written, instead of
  * Lexical's merge moving the block's nodes in, which the save would drop.
- * Handles Backspace at a paragraph's start after such a block and Delete at
- * such a block's end before a paragraph. The caret lands where the two met.
+ * Handles Backspace at the start of a paragraph, heading, quote or list
+ * item's text right after such a block (the first item of a list right after
+ * it) and Delete at such a block's end before one: each as the range from
+ * the block's end to the next block's start, removed by
+ * {@link $removeGuardedRange}, which joins through
+ * {@link $deleteRangeFromTextOnlyBlock}. The caret lands where the two met.
  * A range is not this handler's: the command's range guard removes one
  * ahead of it ({@link $deleteGuardedRange}), joining the same way.
  * Registered at {@link COMMAND_PRIORITY_HIGH}, ahead of `registerRichText`'s
@@ -3407,36 +3413,109 @@ function $joinIntoTextOnlyBlock(isBackward: boolean): boolean {
         return false;
     }
 
-    const pair = isBackward ? $textOnlyBlockBeforeParagraphStart(selection) : $paragraphAfterTextOnlyBlockEnd(selection);
+    const pair = isBackward ? $textOnlyBlockBeforeBlockStart(selection) : $blockAfterTextOnlyBlockEnd(selection);
 
     if (pair === null) {
         return false;
     }
 
-    const [block, paragraph] = pair;
-    const joint = block.getLastChild();
-    const added = $textOnlyChildren($serializeInlineNodes(paragraph.getChildren()));
+    const [block, next] = pair;
 
-    block.append(...added);
-    paragraph.remove();
+    // The join is the range from the block's end to the next block's start, removed as a range is.
+    selection.anchor.set(block.getKey(), block.getChildrenSize(), "element");
+    selection.focus.set(next.getKey(), 0, "element");
 
-    if ($isTextNode(joint)) {
-        joint.select(joint.getTextContentSize(), joint.getTextContentSize());
-    } else if ($isTextNode(added[0])) {
-        added[0].select(0, 0);
-    } else {
-        block.selectEnd();
+    return $removeGuardedRange(selection);
+}
+
+/**
+ * The text a raw Markdown block's line holds before the place where its
+ * content starts: any number of quote markers (`>`, with the space after
+ * one) and list markers (with the whitespace after them), and indentation.
+ */
+const RAW_LINE_OPENING = /^(?:[ \t]*(?:>[ \t]?|(?:[-+*]|\d{1,9}[.)])[ \t]+))*[ \t]*$/;
+
+/** The quote markers a raw block's lines open with. */
+const QUOTE_MARKERS = /^[ \t]*(?:>[ \t]?)+/gm;
+
+/** A `<` that opens a tag (a letter, `/`, `!` or `?` after it) and has no `>` after it, across lines. */
+const UNCLOSED_TAG_OPENING = /<[A-Za-z/!?][^>]*$/;
+
+/**
+ * The Markdown the rest of a block joins a raw block or code block as
+ * ({@link $deleteRangeFromTextOnlyBlock}): into a code block, as the joined
+ * block's own save writes that rest, after the character before the point
+ * in that block; into a raw block, as Markdown with every escape, after the
+ * character before the joint in the raw block, except that a joint where
+ * the line holds nothing yet but container markers and indentation
+ * ({@link RAW_LINE_OPENING}) opens a line, so the rest keeps the escapes a
+ * line start needs there. A `>` that opens the rest is escaped when the raw
+ * text before the joint holds a `<` that opens a tag and is not closed:
+ * the `>` would close it, making a tag of the two blocks' text. The tag may
+ * span lines, so it is read off the text before the joint, which the
+ * serializer's one character of context before the rest cannot carry.
+ *
+ * @param target - The raw block or code block the rest joins.
+ * @param source - The block the rest comes from.
+ * @param nodes - The rest, detached.
+ * @param textBeforeJoint - The raw block's or code block's text before the joint; `""` at its start.
+ * @param restBefore - The source block's character before the rest; `""` at its start.
+ * @returns The Markdown.
+ */
+function $joinedMarkdown(target: ElementNode, source: ElementNode, nodes: LexicalNode[], textBeforeJoint: string, restBefore: string): string {
+    const isCode = $isCodeNode(target);
+
+    if (isCode) {
+        return $inlineMarkdown(nodes, restBefore, (run, before) => $serializeRestOfBlock(source, run, before));
     }
 
-    return true;
+    const lineBeforeJoint = textBeforeJoint.slice(textBeforeJoint.lastIndexOf("\n") + 1);
+    const opensLine = RAW_LINE_OPENING.test(lineBeforeJoint);
+    const markdown = $inlineMarkdown(nodes, opensLine ? "" : textBeforeJoint.slice(-1));
+    // The quote markers at the lines' starts are no `>` that closes a tag.
+    const opensTag = UNCLOSED_TAG_OPENING.test(textBeforeJoint.replace(QUOTE_MARKERS, ""));
+
+    return opensTag ? markdown.replace(/^([ \t]*)>/, "$1\\>") : markdown;
+}
+
+/**
+ * The character a block's last line ends with, as the serializer sees it:
+ * a soft line break (a source run showing as a space) ends the line, so
+ * what follows it opens a line.
+ *
+ * @param block - The block, once the rest after a point is detached.
+ * @returns The block's last character; `"\n"` after a soft break, `""` for an empty block.
+ */
+function $characterBeforeRest(block: ElementNode): string {
+    const last = block.getLastDescendant();
+    const endsInSoftBreak = $isMarkdownSourceTextNode(last) && last.getSource().endsWith("\n");
+
+    return endsInSoftBreak ? "\n" : block.getTextContent().slice(-1);
+}
+
+/**
+ * A block's text before a point in it, as `getTextContent()` gives the
+ * block's text (a line break is `\n`).
+ *
+ * @param block - The block.
+ * @param point - A point in the block.
+ * @returns The text before the point.
+ */
+function $textBeforePoint(block: ElementNode, point: PointType): string {
+    const text = block.getTextContent();
+    const node = point.getNode();
+    const restOfNode = point.type === "text" ? node.getTextContentSize() - point.offset : 0;
+    const after = $nodesAfterPoint(point, block).reduce((size, next) => size + next.getTextContentSize(), 0);
+
+    return text.slice(0, Math.max(0, text.length - restOfNode - after));
 }
 
 /**
  * Deletes a range that starts inside a raw Markdown block or a code block
  * and ends in a later block: the rest of that later block after the range
- * joins as its Markdown (as its text, when it is a raw block or code block
- * too), so nothing it holds is dropped and its escapes keep its text as it
- * was shown. A range that ends on a list item itself, between two of its
+ * joins as {@link $joinedMarkdown} writes it (as its text, when it is a raw
+ * block or code block too), so nothing it holds is dropped and its escapes
+ * keep its text as it was shown. A range that ends on a list item itself, between two of its
  * blocks, has the item's later blocks follow the block as blocks of their
  * own.
  *
@@ -3455,10 +3534,13 @@ function $deleteRangeFromTextOnlyBlock(selection: RangeSelection): boolean {
     }
 
     const startPoint: [string, number, "text" | "element"] = [start.key, start.offset, start.type];
+    const textBeforeJoint = $textBeforePoint(block, start);
     const rest = $detachRestOfBlock(tailBlock, end);
     // The rest of a list item, for an end between its blocks, is blocks: they follow the block, they are no text of it.
     const following = $takeBlocksOutOf(rest);
-    const tail = $isTextOnlyBlock(tailBlock) ? rest.getTextContent() : $inlineMarkdown(rest.getChildren());
+    // What the tail block keeps once its rest is detached is what came before the rest.
+    const restBefore = $characterBeforeRest(tailBlock);
+    const tail = $isTextOnlyBlock(tailBlock) ? rest.getTextContent() : $joinedMarkdown(block, tailBlock, rest.getChildren(), textBeforeJoint, restBefore);
     const range = tailBlock.selectEnd();
 
     range.anchor.set(...startPoint);
@@ -3541,18 +3623,24 @@ function $detachRestOfBlock(block: ElementNode, point: RangeSelection["anchor"])
  * already there.
  *
  * @param nodes - The inline nodes.
+ * @param before - The character before the run; `""` where it opens a line.
+ * @param serialize - Writes the nodes after the character before them; {@link $serializeInlineNodes} by default.
  * @returns Their Markdown.
  */
-function $inlineMarkdown(nodes: LexicalNode[]): string {
+function $inlineMarkdown(
+    nodes: LexicalNode[], before: string = "", serialize: (nodes: LexicalNode[], before: string) => string = $serializeInlineNodes,
+): string {
     const text = nodes.map((node) => node.getTextContent()).join("");
-    const markdown = $serializeInlineNodes(nodes);
+    const leading = /^[ \t]*/.exec(text)![0];
+    const trailing = /[ \t]*$/.exec(text)![0];
+    // The serializer trims the leading whitespace, which the first character then follows — unless the run opens a
+    // line, where that whitespace is only indentation.
+    const opensLine = before === "" || before === "\n";
+    const markdown = serialize(nodes, leading === "" || opensLine ? before : leading.slice(-1));
 
     if (markdown === "") {
         return text.trim() === "" ? text : markdown;
     }
-
-    const leading = /^[ \t]*/.exec(text)![0];
-    const trailing = /[ \t]*$/.exec(text)![0];
 
     return leading + markdown.replace(/^[ \t]+/, "").replace(/[ \t]+$/, "") + trailing;
 }
@@ -3620,36 +3708,98 @@ function $keepTextOnly(block: ElementNode): void {
 }
 
 /**
- * The raw Markdown block or code block a collapsed caret at a paragraph's
- * start would Backspace into, with that paragraph.
+ * Whether a block holds the inline content a join into a raw block or code
+ * block takes: a paragraph (a list item's text is one), a heading or a quote.
  *
- * @param selection - A collapsed range selection.
- * @returns The block and the paragraph, or `null` when the caret is not at
- *   the start of a paragraph right after a raw block or code block.
+ * @param node - The node.
+ * @returns `true` for such a block.
  */
-function $textOnlyBlockBeforeParagraphStart(selection: RangeSelection): [MarkdownRawBlockNode | CodeNode, ParagraphNode] | null {
-    const anchor = selection.anchor;
-    const paragraph = $findMatchingParent(anchor.getNode(), $isParagraphNode);
-    const previous = paragraph?.getPreviousSibling();
-    const first = paragraph?.getFirstDescendant() ?? null;
-    const atStart = anchor.offset === 0 && (anchor.getNode().is(paragraph) || anchor.getNode().is(first));
-
-    return paragraph && atStart && $isTextOnlyBlock(previous) ? [previous, paragraph] : null;
+function $isJoinableBlock(node: LexicalNode | null | undefined): node is ElementNode {
+    return $isParagraphNode(node) || $isHeadingNode(node) || $isQuoteNode(node);
 }
 
 /**
- * The paragraph a collapsed caret at a raw Markdown block's or code block's
- * end would Delete into, with that block.
+ * The outermost node a block opens: the block, or the list item and list
+ * it is the first child of, as far up as each is its parent's first child.
+ * It climbs through list parts only and stops at any other parent, as
+ * {@link $containerEndingBefore} stops at a root or shadow root (a `:::`
+ * column is one): a block that opens a column has no previous sibling in it,
+ * so it joins nothing that stands before the column.
+ *
+ * @param block - The block.
+ * @returns The node whose previous sibling comes before the block.
+ */
+function $outermostOpenedBy(block: ElementNode): LexicalNode {
+    let edge: LexicalNode = block;
+
+    for (;;) {
+        const parent = edge.getParent();
+        const isFirst = edge.getPreviousSibling() === null;
+        const inListPart = $isListItemNode(parent) || $isListNode(parent);
+        const climbs = isFirst && inListPart;
+
+        if (!climbs) {
+            return edge;
+        }
+
+        edge = parent!;
+    }
+}
+
+/**
+ * The block of text a node starts with: the node, or the first item's text
+ * of the list (and nested first item) it is.
+ *
+ * @param node - The node after a raw block or code block.
+ * @returns That block, or the node when it is no list.
+ */
+function $firstTextBlockOf(node: LexicalNode | null): LexicalNode | null {
+    let next = node;
+    let isListPart = $isListNode(next) || $isListItemNode(next);
+
+    while (isListPart) {
+        next = (next as ElementNode).getFirstChild();
+        isListPart = $isListNode(next) || $isListItemNode(next);
+    }
+
+    return next;
+}
+
+/**
+ * The raw Markdown block or code block a collapsed caret at the start of a
+ * paragraph, heading, quote or list item's text would Backspace into, with
+ * that block of text.
  *
  * @param selection - A collapsed range selection.
- * @returns The block and the paragraph, or `null` when the caret is not at
- *   the end of a raw block or code block right before a paragraph.
+ * @returns The text-only block and the block, or `null` when the caret is
+ *   not at the start of such a block right after a raw block or code block
+ *   (the first item of a list right after one, for an item's text).
  */
-function $paragraphAfterTextOnlyBlockEnd(selection: RangeSelection): [MarkdownRawBlockNode | CodeNode, ParagraphNode] | null {
-    const block = $findMatchingParent(selection.anchor.getNode(), $isTextOnlyBlock);
-    const next = block?.getNextSibling();
+function $textOnlyBlockBeforeBlockStart(selection: RangeSelection): [MarkdownRawBlockNode | CodeNode, ElementNode] | null {
+    const anchor = selection.anchor;
+    const block = $findMatchingParent(anchor.getNode(), $isJoinableBlock);
+    const first = block?.getFirstDescendant() ?? null;
+    const atStart = anchor.offset === 0 && (anchor.getNode().is(block) || anchor.getNode().is(first));
+    const previous = block === null ? null : $outermostOpenedBy(block).getPreviousSibling();
 
-    return block && $isSelectionAtBlockEnd(block, selection) && $isParagraphNode(next) ? [block, next] : null;
+    return block && atStart && $isTextOnlyBlock(previous) ? [previous, block] : null;
+}
+
+/**
+ * The paragraph, heading, quote or list item's text a collapsed caret at a
+ * raw Markdown block's or code block's end would Delete into, with that
+ * text-only block.
+ *
+ * @param selection - A collapsed range selection.
+ * @returns The text-only block and the block, or `null` when the caret is
+ *   not at the end of a raw block or code block right before such a block
+ *   (before a list, its first item's text).
+ */
+function $blockAfterTextOnlyBlockEnd(selection: RangeSelection): [MarkdownRawBlockNode | CodeNode, ElementNode] | null {
+    const block = $findMatchingParent(selection.anchor.getNode(), $isTextOnlyBlock);
+    const next = $firstTextBlockOf(block?.getNextSibling() ?? null);
+
+    return block && $isSelectionAtBlockEnd(block, selection) && $isJoinableBlock(next) ? [block, next] : null;
 }
 
 /**
