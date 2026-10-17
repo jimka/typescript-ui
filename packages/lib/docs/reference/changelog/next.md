@@ -1954,6 +1954,15 @@ page resets to empty.
   when a document loads, so it shows the text the viewer shows. A block that
   is not edited is still saved as written. No consumer action is needed.
 
+- **`CodeEditor`'s `markdown` language reads a tab after `#` or `>` as
+  Markdown does.** A heading whose `#` a tab followed was highlighted as a
+  paragraph. Inside a blockquote, a tab after the `>` moved the rest of the
+  line: `> - a` over `>`, a tab and `- b` showed `b` as a second item
+  instead of one nested under `a`. `MarkdownEditor`'s source mode and a
+  `md` code block in `Markdown` show the corrected highlighting, and
+  folding and Enter follow it: Enter after an item in a quote opened by `>`
+  and a tab now continues the list. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation

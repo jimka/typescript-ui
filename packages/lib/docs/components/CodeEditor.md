@@ -63,6 +63,8 @@ The library registers seven languages out of the box, each with a grammar and, w
 
 The `markdown` language types HTML literally, because indentation changes what Markdown means (four spaces start a code block; in a list it decides the item). Typing `<div>` does not add `</div>`, typing `</` does not complete the tag, and Enter inside an HTML block keeps the current line's indentation, as on any other Markdown line. HTML is still highlighted, and tag completion still offers names when you type `<`. To get HTML auto-closing back, register your own `markdown` language with [`registerLanguage`](#registering-a-language).
 
+The `markdown` language reads a tab as Markdown does: it reaches the next multiple of four columns. A tab after a heading's `#` run works as a space, so `#→Foo` (`→` is a tab) is a heading. After a `>`, a tab gives the marker one column, as a space would, and the rest of the tab belongs to the quote's content: `> - a` over `>→- b` nests `b` under `a`, as the [`Markdown`](/components/Markdown) viewer shows it. Highlighting, folding and Enter all read it that way, though Enter can still differ on some shapes with a tab after a `>` (see the list below).
+
 Enter in the `markdown` language does one of three things, decided by where the caret is:
 
 | Caret | Enter |
@@ -82,6 +84,7 @@ The prefix is the start of the caret's line, up to its text: its `>` markers and
 - **Inside `<script>` and `<style>`, and inside a `style` or `on…` attribute value**, JavaScript and CSS keep their own indentation. In a blockquote or list item the new line gets the prefix instead.
 - **The editor's plain Enter** measures the indentation it keeps with `tabSize` and writes it as spaces. It handles what is left, which is mostly lines where indentation does not change what the Markdown means. HTML outside every blockquote and list item is one: inside a top-level `<div>` block, under a line indented with a tab the new line gets two spaces with `tabSize: 2` and eight with `tabSize: 8`.
 - **A tab-indented line of ordinary text in a list item** loses its indentation: Markdown's own continuation starts the new line at the margin. Text typed there still belongs to the item's paragraph.
+- **After a `>` followed by a tab**, Markdown's own continuation counts the tab as one character. On a line of ordinary text in a list item of such a quote (`> - a`, `>`, `>→b`), Enter starts the new line at the margin, outside the quote. On an empty nested item (`> - a` over `>→- `), Enter does nothing; Backspace removes the marker. Enter can also give a different result than it did before on other shapes of a quote opened with a tab, such as a quoted line of text under a list item written with tabs: the new line may start with a bare `>` or at a different column. With a space after the `>` instead, the first two behave as described above.
 
 Both the grammar and the formatter load through a dynamic `import()` the first time they're needed — selecting a language fetches only its grammar; calling `format()` additionally fetches that language's formatter (and, for the five Prettier-backed languages, the shared Prettier standalone bundle, fetched once and reused across them). A lint source loads the same way, the first time [`lint`](#construction) is turned on for that language.
 
