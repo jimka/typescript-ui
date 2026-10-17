@@ -931,7 +931,7 @@ describe('a table a row of which is too short keeps its alignment rules (T rows)
             row.getFirstChild()!.remove();
         }, { discrete: true });
 
-        expect(editor.getValue()).toBe('| a | b |\n| --- | --- |\n| 1 | 2 |\n|  | ^^ |');
+        expect(editor.getValue()).toBe('|a|b|\n|-|-|\n|1|2|\n|  |^^|');
     });
 
     it('T2: an empty row under a header cell spanning down into it', () => {
@@ -944,7 +944,7 @@ describe('a table a row of which is too short keeps its alignment rules (T rows)
             (table.getChildAtIndex(1) as ElementNode).getChildren().forEach((cell) => cell.remove());
         }, { discrete: true });
 
-        expect(editor.getValue()).toBe('| a | b |\n| --- | --- |\n|  |  |');
+        expect(editor.getValue()).toBe('|a|b|\n|-|-|\n|  |  |');
     });
 
     it('T3: a paragraph put in a row a cell spans down into', () => {

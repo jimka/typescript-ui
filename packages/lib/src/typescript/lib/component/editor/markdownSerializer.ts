@@ -35,7 +35,7 @@ import {
 import { CELL_LINE_BREAK_TAG } from "~/component/display/markdownTableExtension.js";
 import type { MdTableToken } from "~/component/display/markdownTableExtension.js";
 import { $isMarkdownBlockNode, $isMarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
-import type { MarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
+import type { MarkdownBlockNode, MarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import { $isMarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import type { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
@@ -49,8 +49,10 @@ import { $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNo
 import type { ReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import type { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
-import { EMPTY_SOURCE_MAP } from "~/component/editor/markdownSourceMap.js";
-import type { MarkdownSourceBlock, MarkdownSourceLoad, MarkdownSourceMap } from "~/component/editor/markdownSourceMap.js";
+import { columnBlockKey, EMPTY_SOURCE_MAP } from "~/component/editor/markdownSourceMap.js";
+import type {
+    MarkdownSourceBlock, MarkdownSourceCodeFrame, MarkdownSourceItem, MarkdownSourceLoad, MarkdownSourceMap, MarkdownSourcePart,
+} from "~/component/editor/markdownSourceMap.js";
 
 // ---------------------------------------------------------------- constants
 
@@ -402,6 +404,84 @@ const LEAN_READS = new Map<string, boolean>();
  */
 const SAVE_DEFINITIONS: { current: DocumentDefinitions | null } = { current: null };
 
+/**
+ * What the load's fingerprint pass stores while it serializes the document in
+ * the standard form: each nested part's standard form, keyed by node.
+ */
+export interface RecordedFingerprints {
+    /** An item's fingerprint, a row's standard line, a delimiter row's (keyed by its table), a code frame's info string. */
+    readonly partFingerprints:  Map<NodeKey, string>;
+    /** Every block's standard form, as a block list writes it: a column block's fingerprint. */
+    readonly blockFingerprints: Map<NodeKey, string>;
+    /** A row's standard cell texts. */
+    readonly cellFingerprints:  Map<NodeKey, readonly string[]>;
+    /** An item's standard lines under the marker it is written with, to tell whether its source differs. */
+    readonly standardItems:     Map<NodeKey, string>;
+}
+
+/**
+ * How the serializer treats nested parts while it writes: it records each
+ * part's standard form (the load's fingerprint pass; the output is the
+ * standard form), or writes the parts whose standard form still equals their
+ * fingerprint as their source (a save of an edited block).
+ */
+type PartsContext =
+    | ({ readonly mode: "record" } & RecordedFingerprints)
+    | { readonly mode: "write"; readonly parts: ReadonlyMap<NodeKey, MarkdownSourcePart>; readonly column: NodeKey | null };
+
+/** A write context. */
+type WriteContext = Extract<PartsContext, { mode: "write" }>;
+
+/**
+ * The running pass's parts context; `null` writes the standard form. Set only
+ * through {@link withPartsContext}.
+ */
+const SAVE_PARTS: { current: PartsContext | null } = { current: null };
+
+/**
+ * The standard-form blocks of every list item a save has written in the
+ * standard form, keyed by item. A save writes the standard form of the whole
+ * document, then an edited list again part by part; each level of that second
+ * write needs the standard form of its items to tell which are unchanged, and
+ * writing it afresh at every level made the cost grow with the square of the
+ * depth. `null` outside a save. A pass that records or writes parts neither
+ * reads nor fills it.
+ */
+const STANDARD_ITEM_BLOCKS: { current: Map<NodeKey, ItemBlock[]> | null } = { current: null };
+
+/**
+ * The standard-form cell texts of every table row a save has written in the
+ * standard form, keyed by row: a table written part by part reads them again
+ * to compare each with its fingerprint. `null` outside a save.
+ */
+const STANDARD_ROW_TEXTS: { current: Map<NodeKey, string[]> | null } = { current: null };
+
+/**
+ * The standard text of every list a save has written in the standard form,
+ * with how it was kept apart from its neighbours, keyed by list. Choosing that
+ * reads the neighbours with the lexer, so a list inside a column, which a save
+ * writes in the standard form with its fence and again part by part, is
+ * chosen once. `null` outside a save.
+ */
+const STANDARD_LIST_TEXTS: { current: Map<NodeKey, StandardListText> | null } = { current: null };
+
+/** What {@link keepNestedListsApart} did to one block of an item. */
+interface KeptApartChoice {
+    /** Whether {@link LIST_SEPARATOR} was written before the block. */
+    readonly separatorBefore: boolean;
+    /** The other bullet or delimiter a nested list was written with; `undefined` for its own. */
+    readonly marker:          string | undefined;
+}
+
+/**
+ * What {@link keepNestedListsApart} made of an item's blocks, keyed by the
+ * array of blocks: it reads the neighbours of each nested list with the
+ * lexer, so a save, which asks again for the same blocks to compare an item
+ * with its fingerprint and for the blocks of the same item written part by
+ * part, takes the choices of the first answer.
+ */
+const KEPT_APART = new WeakMap<readonly ItemBlock[], { readonly kept: ItemBlock[]; readonly choices: KeptApartChoice[] }>();
+
 /** The reading unit of a line break. */
 const BREAK_READING = "\u0001break";
 
@@ -712,6 +792,11 @@ export interface StandardBlock {
     readonly node: LexicalNode;
     /** Its standard output; `""` for a block that writes nothing (an empty paragraph). */
     readonly text: string;
+    /**
+     * For a list, table, code block or fence a save writes part by part: its
+     * text with its unedited parts as their source.
+     */
+    readonly written?: string;
 }
 
 /** A top-level block as a save writes it. */
@@ -796,7 +881,7 @@ export function $serializeMarkdown(sourceMap: MarkdownSourceMap = EMPTY_SOURCE_M
  */
 export function $serializeMarkdownWithPlaces(sourceMap: MarkdownSourceMap = EMPTY_SOURCE_MAP): MarkdownWithPlaces {
     const definitions = $readDefinitions();
-    const parts = $serializeTopLevelBlocks(definitions);
+    const parts = $serializeTopLevelBlocks(definitions, sourceMap);
     const load = documentLoad(parts, sourceMap);
     const blocks = writtenBlocks(parts, sourceMap, definitions);
 
@@ -819,30 +904,149 @@ export function $serializeMarkdownWithPlaces(sourceMap: MarkdownSourceMap = EMPT
  *   ({@link $readDefinitions}); the block serializers take their
  *   {@link DocumentDefinitions.forBlocks}, and a lean writing is read under
  *   all of them.
+ * @param sourceMap - The source map of the editor's imports. With it, a
+ *   list, table, code block or fence whose standard form differs from its
+ *   fingerprint, and that holds a part with a source other than its standard
+ *   form, is also written part by part ({@link StandardBlock.written}); without
+ *   it no part is written.
  * @returns One entry per root child, in document order.
  */
-export function $serializeTopLevelBlocks(documentDefinitions: DocumentDefinitions): StandardBlock[] {
-    const children = $getRoot().getChildren();
-    const definitions = documentDefinitions.forBlocks;
-    let previousJoinable: string | undefined;
-
+export function $serializeTopLevelBlocks(
+    documentDefinitions: DocumentDefinitions, sourceMap: MarkdownSourceMap = EMPTY_SOURCE_MAP,
+): StandardBlock[] {
     SAVE_DEFINITIONS.current = documentDefinitions;
+    STANDARD_ITEM_BLOCKS.current = new Map();
+    STANDARD_ROW_TEXTS.current = new Map();
+    STANDARD_LIST_TEXTS.current = new Map();
 
     try {
-        return children.map((node, index) => {
-            const text = $isListNode(node)
-                ? serializeListApart(node, previousJoinable, children.slice(index + 1), definitions)
-                : serializeBlock(node, definitions);
-
-            if (text !== "") {
-                previousJoinable = $isMarkdownRawBlockNode(node) || $isListNode(node) ? text : undefined;
-            }
-
-            return { node, text };
-        });
+        return blockListParts($getRoot().getChildren(), documentDefinitions.forBlocks, sourceMap, null);
     } finally {
         SAVE_DEFINITIONS.current = null;
+        STANDARD_ITEM_BLOCKS.current = null;
+        STANDARD_ROW_TEXTS.current = null;
+        STANDARD_LIST_TEXTS.current = null;
     }
+}
+
+/**
+ * The load's fingerprint pass: serializes the document in the standard form
+ * as {@link $serializeTopLevelBlocks} does, and stores each nested part's
+ * standard form, each column block's included, in `record`. The output is the
+ * standard form, so the load takes a top-level block's fingerprint from the
+ * same pass.
+ *
+ * @param documentDefinitions - The document's definitions ({@link $readDefinitions}).
+ * @param record - The maps the pass fills, keyed by node.
+ * @returns One entry per root child, in document order.
+ */
+export function $recordPartFingerprints(documentDefinitions: DocumentDefinitions, record: RecordedFingerprints): StandardBlock[] {
+    return withPartsContext({ mode: "record", ...record }, () => $serializeTopLevelBlocks(documentDefinitions));
+}
+
+/**
+ * Runs `write` under another parts context, restoring the one before it, also
+ * when `write` throws.
+ *
+ * @param context - The context to run under; `null` writes the standard form.
+ * @param write - What to run.
+ * @returns What `write` returns.
+ */
+function withPartsContext<T>(context: PartsContext | null, write: () => T): T {
+    const previous = SAVE_PARTS.current;
+
+    SAVE_PARTS.current = context;
+
+    try {
+        return write();
+    } finally {
+        SAVE_PARTS.current = previous;
+    }
+}
+
+/**
+ * Tells whether a block can hold nested parts a save writes as their source.
+ *
+ * @param node - A block.
+ * @returns `true` for a list, a table, a code block or a `:::` fence.
+ */
+function $holdsParts(node: LexicalNode): boolean {
+    return $isListNode(node) || $isTableNode(node) || $isCodeNode(node) || $isMarkdownBlockNode(node);
+}
+
+/**
+ * A block's standard text, and for a list how it was kept apart. A list the
+ * save has already written in the standard form is not chosen again.
+ *
+ * @param node - The block.
+ * @param previousJoinable - The Markdown of the raw block or list written right before it, if one was.
+ * @param following - The blocks after it.
+ * @param definitions - The saved document's link reference definitions, or `null`.
+ * @returns The block's text and the choice.
+ */
+function standardBlockText(node: LexicalNode, previousJoinable: string | undefined, following: LexicalNode[], definitions: Links | null): StandardListText {
+    if (!$isListNode(node)) {
+        return { text: serializeBlock(node, definitions), apart: null };
+    }
+
+    const cache = STANDARD_LIST_TEXTS.current;
+    const mode = SAVE_PARTS.current?.mode;
+    const cached = cache !== null && mode !== "record" ? cache.get(node.getKey()) : undefined;
+
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const chosen = chooseListApart(node, previousJoinable, following, definitions);
+
+    if (cache !== null && mode === undefined) {
+        cache.set(node.getKey(), chosen);
+    }
+
+    return chosen;
+}
+
+/**
+ * Serializes a run of sibling blocks, the root's or a column's, each in the
+ * standard form — a list next to a raw block or right after another list
+ * written so it stays its own list ({@link serializeListApart}) — and, for a
+ * block that is edited and holds a part with a source other than its standard
+ * form, also part by part. One loop for both, so a column is written as a
+ * document is.
+ *
+ * @param nodes - The blocks, in document order.
+ * @param definitions - The saved document's link reference definitions, or `null`.
+ * @param sourceMap - The source map the blocks' entries and parts are read from.
+ * @param column - The column the blocks stand in; `null` for the root.
+ * @returns One entry per block.
+ */
+function blockListParts(nodes: LexicalNode[], definitions: Links | null, sourceMap: MarkdownSourceMap, column: NodeKey | null): StandardBlock[] {
+    const context = SAVE_PARTS.current;
+    const writesParts = sourceMap.parts.size > 0 && context?.mode !== "record";
+    let previousJoinable: string | undefined;
+
+    return nodes.map((node, index) => {
+        const standard = (): StandardListText => standardBlockText(node, previousJoinable, nodes.slice(index + 1), definitions);
+
+        // Under a write pass (the column of a fence written part by part) the standard form is written with no context.
+        const { text, apart } = context?.mode === "write" ? withPartsContext(null, standard) : standard();
+        const entry = sourceMap.blocks.get(node.getKey());
+        const partByPart = writesParts && $holdsParts(node) && (entry === undefined || (entry.fingerprint !== text && entry.partsDiffer));
+
+        // A list is written the way the standard pass chose to keep it apart: the choice reads the neighbours, which costs lexer calls.
+        const write = (): string => ($isListNode(node) && apart !== null ? writeListApart(node, apart, definitions) : serializeBlock(node, definitions));
+        const written = partByPart ? withPartsContext({ mode: "write", parts: sourceMap.parts, column }, write) : text;
+
+        if (context?.mode === "record") {
+            context.blockFingerprints.set(node.getKey(), text);
+        }
+
+        if (text !== "") {
+            previousJoinable = $isMarkdownRawBlockNode(node) || $isListNode(node) ? text : undefined;
+        }
+
+        return written === text ? { node, text } : { node, text, written };
+    });
 }
 
 /**
@@ -1554,6 +1758,18 @@ function assembleDocumentWithPlaces(blocks: readonly WrittenBlock[], load: Markd
 }
 
 /**
+ * Joins the written blocks of a column as a document's are
+ * ({@link assembleDocumentWithPlaces}), without where each stands.
+ *
+ * @param blocks - The blocks to write, at least one.
+ * @param load - The column's import, whose ending the column keeps.
+ * @returns The Markdown.
+ */
+function assembleDocument(blocks: readonly WrittenBlock[], load: MarkdownSourceLoad): string {
+    return assembleDocumentWithPlaces(blocks, load).text;
+}
+
+/**
  * The import the document as a whole comes from: the one that loaded its last
  * top-level block still in the source map, edited or not — an undo can bring
  * back an earlier import's blocks — else the last import.
@@ -1603,14 +1819,16 @@ function writtenBlocks(
         .filter((part) => part.text !== "" || part.entry !== undefined);
     const written: WrittenBlock[] = [];
 
-    candidates.forEach(({ node, text, entry }, index) => {
+    candidates.forEach(({ node, text, written: partByPart, entry }, index) => {
         const endedOpenLoad = entry !== undefined && entry.load.endsOpen && entry.index === entry.load.blockCount - 1;
         // A raw block only a second blank line ends stays its source and is given that line below; any other block
         // that ran on to the document's end (an unclosed code fence) is closed by its standard form.
         const lacksOnlyLineEnd = endedOpenLoad && $isMarkdownRawBlockNode(node) && rawBlockEnd(entry.body) === "wide";
         const runsOn = endedOpenLoad && !lacksOnlyLineEnd && index < candidates.length - 1;
         const keep = entry !== undefined && !runsOn && !joinsPreviousBlock(entry, written[written.length - 1]);
-        const block = keep ? { node, source: entry, text: entry.body, standard: text } : { node, source: undefined, text, standard: text };
+        const block = keep
+            ? { node, source: entry, text: entry.body, standard: text }
+            : { node, source: undefined, text: partByPart ?? text, standard: text };
 
         if (block.text !== "") {
             written.push(block);
@@ -1914,28 +2132,23 @@ function documentEnd(last: MarkdownSourceBlock | undefined, load: MarkdownSource
  */
 function serializeBlockList(nodes: LexicalNode[], definitions: Links | null): string {
     const written: string[] = [];
-    let previousJoinable: string | undefined;
     let previousRaw: string | undefined;
 
-    nodes.forEach((node, index) => {
-        const markdown = $isListNode(node)
-            ? serializeListApart(node, previousJoinable, nodes.slice(index + 1), definitions)
-            : serializeBlock(node, definitions);
-
-        if (markdown === "") {
-            return;
+    for (const { node, text } of blockListParts(nodes, definitions, EMPTY_SOURCE_MAP, null)) {
+        if (text === "") {
+            continue;
         }
 
         const raw = $isMarkdownRawBlockNode(node);
+        const joinsPreviousRaw = raw && previousRaw !== undefined && listsJoin(previousRaw, text);
 
-        if (raw && previousRaw !== undefined && listsJoin(previousRaw, markdown)) {
+        if (joinsPreviousRaw) {
             written.push(LIST_SEPARATOR);
         }
 
-        written.push(markdown);
-        previousJoinable = raw || $isListNode(node) ? markdown : undefined;
-        previousRaw = raw ? markdown : undefined;
-    });
+        written.push(text);
+        previousRaw = raw ? text : undefined;
+    }
 
     return written.join(BLOCK_SEPARATOR);
 }
@@ -1963,6 +2176,38 @@ function serializeBlockList(nodes: LexicalNode[], definitions: Links | null): st
  * @returns The list's Markdown, with any separator.
  */
 function serializeListApart(list: ListNode, before: string | undefined, following: LexicalNode[], definitions: Links | null): string {
+    return chooseListApart(list, before, following, definitions).text;
+}
+
+/** How a top-level list is kept apart from the blocks next to it ({@link chooseListApart}). */
+interface ListApart {
+    /** The bullet or delimiter the list is written with; `undefined` for its own. */
+    readonly marker:          string | undefined;
+    /** Whether {@link LIST_SEPARATOR} is written before the list. */
+    readonly separatedBefore: boolean;
+    /** Whether {@link LIST_SEPARATOR} is written after the list. */
+    readonly separatedAfter:  boolean;
+}
+
+/** A block's standard text, and for a list how it was kept apart; `null` for any other block. */
+interface StandardListText {
+    readonly text:  string;
+    readonly apart: ListApart | null;
+}
+
+/**
+ * Serializes a top-level list as {@link serializeListApart} describes, and
+ * says how it was kept apart, so a write of the same list part by part
+ * ({@link writeListApart}) takes the same choice without reading the
+ * neighbours again.
+ *
+ * @param list - The list.
+ * @param before - The Markdown of the raw block or list written right before it, if one was.
+ * @param following - The blocks after it.
+ * @param definitions - The saved document's link reference definitions, or `null`.
+ * @returns The list's Markdown, with any separator, and the choice.
+ */
+function chooseListApart(list: ListNode, before: string | undefined, following: LexicalNode[], definitions: Links | null): StandardListText {
     const markdown = serializeList(list, definitions);
 
     // A paragraph or raw block that writes nothing keeps the list from nothing: the block after it is the neighbour.
@@ -1973,23 +2218,45 @@ function serializeListApart(list: ListNode, before: string | undefined, followin
     const after = $isMarkdownRawBlockNode(nextNode) ? serializeBlock(nextNode, definitions) : undefined;
 
     if (before === undefined && after === undefined) {
-        return markdown;
+        return { text: markdown, apart: { marker: undefined, separatedBefore: false, separatedAfter: false } };
     }
 
     const joinsBefore = (candidate: string): boolean => before !== undefined && blocksJoin(before, candidate);
     const joinsAfter = (candidate: string): boolean => after !== undefined && blocksJoin(candidate, after);
     const markers = list.getListType() === "number" ? ORDERED_DELIMITERS : BULLET_MARKERS;
     const own = $getState(list, listMarkerState);
-    const candidates = [markdown, ...markers.filter((marker) => marker !== own).map((marker) => serializeList(list, definitions, false, marker))];
-    const apart = candidates.find((candidate) => !joinsBefore(candidate) && !joinsAfter(candidate));
+    const others = markers.filter((marker) => marker !== own);
+    const candidates = [{ marker: undefined as string | undefined, text: markdown }, ...others.map((marker) => ({ marker, text: serializeList(list, definitions, false, marker) }))];
+    const apart = candidates.find((candidate) => !joinsBefore(candidate.text) && !joinsAfter(candidate.text));
 
     if (apart !== undefined) {
-        return apart;
+        return { text: apart.text, apart: { marker: apart.marker, separatedBefore: false, separatedAfter: false } };
     }
 
-    const separated = joinsBefore(markdown) ? [LIST_SEPARATOR, markdown] : [markdown];
+    const separatedBefore = joinsBefore(markdown);
+    const separatedAfter = joinsAfter(markdown);
+    const separated = separatedBefore ? [LIST_SEPARATOR, markdown] : [markdown];
 
-    return (joinsAfter(markdown) ? [...separated, LIST_SEPARATOR] : separated).join(BLOCK_SEPARATOR);
+    return {
+        text: (separatedAfter ? [...separated, LIST_SEPARATOR] : separated).join(BLOCK_SEPARATOR),
+        apart: { marker: undefined, separatedBefore, separatedAfter },
+    };
+}
+
+/**
+ * Serializes a top-level list with the marker and separators
+ * {@link chooseListApart} chose for it, under the running parts context.
+ *
+ * @param list - The list.
+ * @param apart - The choice.
+ * @param definitions - The saved document's link reference definitions, or `null`.
+ * @returns The list's Markdown, with any separator.
+ */
+function writeListApart(list: ListNode, apart: ListApart, definitions: Links | null): string {
+    const markdown = serializeList(list, definitions, false, apart.marker);
+    const separated = apart.separatedBefore ? [LIST_SEPARATOR, markdown] : [markdown];
+
+    return (apart.separatedAfter ? [...separated, LIST_SEPARATOR] : separated).join(BLOCK_SEPARATOR);
 }
 
 /**
@@ -2746,8 +3013,46 @@ function serializeCode(node: CodeNode): string {
     }));
 
     const fence = char.repeat(Math.max(MIN_CODE_FENCE_LENGTH, longestRun + 1));
+    const context = SAVE_PARTS.current;
+
+    if (context?.mode === "record") {
+        context.partFingerprints.set(node.getKey(), info);
+    } else if (context?.mode === "write") {
+        const kept = keptCodeFrame(context.parts.get(node.getKey()), info, code);
+
+        if (kept !== undefined) {
+            return kept.opening + "\n" + (code === "" ? "" : code + "\n") + kept.closing;
+        }
+    }
 
     return fence + info + "\n" + (code === "" ? "" : code + "\n") + fence;
+}
+
+/**
+ * The fence lines a save writes around a code block's code as they were
+ * loaded: its info string is still
+ * the one the standard form wrote at load, and no line of the code would
+ * close the kept fence.
+ *
+ * @param part - The code block's part, if the load recorded one.
+ * @param info - The info string the standard form writes now.
+ * @param code - The code.
+ * @returns The loaded frame, or `undefined` when the block is written in the standard form.
+ */
+function keptCodeFrame(
+    part: MarkdownSourcePart | undefined, info: string, code: string,
+): MarkdownSourceCodeFrame | undefined {
+    if (part?.kind !== "codeFrame" || part.fingerprint !== info) {
+        return undefined;
+    }
+
+    const closesFence = code.split("\n").some((line) => {
+        const run = CODE_LINE_FENCE_RUN.exec(line)?.[1] ?? "";
+
+        return run.startsWith(part.fenceCharacter) && run.length >= part.fenceLength;
+    });
+
+    return closesFence ? undefined : part;
 }
 
 /**
@@ -2779,7 +3084,45 @@ function indentLines(markdown: string, indent: string): string[] {
  * @returns One line or more per item, joined by newlines.
  */
 function serializeList(list: ListNode, definitions: Links | null, underText = false, marker?: string): string {
-    const items = list.getChildren().filter($isListItemNode).map((item) => serializeItemBlocks(item, definitions));
+    const context = SAVE_PARTS.current;
+
+    if (context?.mode === "write") {
+        return writeListWithParts(list, definitions, underText, marker, context);
+    }
+
+    const nodes = list.getChildren().filter($isListItemNode);
+    const items = nodes.map((item) => serializeItemBlocks(item, definitions));
+    const { loose, nestedSeparated, markerOf } = listLayout(list, items, underText, marker);
+    const itemLines = items.map((blocks, index) => listItemLines(markerOf(index), blocks, nestedSeparated).join("\n"));
+
+    // Only the list's own marker is recorded: a candidate marker (`serializeListApart`) writes the items otherwise.
+    if (context?.mode === "record" && marker === undefined) {
+        nodes.forEach((item, index) => {
+            context.partFingerprints.set(item.getKey(), itemFingerprint(list, items[index]!, nestedSeparated));
+            context.standardItems.set(item.getKey(), itemLines[index]!);
+        });
+    }
+
+    return itemLines.join(loose ? LOOSE_ITEM_SEPARATOR : "\n");
+}
+
+/** How a list writes its items: its looseness, whether a single item's nested list is set apart, and its markers. */
+interface ListLayout {
+    readonly loose:           boolean;
+    readonly nestedSeparated: boolean;
+    readonly markerOf:        (index: number) => string;
+}
+
+/**
+ * Works out how a list writes its items from the items' blocks.
+ *
+ * @param list - The list.
+ * @param items - Each item's blocks in the standard form.
+ * @param underText - Whether the list's first line follows a line of text in the same container ({@link serializeList}).
+ * @param marker - The bullet or delimiter to write instead of the authored one.
+ * @returns The list's layout.
+ */
+function listLayout(list: ListNode, items: readonly (readonly ItemBlock[])[], underText: boolean, marker?: string): ListLayout {
     const loose = $getState(list, listLooseState);
     const opening = items[0]?.[0];
     const plainMarker = listMarkerWriter(list, false, marker)(0);
@@ -2793,11 +3136,243 @@ function serializeList(list: ListNode, definitions: Links | null, underText = fa
 
     // A single-item list is loose only through a blank line inside its item:
     // between its text and its nested list.
-    const nestedSeparated = loose && items.length === 1;
+    return { loose, nestedSeparated: loose && items.length === 1, markerOf };
+}
 
-    return items
-        .map((blocks, index) => listItemLines(markerOf(index), blocks, nestedSeparated).join("\n"))
-        .join(loose ? LOOSE_ITEM_SEPARATOR : "\n");
+/**
+ * The marker an item's fingerprint is written under: the list's bullet, or
+ * `1` and its delimiter, so the number an ordered item is written with never
+ * counts: inserting or deleting an item renumbers the later ones.
+ *
+ * @param list - The list.
+ * @returns The marker.
+ */
+function fingerprintMarker(list: ListNode): string {
+    return list.getListType() === "number" ? `1${$writtenListMarker(list)}` : $writtenListMarker(list);
+}
+
+/**
+ * An item's fingerprint: its standard lines under the list's fingerprint marker.
+ *
+ * @param list - The list.
+ * @param blocks - The item's blocks in the standard form.
+ * @param nestedSeparated - Whether a nested list follows a blank line.
+ * @returns The fingerprint.
+ */
+function itemFingerprint(list: ListNode, blocks: readonly ItemBlock[], nestedSeparated: boolean): string {
+    return listItemLines(fingerprintMarker(list), blocks, nestedSeparated).join("\n");
+}
+
+/**
+ * The most spaces between a list marker and its text that still set the
+ * item's content column (CommonMark §5.2): with more, the text is indented
+ * code and the column is one space after the marker.
+ */
+export const MAX_MARKER_SPACING = 4;
+
+/** An item's first line as a content column reads it: the spaces before the marker, the marker, the spaces after it and the text. */
+const ITEM_FIRST_LINE = /^( *)([-*+]|\d{1,9}[.)])( *)(.*)$/;
+
+/** The digits an ordered item's first line starts with, after the spaces before them. */
+const ITEM_NUMBER = /^( *)\d{1,9}/;
+
+/**
+ * The column an item's text starts at, which a nested block is indented to: the
+ * spaces before the marker, the marker, and the spaces after it when one to
+ * four and text follows, else one.
+ *
+ * @param line - The item's first line.
+ * @returns The content column.
+ *
+ * @example
+ * ```
+ * contentColumn("   * inner")  // -> 5
+ * contentColumn("1.  one")     // -> 4
+ * contentColumn("-      x")    // -> 2
+ * ```
+ */
+export function contentColumn(line: string): number {
+    const match = ITEM_FIRST_LINE.exec(line);
+
+    if (match === null) {
+        return 0;
+    }
+
+    const [, before, marker, after, text] = match as unknown as [string, string, string, string, string];
+    const spaced = after.length >= 1 && after.length <= MAX_MARKER_SPACING && text !== "";
+
+    return before.length + marker.length + (spaced ? after.length : 1);
+}
+
+/**
+ * A loaded item's source with the spaces before its marker taken off every
+ * line, so it stands at its list's margin.
+ *
+ * @param part - The item.
+ * @returns Its lines moved left by `part.indent`.
+ */
+function atMargin(part: MarkdownSourceItem): string {
+    if (part.indent === 0) {
+        return part.source;
+    }
+
+    return part.source.split("\n").map((line) => {
+        const spaces = /^ */.exec(line)![0].length;
+
+        return line.slice(Math.min(part.indent, spaces));
+    }).join("\n");
+}
+
+/** Where an item stands among its list's items. */
+interface ItemPlace {
+    /** Whether the item may keep spaces before its marker: not the first item of a list that does not stand under text. */
+    readonly mayIndent: boolean;
+    /** The content column of the item written before it, which the spaces before this item's marker must stay under; unbounded for the first. */
+    readonly room:      number;
+}
+
+/** What a list item is written with, apart from its blocks. */
+interface ItemMarker {
+    /** The marker, with its number for an ordered item. */
+    readonly marker: string;
+    /** The bullet or delimiter of the marker. */
+    readonly bullet: string;
+    /** The digits of an ordered item's number; `undefined` for a bullet. */
+    readonly number: string | undefined;
+}
+
+/**
+ * Writes a list in a block a save writes part by part: an item whose
+ * fingerprint holds, and that reads the same where it now stands, as its
+ * source; any other in the standard form, keeping its own spacing and
+ * indentation, with its children written the same way.
+ *
+ * @param list - The list.
+ * @param definitions - The saved document's link reference definitions, or `null`.
+ * @param underText - Whether the list's first line follows a line of text ({@link serializeList}).
+ * @param marker - The bullet or delimiter to write instead of the authored one.
+ * @param context - The write context.
+ * @returns One line or more per item, joined by newlines.
+ */
+function writeListWithParts(list: ListNode, definitions: Links | null, underText: boolean, marker: string | undefined, context: WriteContext): string {
+    const nodes = list.getChildren().filter($isListItemNode);
+    const standard = withPartsContext(null, () => nodes.map((item) => serializeItemBlocks(item, definitions)));
+    const layout = listLayout(list, standard, underText, marker);
+    const written: string[] = [];
+
+    nodes.forEach((item, index) => {
+        const itemMarker = layout.markerOf(index);
+        const delimiter = WRITTEN_LIST_MARKER.exec(itemMarker);
+        const itemWrites: ItemMarker = {
+            marker: itemMarker, bullet: delimiter?.[1] ?? delimiter?.[2] ?? "", number: ORDERED_LIST_MARKER.exec(itemMarker)?.[1],
+        };
+        const place: ItemPlace = {
+            mayIndent: index > 0 || underText,
+            room:      index === 0 ? Infinity : contentColumn(written[index - 1]!.split("\n")[0]!),
+        };
+        const found = context.parts.get(item.getKey());
+        const part = found?.kind === "item" && found.column === context.column ? found : undefined;
+        const fingerprint = itemFingerprint(list, standard[index]!, layout.nestedSeparated);
+        const keeps = part !== undefined && itemKeepsSource(part, fingerprint, itemWrites, layout.loose, nodes.length);
+
+        written.push(keeps
+            ? keptItemSource(part, place, itemWrites.number)
+            : rewrittenItemLines(part, itemWrites, place, serializeItemBlocks(item, definitions), standard[index]!, layout.nestedSeparated));
+    });
+
+    return written.join(layout.loose ? LOOSE_ITEM_SEPARATOR : "\n");
+}
+
+/**
+ * Tells whether an ordered item is written with another number than the one
+ * it was loaded with. `08` and `8` are one number, so a width-padded number
+ * that is still the item's number is kept as written.
+ *
+ * @param digits - The digits the item was loaded with; `null` for a bullet item.
+ * @param number - The digits the item is numbered with now.
+ * @returns `true` when the numbers differ.
+ */
+function isRenumbered(digits: string | null, number: string): boolean {
+    return digits !== null && Number(digits) !== Number(number);
+}
+
+/**
+ * Tells whether an ordered item written with its new number keeps the content
+ * column it was loaded with. A number that is still the item's (`08` written
+ * as `8`) is kept as loaded; a new number replaces the old one in place only
+ * if it has as many digits, since a wider or narrower marker moves what is
+ * indented to the content column (a code block under the item gains or loses
+ * a space).
+ *
+ * @param digits - The digits the item was loaded with; `null` for a bullet item.
+ * @param number - The digits the item is numbered with now; `undefined` for a bullet.
+ * @returns `true` when the item can keep its source.
+ */
+function keepsContentColumn(digits: string | null, number: string | undefined): boolean {
+    return digits === null || (number !== undefined && (!isRenumbered(digits, number) || digits.length === number.length));
+}
+
+/**
+ * Tells whether a loaded item is still written as its source: its fingerprint
+ * holds, it stands in a list written with its bullet or delimiter, an ordered
+ * item keeps its content column ({@link keepsContentColumn}), the list's looseness
+ * suits the blank lines inside the item, and it reads the same under the
+ * definitions now.
+ *
+ * @param part - The loaded item.
+ * @param fingerprint - The item's standard lines now, under the list's fingerprint marker.
+ * @param written - What the item is written with now.
+ * @param loose - Whether the list is written loose.
+ * @param itemCount - The number of items in the list.
+ * @returns `true` when the item can be written as its source.
+ */
+function itemKeepsSource(part: MarkdownSourceItem, fingerprint: string, written: ItemMarker, loose: boolean, itemCount: number): boolean {
+    return part.fingerprint === fingerprint
+        && part.marker === written.bullet
+        && keepsContentColumn(part.digits, written.number)
+        && (loose ? itemCount > 1 || part.separatesBlocks : !part.separatesBlocks)
+        && readsAlikeUnderDefinitions(part.source, part.load);
+}
+
+/**
+ * A loaded item as its source, renumbered in place when its number changed and
+ * moved to its list's margin where its indentation no longer fits.
+ *
+ * @param part - The loaded item.
+ * @param place - Where the item stands among its list's items.
+ * @param number - The digits the item is numbered with now; `undefined` for a bullet.
+ * @returns The item's lines.
+ */
+function keptItemSource(part: MarkdownSourceItem, place: ItemPlace, number: string | undefined): string {
+    const source = place.mayIndent && part.indent < place.room ? part.source : atMargin(part);
+
+    return number === undefined || !isRenumbered(part.digits, number) ? source : source.replace(ITEM_NUMBER, `$1${number}`);
+}
+
+/**
+ * An item in the standard form that keeps its own frame when it can: the
+ * spaces between its marker and its text, and the spaces before its marker.
+ * Its children are indented to its content column, so the loaded items
+ * nested in it keep their place.
+ *
+ * @param part - The loaded item, if it has one in this column.
+ * @param written - What the item is written with.
+ * @param place - Where the item stands among its list's items.
+ * @param blocks - The item's blocks, written part by part.
+ * @param standardBlocks - The item's blocks in the standard form.
+ * @param nestedSeparated - Whether a nested list follows a blank line.
+ * @returns The item's lines.
+ */
+function rewrittenItemLines(
+    part: MarkdownSourceItem | undefined, written: ItemMarker, place: ItemPlace, blocks: readonly ItemBlock[], standardBlocks: readonly ItemBlock[],
+    nestedSeparated: boolean,
+): string {
+    const framed = part !== undefined && part.marker === written.bullet;
+    const spaced = framed && blocks[0]?.isText === true && part.spacing.length >= 1 && part.spacing.length <= MAX_MARKER_SPACING;
+    const lines = listItemLines(written.marker, blocks, nestedSeparated, spaced ? part.spacing : " ", standardBlocks);
+    const indented = framed && place.mayIndent && part.indent > 0 && part.indent < place.room;
+
+    return (indented ? lines.map((line) => (line === "" ? line : " ".repeat(part.indent) + line)) : lines).join("\n");
 }
 
 /**
@@ -2810,6 +3385,34 @@ function serializeList(list: ListNode, definitions: Links | null, underText = fa
  * @returns The item's blocks, in order.
  */
 function serializeItemBlocks(item: ListItemNode, definitions: Links | null): ItemBlock[] {
+    const cache = STANDARD_ITEM_BLOCKS.current;
+
+    if (cache === null || SAVE_PARTS.current !== null) {
+        return buildItemBlocks(item, definitions);
+    }
+
+    const cached = cache.get(item.getKey());
+
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const built = buildItemBlocks(item, definitions);
+
+    cache.set(item.getKey(), built);
+
+    return built;
+}
+
+/**
+ * Writes a list item's blocks as {@link serializeItemBlocks} describes,
+ * without the cache of a save's standard form.
+ *
+ * @param item - The list item.
+ * @param definitions - The saved document's link reference definitions, or `null`.
+ * @returns The item's blocks, in order.
+ */
+function buildItemBlocks(item: ListItemNode, definitions: Links | null): ItemBlock[] {
     const blocks: ItemBlock[] = [];
 
     const push = (markdown: string, isList: boolean, isText: boolean, more?: Pick<ItemBlock, "marker" | "withMarker" | "isRaw" | "continuesText">): void => {
@@ -2965,12 +3568,16 @@ function listMarkerWriter(list: ListNode, bareUnderText: boolean, marker?: strin
  * @param marker - The item's marker (`-`, `3.`, …).
  * @param blocks - The item's blocks.
  * @param nestedSeparated - Whether a nested list follows a blank line.
+ * @param spacing - The spaces between the marker and the item's first line; the content column follows it.
+ * @param standardBlocks - The blocks of the same item in the standard form, when `itemBlocks` is the item written part by part.
  * @returns The item's lines.
  */
-function listItemLines(marker: string, itemBlocks: readonly ItemBlock[], nestedSeparated: boolean): string[] {
-    const indent = " ".repeat(marker.length + 1);
+function listItemLines(
+    marker: string, itemBlocks: readonly ItemBlock[], nestedSeparated: boolean, spacing: string = " ", standardBlocks?: readonly ItemBlock[],
+): string[] {
+    const indent = " ".repeat(marker.length + spacing.length);
     const lines: string[] = [];
-    const blocks = keepNestedListsApart(itemBlocks);
+    const blocks = keepNestedListsApart(itemBlocks, standardBlocks);
 
     blocks.forEach((block, index) => {
         const followsDirectly = (index === 1 && blocks[0]!.isText) || blocks[index - 1]?.isList === true;
@@ -2986,7 +3593,7 @@ function listItemLines(marker: string, itemBlocks: readonly ItemBlock[], nestedS
         return [marker];
     }
 
-    const first = `${marker} ${lines[0]!.slice(indent.length)}`;
+    const first = `${marker}${spacing}${lines[0]!.slice(indent.length)}`;
     const nested = blocks[0]!;
 
     // An item opening with a nested list of empty items writes its markers on one line, which can read as a
@@ -2994,7 +3601,7 @@ function listItemLines(marker: string, itemBlocks: readonly ItemBlock[], nestedS
     if (THEMATIC_BREAK.test(first) && nested.withMarker !== undefined && BULLET_MARKERS.includes(nested.marker!)) {
         const bullet = first.trimEnd().at(-1) === "*" ? "-" : "*";
 
-        return listItemLines(marker, [{ ...nested, markdown: nested.withMarker(bullet), marker: bullet }, ...blocks.slice(1)], nestedSeparated);
+        return listItemLines(marker, [{ ...nested, markdown: nested.withMarker(bullet), marker: bullet }, ...blocks.slice(1)], nestedSeparated, spacing, standardBlocks);
     }
 
     // An item opening with a raw thematic break of its bullet's own character would read as one break
@@ -3023,8 +3630,23 @@ function listItemLines(marker: string, itemBlocks: readonly ItemBlock[], nestedS
  * @param blocks - An item's blocks.
  * @returns The blocks, those lists rewritten or set apart.
  */
-function keepNestedListsApart(blocks: readonly ItemBlock[]): ItemBlock[] {
+function keepNestedListsApart(blocks: readonly ItemBlock[], standard?: readonly ItemBlock[]): ItemBlock[] {
+    const known = KEPT_APART.get(blocks);
+
+    if (known !== undefined) {
+        return known.kept;
+    }
+
+    // The same item written part by part has the blocks of its standard form, with nested lists written otherwise:
+    // it keeps them apart the way the standard form did.
+    const standardChoices = standard === undefined ? undefined : KEPT_APART.get(standard)?.choices;
+
+    if (standardChoices !== undefined && standardChoices.length === blocks.length) {
+        return applyKeptApart(blocks, standardChoices);
+    }
+
     const kept: ItemBlock[] = [];
+    const choices: KeptApartChoice[] = [];
 
     blocks.forEach((block, index) => {
         const previous = kept[kept.length - 1];
@@ -3034,6 +3656,8 @@ function keepNestedListsApart(blocks: readonly ItemBlock[]): ItemBlock[] {
         if (joinsRawBefore) {
             kept.push({ markdown: LIST_SEPARATOR, isList: false, isText: false, isRaw: true });
         }
+
+        choices.push({ separatorBefore: joinsRawBefore, marker: undefined });
 
         // Markers compare as written: an empty first item under the item's text writes `-` as `*`.
         const joins = (markdown: string): boolean =>
@@ -3051,10 +3675,36 @@ function keepNestedListsApart(blocks: readonly ItemBlock[]): ItemBlock[] {
         const other = markers.find((candidate) => candidate !== block.marker && !joins(block.withMarker!(candidate)));
         const markdown = other === undefined ? block.markdown : block.withMarker(other);
 
+        choices[choices.length - 1] = { separatorBefore: joinsRawBefore, marker: other };
         kept.push({ ...block, markdown, marker: writtenListMarker(markdown) });
     });
 
+    KEPT_APART.set(blocks, { kept, choices });
+
     return kept;
+}
+
+/**
+ * Keeps an item's nested lists apart as an earlier answer of
+ * {@link keepNestedListsApart} did for the same item's blocks.
+ *
+ * @param blocks - The item's blocks, one for each of the choices.
+ * @param choices - The choices made for each.
+ * @returns The blocks, with the separators and the markers the choices tell.
+ */
+function applyKeptApart(blocks: readonly ItemBlock[], choices: readonly KeptApartChoice[]): ItemBlock[] {
+    return blocks.flatMap((block, index) => {
+        const choice = choices[index]!;
+        const separator: ItemBlock[] = choice.separatorBefore ? [{ markdown: LIST_SEPARATOR, isList: false, isText: false, isRaw: true }] : [];
+
+        if (choice.marker === undefined || block.withMarker === undefined) {
+            return [...separator, block];
+        }
+
+        const markdown = block.withMarker(choice.marker);
+
+        return [...separator, { ...block, markdown, marker: writtenListMarker(markdown) }];
+    });
 }
 
 /**
@@ -3096,15 +3746,157 @@ function serializeTable(table: TableNode, definitions: Links | null): string {
     const pendingRowSpans = new Map<number, number>();
 
     const lines = [
-        formatPipeRow([...headerCells.map((cell) => serializeTableCell(cell, definitions)), ...padding]),
-        formatDelimiterRow(alignments, table.getColWidths() ?? []),
+        writtenRow(rows[0]!, rowTexts(rows[0]!, () => [...headerCells.map((cell) => serializeTableCell(cell, definitions)), ...padding])),
+        writtenDelimiterRow(table, formatDelimiterRow(alignments, table.getColWidths() ?? [])),
     ];
 
     for (const row of rows.slice(1)) {
-        lines.push(formatPipeRow(serializeBodyRow(row, columnCount, pendingRowSpans, definitions)));
+        lines.push(writtenRow(row, rowTexts(row, () => serializeBodyRow(row, columnCount, pendingRowSpans, definitions))));
     }
 
     return lines.join("\n");
+}
+
+/**
+ * Whether a loaded source holding a `[` still reads as loaded under the
+ * definitions the save is writing: only such source can use a definition.
+ *
+ * @param source - A part's source.
+ * @param load - The import that loaded the part.
+ * @returns `true` when the source means what it meant at load.
+ */
+function readsAlikeUnderDefinitions(source: string, load: MarkdownSourceLoad): boolean {
+    return !source.includes(LABEL_OPEN) || load.definitionsKey === SAVE_DEFINITIONS.current!.key;
+}
+
+/**
+ * Writes a table row's line. The load records its standard line and each
+ * column's standard cell text; a save writes the row as its line while its
+ * standard line equals the recorded one, and otherwise cell by cell: a cell
+ * whose standard text equals its recorded text as the text between its pipes
+ * in the source, spaces included, any other as its standard text with a
+ * space each side.
+ *
+ * @param row - The row.
+ * @param texts - The row's standard cell texts, one per column.
+ * @returns The row's line.
+ */
+function writtenRow(row: TableRowNode, texts: string[]): string {
+    const standard = formatPipeRow(texts);
+    const context = SAVE_PARTS.current;
+
+    if (context?.mode === "record") {
+        context.partFingerprints.set(row.getKey(), standard);
+        context.cellFingerprints.set(row.getKey(), texts);
+
+        return standard;
+    }
+
+    const found = context?.mode === "write" ? context.parts.get(row.getKey()) : undefined;
+    const part = found?.kind === "row" && found.column === context?.column && readsAlikeUnderDefinitions(found.line, found.load) ? found : undefined;
+
+    if (part === undefined) {
+        return standard;
+    }
+
+    // A merge marker the source holds as text (the standard form escapes it) reads as a merge by the cell above or
+    // to the left, so it is kept only where it was loaded, which no edit around it guarantees: it is written anew.
+    const literalMarkers = part.cells.map((cell, column) => holdsLiteralMergeMarker(cell, part.cellFingerprints[column]));
+
+    const hasLiteralMarker = literalMarkers.includes(true);
+
+    if (part.fingerprint === standard && !hasLiteralMarker) {
+        return part.line;
+    }
+
+    // A row without outer pipes keeps that frame only while its first and last cells hold text.
+    const bare = !part.outerPipes && texts[0] !== "" && texts[texts.length - 1] !== "";
+
+    const cells = texts.map((text, column) => {
+        const kept = part.cells[column];
+
+        if (part.cellFingerprints[column] === text && kept !== undefined && !literalMarkers[column]) {
+            return kept;
+        }
+
+        return `${bare && column === 0 ? "" : " "}${text}${bare && column === texts.length - 1 ? "" : " "}`;
+    });
+
+    return bare ? cells.join("|") : `|${cells.join("|")}|`;
+}
+
+/**
+ * Tells whether a loaded cell's text is a merge marker (`<<`, `^^`) that the
+ * standard form writes escaped: the source holds the marker as text where the
+ * cell above or to the left cannot merge, and written next to other cells it
+ * would merge.
+ *
+ * @param cell - The cell's text between its pipes, as written.
+ * @param standard - The cell's standard text at load.
+ * @returns `true` when the source and the standard form read the cell differently.
+ */
+function holdsLiteralMergeMarker(cell: string, standard: string | undefined): boolean {
+    const text = cell.trim();
+
+    return MERGE_MARKERS.has(text) && standard !== text;
+}
+
+/**
+ * Writes a table's delimiter row: the load records its standard form, and a
+ * save writes the loaded line while the standard form is still that.
+ *
+ * @param table - The table.
+ * @param standard - The delimiter row in the standard form.
+ * @returns The delimiter row's line.
+ */
+function writtenDelimiterRow(table: TableNode, standard: string): string {
+    const context = SAVE_PARTS.current;
+
+    if (context?.mode === "record") {
+        context.partFingerprints.set(table.getKey(), standard);
+
+        return standard;
+    }
+
+    const found = context?.mode === "write" ? context.parts.get(table.getKey()) : undefined;
+    // No column rule: a delimiter row holds only dashes, colons and pipes, so no column line (`:::`, `|||`) is one.
+    const kept = found?.kind === "delimiterRow" && found.fingerprint === standard;
+
+    return kept ? found.line : standard;
+}
+
+/**
+ * A row's cell texts in the standard form. A save writes a table in the
+ * standard form first, and writes it again part by part when it is edited;
+ * the second time the texts of the first are read again. (The texts of a row
+ * depend on the rows above it only through spans, which the first pass has
+ * resolved for every row.)
+ *
+ * @param row - The row.
+ * @param write - Writes the row's texts.
+ * @returns The texts, one per column.
+ */
+function rowTexts(row: TableRowNode, write: () => string[]): string[] {
+    const cache = STANDARD_ROW_TEXTS.current;
+    const mode = SAVE_PARTS.current?.mode;
+
+    if (cache === null || mode === "record") {
+        return write();
+    }
+
+    const cached = mode === "write" ? cache.get(row.getKey()) : undefined;
+
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const texts = write();
+
+    if (mode === undefined) {
+        cache.set(row.getKey(), texts);
+    }
+
+    return texts;
 }
 
 /**
@@ -3266,16 +4058,59 @@ function serializeCellChild(child: LexicalNode, definitions: Links | null, joine
  */
 function serializeFence(node: MarkdownBlockNode, definitions: Links | null): string {
     const columns = node.getColumns();
+    const context = SAVE_PARTS.current;
 
     if (columns.length === 0) {
+        // The load builds every fence with columns, so a fence without one holds blocks no part was loaded for: they
+        // are written in the standard form (a block list given no source map keeps no part).
         return serializeBlockList(node.getChildren(), definitions);
     }
 
     const opening = fenceOpeningLine(node, columns.length);
 
-    const body = joinColumnSections(columns.map((column) => serializeBlockList(column.getChildren(), definitions)));
+    const body = joinColumnSections(columns.map((column) => (context?.mode === "write"
+        ? writtenColumn(column, definitions, context)
+        : serializeBlockList(column.getChildren(), definitions))));
 
     return `${opening}\n${body}\n:::`;
+}
+
+/**
+ * Writes one column of a fence in a block a save writes part by part, as a
+ * save writes a document: its blocks that were loaded in this column are
+ * decided as the top-level blocks are, with the text before, between and
+ * after them kept while those blocks are kept.
+ *
+ * @param column - The column.
+ * @param definitions - The saved document's link reference definitions, or `null`.
+ * @param context - The write context of the fence.
+ * @returns The column's Markdown.
+ */
+function writtenColumn(column: MarkdownColumnNode, definitions: Links | null, context: WriteContext): string {
+    const own: WriteContext = { ...context, column: column.getKey() };
+
+    return withPartsContext(own, () => {
+        const children = column.getChildren();
+        const blocks = new Map<NodeKey, MarkdownSourceBlock>();
+
+        for (const child of children) {
+            const part = context.parts.get(columnBlockKey(child.getKey()));
+
+            if (part?.kind === "columnBlock" && part.column === own.column) {
+                blocks.set(child.getKey(), part.block);
+            }
+        }
+
+        if (blocks.size === 0) {
+            return serializeBlockList(children, definitions);
+        }
+
+        const map: MarkdownSourceMap = { latest: blocks.values().next().value!.load, blocks, parts: context.parts };
+        const parts = blockListParts(children, definitions, map, column.getKey());
+        const written = writtenBlocks(parts, map, SAVE_DEFINITIONS.current!);
+
+        return written.length === 0 ? "" : assembleDocument(written, documentLoad(parts, map));
+    });
 }
 
 /**

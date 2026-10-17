@@ -472,7 +472,7 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         ['5.12', 'one\ntwo', 1, 1, 'quote', '> one\n> two', null],
         ['5.13', 'one\n\ntwo', 1, 6, 'code', '```\none\n```\n\n```\ntwo\n```', null],
         ['5.14', '```\ncode\n```', 6, 6, 'paragraph', 'code', at(2)],
-        ['5.15', '* one\n    * inner\n* two', 21, 21, 'bold', '* one\n  * inner\n* **two**', null],
+        ['5.15', '* one\n    * inner\n* two', 21, 21, 'bold', '* one\n    * inner\n* **two**', null],
         ['5.16', '>\tfoo bar\n>\tbaz', 3, 3, 'bold', '> **foo** bar\n> baz', null],
         ['5.17', 'a &#35; b and more', 16, 16, 'bold', 'a # b and **more**', at(12, 16)],
         ['5.18', 'see [a][1] here\n\nmid\n\nmore\n\nend\n\n[1]: /one', 12, 12, 'bold', 'see [a][1] **here**\n\nmid\n\nmore\n\nend\n\n[1]: /one', at(13, 17)],
