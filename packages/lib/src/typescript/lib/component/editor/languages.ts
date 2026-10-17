@@ -17,10 +17,13 @@ import { countColumn, EditorSelection, Prec } from "@codemirror/state";
 import type { ChangeSpec, EditorState, SelectionRange, StateCommand } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import type { SqlLanguage } from "sql-formatter";
+import { MARKDOWN_TAB_STOP } from "~/component/display/markdownTabs.js";
 import { registerLanguage } from "~/component/editor/LanguageRegistry.js";
 import type { LanguageOptions } from "~/component/editor/LanguageRegistry.js";
 import { formatWithPrettier } from "~/component/editor/formatters/prettier.js";
 import { formatWithSql } from "~/component/editor/formatters/sql.js";
+import { atMarkdownTabStops } from "~/component/editor/markdownTabStopCommands.js";
+import type { SyntaxNode } from "~/component/editor/markdownTabStopCommands.js";
 import { MARKDOWN_TAB_STOPS, readQuoteContinuationTabs } from "~/component/editor/markdownTabStops.js";
 import { collectSyntaxErrors } from "~/component/editor/syntaxDiagnostics.js";
 
@@ -140,21 +143,6 @@ registerLanguage({
     loadFormatter: async (options) => formatWithSql(resolveDialectEntry(options).formatter),
     loadLintSource: async () => collectSyntaxErrors,
 });
-
-/**
- * A syntax tree node, as an indentation query carries it. Named from the
- * query's own type because `@lezer/common`, which declares it, is not a
- * direct dependency.
- */
-type SyntaxNode = TreeIndentContext["node"];
-
-/**
- * The width of Markdown's tab stops, in columns: a tab advances to the next
- * multiple of four (CommonMark §2.2), whatever tab size the editor shows it
- * with — so the columns Markdown reads its indentation by are counted with
- * this, not with the editor's `tabSize`.
- */
-const MARKDOWN_TAB_STOP = 4;
 
 /**
  * The indentation the built-in `"markdown"` language gives a line that Enter
@@ -477,7 +465,7 @@ registerLanguage({
         // and no HTML indentation rules. indentInsideMarkdownHtml replaces
         // them: Enter keeps the current line's indentation, as on any other
         // Markdown line.
-        const [{ markdown }, { html, htmlLanguage }, { indentNodeProp, LanguageSupport }] = await Promise.all([
+        const [{ markdown, insertNewlineContinueMarkup, deleteMarkupBackward }, { html, htmlLanguage }, { indentNodeProp, LanguageSupport }] = await Promise.all([
             import("@codemirror/lang-markdown"),
             import("@codemirror/lang-html"),
             import("@codemirror/language"),
@@ -498,15 +486,24 @@ registerLanguage({
         // stops; the stock parser does not (see markdownTabStops.ts). The
         // parser markdown() configured here is this language's own, so the
         // second call changes no other language.
-        const support = markdown({ htmlTagLanguage: literalHtml, extensions: MARKDOWN_TAB_STOPS });
+        const support = markdown({ htmlTagLanguage: literalHtml, extensions: MARKDOWN_TAB_STOPS, addKeymap: false });
 
         readQuoteContinuationTabs(support.language.parser);
 
-        // Listed ahead of the support, so this Enter binding is tried before
-        // Markdown's own: in an indented code block and at the end of an HTML
+        // Markdown's own Enter and Backspace, bound here in place of
+        // markdown()'s keymap (addKeymap: false) so they count a tab as
+        // Markdown does (see atMarkdownTabStops). insertNewlineKeepPrefix is
+        // tried first: in an indented code block and at the end of an HTML
         // block Markdown's own command takes the key and drops the line's
-        // indentation. Prec.high puts both ahead of the editor's bindings.
-        return [Prec.high(keymap.of([{ key: "Enter", run: insertNewlineKeepPrefix(support.language) }])), support];
+        // indentation. Prec.high puts all three ahead of the editor's
+        // bindings, where markdown() puts its own keymap.
+        const markdownKeys = keymap.of([
+            { key: "Enter", run: insertNewlineKeepPrefix(support.language) },
+            { key: "Enter", run: atMarkdownTabStops(insertNewlineContinueMarkup) },
+            { key: "Backspace", run: atMarkdownTabStops(deleteMarkupBackward) },
+        ]);
+
+        return [Prec.high(markdownKeys), support];
     },
     loadFormatter: async () => formatWithPrettier("markdown", async () => [await import("prettier/plugins/markdown")]),
 });
