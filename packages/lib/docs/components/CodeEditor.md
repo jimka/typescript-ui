@@ -389,7 +389,7 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 | `getSelection()` | Read the primary selection's `{ characterCount, lineCount, from, to }`. `0`/`1`/`0`/`0` for a collapsed selection (a bare caret) at the document start. Returns that same value when the editor is not mounted. |
 | `on('selectionchange', fn)` / `off('selectionchange', fn)` | Subscribe to selection changes — fires once per real change to the character count, line count, or either document offset. |
 | `revealRange(at, options?)` | Select, scroll to and highlight a 1-based `{ line, column, length }` range. `options.focus` (default `true`) takes keyboard focus; `options.highlight` (default `true`) paints the highlight. No-op before the editor is mounted. |
-| `replaceRange(from, to, insert, selection?)` | Replace a `[from, to)` range and optionally place the resulting selection, in one transaction (one undo step). Both are clamped against the live document; refused, with the read-only flash, while the editor is read-only. Updates the cached value (with no `"change"`) before the editor mounts. |
+| `replaceRange(from, to, insert, selection?)` | Replace a `[from, to)` range and optionally place the resulting selection, in one transaction (one undo step, never joined with the typing before or after it). Both are clamped against the live document; refused, with the read-only flash, while the editor is read-only. Updates the cached value (with no `"change"`) before the editor mounts. |
 
 ## Theming
 

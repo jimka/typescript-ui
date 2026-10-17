@@ -1009,6 +1009,11 @@ page resets to empty.
   the field, and focus was then lost as the list closed. No consumer action
   is needed.
 
+- **`CodeEditor.replaceRange()` is its own undo step.** A replacement made
+  right after typing, with the caret where typing left it, joined the
+  typing's undo step, so one undo took both back. No consumer action is
+  needed.
+
 - **`MarkdownEditor.insertTable()` leaves no empty quote, heading or list
   item beside the table.** A table inserted at the end of a quote, a
   heading or a list item left an empty `>`, `#` or `-` after it, and one
