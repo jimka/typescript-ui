@@ -23,7 +23,7 @@ import {
 import type { DecorationSet, KeyBinding } from "@codemirror/view";
 import { Annotation, EditorState, EditorSelection, Compartment, Prec, StateEffect, StateField } from "@codemirror/state";
 import type { Extension, Transaction, TransactionSpec } from "@codemirror/state";
-import { history, defaultKeymap, historyKeymap, indentWithTab } from "@codemirror/commands";
+import { history, defaultKeymap, historyKeymap, indentWithTab, isolateHistory } from "@codemirror/commands";
 import { indentOnInput, bracketMatching, indentRange, codeFolding, foldGutter, foldKeymap, foldedRanges, indentUnit } from "@codemirror/language";
 import {
     search, highlightSelectionMatches, searchKeymap, getSearchQuery, setSearchQuery, searchPanelOpen,
@@ -906,11 +906,13 @@ class CodeEditor extends Component<CodeEditorOptions> {
     /**
      * Replaces the text in `[from, to)` with `insert`, and optionally leaves
      * `selection` behind — both in one transaction, so a caller applying an edit
-     * plus its resulting selection costs the user exactly one undo step. Both
-     * the replaced range and the resulting selection are clamped against the
-     * live document, like {@link CodeEditor.revealRange}, so offsets computed
-     * from a copy of the text that has since changed land at the nearest valid
-     * position rather than throwing.
+     * plus its resulting selection costs the user exactly one undo step. That
+     * step is its own: CodeMirror's history never joins the replacement with
+     * typing before or after it. Both the replaced range and the resulting
+     * selection are clamped against the live document, like
+     * {@link CodeEditor.revealRange}, so offsets computed from a copy of the
+     * text that has since changed land at the nearest valid position rather
+     * than throwing.
      *
      * Refused while the editor is read-only: nothing changes, and the rejection
      * surfaces through the `"readonlyedit"` event and the read-only flash, the
@@ -951,6 +953,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
                 head:   Math.max(0, Math.min(selection.to,   next.length)),
             },
             scrollIntoView: true,
+            // A history event of its own: otherwise CodeMirror joins it with typing the caret has just left.
+            annotations:    isolateHistory.of("full"),
         });
 
         return this;
