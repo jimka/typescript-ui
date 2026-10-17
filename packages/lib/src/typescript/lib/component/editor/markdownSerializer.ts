@@ -5724,6 +5724,23 @@ function lineBreakMarker(marker: string, content: string): string {
 }
 
 /**
+ * Whether a text node is written after syntax of its own — the `++` of
+ * underline, the `[` of a styled span — so that the spaces and tabs it opens
+ * with are not at a line's start in the save: {@link trimLineEdges} trims only
+ * a line whose first piece is text, and keeps these. Other marks (bold,
+ * italic, strike) never carry edge whitespace, the writer puts it outside. A
+ * span is written when {@link spanAttributeText} gives its attributes, as the
+ * writer decides: a span loaded with attributes the editor does not model
+ * (`{foo=1}`) holds an unstyled node and is written all the same.
+ *
+ * @param node - The text node.
+ * @returns `true` when its leading whitespace is written after syntax.
+ */
+export function $writesSyntaxBeforeText(node: TextNode): boolean {
+    return node.hasFormat("underline") || spanAttributeText(node) !== "";
+}
+
+/**
  * Drops the spaces and tabs at a line's start and end, so text neither
  * becomes indented code nor a trailing-space hard break. Whitespace that
  * only separates a source run from a line edge is kept as `marked` read

@@ -9793,7 +9793,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             registerRichText(editor),
             registerList(editor),
             registerTablePlugin(editor),
-            registerMarkdownHistory(editor),
+            registerMarkdownHistory(editor, typedTextMarks.isTypedUpdate),
             registerMarkdownShortcutsOutsideRawBlocks(editor, typedTextMarks.isTypedUpdate),
             editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
             registerColumnPaste(editor),
