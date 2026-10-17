@@ -846,15 +846,71 @@ export function $serializeLinkContent(link: LinkNode): string {
 }
 
 /**
- * Reads the link reference definitions the saved document will hold, as the
- * viewer resolves them ({@link $documentDefinitions}), when something in the
- * document uses them.
+ * Makes a reader of the definitions that nodes are written and read back
+ * under: the document's ({@link $documentDefinitions}) for nodes that hold
+ * something they decide ({@link $referenceIn}), and none for any other
+ * nodes, whose Markdown reads alike under any definitions. The document is
+ * read at most once, for the first nodes that need it, so a reader serves
+ * one pass over a block's runs, during which nothing is written.
  *
- * @returns The definitions, or `null` when nothing in the document uses
- *   them, so none is needed.
+ * A rule that checks many blocks in one update therefore reads the document
+ * only for the blocks that hold a reference, where asking whether anything
+ * in the document does ({@link $needsDefinitions}) walked the whole
+ * document for each block.
+ *
+ * @param asksDocument - Whether nodes that hold a reference outside the
+ *   document — a copy of a block, a block being joined away — get the
+ *   definitions only when the document itself holds a reference, which is
+ *   what the readers that asked the document first gave them.
+ * @returns The reader: the definitions for the nodes it is given, or `null`.
  */
-function $collectDefinitions(): Links | null {
-    return $needsDefinitions() ? $documentDefinitions() : null;
+function $definitionsReader(asksDocument: boolean): (nodes: readonly LexicalNode[]) => Links | null {
+    let read: Links | null = null;
+
+    return (nodes) => {
+        const reference = $referenceIn(nodes);
+
+        if (reference === null) {
+            return null;
+        }
+
+        const isDecided = !asksDocument || reference.isAttached() || $needsDefinitions();
+
+        if (!isDecided) {
+            return null;
+        }
+
+        read ??= $documentDefinitions();
+
+        return read;
+    };
+}
+
+/**
+ * Finds, among nodes and at any depth in them, the first node the
+ * document's definitions decide: a reference link, which needs them to be
+ * written in its own form, or a run kept as source holding a `[`, which may
+ * be a reference (`[][label]`) whose reading needs them.
+ *
+ * @param nodes - The nodes.
+ * @returns The first such node, or `null` when they hold none.
+ */
+function $referenceIn(nodes: readonly LexicalNode[]): LexicalNode | null {
+    for (const node of nodes) {
+        const isReference = $isReferenceLinkNode(node) || ($isMarkdownSourceTextNode(node) && node.getSource().includes(LABEL_OPEN));
+
+        if (isReference) {
+            return node;
+        }
+
+        const inside = $isElementNode(node) ? $referenceIn(node.getChildren()) : null;
+
+        if (inside !== null) {
+            return inside;
+        }
+    }
+
+    return null;
 }
 
 /**
@@ -1005,7 +1061,7 @@ export function $definitionsSource(): string {
  * @returns Its Markdown, or `""` when it writes nothing.
  */
 export function $serializeBlock(node: LexicalNode): string {
-    return serializeBlock(node, $collectDefinitions());
+    return serializeBlock(node, $definitionsReader(true)([node]));
 }
 
 /**
@@ -1021,7 +1077,7 @@ export function $serializeBlock(node: LexicalNode): string {
  */
 export function $serializeInlineNodes(nodes: LexicalNode[], before: string = ""): string {
     const context: InlineContext = {
-        ...MULTI_LINE, definitions: $collectDefinitions(), joinsMarkdown: true, joinsIntoRawBlock: true, continuesAfter: continuationOf(before),
+        ...MULTI_LINE, definitions: $definitionsReader(true)(nodes), joinsMarkdown: true, joinsIntoRawBlock: true, continuesAfter: continuationOf(before),
     };
 
     return serializeInlineNodes(nodes, context);
@@ -1086,7 +1142,7 @@ export function $serializeRestOfBlock(block: ElementNode, nodes: LexicalNode[], 
  * @returns Their Markdown.
  */
 function $writeRestOfBlock(block: ElementNode, nodes: LexicalNode[], before: string, joinsIntoRawBlock: boolean): string {
-    const definitions = $collectDefinitions();
+    const definitions = $definitionsReader(true)(nodes);
 
     if ($isHeadingNode(block)) {
         return writtenHeadingLines(nodes, Number(block.getTag().slice(1)), definitions, before, joinsIntoRawBlock).content;
@@ -1121,9 +1177,9 @@ function $writeRestOfBlock(block: ElementNode, nodes: LexicalNode[], before: str
 export function $readsBackAsShown(node: LexicalNode, inTableCell?: boolean): boolean {
     const inCell = inTableCell ?? $findMatchingParent(node, $isTableCellNode) !== null;
     // A reference link is written, and read back, with the document's definitions, as a save writes it.
-    const definitions = $collectDefinitions();
+    const definitionsFor = $definitionsReader(true);
 
-    return inlineRuns(node, inCell).every(([nodes, context]) => inlineReadsBack(nodes, { ...context, definitions }));
+    return inlineRuns(node, inCell).every(([nodes, context]) => inlineReadsBack(nodes, { ...context, definitions: definitionsFor(nodes) }));
 }
 
 /**
@@ -1141,10 +1197,10 @@ export function $readsBackAsShown(node: LexicalNode, inTableCell?: boolean): boo
 export function $runsReadingOtherwise(node: LexicalNode, inTableCell?: boolean): Array<{ nodes: LexicalNode[]; tokens: Token[] }> {
     const inCell = inTableCell ?? $findMatchingParent(node, $isTableCellNode) !== null;
     // A reference — a reference link, or one kept as source — reads back with the document's definitions, as saved.
-    const definitions = $documentDefinitions();
+    const definitionsFor = $definitionsReader(false);
 
     return inlineRuns(node, inCell).flatMap(([nodes, base]) => {
-        const context: InlineContext = { ...base, definitions };
+        const context: InlineContext = { ...base, definitions: definitionsFor(nodes) };
 
         if (nodes.length === 0 || inlineReadsBack(nodes, context)) {
             return [];
@@ -1564,7 +1620,36 @@ function labelClosedAfter(blocks: readonly WrittenBlock[], index: number): boole
  *   with what follows it.
  */
 function fenceClosedAfter(blocks: readonly WrittenBlock[], index: number): boolean {
-    return FENCE_OPENING_START.test(blocks[index]!.text) && readsOtherwiseAfter(blocks, index, () => 0);
+    const text = blocks[index]!.text;
+
+    const leavesFenceOpen = FENCE_OPENING_START.test(text) && index < blocks.length - 1
+        && !closesOwnFence(text, separatorBefore(blocks, index + 1));
+
+    return leavesFenceOpen && readsOtherwiseAfter(blocks, index, () => 0);
+}
+
+/**
+ * Tells whether a block that starts with a `:::` opening line closes that
+ * fence itself: lexed alone, its text starts with the fence's token, and a
+ * line end follows that token's closing line. Nothing written after such a
+ * block changes how it reads. The fence's tokenizer is the first rule `marked`
+ * tries at the block's start; it reads line by line from the opening line and
+ * stops at the line that closes the fence, so it returns the same token
+ * whatever follows that line.
+ *
+ * @param text - The block's text, which starts with a `:::` opening line.
+ * @param separatorAfter - What is written between the block and the next one.
+ * @returns `true` when the fence the block opens ends inside the block.
+ */
+function closesOwnFence(text: string, separatorAfter: string): boolean {
+    const first = lexMarkdown(text).find((token) => token.type !== "space");
+
+    if (first?.type !== "mdblock") {
+        return false;
+    }
+
+    // The closing line is whole: the text after it starts a new line, so nothing is added to it.
+    return (text.slice(first.raw.length) + separatorAfter).startsWith("\n");
 }
 
 /**
@@ -2381,10 +2466,11 @@ function blockStructure(tokens: Token[], ofBlock: (token: Token, inListItem: boo
  *
  * @param node - The raw block.
  * @param definitions - The saved document's link reference definitions, or
- *   `null`; read off the document when omitted.
+ *   `null`, which the rules pass: the definitions only choose how a reference
+ *   link is written, never whether a block after the raw block writes anything.
  * @returns `true` when it is written as a paragraph.
  */
-export function $rawBlockWritesAsParagraph(node: MarkdownRawBlockNode, definitions: Links | null = $collectDefinitions()): boolean {
+export function $rawBlockWritesAsParagraph(node: MarkdownRawBlockNode, definitions: Links | null = null): boolean {
     const breaksItsColumn = $standsInColumn(node) && breaksColumn(node.getTextContent());
 
     return breaksItsColumn || (rawBlockEnd($rawBlockSource(node)) === "runsOn" && $writesBlockAfter(node, definitions));
@@ -2755,12 +2841,16 @@ function itemBlockKinds(item: ListItemNode): Array<"list" | "text" | "block"> {
  * where its kind tells: a paragraph by its inline content, a raw block by its
  * text, and a table or code block always. A list's looseness is read on
  * every keystroke in such a block, and writing every block of every item
- * for it made a keystroke cost grow with the list.
+ * for it made a keystroke cost grow with the list. The raw-block rules ask
+ * it of the siblings of a changed block in any parent (the root, a `:::`
+ * column, a list item), where the block may be a heading, quote, table or
+ * any other element.
  *
- * @param block - A block child of a list item, other than a nested list.
+ * @param block - A block child of a list item, other than a nested list, or
+ *   a sibling of a changed block in another parent.
  * @returns `true` when a save writes Markdown for it.
  */
-function $writesSomething(block: ElementNode): boolean {
+export function $writesSomething(block: ElementNode): boolean {
     if ($isParagraphNode(block)) {
         return holdsInlineContent(block.getChildren());
     }
