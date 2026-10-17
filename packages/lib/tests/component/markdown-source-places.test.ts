@@ -744,6 +744,21 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
         expect(placeOf(`[d]: /a\n\n- t\n\n  [d]: /b\n  [d]: /c\n\n  [${CARET}`)).toBeNull();
     });
 
+    it.each<[string, string]>([
+        ['a &#35; b and \u00a6more', '[a # b and \u00a6more]'],
+        ['more &amp; \u00a6less', '[more & \u00a6less]'],
+    ])('SP21: an offset after a character reference has a place in the text that shows what it reads as: %j', (marked, expected) => {
+        expect(placeOf(marked)).toBe(expected);
+    });
+
+    it('SP22: an offset after a character reference is after the character it reads as', () => {
+        expect(placeOf('more &amp;\u00a6 less')).toBe('[more &\u00a6 less]');
+    });
+
+    it('SP23: an offset inside a character reference is before the character it reads as', () => {
+        expect(placeOf('a &#3\u00a65; b')).toBe('[a \u00a6# b]');
+    });
+
     // A tab document reads as its spaces form (the container prefix's tabs written as the spaces they stand for), so
     // an offset has a place in one exactly when it has one in the other, and the bold command acts on a word in one
     // exactly when it acts in the other. The documents left out hold a code, HTML, task or table block, whose text shows
@@ -846,17 +861,14 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
             const hasPrefixTab = prefixTabLines(text.split('\n')).some(Boolean);
             const holdsCodeWithPrefixTab = hasPrefixTab && (text.includes('```') || /<\/?(?:div|pre)>/.test(text) || /^[ >]*(?:(?:[-*+]|\d+[.)])\t[ \t]+|[ ]*\t[ ]*\t[ \t]*)\S/m.test(text));
 
-            // `marked` 18.1 hands a character reference back as the character it stands for.
-            const holdsCharacterReference = /&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);/.test(text);
-
             // A paragraph line made of markers and tabs (row T42) shows its tabs as the spaces they are read as.
             const holdsMarkerLine = /^[ \t]*-\t-\t*$/m.test(text);
 
-            return holdsCodeWithPrefixTab || holdsMarkerLine || repeatsLabel || holdsCharacterReference;
+            return holdsCodeWithPrefixTab || holdsMarkerLine || repeatsLabel;
         };
 
         expect(untold.filter((text) => !isKnown(text))).toEqual([]);
-        // Not computed: this corpus gives 17,699 places the mark confirms, and a change that loses many of them should
+        // Not computed: this corpus gives 19,089 places the mark confirms, and a change that loses many of them should
         // fail here even where no single row does.
         expect(told).toBeGreaterThan(15_000);
     }, 120_000);

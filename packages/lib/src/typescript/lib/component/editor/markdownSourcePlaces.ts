@@ -142,8 +142,7 @@ const NO_INLINES: readonly SourceInline[] = [];
  * tab stands for; a task item's checkbox written with more than one space
  * after it in a list whose items stand apart, which shows with the one space
  * of its own; a list item's text that begins as a link reference definition
- * repeating a label, which the lexer drops; and text holding a character
- * reference such as `&#35;`, which the lexer decodes. (A link text holding
+ * repeating a label, which the lexer drops. (A link text holding
  * an escaped bracket is such text too, and its source is found another way:
  * {@link leavesOfUnescapedLinks}.)
  *

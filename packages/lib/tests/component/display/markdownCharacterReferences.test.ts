@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { describe, it, expect } from 'vitest';
+import { lexMarkdown } from '~/component/display/markdownExtensions';
+import { CORPUS } from '../markdown-roundtrip/corpus';
 import { HTML_NAMED_CHARACTER_REFERENCES } from '~/component/display/htmlNamedCharacterReferences';
 import {
-    decodeCharacterReferences, decodeEscapesAndCharacterReferences, escapeCharacterReferences, startsWithCharacterReference,
+    characterReferencePieces, decodeCharacterReferences, decodeEscapesAndCharacterReferences, escapeCharacterReferences, startsWithCharacterReference,
 } from '~/component/display/markdownCharacterReferences';
 
 describe('HTML_NAMED_CHARACTER_REFERENCES', () => {
@@ -52,5 +54,69 @@ describe('startsWithCharacterReference and escapeCharacterReferences', () => {
 
     it('CR12: escapes the & of each reference and of nothing else', () => {
         expect(escapeCharacterReferences('/a&copy;&b=1&#35;&notaname;&amp')).toBe('/a\\&copy;&b=1\\&#35;&notaname;&amp');
+    });
+});
+
+describe('characterReferencePieces', () => {
+    it('splits a reference from the characters around it', () => {
+        expect(characterReferencePieces('a&#35;b')).toEqual([
+            { shown: 'a', start: 0, end: 1 },
+            { shown: '#', start: 1, end: 6 },
+            { shown: 'b', start: 6, end: 7 },
+        ]);
+    });
+
+    it('writes a name the list does not hold character by character', () => {
+        const pieces = characterReferencePieces('&notaname;');
+
+        expect(pieces).toHaveLength(10);
+        expect(pieces.every((piece, at) => piece.shown === '&notaname;'[at] && piece.start === at && piece.end === at + 1)).toBe(true);
+    });
+
+    it('keeps a reference that reads as two code units as one piece', () => {
+        const pieces = characterReferencePieces('x &ngE; y');
+
+        expect(pieces).toHaveLength(5);
+        expect(pieces[2]).toEqual({ shown: '\u2267\u0338', start: 2, end: 7 });
+    });
+
+    it.each([
+        'plain', '&copy; &amp; &AElig; &ngE;', '&#35; &#x41; &#0; &#xD800; &#1114112;',
+        '&notaname; &copy &copyx; &Copy;', '&#12345678; &#abc; &#; &#x;', '&amp;copy; &#38;copy; a&copy;b', '',
+    ])('joins to what decodeCharacterReferences reads: %j', (text) => {
+        expect(characterReferencePieces(text).map((piece) => piece.shown).join('')).toBe(decodeCharacterReferences(text));
+    });
+});
+
+describe('characterReferencePieces over the round-trip corpus', () => {
+    /**
+     * Collects the `raw` of every text token in a token tree, whatever block or inline token holds it.
+     *
+     * @param value - A token, a list of tokens, or any value that holds them.
+     * @param found - Where the `raw` texts are collected.
+     */
+    function collectTextRaws(value: unknown, found: string[]): void {
+        if (Array.isArray(value)) {
+            value.forEach((entry) => collectTextRaws(entry, found));
+        } else if (typeof value === 'object' && value !== null) {
+            const token = value as { type?: unknown; raw?: unknown };
+
+            if (token.type === 'text' && typeof token.raw === 'string') {
+                found.push(token.raw);
+            }
+
+            Object.values(value).forEach((entry) => collectTextRaws(entry, found));
+        }
+    }
+
+    it('joins to what decodeCharacterReferences reads, for the raw text of every text token', () => {
+        const raws: string[] = [];
+
+        CORPUS.forEach((entry) => collectTextRaws(lexMarkdown(entry.source.replace(/\r\n?/g, '\n')), raws));
+
+        const differing = raws.filter((raw) => characterReferencePieces(raw).map((piece) => piece.shown).join('') !== decodeCharacterReferences(raw));
+
+        expect(raws.length).toBeGreaterThan(1_000);
+        expect(differing).toEqual([]);
     });
 });

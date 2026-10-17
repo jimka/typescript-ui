@@ -1835,6 +1835,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         // A tab that indents a list item's line past the item's text has its source found: the line shows none of its blanks.
         ['TP9: a list item\'s line that a tab indents stands after the caret', '- a\n  > q\n- b\n\t zz\n\nafter', ['  > q', 2], ['  > q', 5], 'Delete', '- a\n\n- b\n  zz\n\nafter', '"b"@0'],
         ['TP8: italic text written with underscores stands before the caret, and a space after it', '> a _b_ c\n>\n> q2\n\nafter', ['> a _b_ c', 7], ['> q2', 1], 'Delete', '> a *b* q2\n\nafter', '" q2"@0'],
+        ['TP10: a character reference stands before the caret', '> a &#35; bc w\n> - x\n\nafter', ['> a &#35; bc w', 11], ['> - x', 4], 'Delete', '> a # bx\n\nafter', '"a # bx"@5'],
     ])('%s: an edit inside one raw block that makes it show as its blocks keeps the caret\'s place', async (_name, source, anchor, focus, route, expected, caret) => {
         const editor = load(source);
 

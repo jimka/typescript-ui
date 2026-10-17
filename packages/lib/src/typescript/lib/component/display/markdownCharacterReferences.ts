@@ -67,6 +67,67 @@ export function decodeCharacterReferences(text: string): string {
     return text.replace(CHARACTER_REFERENCE, referencedCharacters);
 }
 
+/** One piece of text as Markdown reads it: one character as written, or a character reference and what it reads as. */
+export interface CharacterReferencePiece {
+    /** What the piece reads as. */
+    readonly shown: string;
+    /** The piece's start offset in the text. */
+    readonly start: number;
+    /** The piece's end offset in the text. */
+    readonly end: number;
+}
+
+/**
+ * Splits written text into one piece per UTF-16 code unit, the unit the source analysis counts in.
+ *
+ * @param text - The text as written.
+ * @param from - The offset the pieces start at.
+ * @param to - The offset the pieces end at.
+ * @returns One piece for each code unit of `text` in `[from, to)`.
+ */
+function writtenPieces(text: string, from: number, to: number): CharacterReferencePiece[] {
+    const pieces: CharacterReferencePiece[] = [];
+
+    for (let at = from; at < to; at++) {
+        pieces.push({ shown: text[at], start: at, end: at + 1 });
+    }
+
+    return pieces;
+}
+
+/**
+ * Splits text into the pieces it reads as: each character as written, and each character reference that reads as
+ * other characters with those characters. Joined, the pieces' `shown` are {@link decodeCharacterReferences} of the text.
+ *
+ * @param text - The text as written.
+ * @returns The pieces, in order, covering the whole text.
+ */
+export function characterReferencePieces(text: string): CharacterReferencePiece[] {
+    const pieces: CharacterReferencePiece[] = [];
+    let at = 0;
+
+    for (const match of text.matchAll(CHARACTER_REFERENCE)) {
+        const start = match.index;
+        const end = start + match[0].length;
+        const shown = referencedCharacters(match[0], match[1], match[2], match[3]);
+
+        pieces.push(...writtenPieces(text, at, start));
+
+        // A reference that reads as itself (a name the HTML list does not hold) is written text, character by character.
+        if (shown === match[0]) {
+            pieces.push(...writtenPieces(text, start, end));
+        } else {
+            pieces.push({ shown, start, end });
+        }
+
+        at = end;
+    }
+
+    pieces.push(...writtenPieces(text, at, text.length));
+
+    return pieces;
+}
+
 /**
  * Reads a link destination, a link title or a code fence's info string as
  * CommonMark does: backslash escapes and character references together, in
