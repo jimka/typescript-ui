@@ -554,6 +554,12 @@ page resets to empty.
   (`<br/>`, `<br />`, `<br >`, in any letter case) becomes `<br>`; the cell reloads as it shows. No
   consumer action is needed.
 
+- **`MarkdownEditor` removes the spaces and tabs at a line's start at the
+  next edit.** The save has always dropped them; the editor kept showing
+  them until a reload. A space typed at a line's start still shows while
+  the caret is right after it, and goes when the next character is typed.
+  No consumer action is needed.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
