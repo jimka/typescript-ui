@@ -609,15 +609,15 @@ All in the caret commit (step 7).
 | `- [x]\tA¦lpha beta` / `- [x]\tAlpha¦ beta` | `[[[[x]\tA¦lpha beta]]]` / `[[[[x]\tAlpha¦ beta]]]` |
 
   The comment in `SP7` that starts "A tab between the words of an item's text" goes with its rows.
-- **`SP13`, hard line breaks (22 rows), restated.** `marked` 18.1's line break token takes the next line's leading blanks, which no longer show. The places follow from the existing convention: an offset inside the source of one thing the block shows as a whole is before that thing.[^break-blanks] Measured, for the backslash break (the two-space break `"> a  \n…"` gives the same, row for row):
+- **`SP13`, hard line breaks (22 rows), restated.** `marked` 18.1's line break token takes the next line's leading blanks (the raw of `> a\\⏎>  cd`'s break is `\\⏎` and one blank), which no longer show. The documented rule applies: the caret is after everything whose source ends at or before the offset, and before the rest, so an offset inside the break's source, blanks included, is before the break. For that, the source analysis matches the blanks that open a line of the needle with the last blanks of the source's run (the first is the quote marker's own space), so the break's source ends after its own blank (`blanksOfContainerPrefix` in `markdownSourceTokens.ts`; the first version of this plan took the marker's space as the break's, which the review of the resumption found contradicts the rule). Measured, for the backslash break (the two-space break `"> a  \n…"` gives the same, row for row):
 
 | Marked | Expected | | Marked | Expected |
 |---|---|---|---|---|
 | `> a¦\\\n>  cd` | `[a¦⏎cd]` | | `> a¦\\\n>   cd` | `[a¦⏎cd]` |
 | `> a\\¦\n>  cd` | `[a¦⏎cd]` | | `> a\\¦\n>   cd` | `[a¦⏎cd]` |
 | `> a\\\n>¦  cd` | `[a¦⏎cd]` | | `> a\\\n>¦   cd` | `[a¦⏎cd]` |
-| `> a\\\n> ¦ cd` | `[a⏎¦cd]` | | `> a\\\n> ¦  cd` | `[a¦⏎cd]` |
-| `> a\\\n>  ¦cd` | `[a⏎¦cd]` | | `> a\\\n>  ¦ cd` | `[a⏎¦cd]` |
+| `> a\\\n> ¦ cd` | `[a¦⏎cd]` | | `> a\\\n> ¦  cd` | `[a¦⏎cd]` |
+| `> a\\\n>  ¦cd` | `[a⏎¦cd]` | | `> a\\\n>  ¦ cd` | `[a¦⏎cd]` |
 | | | | `> a\\\n>   ¦cd` | `[a⏎¦cd]` |
 
 - **`SP13`, a link inside a link's text (9 rows), restated.** `marked` 18.1 reads `[p [q](/u) r](/v)` as CommonMark does: the inner link wins, and the outer brackets are text. Each expected place keeps its offset and shows the outer brackets as text: `[a ¦[p ‹q› r](/v)cd]`, `[a [¦p ‹q› r](/v)cd]`, `[a [p ‹q› r](/v¦)cd]`, `[a [p ‹q› r](/v)¦cd]`, and the same five with a space before `cd` (`[a ¦[p ‹q› r](/v) cd]` … `[a [p ‹q› r](/v) ¦cd]`).
@@ -749,7 +749,7 @@ On the held tip `9e0207a92` (its base has `marked` 18.1 and the general typing-s
 | `TK6` | 1 | stale | the same | restated: no shortcut |
 | `TL5` | 1 | stale | `marked` 18.1 hands a tab between words back as written | restated: the caret at the joint |
 | `SP7` tab rows, `SP8` tab rows | 14 + 2 | stale | the same, and `[x]` followed by a tab is text | moved to `SP16`, with places |
-| `SP13` hard line breaks | 22 | stale | the line break token takes the next line's leading blanks | restated by the existing convention |
+| `SP13` hard line breaks | 22 | 18 stale, 4 real | the line break token takes the next line's leading blanks; the source analysis took the quote marker's own space as the break's, which put four offsets on the wrong side of the break | 18 restated by the existing convention; 4 fixed in the analysis (`blanksOfContainerPrefix`), the rows restated to the documented rule |
 | `SP13` link inside a link's text | 9 | stale | `marked` 18.1 reads nested links as CommonMark does | restated |
 | `SP10` | 1 | real, a gap in the fallback list | `marked` 18.1 decodes a character reference in text | named as a fallback shape (code of the test, docs) |
 
@@ -767,7 +767,7 @@ On the chain's top, once rebased, 11 more fail, all stale after minimal escapes:
 
 [^lists-inward]: The remove-first reading was built and measured for every range with a list point: step 2 limited to a range's end on a list or an item when the range starts in a raw or code block, and starts on lists left to remove-first. `TN12` and `TN13` (a list before the raw block, the range from before its first item or after its last item into the raw block) then differed from the text-point range on all 19 routes, in every direction and context. Lexical's removal from a point on a list or on the document leaves the caret on that container. The raw block's re-read then moves the blocks around it, and the caret ends up before the next block: typing over `TN12`'s range saved `before⏎⏎aw⏎⏎</div>⏎⏎xafter`, the `x` in a paragraph that was never selected. Over `TN13`'s range, typing opened a new list item. Remove-first works for the table-command branches because there the range ends in text that stays, and `$openBlockAtItemCaret` gives a caret left on a list its block. Here the caret is left on a container beside a block that the re-read replaces. The inward reading gives the range a reader sees, and every route then acts as after Delete of that text range, which is the held branch's contract. It is limited to the ranges that the raw-block removal takes, where the list item rules never run.
 
-[^enter-listener]: Without it, Enter over a range from the document before a raw block into a paragraph is not seen by `$handleRawBlockEnter` (neither end is in the raw block yet). The paragraph command's guard then settles the start into the raw block, and Lexical's paragraph insert splits the raw block where the raw-block Enter would add a line. The held branch registered a settle listener on `KEY_ENTER_COMMAND` for this reason. The table-command plan wanted the call inside `$handleRawBlockEnter` and its implementer left it out because no row needed it. A listener of its own keeps `$handleRawBlockEnter` unchanged and reads like the guards.
+[^enter-listener]: The first version of this note gave as its reason a range from the document before a raw block into a paragraph; review 1 could not reproduce a difference there, and a search of about 33,000 selections (element points of the root, lists, items, `:::` blocks, columns and tables against element and text points, in nine documents with raw blocks, code blocks, tables, columns and lists; Enter plain, inside an update and with Shift) found the real cases, all in two shapes where an element point settles into a raw block only once settled: a range from the document point just after a raw block to a `:::` block that follows it (or to its first column), and a range from the end of a column that holds a raw block to a paragraph outside the column. Without the listener `$handleRawBlockEnter` sees no raw block at either end, and the paragraph command splits where the raw-block Enter would add a line; with it, Enter equals Delete then Enter. Rows `E4` and `E5` of `markdown-editor-table-commands.test.ts` pin both and fail without the registration. A listener of its own keeps `$handleRawBlockEnter` unchanged and reads like the guards.
 
 [^no-squash]: Squashing into fewer commits was weighed. The held branch's commits are already one functionality each, with their own documentation commits, as the commit skill requires. Its fix history was folded in round 7. A squash would merge the caret-place module into the route removal, which the owner signed off as separate decisions. The rebase conflicts all fall in one code commit and three documentation commits, so a commit-by-commit replay costs no more. Folding each fix into its owner also answers review 7's fourth finding (the first commits failing their own rows). It was checked: each code commit passes its own files after the replay.
 
@@ -779,6 +779,88 @@ On the chain's top, once rebased, 11 more fail, all stale after minimal escapes:
 
 [^own-removal]: The two guards ask whether a range has a removal of its own that remove-first must not replace. A range with an end in a raw or code block never reaches their remove-first branch with a list point left, since step 2 moved it. Adding the text-only-edge shape to that test would send such a range, in the rare case step 2 finds no block of text to move to, through the raw-block removal with a point on a list, the crash the held branch's rule was built for.
 
-[^break-blanks]: Under `marked` 18.0 those blanks showed, and an offset among them was after the break. Now a caret put among them goes before the break: a range that starts right after a quote's `>` on a line that opens with two or more spaces, typed over, puts the typed text at the end of the line before. The case needs a raw quote whose later line opens with extra spaces, and the result is what the documented convention gives, so it is accepted rather than given a rule of its own.
+[^break-blanks]: Under `marked` 18.0 those blanks showed, and an offset among them was after the break. Now they belong to the break's source, and the rule puts a caret among them (after the quote's own marker space, before the break's last blank) before the break. A range that starts there, typed over, puts the typed text at the end of the line before. The case needs a raw quote whose later line opens with extra spaces, and the result is what the documented rule gives. Review 1 of the resumption found the first version of this plan wrong at four offsets: it let the analysis match the break's blank with the quote marker's own space, so the offset right after the marker was read as after the break. The matching is fixed instead (`blanksOfContainerPrefix`).
 
 [^ty-file]: Moving the three rows into `markdown-editor-typing-shortcuts.test.ts`, as that plan's closing section suggests, would carry about 300 lines of helpers (`selectIntoRaw`, `joinedWithRaw`, `remove`, the `KINDS` table) into a file about typing. The rows are about the range guards' removal. A file of their own keeps both readable, and the file name is the one the held branch already gave them.
+
+---
+
+## Implementation Notes
+
+Implemented on `feature/markdown-editor-raw-block-range-edits`, recreated on
+`5f5ac474b` by cherry-pick as the steps say. The branch has eleven commits:
+the nine replayed or new commits of steps 2 to 10, this plan's own commit,
+and the notes commit of step 12. The plan counts ten commits after step 11;
+that count assumed this plan was added at step 3, which would have made it
+the second commit. It was added right after step 11, as the orchestrator
+asked, so that the replayed commits are the held branch's alone: at step 11
+the branch has nine commits, and ten with this plan.
+
+- **The owner's question is answered.** The recommendation was taken: a
+  selection that starts on or just before a list and ends inside a raw
+  block keeps the held branch's inward rule (step 2); remove-first stays for
+  every other range.
+- **Where the code differs from the prototype branch.** The commit
+  comparisons with the prototype print only cosmetic differences, none in
+  behaviour: the Enter listener and its JSDoc stand directly before
+  `registerRangeGuards`' own JSDoc (the prototype put the listener between
+  that JSDoc and its function, which attached the JSDoc to the wrong
+  function); `$pointNeedsSettling` is as it is on the chain; the names of
+  rows `TE84`, `TE86` and `TE87` are the plan's wording; a few comment
+  lines are wrapped differently; the shortcut rows file is written from the
+  plan's description, with the imports that only the deleted rows used
+  removed.
+- **A row's expected text.** In `TL5`, `rangeOf` writes a tab as the two
+  characters backslash and `t`, so the expected string holds a doubled
+  backslash, as the plan's literal says.
+- **Measured.** Step 4: 907 tests pass (four files). Step 5: 920 (three
+  files). Step 7: 1,570 (three files). Step 8: 42. The full suite on the
+  tip: 572 files, 21,041 passed and 2 todo (21,043), none failing (the
+  counts of steps 4 to 8 are those measured at the steps, before the review
+  rounds added rows). Both
+  typechecks and eslint are clean; `npm run docs:api` gives no warning and
+  `npm run docs:llms:check` reports coverage OK.
+- **Nothing was run in a browser**; the plan names no manual check.
+- **Out of scope, not changed.** No defect outside the plan was found.
+- **Review 1 of the resumption.** Four blocking findings and several smaller ones
+  were fixed as fixups of the commits that own them. (1) The Enter listener
+  was kept: a search of about 33,000 selections found two shapes in which it
+  matters, now rows `E4` and `E5` (see the note on the listener); the
+  plan's example was wrong and is corrected. (2) Four hard-break rows
+  contradicted the documented rule; the analysis now matches a line's
+  opening blanks with the last blanks of the source's run, and the rows and
+  the table above follow the rule. (3) The `$placeOfSourceOffset` JSDoc
+  lists the fallback shapes of `marked` 18.1 as the docs do. (4) The held
+  plan's notes were corrected where they still named `TS19` for the link
+  row, the tab shape as the fourth fallback, the settle listeners, and the
+  dropped tag. Smaller: the `$removeGuardedRange` JSDoc says which command
+  dispatches the tagged update for Enter, `$emptyCellAt`'s `@returns` is
+  narrowed, and the corpus count in `SP10`'s comment is re-measured (17,699).
+- **Review 2 of the resumption.** The older pass `keepLastOfLeadingBlanks` is
+  removed: with the analysis matching a line's opening blanks itself, it
+  changed no result in any Markdown test file (nor the 17,699-place corpus).
+  The `>` exception of `blanksOfContainerPrefix` is removed: no row needed
+  it, it contradicted the function's own description, and in a quote inside
+  a list item it gave places against the rule (a code block in a list item
+  is placed by its own text, and gives the same place with or without the
+  exception). Rows `SP17` (the indentation after a hard line break in a list
+  item, 44 rows, 20 of which fail without the fix) and `SP18` (a quote in a
+  list item, 3 rows, which fail with the exception back; a code block in a
+  list item, 2 rows, which pass either way and only pin the answer) pin the
+  rule. Smaller: the JSDoc of `$emptyCellAt` and `$placeOfSourceOffset`, the
+  reflow of the `$removeGuardedRange` paragraph, the describe title of `E4`
+  and `E5`, and this plan's failing-test table (four of the 22 hard-break
+  rows were real) are corrected, and the held plan's notes no longer say the
+  analysis takes the first blank. The other offsets in a quote inside a list
+  item after a hard break (among them the offset right before the `>`), and
+  the soft-line-end case in that shape, are left as they are (known issues);
+  they are the same as before this fix round, and differ from the base
+  `5f5ac474b`, where `$selectCaretAfterReRead` put the caret at the block's
+  end.
+- **Review 3 of the resumption.** Texts only: the `@returns` of
+  `$emptyCellAt` (an offset before a row's opening pipe is in the row's
+  first cell), the counts above, the paragraph of the held plan on the
+  analysis and the removed pass, the comment of `SP18`, and the
+  `blanksOfContainerPrefix` description (a run ending at a further `>` is
+  counted whole). The `limit` bound of `blanksOfContainerPrefix` is dropped:
+  no input changed with it.

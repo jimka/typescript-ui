@@ -250,29 +250,14 @@ marker changes what they are.
 
 ### A removal the editor makes itself completes no typing shortcut
 
-*Added at implementation, after the fifth review, and narrowed after the
-sixth; see D10 of the Implementation Notes.*
+*Resumed: the branch's own commit for this is dropped; see the resumption notes below.*
 
-Lexical's Markdown shortcuts take any update that leaves a collapsed
-caret in changed text for a typed character, so a deletion completed a
-shortcut when the text left before the caret read as one. With the
-caret at the joint after a removal, that turned escaped text into
-formatting. The editor's own removal of a guarded range is therefore
-tagged when the route only removes (the delete commands, a cut,
-`cut()`), and the wrapper that already keeps the shortcuts out of raw
-blocks (`registerMarkdownShortcutsOutsideRawBlocks`,
-[MarkdownEditor.ts](../packages/lib/src/typescript/lib/component/editor/MarkdownEditor.ts))
-hands Lexical's listener no tagged update. Nothing else is classified:
-typing, a paste, a drop and a deletion in an ordinary paragraph are
-handed over as before, and the last keeps the parent's defect. Lexical's
-listener offers no hook and is not changed.
-
-The fifth round made it a rule for every block (a shortcut is applied
-for typed text only, by marking what is no typing). The sixth review
-showed that rule dropped a character committed by an input method or a
-dead key on desktop WebKit, and the general rule is a plan of its own,
-`markdown-editor-typing-shortcuts-only-for-typing`, that marks what *is*
-typing.
+The general rule of `markdown-editor-typing-shortcuts-only-for-typing`
+applies: Lexical's Markdown shortcuts are applied for typed text only, and
+a removal is no typing, so no removal completes a shortcut, in a raw block
+or anywhere else. This branch adds no tag and no wrapper for it. The rows
+that pin what a removal into a raw block does live in
+`markdown-editor-guarded-removal-shortcuts.test.ts` (`TY1`, `TY1b`, `TY1c`).
 
 ## Internal Structure
 
@@ -1993,33 +1978,35 @@ where there is no place:
 1. The block shows nothing at all (an emptied quote or list item). Its
    end is its only place. A list item or a table cell that shows nothing
    in a block that shows something elsewhere is no fallback: its place is
-   in it (`$emptyBlockAt`, round 7, `SP15`).
+   in it (`$emptyBlockAt`, round 7, `SP15`). Resumed: that holds also for
+   a table in a list item, for an earlier item that holds only a list,
+   and for the offset right after the pipe that closes an empty cell.
 2. The block holds, beside the caret or after it, text whose source is
    not found, because `marked` hands that text back otherwise than the
    source holds it:
    - a list item's line that a tab indents past the item's text, which
      shows as spaces the source does not hold;
-   - a tab between the words of a list item's text, which `marked` also
-     hands back as a space (round 7; `- a⇥b w¦ x`, `1. a⇥b¦ c`,
-     `- [ ] a⇥b¦ c`, the nested form: the whole text token is not found,
-     so a caret anywhere in that item has no place; `SP7`, `TL5`);
    - a task item whose checkbox is followed by more than one space, in
-     a list with blank lines between its items, or by a tab
-     (`- [x]⇥Alpha`): the checkbox shows with the one space of its own.
+     a list with blank lines between its items: the checkbox shows with
+     the one space of its own;
+   - a character reference such as `&#35;` (resumed: `marked` 18.1
+     decodes it in text, so the text has no source the mapping can find;
+     `SP10`). Under `marked` 18.1 a tab between the words of a list item's
+     text is handed back as written and `[x]` followed by a tab is text, so
+     those two earlier shapes are gone (`SP16`, `TL5`).
 3. The sources found are not in the order of what the block shows: text
    of a list item that begins as a link reference definition does which
    `marked` dropped before it for repeating a label (the text is found
    in that definition's place).
 
 Text of those kinds in an *earlier line or item* than the caret's takes
-nothing from it (`TL4`, `SP8`); a tab between the words of the caret's
-own item does (`SP7`, `TL5`). In the three sets of pairs above every pair without a place is
+nothing from it (`TL4`, `SP8`). In the three sets of pairs above every pair without a place is
 one of these, and the sweep has no cell at the block's end; but the
 sets do not hold every shape. The tab after a checkbox was found by the
-fifth review, in none of them. `SP7` pins it now, and `SP10`, the
-corpus comparison, names the two causes the corpus has (a tab that
-indents a line, a definition that repeats a label) where it let any
-text holding a tab pass. The docs page and the changelog name 1 to 3.
+fifth review, in none of them. `SP10`, the corpus comparison, names the
+three causes the corpus has (a tab that indents a line, a definition that
+repeats a label, a character reference). The docs page and the changelog
+name 1 to 3.
 
 One more text is handed back otherwise than written, and its source is
 found all the same: a link text holding an escaped bracket
@@ -2032,17 +2019,22 @@ analysis for it). Shape `TE75` and rows `SP11`. Before that step it was
 a fourth shape of the fallback, at the block's end in 1,480 cells of the
 widened sweep.
 
-*What is no text keeps its own source (the fifth review).* The source
-analysis finds a shown blank at the first blank of a run in the source,
-and a load drops a run's surplus from the left, so the mapping moves a
-shown blank to the last blank the source holds there
-(`keepLastOfLeadingBlanks`). It moved the checkbox's own space as well:
-for `- [x]`, two spaces and `cd`, the offset after the first space was
-put *inside* the checkbox's node, and a character typed there replaced
-the checkbox. Only a blank that is a character of ordinary text is
-moved now, and only among the blanks the source holds between it and
-the next thing shown. A checkbox with its space, inline HTML, a line
-end, a hard line break, an image and a link that shows nothing stand
+*What is no text keeps its own source (the fifth review).* A load drops
+the surplus of the blanks that open a line from the left (a quote's marker
+takes one, a list item's indentation the item's), so the blanks a block
+shows are the last blanks of the source's run. The source analysis
+therefore matches the blanks that open a line of the text with the last
+blanks of the source's run (`blanksOfContainerPrefix` in
+`markdownSourceTokens.ts`). History: as held, the analysis matched a shown
+blank with the first blank of the run, and a second pass,
+`keepLastOfLeadingBlanks`, moved it to the last blank afterwards. That pass
+moved the checkbox's own space as well: for `- [x]`, two spaces and `cd`,
+the offset after the first space was put *inside* the checkbox's node, and
+a character typed there replaced the checkbox; the fifth review's fix moved
+only a blank that is a character of ordinary text. The resumption moved the
+matching into the analysis and removed the pass, which had become inert.
+What is no text, a checkbox with its space, inline HTML, a line end, a hard
+line break, an image and a link that shows nothing, stands
 where their own source does. `SP13` has every such thing with none, one
 and two blanks after it, at the offsets just before it, inside its
 source, just after it and at each blank (195 rows); `TE76` is the
@@ -2251,6 +2243,15 @@ the narrower one below (round 7). The general rule is the plan
 `markdown-editor-typing-shortcuts-only-for-typing`, the next branch on
 top of this one.
 
+*Resumed: this decision describes the held branch before the resumption.
+Its commit is dropped; `GUARDED_DELETION_TAG`, `$removeGuardedRangeAsDeletion`
+and the held branch's rewritten rows `TY2` to `TY6` of
+`markdown-editor-guarded-removal-shortcuts.test.ts` are gone from the
+resumed branch (`markdown-editor-typing-shortcuts.test.ts` has rows of the
+same names, the base's own, with other meanings). The general
+rule of `markdown-editor-typing-shortcuts-only-for-typing` applies, and
+`TY1`, `TY1b` and `TY1c` are kept.*
+
 *What happened.* `registerMarkdownShortcuts` (Lexical) has no notion of
 typing. Its update listener takes any update that leaves a collapsed
 caret in changed text, at most one character further on than it was,
@@ -2297,14 +2298,6 @@ applied to what the removal left (`TK8`).
   to the end of the block there and nothing applied. It is the same
   defect as the paragraph's, reached through D2's caret; the next plan
   removes it. It is listed in the round 7 section.
-
-*Collision with the next plan.* That plan registers the update tag of
-typing and marks nothing as "not typing". Its step 2 removes what this
-leaves for it: `GUARDED_DELETION_TAG`, the helper and its three callers
-(the check in the shortcut wrapper goes with the tag), `TY1`, `TY1b` and
-`TY5`, which that plan replaces whole. `TY2`, `TY3`, `TY4` and `TY6`
-(typing, a browser's own typing, a paste or drop, the end of a
-composition) hold under both.
 
 *Rows.* `markdown-editor-typing-shortcuts.test.ts`, new: 112 rows over 14
 kinds of shortcut (italic, bold, inline code, strikethrough, underline,
@@ -2360,13 +2353,14 @@ named as a point in text (`$settleTextOnlyEdgeEnds`, `MarkdownEditor.ts`,
 by `$settleRangeEndsInward` and `$moveBlockPointsIntoText`, which the
 block commands settle their selection with already). The range is then
 the text range a reader sees, and every route gives what it gives for
-that range. It runs in two places: at the start of
+that range. As resumed, it is the second step of the one function
+`$settleSelectionOffContainers`, which runs at the start of
 `$removeGuardedRange`, for a route that is no command (`cut()`,
-`paste()`), and as the first listener at `COMMAND_PRIORITY_CRITICAL` of
-every command that has a guard (`$settleSelectionBeforeGuard`), and of
-`KEY_ENTER_COMMAND`, whose handler for a raw block reads the range
-before any guard does. So each listener after it, a guard or a decline,
-reads a settled range.
+`paste()`), in the `guard` wrapper of every command that has a guard, and
+in a listener of its own on `KEY_ENTER_COMMAND`, whose handler for a raw
+block reads the range before any guard does. So each listener after it, a
+guard or a decline, reads a settled range. (The held branch's
+`$settleSelectionBeforeGuard` registrations are gone.)
 
 What follows from the rule, and is pinned:
 
@@ -2446,8 +2440,8 @@ with one end in a raw block or a code block, and leaves a table-edge
 range alone; it uses the two functions the block commands already
 settle with, and adds none. A rule for every command and every
 selection can replace it by settling in the same listener
-(`$settleSelectionBeforeGuard`, first at `COMMAND_PRIORITY_CRITICAL` of
-each command in `registerRangeGuards`) and dropping the two conditions;
+(as resumed, `$settleSelectionOffContainers`, which the `guard` wrapper
+of `registerRangeGuards` calls) and dropping the two conditions;
 `$removeGuardedRange`'s own call is then only for the routes that are
 no command. What part D has to decide and this plan did not: a point on
 a table, a row or a cell from outside the table (today: inside the
@@ -2484,11 +2478,15 @@ block.
   are tagged by nothing, and are tidied where the caret is, as typing
   over any range is. Outside an update the removal's update no longer
   ends before the text is typed with the tag on it, so the two contexts
-  give the same document again: `TS18` now says so, and `TS19` pins the
-  link (`TE82`, a document with no raw block, and `TE83`, a raw list).
-  One route changes by it: `cut()`, the method, carried no tag at the
-  parent either (the cut key's command does), and does not tidy; `TE71`
-  has no `cut()` row among the joint rows for that reason.- **The plan's two classes of difference from Delete, then the route
+  give the same document again: `TS18` now says so, and `TS23` (formerly
+  `TS19`; `TS19` is now a Shift+Enter row of `TE62`) pins the link
+  (`TE82`, a document with no raw block, and `TE83`, a raw list).
+  Neither cut tags the update that removes the range: `cut()` carries no
+  tag, as at the parent, and the native cut's tag marks the command's own
+  update, while the removal follows in an update of its own. Both are
+  pinned by the `TE71` and `TE82` cut rows, and `TE71` has no cut row among
+  the joint rows for that reason.
+- **The plan's two classes of difference from Delete, then the route
   have more triggers than it names.** For that same shape the typed text
   is bold and Delete, then typing gives it plain (`**cd** xw text`): the
   plan's class "the format of typed and pasted plain text", which it
@@ -2621,9 +2619,9 @@ before this round was `29f5cdb2c`.
 
 | # | Finding | The rule as implemented | Where | Rows |
 |---|---|---|---|---|
-| B1 | A character committed by an input method or a dead key completed no shortcut on desktop WebKit | A removal the editor makes itself by a route that inserts no text completes no shortcut, and nothing else is classified as no typing: the three typing tags, `isTypedUpdate`, `caretTextGrew` and the tag on `cut()` are gone; `GUARDED_DELETION_TAG` is set by `$removeGuardedRangeAsDeletion` (the delete commands, the native cut, `cut()`, Enter, the paragraph and the line-break commands, the routes that insert no text) and the wrapper skips an update that carries it | the third code commit | `TY1` to `TY6` rewritten (112 rows; `TY4` has the composition commit and the replacement text), `TK6`, `TK8` |
+| B1 | A character committed by an input method or a dead key completed no shortcut on desktop WebKit (history of the held branch: `GUARDED_DELETION_TAG` and `$removeGuardedRangeAsDeletion` below are gone after the resumption) | A removal the editor makes itself by a route that inserts no text completes no shortcut, and nothing else is classified as no typing: the three typing tags, `isTypedUpdate`, `caretTextGrew` and the tag on `cut()` are gone; `GUARDED_DELETION_TAG` is set by `$removeGuardedRangeAsDeletion` (the delete commands, the native cut, `cut()`, Enter, the paragraph and the line-break commands, the routes that insert no text) and the wrapper skips an update that carries it | the third code commit of the held branch (history: that commit is dropped in the resumption) | `TY1` to `TY6` rewritten (112 rows; `TY4` has the composition commit and the replacement text), `TK6`, `TK8` |
 | B2 | A caret in a list item or table cell that shows nothing went to the text of a neighbour | `$emptyBlockAt` gives the place in the item or cell itself, when the block shows something elsewhere and the source and the block agree on how many items (or tables) there are | the fourth code commit | `SP15`, `TE79` to `TE81`, `TC` rows of those |
-| B3 | Typing over a guarded range dropped a link's mark elsewhere in the block, in a document with no raw block | `$removeGuardedRange` sets no `RUN_EDGE_TAG`; a route carries it if and only if it carried it at the parent | the first code commit | `TE82`, `TE83`, `TS18` rewritten, `TS19` |
+| B3 | Typing over a guarded range dropped a link's mark elsewhere in the block, in a document with no raw block | `$removeGuardedRange` sets no `RUN_EDGE_TAG`; a route carries it if and only if it carried it at the parent | the first code commit | `TE82`, `TS18` rewritten, `TS23` (the link row, formerly `TS19`); `TE83` is in the caret commit |
 | B4 | A tab between the words of a raw list item is a fallback shape that no doc or row named | named in the component page, the changelog, the fallback list above, and pinned | the docs and tests of the fourth code commit | `SP7` (7 rows), `TL5`; `SP8` and `TL4` say "earlier line or item" |
 
 The repros of B1 to B3 now give the parent's result (B2: what Delete, then the
@@ -2665,8 +2663,9 @@ Left, with the reason: D8's decline for a range from a raw block's start
 into a table is not made (it needs a judgment of what follows the table
 that is removed with the range, which no other decline makes, and so is a
 change of its own); `cut()`, the
-method, carries no run-edge tag as at the parent, so it does not tidy as
-the cut key's command does (`TE71` has no `cut()` joint row).
+method, and the native cut tag nothing that tidies the removal's update,
+so neither tidies as Delete does (pinned by the `TE71` and `TE82` cut
+rows; `TE71` has no cut joint row).
 
 *Found while checking, left.* A range inside one raw block that makes the
 block read as a quote, with the caret right behind text that reads as a
@@ -2709,9 +2708,10 @@ From `packages/lib`, on the final code:
   (`logs/r5-tests-on-parent.json`). The places file needs the new module
   and cannot run there.
 - Each code commit alone type-checks, and the test files it changes
-  pass on it: 761 tests on the first (three files), 607 on the
-  second, 548 on the third (`logs/r5-own-cA.json`, `-cA2.json`,
-  `-cS.json`), and the whole suite on the fourth. The final crash test
+  pass on it; measured again in the resumption, on the new base: 907 tests
+  on the first (four files), 920 on the second (three files) and 1,570 on
+  the caret commit (three files), then the whole suite on the branch's
+  tip. The final crash test
   file run on the first commit has 434 rows failing, on the second 420
   and on the third 419: 382 `TJ` rows, the shape rows of D2's shapes,
   `TP2` to `TP8`, `TL4`, `TS16` and `TS17`
@@ -3157,9 +3157,11 @@ paragraph. Four things in it are choices:
   or a cell's paragraph break; an offset inside the source of one thing
   shown is before it.
 - *The fallback.* The end of the block, in four shapes the docs name
-  (D2; the fourth, a tab between the words of a list item's text, was
-  found by the sixth review). The other choice for a line a tab indents and for a task item's
-  checkbox followed by a tab or by two spaces is to find their source
+  (D2; as resumed, the fourth is a character reference such as `&#35;`:
+  the sixth review's fourth, a tab between the words of a list item's
+  text, has a place under `marked` 18.1). The other choice for a line a
+  tab indents and for a task item's checkbox followed by two spaces is
+  to find their source
   too, as was done
   for a link text holding an escaped bracket; both are the lexer
   rewriting the text, a tab into spaces of which some show.
@@ -3199,8 +3201,8 @@ and typing gives the same document inside an update and outside one.
 The notes' earlier sentence, that no probed result inside an update
 changes with the tag, was true of its twelve shapes and not of a link
 followed by a letter. The other choice is the plan's, to tag the removal:
-then `TS18` and `TS19` change, and a document with no raw block differs
-from the parent for typing and Tab over a range. Row `TS19` pins the
+then `TS18` and `TS23` (formerly `TS19`) change, and a document with no raw block differs
+from the parent for typing and Tab over a range. Row `TS23` pins the
 choice; `TS18` and `TE71`'s missing `cut()` row follow from it.
 
 **6. M4 and M5 by hand.** M4 (an input method over the selection) could
@@ -3311,144 +3313,12 @@ selection.
 
 ### For the plan that follows (`markdown-editor-cross-item-range-removal`)
 
-Line numbers are of this branch's tip.
-
-- **The names are the plan's.** `$isGuardedRange` (`:2372`),
-  `$removeJoiningRange` (`:2394`), `$removeGuardedRange` (`:2443`),
-  `$keepAsEditorSelection` (`:2546`), `$isPlainlyRemovedRange`
-  (`:2638`), `$deleteGuardedRange` (`:2667`),
-  `$guardedRemovalDeclinesLineBreak` (`:2793`),
-  `$joiningRemovalDeclinesLineBreak` (`:1815`), `$isTextOnlyEdgeRange`
-  (`:2344`), `$removeGuardedRangeBeforeText` (`:2841`), all in
-  `MarkdownEditor.ts`. `$removalJoinsEndBlockRest` is at `:1758`, its one
-  call at `:1817`. `registerRangeGuards` is at `:4439`, and
-  `guard(DELETE_CHARACTER_COMMAND, $deleteGuardedRange)` at `:4462`.
-- **That plan's printed edits apply.** Every edit of its stack prototype
-  (`…/plans3/cross-item-range/stack-proto/patch-ci.txt` and
-  `patch-cix.txt`) finds its text exactly once in this branch's
-  `MarkdownEditor.ts`, checked again on the final code: `$isGuardedRange`'s
-  body, the seven lines of `$removeGuardedRange` from
-  `$addUpdateTag(RUN_EDGE_TAG);` to the end of the `if`/`else`, the
-  `isJoining` line, the first statement of `$isPlainlyRemovedRange` (one
-  line, as that plan prints it), the delete registration and the comment
-  and `return` of `$deleteGuardedRange`. One does not: the `lexical`
-  import line now ends `$addUpdateTag, $setState,` (an earlier branch
-  added `$setState`), so `$isSiblingCaret` goes in after it by hand.
-- **`$removeGuardedRange` has three things that plan does not print.** It
-  opens with `$settleTextOnlyEdgeEnds(selection);` and a comment (D11),
-  before `$isGuardedRange` is asked; the raw blocks at the range's ends
-  are read before `$addUpdateTag`; and the function ends with
-  `$keepAsEditorSelection(selection)` (D1) before `return true`.
-  `$joinCoveredItemTexts(selection)` goes where that plan puts it,
-  directly before `if (isTableEdge)`. If its steps move an end out of a
-  raw block the range started in, the list of raw blocks read at the top
-  is still the right one to re-read: a block that is gone is skipped.
-- **`$joiningRemovalDeclinesLineBreak` has four lines that plan does not
-  print** (D8), after its `joinsRest` line: a range that starts at the
-  very start of a raw block and has nothing follow its end is declined
-  (`$rawBlockEmptiedFrom`, `:1837`). That plan changes the arguments of
-  `$removalJoinsEndBlockRest` to nodes; the four lines read `start` and
-  `end` as points and stay as they are.
-- **No raw block of no text survives a removal** (D8). After any route
-  over a range that takes all a raw block holds, an empty paragraph
-  stands where the raw block was and holds the caret
-  (`$showBlankRawBlockAsParagraph`, `markdownWritable.ts:943`, a step of
-  `$showRawBlockAsSaved`). That plan's rows do not rely on one that
-  does: its rows that empty the document's first block (`CI81` to
-  `CI90`, `D39`) hold a heading or a paragraph there. Should a row of it
-  empty a raw first block, expect the paragraph after Delete as well as
-  after Backspace. Row `R32` of the table-edge file is restated here.
-- **The delete registration.** `registerRangeGuards` now registers, for
-  each command, a listener that settles the range's ends
-  (`$settleSelectionBeforeGuard`, D11) ahead of the one that removes, and
-  its JSDoc says "each command has one listener that removes"; that
-  plan's `$deleteCharacterOverGuardedRange` takes the removing row's
-  place and the sentence still holds. A cross-item range with an end
-  held as a point on a list is not settled by D11 (it has no end in a
-  raw block or a code block); should that plan want it settled, the
-  listener is the place, with `$settleTextOnlyEdgeEnds`'s first
-  condition widened. Nothing in the code or its comments says the
-  row is the only listener of a range there will ever be.
-- **A caller may go on with the selection it passed** (D1). That plan's
-  `$deleteCharacterOverGuardedRange` calls `$deleteGuardedRange()` and
-  then reads `selection.isCollapsed()` on the object it read before: that
-  is sound now also where the re-read replaced a raw block.
-- **The caret after a re-read is at the joint** (D2). That plan's rows
-  that type or press Enter over a cross-item range ending in a raw block
-  of a list item were measured on a prototype without D2. Where its
-  removal makes a raw quote, list or table show as rich text, expect the
-  inserted text at the joint, not at the block's end, and measure its
-  rows again before pinning them. The place comes from
-  `$placeOfSourceOffset` (`markdownSourcePlaces.ts:143`), called by
-  `$selectCaretPlace` (`markdownWritable.ts:1090`); nothing of that plan
-  needs to call it.
-- **Shift+Enter** over a range from a level 3 to 6 heading to a raw
-  block's start is declined (D4), by the formula that plan extends.
-- **The update tag.** `$removeGuardedRange` sets no update tag any more
-  (round 7). The plan's snippet adds `$addUpdateTag(RUN_EDGE_TAG);` to the
-  end of the `if`/`else` that chooses the removal; with the sign-off 5
-  decision as it is, the line is not in the code, and that plan's steps
-  run in the update of the route: tagged for the routes `registerRunEdgeRules`
-  tags, untagged for typing, the composition's start and Tab.
-- **Rows that compare with Delete, then the route** should start their
-  ranges away from a space that ends a formatted run, and from
-  punctuation that ends one right before formatted text, or the control
-  differs for the reasons under *Found along the way*. A removal
-  completes no typing shortcut any more (D10), so text that reads as one
-  before the range is no trouble for Delete; but Enter after Delete,
-  with the caret at the end of text that reads as a marker, is taken by
-  Lexical's Enter shortcut, where Enter over the range is not (`TK7`).
-  A row that asserts "one undo restores the source" should not type a
-  character that completes a typing shortcut in the block the removal
-  leaves (a space after `-` or `#`), and Tab at the start of inline code
-  takes the caret's format (`TS16`). A row that dispatches outside an
-  update and then reads the document should read it twice, or flush:
-  what an update's listeners start is committed by the read after.
-- **The test file.** The new `describe` is at `:1041` of
-  `markdown-editor-command-crashes.test.ts`, directly before the
-  `upstream canaries` one (`:2057`); that plan's own goes between the
-  two. The imports it needs are there (`DELETE_WORD_COMMAND`,
-  `INSERT_TAB_COMMAND`, `REMOVE_TEXT_COMMAND`, `UNDO_COMMAND`,
-  `LexicalCommand`, `$insertGeneratedNodes`). The helpers `select`,
-  `run`, `expectParity` and `syncCaretFormat` and the constants are local
-  to this plan's `describe`; a row outside it cannot call them.
-- **`markdownWritable.ts`.** `$showRawBlockAsSaved` is exported (`:916`),
-  `$showSiblingRawBlocksAsWritten` is at `:895`, `registerRawBlockRules`
-  at `:969`, `$showRawBlockAsItsBlocks` at `:1032`, `$selectTextOffset`
-  at `:1111`. `$contentFollows` is exported now (`:1750`), for D8.
-- **Differential baselines.** The parent's results for that plan's checks
-  must be recorded anew on this branch's tip. The harnesses here:
-  `diff/zz-re-wide.test.ts` with `diff/runwide.sh` and `diff/widediff.py`
-  (the wide probe), `r5/zz-r5-sweep.test.ts` with `r5/runsweep.sh` and
-  `r5/sweepan.py` (the widened sweep), `r5/zz-r5-points.test.ts` with
-  `r5/runpoints.sh` and `r5/pointsan.py` (ends held as points on
-  containers), `r4/zz-r4-proto.test.ts` (the mapping against a mark),
-  `diff/redcount.py` (the matrix's failing
-  cells), `adhoc/zz-controls.test.ts` (what Delete, then each route gives
-  for shapes named in a JSON file). The wide probe has 768 cells that are
-  not guarded here, a list item's text into a raw list that joined it at
-  load; they are that plan's shape.
-- **Fuzz baselines at this tip**: `fuzz-c5/`, `lif-c5/` and `r7-c5/` in
-  the scratch folder (paste 0, 0, table edge 0, 0, list
-  edit 1, reviewer 7 89).
-- **Docs.** The paragraph at line 82 of `docs/components/MarkdownEditor.md`
-  changed; three entries were appended to `## Fixed` → `### Components`
-  of the changelog (`:1004`, `:1029`, `:1041`).
-- **The typing shortcuts** (D10). A removal `$removeGuardedRangeAsDeletion`
-  makes completes none; every other update is handed to Lexical's listener
-  as at the parent. That plan's `$joinCoveredItemTexts` runs inside the
-  removal and needs nothing more. A new route of it that only removes, outside
-  `$removeGuardedRange`, would use the same helper. The plan
-  `markdown-editor-typing-shortcuts-only-for-typing` replaces the helper's
-  tag (D10, *Collision with the next plan*).
-- **Left open.** The fallback's shapes (D2); Lexical's Enter shortcut
-  after Delete, the run-edge rule between the control's two steps, the
-  tab's format, `cut()` carrying no run-edge tag, and a browser's caret
-  between two text nodes (*Found along the way*); the typing shortcut
-  after a deletion Lexical makes itself, in a paragraph or in one raw
-  block (D10); a point on a table from outside it
-  (sign-off 12, for part D of the table-command-fixes plan); M4 and M5
-  by hand.
+*Resumed: this section named symbols the resumption removed or changed
+(`$settleSelectionBeforeGuard`, `GUARDED_DELETION_TAG`,
+`$removeGuardedRangeAsDeletion`, the changelog lines). What the four plans
+waiting on this branch need is now in the section "What the four plans
+waiting on this branch need" of
+`plans/in-progress/markdown-editor-raw-block-range-edits-resumption.md`.*
 
 ### Held, and rebased onto the typing-shortcuts branch (2026-10-14)
 
@@ -3457,4 +3327,34 @@ The seventh review was blocking again, so the branch is held by the owner's deci
 - In `MarkdownEditor.ts` the shortcut wrapper now asks both questions: the update typed text, and it carries no `GUARDED_DELETION_TAG`. The two doc-comment conflicts were merged keeping that branch's wording, with one sentence each for the tag.
 - Both branches created `markdown-editor-typing-shortcuts.test.ts`. That branch's file keeps the name; this branch's rows moved unchanged to `markdown-editor-guarded-removal-shortcuts.test.ts`.
 - The changelog keeps both entries.
-- Typecheck, test typecheck and lint are clean. The full suite has 43 failing tests, all rows of this branch that pin the parent's behaviour the general rule changes: `TY3`, `TY4` and `TY5` (14 each) in `markdown-editor-guarded-removal-shortcuts.test.ts` and `TK6` in `markdown-editor-command-crashes.test.ts`. They are left for the resumption, which drops this branch's own shortcut commit (see that plan's section "For `markdown-editor-raw-block-range-edits`, when it resumes").
+- Typecheck, test typecheck and lint are clean. The full suite has 43 failing tests, all rows of this branch that pin the parent's behaviour the general rule changes: `TY3`, `TY4` and `TY5` (14 each) in `markdown-editor-guarded-removal-shortcuts.test.ts` and `TK6` in `markdown-editor-command-crashes.test.ts`. They are left for the resumption, which drops this branch's own shortcut commit (see that plan's section "For `markdown-editor-raw-block-range-edits`, when it resumes"). Resolved by the resumption.
+
+### Resumed (2026-10-17)
+
+The held branch was replayed onto the Markdown chain's top, `5f5ac474b`
+(`feature/markdown-named-character-references`), by the procedure of
+`plans/in-progress/markdown-editor-raw-block-range-edits-resumption.md`:
+a cherry-pick of each commit in order, with every fix folded into the
+commit that owns the behaviour.
+
+- The branch's own typing-shortcut commit (`c9b90d12c`) is dropped. The
+  general rule of `markdown-editor-typing-shortcuts-only-for-typing`
+  applies, so no removal completes a shortcut. Three families of rows
+  that pin it for a removal into a raw block are kept, as a commit of
+  their own, in `markdown-editor-guarded-removal-shortcuts.test.ts`.
+- There is one settling model: `$settleSelectionOffContainers`, with two
+  ordered steps (the table-command rules, then this branch's inward rule
+  for a range with an end in a raw block or a code block). The branch's
+  twelve settle registrations and its second call in
+  `$removeGuardedRange` are gone; Enter has a settle listener of its own.
+- Review 7's three shapes where the caret still went into a neighbouring
+  list item or table cell are fixed in `markdownSourcePlaces.ts`
+  (rows `TE84` to `TE88`, and new rows of `SP15`).
+- The 92 tests that failed on the held tip, and the 11 more that failed
+  on the chain's top, were stale expectations, not regressions of the
+  editor. The plan's addendum classifies each one.
+- The passages of these notes that the resumption made untrue are
+  corrected above: the typing-shortcut decision, the "collision with the
+  next plan" paragraph, the statements about the cuts, the round 7 table,
+  the per-commit test counts, the fallback list, and the section for the
+  plan that follows.
