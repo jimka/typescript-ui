@@ -3,7 +3,8 @@
 import { $createListItemNode, $isListItemNode, $isListNode, ListItemNode, ListNode } from "@lexical/list";
 import type { SerializedListItemNode } from "@lexical/list";
 import {
-    $copyNode, $createParagraphNode, $getSelection, $isElementNode, $isRangeSelection, ElementNode, ParagraphNode,
+    $copyNode, $createParagraphNode, $getEditor, $getNodeByKey, $getSelection, $hasAncestor, $isElementNode, $isRangeSelection, $isRootNode,
+    $isRootOrShadowRoot, $removeFromParent, ElementNode, ParagraphNode,
 } from "lexical";
 import type {
     BaseSelection, DOMConversionMap, DOMConversionOutput, DOMExportOutput, LexicalEditor, LexicalNode, PointType, RangeSelection,
@@ -602,6 +603,85 @@ export function $removePlainly(node: LexicalNode, preserveEmptyParent?: boolean)
 }
 
 /**
+ * Tells whether a selection point stands where Lexical moves it as a node
+ * leaves or joins a parent: on the node, inside it, or on that parent. With
+ * no point there, Lexical's own removal and insertion leave the selection
+ * as it is, and the place of the node among its siblings, which they count
+ * by walking those siblings from the first, is not needed.
+ *
+ * @param node - The node that leaves or joins.
+ * @param parent - The parent it leaves or joins.
+ * @returns `true` when the selection is a range with a point there.
+ */
+function $holdsPointAt(node: LexicalNode, parent: LexicalNode): boolean {
+    const selection = $getSelection();
+    const points = $isRangeSelection(selection) ? [selection.anchor, selection.focus] : [];
+
+    return points.some((point) => {
+        const at = point.getNode();
+
+        return at.is(node) || at.is(parent) || $hasAncestor(at, node);
+    });
+}
+
+/**
+ * Removes a node as {@link $removePlainly} does, without the walk over its
+ * earlier siblings that Lexical's removal makes to keep a selection point on
+ * its parent in place: with no point on the node, in it or on its parent
+ * ({@link $holdsPointAt}) the removal only unlinks the node, which
+ * `$removeFromParent` does. Removing the items of a long list one by one
+ * otherwise walks the list once for each of them.
+ *
+ * @param node - The node to remove.
+ * @param preserveEmptyParent - Whether a parent left empty stays.
+ */
+export function $removeUnwalked(node: LexicalNode, preserveEmptyParent?: boolean): void {
+    const parent = node.getParent();
+    const selection = $getSelection();
+    const isRange = $isRangeSelection(selection);
+    const movesPoint = parent === null || !isRange || $holdsPointAt(node, parent);
+
+    if (movesPoint) {
+        $removePlainly(node, preserveEmptyParent);
+
+        return;
+    }
+
+    $removeFromParent(node);
+
+    // What Lexical's removal does after it unlinks a node.
+    const leavesParentEmpty = preserveEmptyParent !== true && !$isRootOrShadowRoot(parent) && !parent.canBeEmpty() && parent.isEmpty();
+
+    if (leavesParentEmpty) {
+        $removePlainly(parent);
+    }
+
+    const leavesRootEmpty = $isRootNode(parent) && parent.isEmpty();
+
+    if (leavesRootEmpty) {
+        parent.selectEnd();
+    }
+}
+
+/**
+ * Puts nodes after a node, in order, as `ElementNode.splice` on its parent
+ * does, without counting the node's place among its siblings: each goes in
+ * by `LexicalNode.insertAfter`, whatever a class overrides, and the
+ * selection is left as it is.
+ *
+ * @param node - The node to put them after.
+ * @param inserted - The nodes, in the order they are to stand in.
+ */
+export function $insertAfterUnwalked(node: LexicalNode, inserted: readonly LexicalNode[]): void {
+    let last = node;
+
+    for (const each of inserted) {
+        ElementNode.prototype.insertAfter.call(last, each, false);
+        last = each;
+    }
+}
+
+/**
  * Moves the selection's element points on one node to the same offsets on
  * another, which is to hold the first one's children.
  *
@@ -676,8 +756,15 @@ export function $splitItemAfterText(item: MarkdownListItemNode, text: MarkdownLi
  */
 export function $splitItemBefore(item: MarkdownListItemNode, block: LexicalNode): MarkdownListItemNode {
     const next = new MarkdownListItemNode();
+    const list = item.getParent();
+    const movesPoint = list === null || $holdsPointAt(next, list);
 
-    item.insertAfter(next);
+    if (movesPoint) {
+        item.insertAfter(next);
+    } else {
+        $insertAfterUnwalked(item, [next]);
+    }
+
     next.splice(0, 0, [block, ...block.getNextSiblings()]);
 
     return next;
@@ -806,16 +893,26 @@ export function $liftItemOut(item: MarkdownListItemNode): LexicalNode[] {
         $movePointsBetween(text, paragraph);
     }
 
-    const after = item.getNextSiblings();
     const last = moved[moved.length - 1]!;
+    // The list is the rest list an earlier lift of this update made, and the item is its first: it needs no new one.
+    // A point on the list itself is one Lexical moves when the list goes, so that case is left as it was.
+    const opensRestList = item.getPreviousSibling() === null && $isMadeInThisUpdate(list) && $elementPointsOn(list).length === 0;
 
-    list.getParentOrThrow().splice(list.getIndexWithinParent() + 1, 0, moved);
+    if (opensRestList) {
+        $putBefore(list, moved);
+    } else {
+        $insertAfterUnwalked(list, moved);
+    }
 
     if (text !== null) {
         $removePlainly(text, true);
     }
 
-    $splitListAfter(list, item, after, last);
+    if (opensRestList) {
+        $dropEmptied(list, item);
+    } else {
+        $splitListAfter(list, item, item.getNextSiblings(), last);
+    }
 
     for (const [point, standsBefore] of pointsOnItem) {
         // A caret that stood between the item's blocks stays before the same block, wherever that block went.
@@ -823,6 +920,59 @@ export function $liftItemOut(item: MarkdownListItemNode): LexicalNode[] {
     }
 
     return moved;
+}
+
+/**
+ * Tells whether a node was made by the update that is running: the
+ * committed state does not hold it.
+ *
+ * @param node - The node.
+ * @returns `true` when no committed state holds the node yet.
+ */
+function $isMadeInThisUpdate(node: LexicalNode): boolean {
+    const key = node.getKey();
+
+    return $getEditor().getEditorState().read(() => $getNodeByKey(key) === null);
+}
+
+/**
+ * Puts nodes right before a node, in order, without counting its place
+ * among its siblings.
+ *
+ * @param node - The node to put them before.
+ * @param inserted - The nodes, in the order they are to stand in.
+ */
+function $putBefore(node: LexicalNode, inserted: readonly LexicalNode[]): void {
+    const previous = node.getPreviousSibling();
+
+    if (previous === null) {
+        node.getParentOrThrow().splice(0, 0, [...inserted]);
+    } else {
+        $insertAfterUnwalked(previous, inserted);
+    }
+}
+
+/**
+ * Ends the lift of a list's first item whose text and first blocks were put
+ * before the list: the item goes when it holds nothing any more, and so
+ * does the list. What is left is the list {@link $splitListAfter} would
+ * have made for the item and the items after it, with nothing moved.
+ *
+ * @param list - The list.
+ * @param item - Its first item, whose text and blocks were taken out.
+ */
+function $dropEmptied(list: ListNode, item: MarkdownListItemNode): void {
+    const keepsItem = item.getChildrenSize() > 0;
+
+    if (!keepsItem) {
+        $removeUnwalked(item, true);
+    }
+
+    const listIsLeftEmpty = list.isEmpty();
+
+    if (listIsLeftEmpty) {
+        $removeUnwalked(list);
+    }
 }
 
 /**
@@ -873,17 +1023,17 @@ function $splitListAfter(list: ListNode, item: MarkdownListItemNode, after: Lexi
     if (following.length > 0) {
         const restList = $copyNode(list);
 
-        last.getParentOrThrow().splice(last.getIndexWithinParent() + 1, 0, [restList]);
+        $insertAfterUnwalked(last, [restList]);
         restList.splice(0, 0, following);
     }
 
     if (!keepsItem) {
-        $removePlainly(item, true);
+        $removeUnwalked(item, true);
     }
 
     const listIsLeftEmpty = list.isEmpty();
 
     if (listIsLeftEmpty) {
-        list.remove();
+        $removeUnwalked(list);
     }
 }
