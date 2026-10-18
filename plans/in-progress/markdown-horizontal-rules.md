@@ -1648,3 +1648,207 @@ comparisons. What it did and found:
     and behaves as the other block insert of source mode does. The source and
     WYSIWYG results differ as they differ for `insertTable`, and the command
     joins `insertTable` outside the "source mode equals WYSIWYG" parity rows.
+
+---
+
+## Implementation Notes
+
+What the plan called for, what was done instead, and why. The plan body above is unchanged.
+
+- **The line a rule keeps is checked when a node is read back from JSON, not
+  when it is set.** The node row *the state holds a thematic break line only*
+  called `$setState(rule, horizontalRuleMarkerState, x)` and expected `""` for
+  `  ---`, `-- -x` and `--`. Lexical runs a state's `parse` when a node is built
+  from JSON (a stored document, undo, paste); `$setState` stores the value as
+  given. The rows therefore build the node with `$parseSerializedNode` and a
+  state of the stated value, and expect the same results. The importer only ever
+  sets the token's line, which is a thematic break, so the editor holds no other
+  value.
+- **With a rule selected, each insert puts its block directly after the rule,
+  as the rule's next sibling in the rule's own parent.** The plan said "after
+  the selected rule" and the first version turned the selection into a caret
+  after the rule (`rule.selectNext()`), which leaves a point inside the next
+  block when that block is a container: `insertTable` then added a cell break to
+  a following table's first header cell, `insertHorizontalRule` did nothing but
+  moved the selection, and `insertImage` went into a table cell, split a
+  following item's text or made a paragraph inside a following quote; a caret on
+  a rule's line in source mode reached the same. The rule the plan means is
+  now: `insertTable` and `insertHorizontalRule` insert their block after the
+  rule, `insertImage` inserts a new paragraph holding the image after the rule,
+  each in the document, a list item, a quote or a `:::` column, whichever holds
+  the rule, and the caret lands where each insert normally leaves it (the first
+  header cell, the start of the block after the new rule, after the image). A
+  rule at the end of a list item keeps the new block inside the item, as Enter
+  does. A rule is only ever in a parent that holds blocks (a table cell drops
+  one), so none of the three declines while a rule is selected, and the three
+  `can…` fields are `true` then; this replaces the earlier decline of the
+  image before a raw Markdown block or a code block, which the paragraph of its
+  own makes unnecessary. In source mode only `insertImage` runs through the
+  model, so a caret on a rule's line puts the image paragraph after the rule;
+  `insertTable` and `insertHorizontalRule` there are text insertions above the
+  block holding the caret. Rows for all three inserts cover a rule before a
+  paragraph, a table, a list, a quote, a `:::` block, a code block and a raw
+  block, at the top level and inside a list item, a quote and a column, and a
+  rule with nothing after it in the document, an item, a quote and a column.
+- **The redraw mark of a selected rule is a discrete update.** The update
+  listener of `registerHorizontalRuleSelection` issued a plain update tagged
+  `HISTORY_MERGE_TAG`; it waited for the end of the tick and batched with an edit
+  made in the same tick, and the merge tag then covered that edit as well (select
+  a rule and press Delete in one tick: undo restored nothing; select, move and
+  type: undo left the typed character). It is now
+  `{ discrete: true, tag: [HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG] }`, as
+  the editor's other merge-tagged update is, which commits at once so no edit can
+  join it. Marking the element through a class toggle was not taken: under the
+  seam rule a node cannot touch its element after creating it, and a
+  mark that is an update at all has to be one that cannot batch. Rows run both
+  same-tick sequences. The listener also returns early unless one of the two
+  states holds a node selection.
+- **The range guard cancels a key it handles.** When taking the rules at a
+  range's ends leaves nothing to delete, the guard returns `true` for
+  `KEY_BACKSPACE_COMMAND` and `KEY_DELETE_COMMAND` after
+  `event.preventDefault()`, as `$deleteTableEdgeRangeFromKey` does, or the
+  browser's own `beforeinput` would delete a second time. Rows check
+  `defaultPrevented` for Select All over `---` and for the range from before to
+  after the middle rule of `a` / `---` / `b`.
+- **The `---` shortcut makes a rule only from a paragraph that holds nothing but
+  the marker.** `replace` also declines when the paragraph has nodes after the
+  marker's text node (bold, a link, an image, a hard break), as the docs say.
+- **Pinned behaviours.** Backspace at the start of `b` in `- ***` / `- b`
+  removes the rule that opens the item before it and leaves `-` / `- b`;
+  Backspace in an empty item after `- a` / (blank) / `  ---` removes the item and
+  selects the rule (the list then saves as `- a` / (blank) / `  ---`). Both are
+  what *A deletion beside a list or quote that ends or opens with a rule*
+  describes, and have rows. The five block-command rows of *Block types, list
+  toggles, the quote command and joins next to a rule* have rows too, and the
+  actions of the empty-line context menu's Horizontal rule entry and of the Insert
+  dropdown's are run, not only listed.
+- **A range removes only the rules between its two ends.** The plan's
+  description of `$removeHorizontalRulesAtRangeEnds` (a loop at each end that
+  removes the rule beside the point "while" there is one) lacked a stop. For a
+  range over one rule among adjacent rules (`a` / `***` / `---` / `b` with the
+  range from before the first rule to after it) the loops went on past the point
+  where the range had collapsed and removed the neighbours too: Delete, the keys,
+  typing, Enter, a cut, the inserts and a source-mode line selection all lost the
+  rules beside the selected one. Each loop now also stops once the range is
+  collapsed, which is when the last rule between the two ends is gone. Rows run
+  every route that removes or replaces a range (Delete, Backspace, the two keys,
+  typing, Enter, paste, cut with the clipboard checked, the three inserts) over
+  two and over three adjacent rules at the top level and in a list item, a quote
+  and a `:::` column, with the exact save each time, plus a source-mode line
+  selection and the guard-key rows. `insertTable` keeps the content of the range
+  it is given, so its table goes after the selected rule and the rule stays.
+- **Word and line deletes beside a list or quote act as the character delete
+  does.** `$deleteHorizontalRuleBesideContainer` was registered for
+  `DELETE_CHARACTER_COMMAND` only; Ctrl/Cmd+Backspace and Delete and the line
+  deletes then did nothing and moved the caret into the container. It is now
+  registered for the three delete commands, as `$backspaceAfterContainer` is.
+  Rows run all three, both directions, beside a list, a quote and a `:::` block,
+  and type after the delete to check the caret. Beside a `:::` block the three
+  leave the document as it is, as they do after a block ending in text.
+- **Smaller changes.** The paste listener is renamed
+  `$settleItemTextBeforePasteEndingInBlock`, with its JSDoc corrected. The node
+  has an `exportDOM` that writes a plain `<hr>`, so copied HTML never carries the
+  editor class or the selected look. The select-the-node helper lives with the
+  node and the source model uses it. The step that adds an empty paragraph after
+  a block that ends its container is shared by the table, the rule and the
+  insert after a selected rule. The Quotes bullet of `MarkdownEditor.md` names the
+  rule's shortcut.
+- **A link over a range that crosses a rule links the text of each block.**
+  `$toggleLink` (Lexical's) wrapped the rule too: the save was a bracket pair
+  holding a line end in a paragraph of its own, and `canLink` was `true` there.
+  `toggleLink` now links per block of text (`$toggleLinkLeavingRules`): for each
+  block the range touches it sets a range over that block's selected leaves and
+  wraps it, skipping a block with nothing selected, so the rule is never wrapped
+  and a range with no rule is wrapped as before. The decline of the command over
+  such a range was not taken, since linking the text is what the format toggles
+  and the text styles already do at a rule. `removeLink`, `toggleLink(null)` and
+  the text styles needed no change and have rows. Rows: the top level, a list item,
+  a quote, a column, part of each block, and two adjacent rules, each with the
+  exact save and the rule node counted; the source mode rows through the model
+  for `one` / (blank) / `---` / (blank) / `two` from 0 to 13 and for the list
+  item.
+- **A command that changes nothing leaves the rules at the range's ends and the
+  selection alone.** The range guard removed the edge rules and settled the
+  selection before the command decided. The guard now asks first
+  (`$ruleEdgeRangeVerdict`): a paste with no text to insert (an empty clipboard,
+  a file alone), a clipboard insert with no nodes, and Shift+Enter where the break
+  would have no place once the rules are gone (the range is only rules, or ends
+  between blocks, or the caret the removal leaves is where a break is not
+  written) pass untouched; every other guarded command acts, so it removes the
+  rules as before. Rows run Select All over `---` / (blank) / `ab` and `ab` /
+  (blank) / `---`, each with those four, with the `<div></div>` controls, and a
+  paste of text that still replaces the rule.
+- **A paste with a rule selected replaces the rule where it stands.** No paste
+  handler took a node selection, and Lexical's insert split the list item or the
+  quote the rule stood in and left an empty item. Two listeners at high priority
+  now take it: the clipboard-nodes one puts pasted blocks in at the rule's place
+  and wraps pasted inline content in a paragraph, and the plain-text one makes a
+  paragraph per line; both insert after the rule in its own parent, remove the
+  rule and leave the caret at the end of the last block. Rows: a copied rule, two
+  paragraphs, a list, a word and plain text, pasted in the document, a list item,
+  a quote and a column.
+- **The selected look has tests that fail when the redraw breaks.** The rows of
+  `markdown-horizontal-rule-node-html.test.ts` mark the rule dirty by hand, so
+  the plan's statement in *Potential Challenges* that "the HTML row checks both
+  ways" checked the node's drawing, not the editor's redraw. A new jsdom file mounts
+  a `MarkdownEditor` and checks the class on the rule's element after a selection
+  of the rule and after the selection leaves it, and that a click on the element
+  selects the rule. With `rule.markDirty()` turned into a no-op in
+  `registerHorizontalRuleSelection` two of its three rows fail; they pass again
+  with it restored.
+- **Smaller decisions.** The `canInsertTable`, `insertTable` and `insertImage`
+  JSDoc say what a selected rule does. The `ELEMENT_SHORTCUTS` comment lists the
+  rule's shortcut. Select All in a column whose last block is a rule, then
+  Delete, now leaves `::: {}` / (blank) / `:::` as the paragraph version and the
+  base do: when a rule is all a column holds, the removal puts an empty paragraph
+  there for the range to end in. `$selectNodeAlone` stays in the node module: the
+  editor has no module of general node helpers (`markdownWritable.ts` is the
+  writable-state rules), and the module holds the only node it is used for, which
+  both callers already import. Three older problems, the same on the base, are in
+  the known-issues file.
+- **The Documentation Impact sentence of the Lists bullet** ("A raw thematic
+  break of the bullet's own character that opens an item …") does exist at the
+  base, in `MarkdownEditor.md`'s *What Markdown cannot hold* › *Lists* bullet, and
+  was changed to "A horizontal rule of the bullet's own character …"; no named
+  sentence was missing.
+- **`insertHorizontalRule()` removes the range it replaces with the helper
+  `insertImage` uses** (`$removeRangeBeforeImage`), not `selection.removeText()`.
+  The helper is the editor's removal of a range for an insert in every shape the
+  range guards know (stale focus, a range across list items, beside a table), so
+  the rule goes in where a typed character would. For the plan's range row
+  (`abc`@1 to `def`@2) the result is the same.
+- **The typing-shortcut rows of paragraphs left as text** save as `\---`, `\***`
+  and `\___` (the plan asked to confirm them on the first run), and the two held
+  rows as `> a` / `>` / `> \---` and `- a` / (blank) / `  \***`.
+- **`markdownSourceLines.ts` spells the rule line out** (`HORIZONTAL_RULE_LINE`)
+  instead of importing `STANDARD_HORIZONTAL_RULE`, as it already spells out the
+  table delimiter cell: the module is a leaf that imports no Lexical module, and
+  the node module does. A row of `markdown-source-edits.test.ts` pins the two to
+  be the same.
+- **`addsOneHorizontalRule` reads the new rule as a stretch whose leaves are not
+  predicted** (the existing wildcard of `readsAsExpected`), because the leaf
+  reader counts a thematic break as a leaf of its own, which a table is not; it
+  also requires exactly one more `hr` entry.
+- **The place rows for a rule's line go through `$selectSourceRange`** (rows
+  `SP27` of `markdown-source-places.test.ts`), not through the `$placeIn` helper
+  of that file: `$placeIn` reads detached blocks, and a top-level rule has no
+  place without a parent to be a point in. The rows give the same facts: an offset
+  at the line's start is before the rule, its end after it, and a collapsed caret
+  on the line selects the rule.
+- **A cut copies the range whole through `$getClipboardDataFromSelection`**
+  (`$clipboardDataOfGuardedRange`) for a range beside a rule, so the copy holds
+  the rule without settling the selection first; the plan's fallback (settle a
+  copy of the selection) was not needed, the two Select All cut rows pass.
+- **Checks run.** Typecheck, test typecheck, lint, `docs:api` (no warnings),
+  `docs:llms:check`, `build:lib`, the whole library suite and the docs package
+  suites for links, constructs and pages all pass. The three grep checkpoints of
+  step 21 are empty. The known-issues file was restated as the plan says, and the
+  claim added to the first entry (a range from before a rule to after `x` shows
+  `\t# y`) was run and holds.
+- **Not run: the ten manual browser checks** of *Expected Behaviour › Manual
+  (browser) checks*, and the Chromium and WebKitGTK looks they name, with an
+  eleventh the guard fix adds: in a browser, Select All over a document that
+  opens or ends with a rule and then Backspace or Delete removes the rule once and
+  nothing else (no second deletion by the browser). This
+  environment drives no browser. The demo surface (`packages/qa`) is a
+  performance harness with no per-feature page, so no demo was added.
