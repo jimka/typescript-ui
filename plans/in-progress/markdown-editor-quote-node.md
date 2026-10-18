@@ -1972,3 +1972,74 @@ row 9: compared 4,926 → 5,428, declined 2,484 → 1,960, unplaced 1,014 →
     one result on all routes with the undo and redo steps of `TY2`, no
     removal completes one, and the Markdown files show no other change than
     `TK7`.
+
+---
+
+## Implementation Notes
+
+What differs from the plan, or was left to the implementation:
+
+- **The block typing shortcuts in held blocks** are split into `$applyElementShortcut`, `$applyMultilineShortcut` and
+  `$runHeldBlockShortcut` (the plan describes one function), and they try the shortcuts in the order Lexical's two paths
+  use: the one-line shortcuts first on a typed character, the code fence first on Enter. The behaviour is the one the
+  plan's rows pin.
+- **`$toggleQuoteOfTouchedBlocks`** is split into `$liftBlocksOutOfQuotes`, `$putBlocksIntoQuotes` and `$makeQuoteOfRun`,
+  and the walk from a block to the child of its quote is `$childHolding`. `$insertBlockToNearestHolderAtCaret` hands over
+  to Lexical's insert when a shadow root stands between the caret and the nearest quote, tested as
+  `quote.isParentOf(region)`.
+- **`writtenQuote`** lays its lines out in `quotedWrittenBlocks`, with `linesOf` for the lines kept as written.
+- **Restated rows** that the plan lists by rule only: `Q1` and `Q2` of `markdown-editor.test.ts` moved into the parity
+  table (their `Now` column, both surfaces); `X27 OL` saves `one` / (blank) / `1. > 1. qq` / `2. bb`; the eleven
+  `SP19` rows of `markdown-source-places.test.ts` took the places the implementation gives, after the two examples the plan
+  names (`[[[¦a][[h]]]]`, `[[[a][[[q{0§: }  r {1:b}]]]]]`) matched; `I18` of `markdown-importer.test.ts` carries the save as a
+  third element of its row, because the quote's text (`b`) and its save (`> - b`) now differ; `HE11` and `HE12` of the same
+  file are two tests; `K17` of `markdown-editor-list-item-edits.test.ts` is a test of its own, as it no longer shares the
+  rule of the other containers; `RL14` of `markdown-reference-links.test.ts` expects `markdown-quote` by the node-type rule.
+- **The command-crashes file** is the planner's restated copy, with the comment of `TK7` rewritten as the plan asks.
+- **Measured** with the planner's probes, on this machine: a quote of 2,000 paragraphs loads in 178 ms (359 ms before the line lookup of `recordQuoteBlocks` was made linear); a letter and its
+  save in the hand-written quote of 2,000 paragraphs takes 181 ms, where a `:::` column of the same paragraphs takes
+  178 ms; the price probe gives the plan's numbers (37 lines gone in 29 runs of the hand-written set, 610 in 424 runs of
+  the corpus, 72 disagreements with the viewer).
+- **Not done:** the manual browser checks of the plan's *Manual (browser) checks* table were not run in this session.
+- **Shortcuts in a quote of one paragraph.** The Overview says no typing shortcut applies in a quote. That held for a
+  quote that loaded as a raw block, but a quote of one paragraph was Lexical's own quote, in which Lexical's shortcuts
+  applied and replaced the quote: `> b` with `- ` typed gave `- b`, `# ` gave `# b`, a code fence gave a code block
+  outside the quote, and `> ` left `> b`. The editor's shortcut for the blocks a quote holds now builds inside the
+  quote, so these give `> - b`, `> # b`, a code block inside the quote and `> > b`. The changelog, the migration page and
+  four rows of `markdown-editor-quotes.test.ts` record it. The plan's "Results that change" table does not list it.
+- **The quote command over a raw block.** The base escaped the raw block's text into a quote (`> \<div>x\</div>`); the
+  command now wraps the block and keeps it raw (`> <div>x</div>`), as it wraps any block. A row of
+  `markdown-editor-quotes.test.ts` and the changelog record it; "Results that change" does not list it.
+- **Parts of a quote in the standard form.** The cost footnote says a quote written in the standard form is not written
+  part by part, because its parts equal their standard form. `differsFromStandard` returns true for every quote block,
+  as it does for a column block, so an edited quote is always written part by part; the measured costs are those of
+  that path.
+- **Rows added after review:** `TY23` (the end of a composition completes a shortcut in a block a quote or a list item
+  holds), and four rows of `markdown-editor-quotes.test.ts` that delete a quote's only table and then insert a table
+  or press Backspace: top level, nested quote, quote in a list item, and the Backspace key. They pin the caret that
+  `$keepQuoteShape` leaves in the new paragraph.
+- **Source-mode rows `5.32` and `5.33`** leave the caret unchecked: the plan gives their text only, and a command over
+  a quote in source mode places the caret by the same code as the rows `5.24`, which the plan pins by text as well.
+- **`MarkdownQuoteNode.insertNewAfter`** is overridden (not in the plan), so that Lexical's own split at a point
+  strictly inside a quote (`RangeSelection.insertParagraph` on an element point of the quote) moves the blocks after the
+  point into a quote of their own, not into a paragraph outside the quote. At the start or the end of a quote Lexical
+  never asks the quote and splits at the level of the document, which adds empty paragraphs and takes no block out.
+  `insertNodes` at a point on a quote still leaves an empty half of the quote at its start or end: Lexical asks
+  `canBeEmpty()`, and answering `false` would make a quote emptied of its last block vanish, where the plan has it keep
+  an empty paragraph (`DEF6`). `canMergeWhenEmpty` is not overridden: no pinned behaviour needs it.
+- **`registerHeldBlockShortcuts`** looks at the committed state first and starts an update only when the typed
+  character stands in a paragraph or heading that a quote or a list item holds, so other typing starts none.
+- **The quote command off, over a nested quote.** The plan's step 2 of the off rule lifts, for each nearest quote, the
+  whole run of its children from the first to the last that holds a touched block. For a selection over a nested quote
+  and the blocks around it, that run holds the nested quote, so a block that left the nested quote left the outer quote
+  with it, two levels out. The plan's prose, and the command's documentation, say that every touched block leaves its
+  nearest quote only, one level out. The code follows the prose: for each nearest quote it lifts the children that hold a
+  touched block, each run of them side by side at once, and a child that holds only blocks of a nested quote stays. `> a`
+  / `>` / `> > b` / `>` / `> c` over `a` to `c` gives `a` / (blank) / `> b` / (blank) / `c`. Rows of
+  `markdown-editor-quotes.test.ts` pin it for that selection, for the nested quote's blocks alone, for a selection from
+  the nested quote into the outer quote's later block, and for three levels.
+- **A manual browser check the plan lacks.** Add to the plan's *Manual (browser) checks* table: Backspace as an input
+  method sends it (`DELETE_CHARACTER_COMMAND`, with no key event) at the start of a quote that is first in the document,
+  and the same with an element caret on the quote (between its blocks); expected: the quote's first block leaves the quote,
+  as it does for the Backspace key. Headless, Lexical's deletion throws "window object not found" there, so the row can
+  only be checked in a browser. The documentation carries no manual-check list.
