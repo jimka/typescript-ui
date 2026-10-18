@@ -584,13 +584,16 @@ page resets to empty.
   editor's own form, as a WYSIWYG edit does. A command on text the WYSIWYG
   surface keeps as a raw Markdown block does nothing, where source mode converted some of those lines before
   (`> - one`). A command also does nothing with the caret on several empty
-  items, rows, cells or columns of one block (`-` / `-` / `-`), on the blank
-  lines between blocks or before the first block, and where the editor does
-  not find the source of what a block shows beside the selection (the cases
-  the component page lists). A read-only editor refuses every source-mode
-  command that edits text, `insertTable` and the two paragraph inserts
-  included, with `"readonlyedit"` up front, also where the command would
-  have done nothing. No consumer action is needed.
+  items, rows, cells or columns of one block (`-` / `-` / `-`), on a blank
+  line between blocks — also between the items of a list, the blocks of a
+  list item or a quote, and the blocks of a `:::` column — on a `:::`
+  fence's opening, `|||` and closing lines, on a table's delimiter row, or
+  before the first block, and where the editor does not find the source of
+  what a block shows beside the selection (the cases the component page
+  lists). A read-only editor refuses every source-mode command that edits
+  text, `insertTable` and the two paragraph inserts included, with
+  `"readonlyedit"` up front, also where the command would have done
+  nothing. No consumer action is needed.
 
 - **`MarkdownEditor` keeps the unedited parts of an edited block as
   written.** An edit in a list, table, fenced code block or `:::` fence
@@ -745,11 +748,11 @@ page resets to empty.
   converted paragraph is set apart from its neighbours rather than joining
   them, so toggling a list off makes each item its own paragraph; and
   `insertTable` goes above the whole block holding the caret instead of
-  splitting an HTML block or a table. The other eleven
-  commands — `setBlockAlignment`, `setColumnCount`, and the nine
-  table-structure commands — still no-op in `"source"` mode; each needs its own
-  design (a `:::` fence rewrite or a parsed pipe grid) and is left for a
-  follow-up. `getSelectionState()` and `"selectionstate"` are mode-aware too:
+  splitting an HTML block or a table, and does nothing on a blank line
+  inside a list or a quote. The other eleven commands — `setBlockAlignment`,
+  `setColumnCount`, and the nine table-structure commands — still no-op in
+  `"source"` mode; each needs its own design (a `:::` fence rewrite or a
+  parsed pipe grid) and is left for a follow-up. `getSelectionState()` and `"selectionstate"` are mode-aware too:
   in `"source"` mode the five format flags, `hasSelectedText`, and `linkUrl`
   are derived from the raw text, while `inTable`, `tableColumnAlignment`,
   `blockAlignment`, and `columnCount` report the fields that mode has no
