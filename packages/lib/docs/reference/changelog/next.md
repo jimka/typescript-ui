@@ -107,6 +107,21 @@ page resets to empty.
   text that would read as a reference with its `&` escaped (`\&copy;`).
   See [Migration](/reference/migration/next).
 
+- **`MarkdownEditor`'s quote command toggles, and the other block types act
+  inside a quote.** `setBlockType("quote")` puts the selected blocks into one
+  quote, or takes them out of their quote when every one already stands in a
+  quote, where it made each block a quote of its own and did nothing in a
+  quote. `setBlockType("paragraph")` and the other types change a block
+  inside a quote in place and no longer remove the quote, and the list
+  toggles make a list inside the quote. `insertTable` puts the table into
+  the quote. The typing shortcuts in a quote of one paragraph build inside
+  the quote: `- ` gives `> - b` where it gave `- b`, `# ` gives `> # b`
+  where it gave `# b`, a code fence gives a code block inside the quote
+  where it gave one outside it, and `> ` gives `> > b` where it left `> b`.
+  The quote command over a raw Markdown block wraps it and keeps it raw
+  (`> <div>x</div>`), where it escaped the block's text. See
+  [Migration](/reference/migration/next).
+
 ### Core
 
 - **`DOM.sink` and `DOM.source` are now read-only.** Swap a seam through
@@ -427,8 +442,8 @@ page resets to empty.
   line breaks. Hard line breaks keep the form they were written in, and
   Shift+Enter saves as `\` at the line end. A list keeps its bullet (`-`,
   `*` or `+`) or its `.` / `)` number delimiter, and a list item the blocks
-  it holds. Thematic breaks, HTML, and blockquotes holding several blocks
-  are kept as editable raw Markdown blocks instead of being flattened, so
+  it holds. Thematic breaks and HTML are kept as editable raw Markdown
+  blocks instead of being flattened, so
   saving no longer corrupts them, and so is a table whose rows hold more
   cells than its header; a link
   with empty text, or whose whole text is another link, is kept as source
@@ -2063,6 +2078,21 @@ page resets to empty.
   the caret went to the block's end when the block held a character
   reference such as `&#35;`. It now stays where it was. No consumer action
   is needed.
+
+- **`MarkdownEditor` edits a quote that holds blocks.** A quote of several
+  paragraphs, or holding a list, a heading, code, a table, a `:::` fence or
+  another quote, loaded as a raw Markdown block that showed its source; it now
+  loads as a quote holding those blocks, as the viewer shows it. Enter makes a
+  second paragraph in a quote and leaves the quote on an empty line;
+  Backspace at a quote's start takes its first block out; blocks pasted into a
+  quote stay in it; an edited quote keeps its unedited blocks' lines as
+  written. Typing `- `, `1. `, `# `, `> ` or ```` ``` ```` at the start of a
+  paragraph of a quote of several blocks, or in a list item's further
+  paragraph, makes that block, as at the top level, where it stayed text.
+  Source-mode commands act
+  in such quotes, where they did nothing. A long quote loads in a fraction of
+  the time (a quote of 2,000 paragraphs: 176 ms, where it took 9.4 s). No
+  consumer action is needed.
 
 ### Core
 
