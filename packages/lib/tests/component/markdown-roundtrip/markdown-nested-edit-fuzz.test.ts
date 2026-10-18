@@ -5,6 +5,7 @@ import { $dfs } from '@lexical/utils';
 import { $createListItemNode, $isListItemNode } from '@lexical/list';
 import { $createTableCellNode, $createTableRowNode, $isTableCellNode, $isTableRowNode, TableCellHeaderStates } from '@lexical/table';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
+import { $isMarkdownQuoteNode } from '~/component/editor/markdownQuoteNode';
 import { $createMarkdownListItemTextNode } from '~/component/editor/markdownListItemNode';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
@@ -14,7 +15,7 @@ import { editorSurfaceModel, viewerModel } from './viewModel';
 import { CORPUS } from './corpus';
 import type { CorpusCase, HarnessCheck } from './corpus/types';
 
-// A deterministic, bounded fuzz of edits inside a block: random edits of a list item, a table row or cell and the text
+// A deterministic, bounded fuzz of edits inside a block: random edits of a list item, a table row or cell, a block of a quote and the text
 // in them, through the editor's Lexical API, over every corpus document and the nested documents, so a save that
 // writes the unedited parts of an edited block as their source stays correct. Source-mode commands, which save through the
 // same serializer, are run over the same documents. Each case's random stream is seeded from
@@ -41,10 +42,10 @@ const SEQUENCES_PER_CASE = 8;
 const MAX_EDITS_PER_SEQUENCE = 2;
 
 /** The edits the fuzz makes. */
-type EditKind = 'appendText' | 'insertItem' | 'deleteItem' | 'insertRow' | 'deleteRow' | 'insertCell' | 'deleteCell';
+type EditKind = 'appendText' | 'insertItem' | 'deleteItem' | 'insertRow' | 'deleteRow' | 'insertCell' | 'deleteCell' | 'insertQuoteBlock' | 'deleteQuoteBlock';
 
 /** The edits, in the order a random index picks among the ones that apply. */
-const EDIT_KINDS: readonly EditKind[] = ['appendText', 'insertItem', 'deleteItem', 'insertRow', 'deleteRow', 'insertCell', 'deleteCell'];
+const EDIT_KINDS: readonly EditKind[] = ['appendText', 'insertItem', 'deleteItem', 'insertRow', 'deleteRow', 'insertCell', 'deleteCell', 'insertQuoteBlock', 'deleteQuoteBlock'];
 
 /**
  * Documents in forms the editor does not save in: nested lists, hand-padded tables, tilde fences, columns. The last
@@ -75,6 +76,12 @@ const NESTED_SOURCES: readonly string[] = [
     '- item\n\n  | a  | b  |\n  |----|----|\n  | 1  | ^^ |\n  | 3  | 4  |',
     '::: columns\n| a  | b  |\n|----|----|\n| 1  | ^^ |\n|||\n- x\n    - y\n:::',
     '::: columns\n| a  | b |\n|----|---|\n| 1  | 2 |\n|||\n~~~\ncode\n~~~\n:::',
+    '>a\n>\n>b _c_\n>\n>  * x\n>  * y',
+    '> > p\n> >\n> > q\n>\n> r',
+    '- a\n\n  >q\n  >\n  >r\n- b',
+    '::: columns\n> l\n>\n> m\n|||\nn\n:::',
+    '> ~~~\n> code\n> ~~~\n>\n> | a  | b |\n> |----|---|\n> | 1  | 2 |',
+    '>  1. one\n>  2. two\n>\n>  text',
 ];
 
 /** The documents the fuzz runs over: the corpus, then the nested documents. */
@@ -181,6 +188,8 @@ function $applicableEdits(): EditKind[] {
             case 'deleteRow':  return rows.some((row) => row.getPreviousSibling() !== null);
             case 'insertCell': return nodes.some($isTableCellNode);
             case 'deleteCell': return nodes.filter($isTableCellNode).some(hasSiblings);
+            case 'insertQuoteBlock': return nodes.some($isMarkdownQuoteNode);
+            case 'deleteQuoteBlock': return nodes.filter($isMarkdownQuoteNode).some((quote) => quote.getChildrenSize() > 1);
             default:           return false;
         }
     });
@@ -200,6 +209,24 @@ function $edit(kind: EditKind, random: () => number, word: string): string {
     const rows = nodes.filter($isTableRowNode);
     const cells = nodes.filter($isTableCellNode);
     const hasSiblings = (node: LexicalNode): boolean => (node.getParent()?.getChildrenSize() ?? 0) > 1;
+
+    if (kind === 'insertQuoteBlock') {
+        const quote = pick(random, nodes.filter($isMarkdownQuoteNode));
+        const after = pick(random, quote.getChildren());
+
+        after.insertAfter($createParagraphNode().append($createTextNode(word)));
+
+        return `inserted a paragraph after '${after.getTextContent().slice(0, 20)}' in a quote`;
+    }
+
+    if (kind === 'deleteQuoteBlock') {
+        const quote = pick(random, nodes.filter($isMarkdownQuoteNode).filter((candidate) => candidate.getChildrenSize() > 1));
+        const block = pick(random, quote.getChildren());
+
+        block.remove();
+
+        return `deleted the block '${block.getTextContent().slice(0, 20)}' of a quote`;
+    }
 
     if (kind === 'appendText') {
         const text = pick(random, $editableTextNodes());

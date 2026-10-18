@@ -1119,7 +1119,7 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['T3', '- [ ] one\n- [x] two', 'one', 'two', 'OL', '1. [ ] one\n2. [x] two'],
         ['T3', '- [ ] one\n- [x] two', 'one', 'two', 'paragraph', '\\[ \\] one\n\n\\[x\\] two'],
         ['T3', '- [ ] one\n- [x] two', 'one', 'two', 'h2', '## \\[ \\] one\n\n## \\[x\\] two'],
-        ['T3', '- [ ] one\n- [x] two', 'one', 'two', 'quote', '> \\[ \\] one\n\n> \\[x\\] two'],
+        ['T3', '- [ ] one\n- [x] two', 'one', 'two', 'quote', '> \\[ \\] one\n>\n> \\[x\\] two'],
         ['T4', '1. [ ] one\n2. [x] two', 'one', null, 'UL', '- [ ] one\n\n1. [x] two'],
         ['T4', '1. [ ] one\n2. [x] two', 'one', null, 'OL', '\\[ \\] one\n\n1. [x] two'],
         ['T5', '- [ ] one\n- two\n- three', 'one', 'two', 'UL', '\\[ \\] one\n\ntwo\n\n- three'],
@@ -1168,8 +1168,8 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['X10', '- one\n\npara\n\n1. three', 'one', 'three', 'OL', '1. one\n2. para\n3. three'],
         ['X11', '- one\n  - inner\n\n    para\n\n  - last\n- two', 'para', null, 'UL', '- one\n  - inner\n- para\n- - last\n- two'],
         ['X11', '- one\n  - inner\n\n    para\n\n  - last\n- two', 'para', null, 'OL', '- one\n  - inner\n\n1. para\n\n- - last\n- two'],
-        ['X12', '# head\n\n> quoted\n\npara', 'head', 'para', 'UL', '- head\n- quoted\n- para'],
-        ['X12', '# head\n\n> quoted\n\npara', 'head', 'para', 'OL', '1. head\n2. quoted\n3. para'],
+        ['X12', '# head\n\n> quoted\n\npara', 'head', 'para', 'UL', '- head\n\n> - quoted\n\n- para'],
+        ['X12', '# head\n\n> quoted\n\npara', 'head', 'para', 'OL', '1. head\n\n> 1. quoted\n\n1. para'],
         ['X13', '1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h\n9. i\n\nten', 'ten', null, 'OL', '1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h\n9. i\n10. ten'],
         ['X14', '1) a\n2) b\n\nmid', 'mid', null, 'OL', '1) a\n2) b\n3) mid'],
         ['X15', '* a\n* b\n\nmid\n\n- c\n\n- d', 'mid', null, 'UL', '* a\n* b\n* mid\n\n- c\n\n- d'],
@@ -1181,12 +1181,12 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['X21', '- zero\n\none\n\ntwo\n\n1) three', 'zero', 'two', 'OL', '1) zero\n2) one\n3) two\n4) three'],
         ['X22', '1. zero\n\none\n\ntwo\n\n* three', 'zero', 'two', 'UL', '* zero\n* one\n* two\n* three'],
         ['X26', 'one\n\n1. - aa\n2. bb', 'aa', null, 'OL', 'one\n\n1. aa\n2. bb'],
-        ['X27', 'one\n\n1. > qq\n2. bb', 'qq', null, 'OL', 'one\n\n1. qq\n2. bb'],
+        ['X27', 'one\n\n1. > qq\n2. bb', 'qq', null, 'OL', 'one\n\n1. > 1. qq\n2. bb'],
         ['X28', '# head\n\n3. - aa\n4. bb', 'aa', null, 'OL', '# head\n\n3. aa\n4. bb'],
         ['X29', 'one\n\n- 1. aa\n- bb', 'aa', null, 'UL', 'one\n\n- aa\n- bb'],
-        ['X30', 'para\n\n* > qq\n* bb', 'para', 'qq', 'UL', '* para\n* qq\n* bb'],
+        ['X30', 'para\n\n* > qq\n* bb', 'para', 'qq', 'UL', '* para\n* > - qq\n* bb'],
         ['X31', 'one\n\n1) - aa\n2) bb', 'one', 'aa', 'OL', '1) one\n2) aa\n3) bb'],
-        ['X32', '+ > qq\n\n- bb', 'qq', null, 'UL', '- qq\n- bb'],
+        ['X32', '+ > qq\n\n- bb', 'qq', null, 'UL', '+ > - qq\n\n- bb'],
         ['X33', '* one\n* two\n\n+ 1. aa\n+ bb', 'aa', null, 'UL', '* one\n* two\n* aa\n\n+ bb'],
         ['S1', '- one\n  - inner\n- three', 'inner', null, 'UL', '- one\n\ninner\n\n- three'],
         ['S1', '- one\n  - inner\n- three', 'inner', null, 'OL', '- one\n\n1. inner\n\n- three'],
@@ -1213,8 +1213,8 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['M5', '- one\n\n  second\n\n- two', 'one', 'two', 'OL', '1. one\n2. second\n3. two'],
         ['M9', '1. one\n\n   second\n\n2. two', 'second', null, 'UL', '1. one\n\n- second\n\n1. two'],
         ['M9', '1. one\n\n   second\n\n2. two', 'second', null, 'OL', '1. one\n\n2. second\n\n3. two'],
-        ['M11', '- one\n\n  > quoted\n\n- two', 'quoted', null, 'UL', '- one\n\n- quoted\n\n- two'],
-        ['M11', '- one\n\n  > quoted\n\n- two', 'quoted', null, 'OL', '- one\n\n1. quoted\n\n- two'],
+        ['M11', '- one\n\n  > quoted\n\n- two', 'quoted', null, 'UL', '- one\n\n  > - quoted\n\n- two'],
+        ['M11', '- one\n\n  > quoted\n\n- two', 'quoted', null, 'OL', '- one\n\n  > 1. quoted\n\n- two'],
         ['M16', '- # Foo\n- bar', 'Foo', null, 'UL', 'Foo\n\n- bar'],
         ['M16', '- # Foo\n- bar', 'Foo', null, 'OL', '1. Foo\n\n- bar'],
         ['M19', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'second', null, 'UL', '- one\n\n- second\n\n- - inner\n\n  after\n\n- two'],
@@ -1261,7 +1261,7 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['H18', '## **bold** +alpha', 'alpha', null, 'code', '```\n**bold** +alpha\n```'],
         ['H19', '\\+one\nmore\n---', 'one', null, 'code', '```\n\\+one\nmore\n```'],
         ['H20', '\\- alpha', 'alpha', null, 'code', '```\n\\- alpha\n```'],
-        ['H21', '> \\- alpha', 'alpha', null, 'code', '```\n\\- alpha\n```'],
+        ['H21', '> \\- alpha', 'alpha', null, 'code', '> ```\n> \\- alpha\n> ```'],
         ['H22', '- \\- alpha', 'alpha', null, 'code', '```\n\\- alpha\n```'],
         // Text that would read as a character reference keeps its escaped `&` on both surfaces.
         ['CR1', '\\&copy; one & x', 'one', null, 'h2', '## \\&copy; one & x'],
@@ -1406,7 +1406,12 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         // `\\[ \\]`), and the block before such text in a list item, which the item's marker would re-open as one.
         ['E28', '- aa\n- bb\n\n[ ] mid', 'mid', null, 'UL', '- aa\n- bb\n- \\[ \\] mid'],
         ['E28', '- aa\n- bb\n\n[ ] mid', 'mid', null, 'OL', '- aa\n- bb\n\n1. \\[ \\] mid'],
-        ['E29', '> [ ] aa', 'aa', null, 'UL', '- \\[ \\] aa'],
+        ['E29', '> [ ] aa', 'aa', null, 'UL', '> - \\[ \\] aa'],
+        // In a quote's list the toggle acts in the quote, on the WYSIWYG surface and in source mode alike.
+        ['Q1', '> - one\n> - two', 'one', null, 'UL', '> one\n>\n> - two'],
+        ['Q1', '> - one\n> - two', 'one', null, 'OL', '> 1. one\n>\n> - two'],
+        ['Q2', '> - [ ] one\n> - [x] two', 'one', null, 'UL', '> \\[ \\] one\n>\n> - [x] two'],
+        ['Q2', '> - [ ] one\n> - [x] two', 'one', null, 'OL', '> 1. [ ] one\n>\n> - [x] two'],
         ['E30', '- one\n\n  [ ] para\n- two', 'one', null, 'UL', 'one\n\n\\[ \\] para\n\n- two'],
         ['E30', '- one\n\n  [ ] para\n- two', 'one', null, 'h2', '## one\n\n\\[ \\] para\n\n- two'],
         // Lines that would read otherwise beside the result: a block indented below an empty item, a list whose
@@ -1422,10 +1427,6 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
 
     /** Rows whose selection touches a raw block: the WYSIWYG surface writes the block's text escaped, and source mode leaves the document as it is. */
     const RAW_DECLINES: ParityRow[] = [
-        ['Q1', '> - one\n> - two', 'one', null, 'UL', '- \\> - one\\\n  \\> - two'],
-        ['Q1', '> - one\n> - two', 'one', null, 'OL', '1. \\> - one\\\n   \\> - two'],
-        ['Q2', '> - [ ] one\n> - [x] two', 'one', null, 'UL', '- \\> - \\[ \\] one\\\n  \\> - \\[x\\] two'],
-        ['Q2', '> - [ ] one\n> - [x] two', 'one', null, 'OL', '1. \\> - \\[ \\] one\\\n   \\> - \\[x\\] two'],
         ['E8', '<div>x</div>\n\ntwo', 'x', null, 'UL', '- \\<div>x\\</div>\n\ntwo'],
         ['E9', 'one\n\n---\n\ntwo', 'one', 'two', 'UL', '- one\n- \\---\n- two'],
         ['E11', '- one\n\n  <div>x</div>\n\n- two', 'x', null, 'UL', '- one\n\n- \\<div>x\\</div>\n\n- two'],
@@ -2054,15 +2055,14 @@ describe('MarkdownEditor value round-trip (idempotence)', () => {
     }
 });
 
-// A quote or list a list item holds as a raw Markdown block shows and saves its tabs. The lexer reads the lines with the
-// tabs of their prefixes as the spaces they stand for, so these rows would show spaces and save them once the item was
-// edited elsewhere if the tokens did not keep their source. R1 keeps the block's two columns of indentation next to the
-// item's own, because a dedent that moves a line with a prefix tab is refused.
-describe('MarkdownEditor raw blocks in a list item keep their tabs', () => {
+// A quote an item holds is a quote node, and a block of it that holds a tab in a prefix is written in the standard form
+// once the item is edited elsewhere: the tab reads by its column, which a block written anew would change, so the
+// block's source is not kept. It reads the same.
+describe('MarkdownEditor quotes in a list item are written in the standard form once the item is edited', () => {
     it.each<[string, string, string]>([
-        ['R1: a quote after a blank line, a tab before and after its marker', '- a\n\n\t>\t# h', '- **a**\n\n    >\t# h'],
-        ['R2: a quote in a quote, a tab after the inner marker', '- a\n\n  > > q\n  > >\tr **b**', '- **a**\n\n  > > q\n  > >\tr **b**'],
-    ])('%s: bolding the item\'s text saves the block as written', (_title, source, saved) => {
+        ['R1: a quote after a blank line, a tab before and after its marker', '- a\n\n\t>\t# h', '- **a**\n\n  > # h'],
+        ['R2: a quote in a quote, a tab after the inner marker', '- a\n\n  > > q\n  > >\tr **b**', '- **a**\n\n  > > q\n  > > r **b**'],
+    ])('%s: bolding the item\'s text saves the quote in the standard form', (_title, source, saved) => {
         const editor = new MarkdownEditor();
 
         editor.setValue(source);
@@ -3001,7 +3001,7 @@ describe('MarkdownEditor source-mode line commands read the viewer\'s blocks', (
         },
         {
             name: 'a paragraph from a quote does not join the list item above', doc: '- a\n> b', select: [6, 6],
-            run: (editor) => editor.setBlockType('paragraph'), result: '- a\n\nb',
+            run: (editor) => editor.setBlockType('quote'), result: '- a\n\nb',
         },
         {
             name: 'toggling a list off keeps its items apart', doc: '- a\n- b', select: [0, 7],
@@ -3016,8 +3016,8 @@ describe('MarkdownEditor source-mode line commands read the viewer\'s blocks', (
             run: (editor) => editor.insertTable(2, 2), result: '|  |  |\n| --- | --- |\n|  |  |\n\n| a |\n| - |\n| b |',
         },
         {
-            name: 'a quote from a heading escapes the fence its text would open', doc: '###### ~~~ x', select: [8, 8],
-            run: (editor) => editor.setBlockType('quote'), result: '> \\~~~ x',
+            name: 'a quote around a heading keeps the heading', doc: '###### ~~~ x', select: [8, 8],
+            run: (editor) => editor.setBlockType('quote'), result: '> ###### ~~~ x',
         },
         {
             name: 'a heading declines in a table cell', doc: '| a |\n| - |\n| b |', select: [14, 14],
@@ -3637,7 +3637,7 @@ describe('MarkdownEditor block alignment / columns', () => {
             .getColumns()
             .map((column) => column.getFirstChild()!.getType()));
 
-        expect(columnTypes).toEqual(['quote', 'paragraph']);
+        expect(columnTypes).toEqual(['markdown-quote', 'paragraph']);
     });
 
     it('setBlockAlignment / setColumnCount do not throw on a fresh editor with no selection', () => {
@@ -4623,12 +4623,14 @@ describe('MarkdownEditor Alt+Enter block-separator shortcut', () => {
 
         // $findEnclosingSeparatorTarget only ever resolves a table or code
         // block, so this handler returns false here regardless of altKey;
-        // QuoteNode's own native Enter handling (registerRichText) is what
-        // inserts the paragraph.
+        // Lexical's own native Enter handling (registerRichText) is what
+        // splits the quote's paragraph, which leaves a second paragraph in the quote.
         const handled = dispatchEnter(editor, true);
 
         expect(handled).toBe(true);
-        expect(childTypes(editor)).toEqual(['quote', 'paragraph']);
+        expect(childTypes(editor)).toEqual(['markdown-quote']);
+        expect(lexicalOf(editor).read(() => $getRoot().getFirstChildOrThrow<ElementNode>().getChildren().map((child) => child.getType())))
+            .toEqual(['paragraph', 'paragraph']);
     });
 
     it('with the caret inside a list item, still returns handled via Lexical\'s own native list handling (the shortcut was not widened)', () => {
@@ -4651,7 +4653,7 @@ describe('MarkdownEditor insertParagraphBeforeBlock / insertParagraphAfterBlock'
 
         editor.insertParagraphAfterBlock();
 
-        expect(childTypes(editor)).toEqual(['quote', 'paragraph']);
+        expect(childTypes(editor)).toEqual(['markdown-quote', 'paragraph']);
         expect(caretIsInAParagraph(editor)).toBe(true);
     });
 
@@ -4662,7 +4664,7 @@ describe('MarkdownEditor insertParagraphBeforeBlock / insertParagraphAfterBlock'
 
         editor.insertParagraphBeforeBlock();
 
-        expect(childTypes(editor)).toEqual(['paragraph', 'quote']);
+        expect(childTypes(editor)).toEqual(['paragraph', 'markdown-quote']);
         expect(caretIsInAParagraph(editor)).toBe(true);
     });
 
@@ -4795,7 +4797,7 @@ describe('MarkdownEditor insertParagraphBeforeBlock / insertParagraphAfterBlock'
         lexicalOf(editor).update(() => { ($getRoot().getFirstChild() as ElementNode).selectStart(); }, { discrete: true });
         editor.insertParagraphAfterBlock();
 
-        expect(childTypes(editor)).toEqual(['quote', 'paragraph', 'paragraph']);
+        expect(childTypes(editor)).toEqual(['markdown-quote', 'paragraph', 'paragraph']);
     });
 
     it('round-trips a blockquote plus content typed into the paragraph inserted after it', () => {
@@ -4988,7 +4990,7 @@ describe('MarkdownEditor context menu', () => {
         }).find((item) => item.text === 'Insert line before block')?.action?.();
 
         expect(lexicalOf(before).read(() => $getRoot().getChildren().map((n) => n.getType())))
-            .toEqual(['paragraph', 'quote']);
+            .toEqual(['paragraph', 'markdown-quote']);
 
         const after = new MarkdownEditor();
         after.setValue('> quoted');
@@ -4999,7 +5001,7 @@ describe('MarkdownEditor context menu', () => {
         }).find((item) => item.text === 'Insert line after block')?.action?.();
 
         expect(lexicalOf(after).read(() => $getRoot().getChildren().map((n) => n.getType())))
-            .toEqual(['quote', 'paragraph']);
+            .toEqual(['markdown-quote', 'paragraph']);
     });
 
     it('a "text" context offers an 11-item block-style submenu', () => {
@@ -6552,10 +6554,6 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                 select: (editor) => caretIn(editor, 'head', 2), run: (editor) => editor.setBlockType('h1'),
             },
             {
-                name: 'setBlockType("quote") in a blockquote', markdown: QUOTE_BLOCK,
-                select: (editor) => caretIn(editor, 'quoted', 2), run: (editor) => editor.setBlockType('quote'),
-            },
-            {
                 name: 'setBlockType("code") in a code block', markdown: CODE_BLOCK,
                 select: (editor) => caretIn(editor, 'code', 2), run: (editor) => editor.setBlockType('code'),
             },
@@ -6653,6 +6651,19 @@ describe('MarkdownEditor context menu — caret and availability', () => {
             lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
 
             expect(editor.getValue()).toBe('one\n\n| a | b |\n| :-: | - |\n| c | d |');
+        });
+
+        it('setBlockType("quote") in a blockquote takes the paragraph out of it, in one undo step', () => {
+            const editor = editorOf(QUOTE_BLOCK);
+
+            caretIn(editor, 'quoted', 2);
+            editor.setBlockType('quote');
+
+            expect(editor.getValue()).toBe('quoted');
+
+            lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+
+            expect(editor.getValue()).toBe(QUOTE_BLOCK);
         });
 
         it('setBlockType() still converts when one of the blocks the selection touches is of another type', () => {

@@ -49,7 +49,8 @@ import { $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNo
 import type { ReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import type { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
-import { columnBlockKey, EMPTY_SOURCE_MAP } from "~/component/editor/markdownSourceMap.js";
+import { columnBlockKey, EMPTY_SOURCE_MAP, quoteBlockKey } from "~/component/editor/markdownSourceMap.js";
+import type { MarkdownSourceQuoteBlock } from "~/component/editor/markdownSourceMap.js";
 import type {
     MarkdownSourceBlock, MarkdownSourceCodeFrame, MarkdownSourceItem, MarkdownSourceLoad, MarkdownSourceMap, MarkdownSourcePart,
 } from "~/component/editor/markdownSourceMap.js";
@@ -582,7 +583,7 @@ interface InlineContext {
     readonly definitions: Links | null;
 }
 
-/** The context of a paragraph, quote or list item. */
+/** The context of a paragraph or list item. */
 const MULTI_LINE: InlineContext = { singleLine: false, inTableCell: false, definitions: null };
 
 /** The context of a heading. */
@@ -968,10 +969,10 @@ function withPartsContext<T>(context: PartsContext | null, write: () => T): T {
  * Tells whether a block can hold nested parts a save writes as their source.
  *
  * @param node - A block.
- * @returns `true` for a list, a table, a code block or a `:::` fence.
+ * @returns `true` for a list, a table, a code block, a `:::` fence or a quote.
  */
 function $holdsParts(node: LexicalNode): boolean {
-    return $isListNode(node) || $isTableNode(node) || $isCodeNode(node) || $isMarkdownBlockNode(node);
+    return $isListNode(node) || $isTableNode(node) || $isCodeNode(node) || $isMarkdownBlockNode(node) || $isQuoteNode(node);
 }
 
 /**
@@ -1260,7 +1261,7 @@ function definitionsIn(text: string): Links {
 
 /**
  * The written form ({@link $rawBlockSource}) of every raw block among
- * `nodes`, in their `:::` fences' columns and in their lists' items — every
+ * `nodes`, in their `:::` fences' columns, in their lists' items and in their quotes — every
  * place a block is written as a block of the saved document, where `marked`
  * reads a definition it holds.
  *
@@ -1273,7 +1274,7 @@ function rawBlockTexts(nodes: LexicalNode[]): string[] {
             return [$rawBlockSource(node)];
         }
 
-        const holdsBlocks = $isMarkdownBlockNode(node) || $isMarkdownColumnNode(node) || $isListNode(node) || $isListItemNode(node);
+        const holdsBlocks = $isMarkdownBlockNode(node) || $isMarkdownColumnNode(node) || $isListNode(node) || $isListItemNode(node) || $isQuoteNode(node);
 
         return holdsBlocks ? rawBlockTexts(node.getChildren()) : [];
     });
@@ -1342,7 +1343,7 @@ function continuationOf(before: string): string | undefined {
  * the Markdown a code block holds for a block converted to one.
  * See {@link $serializeRestOfBlock}.
  *
- * @param block - A paragraph, heading, quote or list item's text.
+ * @param block - A paragraph, heading or list item's text.
  * @returns Its content's Markdown, lines separated by `\n`.
  */
 export function $serializeBlockContent(block: ElementNode): string {
@@ -1356,7 +1357,7 @@ export function $serializeBlockContent(block: ElementNode): string {
  * writes it, without its `#`s or underline: an ATX heading's line, with no
  * escape a paragraph's line start needs (`+alpha`, not `\+alpha`) and its
  * trailing `#` run escaped (`alpha \#`), or the lines of its setext form. A
- * paragraph's or quote's content is its lines, a list item's text its lines
+ * paragraph's content is its lines, a list item's text its lines
  * with a task marker as written. Only the first line of a rest that
  * continues a line (`before` neither `""` nor `"\n"`) leaves out a line
  * start's escapes. The text is written for a code block or raw block, which
@@ -1364,7 +1365,7 @@ export function $serializeBlockContent(block: ElementNode): string {
  * character itself, not the `&nbsp;` the block's own save writes there.
  * Must run inside an `editor.read` or `editor.update`.
  *
- * @param block - A paragraph, heading, quote or list item's text.
+ * @param block - A paragraph, heading or list item's text.
  * @param nodes - The rest of the block, or all of it: the nodes to write.
  * @param before - The character before the nodes in the block; `""` or `"\n"` where they open a line.
  * @returns Their Markdown, lines separated by `\n`.
@@ -1376,7 +1377,7 @@ export function $serializeRestOfBlock(block: ElementNode, nodes: LexicalNode[], 
 /**
  * Writes the rest of a block as {@link $serializeRestOfBlock} does.
  *
- * @param block - A paragraph, heading, quote or list item's text.
+ * @param block - A paragraph, heading or list item's text.
  * @param nodes - The nodes to write.
  * @param before - The character before the nodes in the block.
  * @param joinsIntoRawBlock - Whether the text is joined into a raw block or code block, which holds no line edge of its own
@@ -1530,7 +1531,7 @@ function inlineRuns(node: LexicalNode, inTableCell: boolean): Array<[LexicalNode
         return [[[cell], TABLE_CELL]];
     }
 
-    if ($isParagraphNode(node) || $isQuoteNode(node) || $isHeadingNode(node)) {
+    if ($isParagraphNode(node) || $isHeadingNode(node)) {
         return [[node.getChildren(), inTableCell ? TABLE_CELL : $isHeadingNode(node) ? headingContext(node) : MULTI_LINE]];
     }
 
@@ -2968,20 +2969,128 @@ function escapeClosingHashes(line: string, before: string): string {
 }
 
 /**
- * Serializes a quote: every line of its content prefixed `> `.
+ * Serializes a quote as a document is serialized — its blocks, each as it is
+ * written anywhere — with every line prefixed `> `. In a block a save writes
+ * part by part, the blocks that were loaded in this quote are decided as a
+ * document's are ({@link writtenQuote}).
  *
  * @param node - The quote.
  * @param definitions - The saved document's link reference definitions, or `null`.
- * @returns The quoted lines, or `>` for an empty quote.
+ * @returns The quoted lines, or `>` for a quote that writes nothing.
  */
 function serializeQuote(node: QuoteNode, definitions: Links | null): string {
-    const content = serializeInline(node, { ...MULTI_LINE, definitions });
+    const context = SAVE_PARTS.current;
+    const written = context?.mode === "write" ? writtenQuote(node, definitions, context) : null;
 
-    if (content === "") {
-        return ">";
+    return written ?? quotedLines(serializeBlockList(node.getChildren(), definitions));
+}
+
+/**
+ * Writes inner Markdown under a quote's marker: `> ` before a line that holds
+ * something, `>` alone before an empty one, and `>` for nothing.
+ *
+ * @param content - The Markdown inside the quote.
+ * @returns The quoted lines.
+ */
+function quotedLines(content: string): string {
+    return content === "" ? ">" : content.split("\n").map((line) => (line === "" ? ">" : `> ${line}`)).join("\n");
+}
+
+/**
+ * Writes a quote in a block a save writes part by part, as a save writes a
+ * document: its blocks that were loaded in this quote are decided as the
+ * top-level blocks are, with the lines before, between and after them kept,
+ * markers and all, while those blocks are kept. Only a block written anew is
+ * written under `> `.
+ *
+ * @param node - The quote.
+ * @param definitions - The saved document's link reference definitions, or `null`.
+ * @param context - The write context of the block holding the quote.
+ * @returns The quote's Markdown, or `null` when no block of it was loaded in it.
+ */
+function writtenQuote(node: QuoteNode, definitions: Links | null, context: WriteContext): string | null {
+    return withPartsContext(context, () => {
+        const children = node.getChildren();
+        const blocks = new Map<NodeKey, MarkdownSourceBlock>();
+        const quoted = new Map<MarkdownSourceBlock, MarkdownSourceQuoteBlock>();
+
+        for (const child of children) {
+            const part = context.parts.get(quoteBlockKey(child.getKey()));
+
+            if (part?.kind === "quoteBlock" && part.quote === node.getKey()) {
+                blocks.set(child.getKey(), part.block);
+                quoted.set(part.block, part);
+            }
+        }
+
+        if (blocks.size === 0) {
+            return null;
+        }
+
+        const map: MarkdownSourceMap = { latest: blocks.values().next().value!.load, blocks, parts: context.parts };
+        const parts = blockListParts(children, definitions, map, context.column);
+        const written = writtenBlocks(parts, map, SAVE_DEFINITIONS.current!);
+
+        return written.length === 0 ? ">" : quotedWrittenBlocks(written, quoted).join("\n");
+    });
+}
+
+/**
+ * Lays the blocks a quote writes out as its lines: a block written as its
+ * source keeps its lines as written, and so do the lines between two such
+ * blocks that followed each other at load; every other block, and every other
+ * stretch between blocks, is written under the marker.
+ *
+ * @param written - The blocks the quote writes, at least one.
+ * @param quoted - The quote's loaded blocks, by their source.
+ * @returns The quote's lines.
+ */
+function quotedWrittenBlocks(written: readonly WrittenBlock[], quoted: ReadonlyMap<MarkdownSourceBlock, MarkdownSourceQuoteBlock>): string[] {
+    const lines: string[] = [];
+    const first = written[0]!;
+    const last = written[written.length - 1]!;
+
+    if (first.source !== undefined && first.source.index === 0) {
+        lines.push(...linesOf(quoted.get(first.source)!.quotedPrefix));
     }
 
-    return content.split("\n").map((line) => (line === "" ? ">" : "> " + line)).join("\n");
+    written.forEach((block, index) => {
+        if (index > 0) {
+            const previous = written[index - 1]!;
+            const keptBetween = followsAtLoad(previous.source, block.source);
+
+            lines.push(...(keptBetween ? linesOf(quoted.get(previous.source!)!.quotedAfter) : quotedLines(separatorBefore(written, index)).split("\n").slice(1, -1)));
+        }
+
+        const part = block.source === undefined ? undefined : quoted.get(block.source);
+
+        if (part === undefined) {
+            lines.push(...quotedLines(block.text).split("\n"));
+
+            return;
+        }
+
+        // The line end `writtenBlocks` adds after a raw block's source (`takesInBlockAfter`) is a line of the marker alone.
+        const extra = block.text.slice(block.source!.body.length);
+
+        lines.push(...linesOf(part.quotedBody), ...(extra === "" ? [] : quotedLines(extra).split("\n").slice(1)));
+    });
+
+    if (last.source !== undefined && last.source.index === last.source.load.blockCount - 1) {
+        lines.push(...linesOf(quoted.get(last.source)!.quotedAfter));
+    }
+
+    return lines;
+}
+
+/**
+ * Splits lines kept as written into their lines.
+ *
+ * @param text - The lines, joined by line ends; `""` for none.
+ * @returns The lines.
+ */
+function linesOf(text: string): string[] {
+    return text === "" ? [] : text.split("\n");
 }
 
 /**
@@ -4200,7 +4309,7 @@ function fenceAttributeText(node: MarkdownBlockNode, authored: string): string {
 /**
  * Serializes an element's inline content.
  *
- * @param element - The paragraph, heading, quote, list item or cell paragraph.
+ * @param element - The paragraph, heading, list item or cell paragraph.
  * @param context - Where the content is written.
  * @returns The content; lines are separated by `\n` unless `context.singleLine`.
  */

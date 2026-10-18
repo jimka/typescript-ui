@@ -172,11 +172,14 @@ function caretIn(editor: MarkdownEditor, point: TextPoint): void {
 }
 
 describe('insertTable() leaves no empty half of the block it splits (T rows)', () => {
+    /** The table as a quote holds it: each line under the quote's marker. */
+    const QUOTED_TABLE = TABLE.split('\n').map((line) => (line === '' ? '>' : `> ${line}`)).join('\n');
+
     /** Row name, the document, the caret, what is saved, the root's children after. */
     const rows: Array<[string, string, TextPoint, string, string[]]> = [
-        ['T1: at the end of a quote', '> quote', ['quote', 5], `> quote\n\n${TABLE}`, ['quote', 'table', 'paragraph']],
-        ['T2: at the start of a quote', '> quote', ['quote', 0], `${TABLE}\n\n> quote`, ['table', 'quote']],
-        ['T3: inside a quote', '> quote', ['quote', 2], `> qu\n\n${TABLE}\n\n> ote`, ['quote', 'table', 'quote']],
+        ['T1: at the end of a quote', '> quote', ['quote', 5], `> quote\n>\n${QUOTED_TABLE}`, ['markdown-quote']],
+        ['T2: at the start of a quote', '> quote', ['quote', 0], `${QUOTED_TABLE}\n>\n> quote`, ['markdown-quote']],
+        ['T3: inside a quote', '> quote', ['quote', 2], `> qu\n>\n${QUOTED_TABLE}\n>\n> ote`, ['markdown-quote']],
         ['T4: at the end of a heading', '# head', ['head', 4], `# head\n\n${TABLE}`, ['heading', 'table', 'paragraph']],
         ['T5: at the start of a heading', '# head', ['head', 0], `${TABLE}\n\n# head`, ['table', 'heading']],
         ['T6: at the end of a list', '- one\n- two', ['two', 3], `- one\n- two\n\n${TABLE}`, ['list', 'table', 'paragraph']],
@@ -195,7 +198,7 @@ describe('insertTable() leaves no empty half of the block it splits (T rows)', (
         ],
         [
             'T14: at the end of a quote in a column', '::: columns\n> q\n|||\nB\n:::', ['q', 1],
-            `::: columns\n> q\n\n${TABLE}\n|||\nB\n:::`, ['markdown-block'],
+            `::: columns\n> q\n>\n${QUOTED_TABLE}\n|||\nB\n:::`, ['markdown-block'],
         ],
     ];
 

@@ -14,7 +14,7 @@ import type {
     SerializedLexicalNode, TextFormatType,
 } from "lexical";
 import type { Links, Tokens } from "marked";
-import { $createHeadingNode, $createQuoteNode, $isHeadingNode, $isQuoteNode, HeadingNode, QuoteNode } from "@lexical/rich-text";
+import { $createHeadingNode, $isHeadingNode, HeadingNode } from "@lexical/rich-text";
 import { $createListItemNode, $isListItemNode, $isListNode, ListItemNode, ListNode } from "@lexical/list";
 import {
     $computeTableMapSkipCellCheck, $createTableCellNode, $isTableCellNode, $isTableNode, $isTableRowNode, $isTableSelection, TableCellNode,
@@ -34,6 +34,7 @@ import {
     $createMarkdownListItemTextNode, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $movePointsBetween, $removePlainly,
     MarkdownListItemTextNode,
 } from "~/component/editor/markdownListItemNode.js";
+import { MarkdownQuoteNode } from "~/component/editor/markdownQuoteNode.js";
 import { keptSourceState, listLooseState, nestedLinkState, spanAttributesState } from "~/component/editor/markdownNodeState.js";
 import { $isMarkdownBlockNode, MarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import { $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
@@ -83,14 +84,15 @@ export function registerWritableStateRules(editor: LexicalEditor): () => void {
         registerMarkdownListTransforms(editor), registerLineBreakRules(editor), registerTableRules(editor), registerRawBlockRules(editor),
         registerDefinitionRules(editor), registerRunEdgeRules(editor), editor.registerNodeTransform(TextNode, $keepUnwritableCharactersPlain),
         editor.registerNodeTransform(MarkdownColumnNode, $keepColumnInFence),
-        ...[ParagraphNode, MarkdownListItemTextNode, HeadingNode, QuoteNode]
+        ...[ParagraphNode, MarkdownListItemTextNode, HeadingNode]
             .map((klass) => editor.registerNodeTransform(klass, $keepBlocksOutOfText)),
+        editor.registerNodeTransform(MarkdownQuoteNode, $keepQuoteShape),
     );
 }
 
 /**
  * Keeps the one rule for a block inside a block that holds text only: it
- * never stays there. A paragraph, heading or quote that has come to hold
+ * never stays there. A paragraph or heading that has come to hold
  * blocks keeps the text before the first of them, and what follows it — each
  * block, and the text between blocks in paragraphs — is moved out to follow
  * it, in order ({@link $moveBlocksOutAfter}). A code block and a raw block
@@ -105,7 +107,7 @@ export function registerWritableStateRules(editor: LexicalEditor): () => void {
  * builds, as blocks inside such a block — since a save would write such a
  * block's text into the line around it.
  *
- * @param container - The paragraph, list item text, heading or quote that changed.
+ * @param container - The paragraph, list item text or heading that changed.
  */
 function $keepBlocksOutOfText(container: ElementNode): void {
     const cell = container.getParent();
@@ -114,6 +116,31 @@ function $keepBlocksOutOfText(container: ElementNode): void {
         $keepCellParagraphs(cell);
     } else {
         $moveBlocksOutAfter(container);
+    }
+}
+
+/**
+ * Keeps a quote in its normal form: it holds blocks only, and at least one.
+ * Each run of inline nodes that stands straight in it goes into a paragraph
+ * ({@link $wrapInlineRuns}), as Lexical's `> ` typing shortcut leaves its
+ * text, and a quote that holds nothing gets an empty paragraph, which takes a
+ * caret that stood on the quote.
+ *
+ * @param quote - The quote that changed.
+ */
+function $keepQuoteShape(quote: MarkdownQuoteNode): void {
+    if (!quote.isAttached()) {
+        return;
+    }
+
+    $wrapInlineRuns(quote);
+
+    if (quote.getChildrenSize() === 0) {
+        const paragraph = $createParagraphNode();
+
+        quote.append(paragraph);
+        // A caret the removal of the quote's last block left on the quote goes into the new paragraph.
+        $movePointsBetween(quote, paragraph);
     }
 }
 
@@ -252,22 +279,22 @@ function $replaceByOwnItem(item: ListItemNode): void {
 }
 
 /**
- * Puts each run of inline nodes that stand straight in a list item into a
- * paragraph, where the run stands, and moves a caret that stood on the item
- * to where its place went: before an inline node, into that node's
- * paragraph before the same node; at the item's end after inline nodes, to
- * the end of their paragraph.
+ * Puts each run of inline nodes that stand straight in a list item or a
+ * quote into a paragraph, where the run stands, and moves a caret that stood
+ * on the container to where its place went: before an inline node, into that
+ * node's paragraph before the same node; at the container's end after inline
+ * nodes, to the end of their paragraph.
  *
- * @param item - The list item.
+ * @param container - The list item or quote.
  */
-function $wrapInlineRuns(item: ListItemNode): void {
+function $wrapInlineRuns(container: ElementNode): void {
     const selection = $getSelection();
-    const itemKey = item.getKey();
+    const containerKey = container.getKey();
     const points = $isRangeSelection(selection)
-        ? [selection.anchor, selection.focus].filter((point) => point.type === "element" && point.key === itemKey)
+        ? [selection.anchor, selection.focus].filter((point) => point.type === "element" && point.key === containerKey)
         : [];
-    const children = item.getChildren();
-    // The child each of those points stands before, or `null` for one at the item's end.
+    const children = container.getChildren();
+    // The child each of those points stands before, or `null` for one at the container's end.
     const standsBefore = points.map((point) => children[point.offset] ?? null);
     let run: ParagraphNode | null = null;
     let wrapped = false;
@@ -294,7 +321,7 @@ function $wrapInlineRuns(item: ListItemNode): void {
 
     points.forEach((point, index) => {
         const next = standsBefore[index] ?? null;
-        const holder = next === null ? run ?? item : next.getParentOrThrow();
+        const holder = next === null ? run ?? container : next.getParentOrThrow();
         const offset = next === null ? holder.getChildrenSize() : next.getIndexWithinParent();
 
         point.set(holder.getKey(), offset, "element");
@@ -1096,6 +1123,7 @@ function registerRawBlockRules(editor: LexicalEditor): () => void {
         editor.registerNodeTransform(RootNode, $showRawBlocksAsWritten),
         editor.registerNodeTransform(MarkdownColumnNode, $showColumnRawBlocksAsWritten),
         editor.registerNodeTransform(ListItemNode, $showRawBlocksAsWritten),
+        editor.registerNodeTransform(MarkdownQuoteNode, $showRawBlocksAsWritten),
         editor.registerNodeTransform(MarkdownRawBlockNode, (node) => {
             $showRawBlockAsSaved(node, $showSiblingsOnceWhole);
         }),
@@ -1738,7 +1766,6 @@ function registerLineBreakRules(editor: LexicalEditor): () => void {
         editor.registerNodeTransform(ParagraphNode, dropInContainer),
         editor.registerNodeTransform(MarkdownListItemTextNode, dropInContainer),
         editor.registerNodeTransform(HeadingNode, dropInContainer),
-        editor.registerNodeTransform(QuoteNode, dropInContainer),
         editor.registerNodeTransform(TextNode, $keepLineEndsOutOfText),
         editor.registerNodeTransform(TextNode, $dropWhitespaceAtLineStarts),
         editor.registerNodeTransform(TextNode, (text) => {
@@ -1763,8 +1790,8 @@ function registerLineBreakRules(editor: LexicalEditor): () => void {
  * Turns each line end inside a text of a block of text into a line break
  * node, which is what a load builds for the hard break a save writes there.
  * Only a code block and a raw block hold a line end as a character of their
- * text; a block made of one — a code block set to a paragraph, a heading, a
- * quote or a list item — takes its text node as it is, line ends and all.
+ * text; a block made of one — a code block set to a paragraph, a heading or
+ * a list item — takes its text node as it is, line ends and all.
  * A caret keeps its place in the text.
  *
  * @param text - The text node that changed.
@@ -1821,7 +1848,7 @@ interface LineStartWhitespace {
 /**
  * Removes the spaces and tabs at the start of each line of a block, which
  * the save drops and a load does not bring back: at the start of a
- * paragraph, a list item's text, a heading or a quote, after a line break or
+ * paragraph, a list item's text or a heading, after a line break or
  * a soft line break in one, after the task marker that opens an item's
  * text, and at the start of each paragraph of a table cell. Only the block
  * an end of the selection stands in is read: the block being edited, never
@@ -2100,8 +2127,8 @@ export function $lineBreakUnwritableAt(point: PointType, rest: PointType | null 
 
 /**
  * Whether a node is a block whose inline content the line-break rules keep:
- * a paragraph outside a table cell (a list item's text is one), a heading
- * or a quote.
+ * a paragraph outside a table cell (a list item's text is one) or a
+ * heading.
  *
  * @param node - The node.
  * @returns `true` for such a block.
@@ -2111,7 +2138,7 @@ function $isBreakRuleContainer(node: LexicalNode | null): node is ElementNode {
         return !$isTableCellNode(node.getParent());
     }
 
-    return $isHeadingNode(node) || $isQuoteNode(node);
+    return $isHeadingNode(node);
 }
 
 /**
@@ -2474,7 +2501,7 @@ function registerRunEdgeRules(editor: LexicalEditor): () => void {
             return;
         }
 
-        const holdsTextOnly = $isParagraphNode(container) || $isHeadingNode(container) || $isQuoteNode(container);
+        const holdsTextOnly = $isParagraphNode(container) || $isHeadingNode(container);
 
         // A text node's rule runs before its block's own: a block put in it is moved out before its content
         // is read as runs of text, which would take that block's text in.
@@ -2510,7 +2537,7 @@ function registerRunEdgeRules(editor: LexicalEditor): () => void {
         editor.registerCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, tag, COMMAND_PRIORITY_CRITICAL),
         editor.registerCommand(CUT_COMMAND, tag, COMMAND_PRIORITY_CRITICAL),
         editor.registerCommand(DROP_COMMAND, tag, COMMAND_PRIORITY_CRITICAL),
-        ...[TextNode, MarkdownSourceTextNode, LinkNode, ParagraphNode, MarkdownListItemTextNode, HeadingNode, QuoteNode]
+        ...[TextNode, MarkdownSourceTextNode, LinkNode, ParagraphNode, MarkdownListItemTextNode, HeadingNode]
             .map((klass) => editor.registerNodeTransform(klass, tidy)),
     );
 }
@@ -2736,7 +2763,7 @@ function $scratchBlock(parent: ElementNode): ElementNode | null {
         return $createHeadingNode(parent.getTag());
     }
 
-    return $isQuoteNode(parent) ? $createQuoteNode() : null;
+    return null;
 }
 
 /**

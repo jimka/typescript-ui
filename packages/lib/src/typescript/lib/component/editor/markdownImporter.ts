@@ -7,8 +7,8 @@ import {
 import type { ElementNode, LexicalNode, NodeKey, TextFormatType, TextNode } from "lexical";
 import { Lexer } from "marked";
 import type { Links, Token, Tokens, TokensList } from "marked";
-import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text";
-import type { HeadingTagType, QuoteNode } from "@lexical/rich-text";
+import { $createHeadingNode } from "@lexical/rich-text";
+import type { HeadingTagType } from "@lexical/rich-text";
 import { $createListItemNode, $createListNode, $isListNode } from "@lexical/list";
 import type { ListItemNode, ListNode } from "@lexical/list";
 import { $createLinkNode } from "@lexical/link";
@@ -31,6 +31,7 @@ import {
 import type { MarkdownSpanStyle } from "~/component/display/markdownAttributes.js";
 import { $createMarkdownBlockNode, $createMarkdownColumnNode, $isMarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import type { MarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
+import { $createMarkdownQuoteNode } from "~/component/editor/markdownQuoteNode.js";
 import { $createMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import type { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { $createMarkdownListItemTextNode, $isMarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
@@ -49,7 +50,7 @@ import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode, $isMarkdown
 import { headingSlugSource, slugify } from "~/component/display/markdownHeadingIds.js";
 import { $readStandardForm, keptImageShown } from "~/component/editor/markdownSerializer.js";
 import type { StandardFormReading } from "~/component/editor/markdownSerializer.js";
-import { columnBlockKey } from "~/component/editor/markdownSourceMap.js";
+import { columnBlockKey, quoteBlockKey } from "~/component/editor/markdownSourceMap.js";
 import type {
     MarkdownSourceBlock, MarkdownSourceCodeFrame, MarkdownSourceDelimiterRow, MarkdownSourceItem, MarkdownSourceLoad, MarkdownSourceMap,
     MarkdownSourcePart, MarkdownSourceRow,
@@ -161,11 +162,24 @@ type RecordedPart =
     | Omit<MarkdownSourceRow, "load" | "column" | "fingerprint" | "cellFingerprints">
     | Omit<MarkdownSourceDelimiterRow, "fingerprint">
     | Omit<MarkdownSourceCodeFrame, "fingerprint">
-    | { readonly kind: "columnBlock"; readonly node: NodeKey; readonly columnLoad: ColumnLoad; readonly index: number; readonly body: string; readonly after: string };
+    | { readonly kind: "columnBlock"; readonly node: NodeKey; readonly columnLoad: ColumnLoad; readonly index: number; readonly body: string; readonly after: string }
+    | {
+        readonly kind:         "quoteBlock";
+        readonly node:         NodeKey;
+        readonly quote:        NodeKey;
+        readonly columnLoad:   ColumnLoad;
+        readonly index:        number;
+        readonly body:         string;
+        readonly after:        string;
+        readonly quotedBody:   string;
+        readonly quotedAfter:  string;
+        readonly quotedPrefix: string;
+    };
 
 /**
  * The nested parts the running load records, keyed by node (a block of a
- * column by {@link columnBlockKey} of its node); `null` outside a
+ * column by {@link columnBlockKey} of its node, a block of a quote by
+ * {@link quoteBlockKey}); `null` outside a
  * load, so a block read again in the middle of an edit records none.
  */
 const IMPORT_PARTS: { current: Map<NodeKey, RecordedPart> | null } = { current: null };
@@ -372,8 +386,8 @@ export interface RawBlockReading {
 
 /**
  * The block token types a load builds a node of their own for (or may: a
- * quote, list or table the nodes cannot hold is a raw block); every other
- * type is a raw block.
+ * quote with a lazy line outside a paragraph, a list or a table the nodes
+ * cannot hold is a raw block); every other type is a raw block.
  */
 const HELD_BLOCK_TYPES: ReadonlySet<string> = new Set(["heading", "paragraph", "code", "blockquote", "list", "mdtable", "mdblock"]);
 
@@ -455,7 +469,7 @@ export function $readBlocksWithDefinitions(markdown: string, definitions: Links)
  * each reference link's text recorded as a load records it — replacing what
  * the block held. Must run inside an `editor.update`.
  *
- * @param block - The paragraph, heading, quote, list item or table cell.
+ * @param block - The paragraph, heading, list item or table cell.
  * @param tokens - The inline tokens.
  */
 export function $buildInlineContent(block: ElementNode, tokens: Token[]): void {
@@ -545,7 +559,7 @@ function $recordSourceMap(source: string, located: LocatedBlock[], recorded: Rea
  * container's indentation reads by its column, which a part moved elsewhere
  * would change.
  *
- * @param recorded - The parts the builders recorded, keyed by node (a column block by {@link columnBlockKey}).
+ * @param recorded - The parts the builders recorded, keyed by node (a column block by {@link columnBlockKey}, a quote block by {@link quoteBlockKey}).
  * @param record - The fingerprints the fingerprint pass stored.
  * @param load - The document's import.
  * @param bodies - Each top-level block's source, keyed by its node.
@@ -557,16 +571,19 @@ function $recordedParts(
     const parts = new Map<NodeKey, MarkdownSourcePart>();
     const differing = new Set<NodeKey>();
     const columnBlocks: Array<readonly [NodeKey, Extract<RecordedPart, { kind: "columnBlock" }>, NodeKey]> = [];
+    const quoteBlocks: Array<readonly [NodeKey, Extract<RecordedPart, { kind: "quoteBlock" }>]> = [];
 
     for (const [recordedKey, part] of recorded) {
-        const key = part.kind === "columnBlock" ? part.node : recordedKey;
+        const key = part.kind === "columnBlock" || part.kind === "quoteBlock" ? part.node : recordedKey;
         const place = $placeOfRecordedPart(key, part, record, bodies);
 
         if (place === null) {
             continue;
         }
 
-        if (part.kind === "columnBlock") {
+        if (part.kind === "quoteBlock") {
+            quoteBlocks.push([key, part]);
+        } else if (part.kind === "columnBlock") {
             columnBlocks.push([key, part, place.column!]);
         } else {
             parts.set(key, completedPart(key, part, place, record, load));
@@ -590,6 +607,19 @@ function $recordedParts(
 
         columnLoads.set(part.columnLoad, columnLoad);
         parts.set(columnBlockKey(key), { kind: "columnBlock", column, block });
+    }
+
+    for (const [key, part] of quoteBlocks) {
+        const quoteLoad = columnLoads.get(part.columnLoad) ?? { ...part.columnLoad, definitions: load.definitions, definitionsKey: load.definitionsKey };
+        const block: MarkdownSourceBlock = {
+            load: quoteLoad, index: part.index, body: part.body, after: part.after, fingerprint: record.blockFingerprints.get(key)!,
+            partsDiffer: differing.has(key),
+        };
+
+        columnLoads.set(part.columnLoad, quoteLoad);
+        parts.set(quoteBlockKey(key), {
+            kind: "quoteBlock", quote: part.quote, block, quotedBody: part.quotedBody, quotedAfter: part.quotedAfter, quotedPrefix: part.quotedPrefix,
+        });
     }
 
     return { parts, differing };
@@ -626,7 +656,7 @@ function $placeOfRecordedPart(key: NodeKey, part: RecordedPart, record: Recorded
 
     const ancestors = node.getParents();
     const top = ancestors[ancestors.length - 2] ?? node;
-    const fingerprint = part.kind === "columnBlock" ? record.blockFingerprints.get(key) : record.partFingerprints.get(key);
+    const fingerprint = part.kind === "columnBlock" || part.kind === "quoteBlock" ? record.blockFingerprints.get(key) : record.partFingerprints.get(key);
     const hasTab = bodies.get(top.getKey())?.includes("\t");
 
     if (fingerprint === undefined || hasTab !== false) {
@@ -645,14 +675,14 @@ function $placeOfRecordedPart(key: NodeKey, part: RecordedPart, record: Recorded
  * fingerprint.
  *
  * @param key - The part's node key.
- * @param part - The part as its builder recorded it, a column block excepted.
+ * @param part - The part as its builder recorded it, a column block and a quote block excepted.
  * @param place - Where it stands.
  * @param record - The fingerprints the fingerprint pass stored.
  * @param load - The document's import.
  * @returns The part for the source map.
  */
 function completedPart(
-    key: NodeKey, part: Exclude<RecordedPart, { kind: "columnBlock" }>, place: RecordedPlace, record: RecordedFingerprints, load: MarkdownSourceLoad,
+    key: NodeKey, part: Exclude<RecordedPart, { kind: "columnBlock" | "quoteBlock" }>, place: RecordedPlace, record: RecordedFingerprints, load: MarkdownSourceLoad,
 ): MarkdownSourcePart {
     const { column, fingerprint } = place;
 
@@ -670,7 +700,7 @@ function completedPart(
 /**
  * Tells whether a part's source is not its standard form at load, which is
  * when an edit of the block holding it must write it part by part. A code
- * frame and a column block are always taken to differ.
+ * frame, a column block and a quote block are always taken to differ.
  *
  * @param part - The part as its builder recorded it.
  * @param fingerprint - Its standard form at load.
@@ -1089,7 +1119,7 @@ function $buildBlock(token: Token, source: string): LexicalNode {
         case "heading":    return $buildHeading(token as Tokens.Heading);
         case "paragraph":  return $appendInlineContent($createParagraphNode(), (token as Tokens.Paragraph).tokens);
         case "code":       return $buildCode(token as Tokens.Code);
-        case "blockquote": return $buildQuote(token as Tokens.Blockquote) ?? $buildRawBlock(source);
+        case "blockquote": return $buildQuote(token as Tokens.Blockquote, source);
         case "list":       return $buildList(token as Tokens.List) ?? $buildRawBlock(source, true);
         case "mdtable":    return $buildTable(token as unknown as MdTableToken) ?? $buildRawBlock(source);
         case "mdblock":    return $buildFence(token as unknown as MdBlockToken);
@@ -1191,43 +1221,202 @@ function withoutSpace(tokens: Token[]): Token[] {
     return tokens.filter((token) => token.type !== "space");
 }
 
+/** A quote line's first marker as `marked` takes it off: up to three spaces, `>`, one space or tab. Mirrors `marked`'s `blockquoteSetextReplace2`. */
+const QUOTE_LINE_MARKER = /^ {0,3}>[ \t]?/gm;
+
+/** A line whose first character after its blanks is `>`; any other line of a quote is a lazy line. */
+const OPENS_WITH_QUOTE_MARKER = /^[ \t]*>/;
+
 /**
- * Tells whether a quote's tokens cover all of its text: `marked` emits no
- * token for a repeated link reference definition, so a quote holding one
- * looks emptier than it is, and building it from its tokens would drop that
- * line on the next save. (A list item builds such text as a raw block.)
+ * Builds a quote holding its blocks, located as a `:::` column's are in the
+ * quote's text: the blocks the viewer renders in it, each built as it is
+ * built anywhere, and a raw block for the text no token covers. A quote
+ * loads as one raw block when a block token of it is not found in its text
+ * (what is not found would be lost), or when a line without `>` (a lazy
+ * line) stands in a block that is not a paragraph or a nested quote: such a
+ * quote reads by what follows it.
  *
- * @param text - The quote's content text (`marked`'s `text`).
- * @param tokens - The block tokens lexed from it.
- * @returns `true` when no text lies outside every token.
+ * @param token - The blockquote token.
+ * @param source - The quote's source, for the raw block.
+ * @returns The quote, or a raw block.
  */
-function coversText(text: string, tokens: Token[]): boolean {
-    return locateTokens(text, tokens).every((entry) => !("gap" in entry));
+function $buildQuote(token: Tokens.Blockquote, source: string): LexicalNode {
+    const lines = withoutTrailingNewlines(token.raw).split("\n");
+    const text = quoteText(token, lines);
+    const located = locateBlocks(text, token.tokens);
+    const keepsRaw = !locatesEveryBlock(located, token.tokens) || holdsLazyLineOutsideParagraph(lines, text, located);
+
+    if (keepsRaw) {
+        return $buildRawBlock(source);
+    }
+
+    const quote = $createMarkdownQuoteNode();
+    const blocks = located.map($buildLocatedBlock);
+
+    recordQuoteBlocks(quote.getKey(), lines, text, located, blocks);
+    quote.append(...(blocks.length > 0 ? blocks : [$createParagraphNode()]));
+
+    return quote;
 }
 
 /**
- * Builds a quote when the blockquote holds nothing or one paragraph — all a
- * `QuoteNode`'s inline content can hold.
+ * Reads a quote's text: its source lines with each line's first marker taken
+ * off, as `marked` takes it off. `marked`'s own `text` is not used, as for a
+ * nested quote that a lazy line continues it splices in the inner quote's
+ * text and the inner quote's token is not found in it; with a tab in the
+ * source `marked` lexes a tab-expanded form, so its `text` and its tokens
+ * agree and the source lines do not.
  *
  * @param token - The blockquote token.
- * @returns The quote, or `null` for any other content.
+ * @param lines - The lines of the quote's source.
+ * @returns The quote's text; each of its lines is the same line of the source.
  */
-function $buildQuote(token: Tokens.Blockquote): QuoteNode | null {
-    const content = withoutSpace(token.tokens);
+function quoteText(token: Tokens.Blockquote, lines: readonly string[]): string {
+    return token.raw.includes("\t") ? token.text : lines.join("\n").replace(QUOTE_LINE_MARKER, "");
+}
 
-    if (!coversText(token.text, token.tokens)) {
-        return null;
+/**
+ * Tells whether every block token of a quote was found in its text. A run of
+ * definitions is joined into one gap, and `marked` emits no token for a
+ * repeated definition, so `def` tokens are not counted.
+ *
+ * @param located - The quote's located blocks.
+ * @param tokens - The quote's block tokens.
+ * @returns `true` when no token is missing and every gap holds definitions alone.
+ */
+function locatesEveryBlock(located: LocatedBlock[], tokens: Token[]): boolean {
+    const wanted = withoutSpace(tokens).filter((token) => token.type !== "def").length;
+    const found = located.filter((entry) => !("gap" in entry) && entry.token.type !== "def").length;
+    const gapsHoldDefinitions = located.filter((entry) => "gap" in entry).every(holdsOnlyDefinitions);
+
+    return found === wanted && gapsHoldDefinitions;
+}
+
+/**
+ * The offset each line of a text starts at; a text that ends with a line end has an empty last line.
+ *
+ * @param text - The text.
+ * @returns One offset per line, in order.
+ */
+function lineStartsOf(text: string): number[] {
+    const starts = [0];
+
+    for (let at = text.indexOf("\n"); at !== -1; at = text.indexOf("\n", at + 1)) {
+        starts.push(at + 1);
     }
 
-    if (content.length === 0) {
-        return $createQuoteNode();
+    return starts;
+}
+
+/**
+ * Finds the line an offset lies in, by a binary search in the line starts.
+ *
+ * @param lineStarts - The offset each line starts at ({@link lineStartsOf}).
+ * @param offset - The offset.
+ * @returns The index of the last line that starts at or before the offset.
+ */
+function lineIndexAt(lineStarts: readonly number[], offset: number): number {
+    let low = 0;
+    let high = lineStarts.length - 1;
+
+    while (low < high) {
+        const middle = Math.ceil((low + high) / 2);
+
+        if (lineStarts[middle]! <= offset) {
+            low = middle;
+        } else {
+            high = middle - 1;
+        }
     }
 
-    const only = content[0]!;
+    return low;
+}
 
-    return content.length === 1 && only.type === "paragraph"
-        ? $appendInlineContent($createQuoteNode(), (only as Tokens.Paragraph).tokens)
-        : null;
+/**
+ * Tells whether a lazy line of a quote stands in a block that is not a
+ * paragraph or a nested quote. A lazy line in a paragraph only continues it,
+ * and a nested quote checks its own lines.
+ *
+ * @param lines - The lines of the quote's source.
+ * @param text - The quote's text; its lines map one to one to `lines`.
+ * @param located - The quote's located blocks.
+ * @returns `true` when the quote has to stay a raw block.
+ */
+function holdsLazyLineOutsideParagraph(lines: readonly string[], text: string, located: LocatedBlock[]): boolean {
+    const lineStarts = lineStartsOf(text);
+
+    return lines.some((line, index) => {
+        if (OPENS_WITH_QUOTE_MARKER.test(line)) {
+            return false;
+        }
+
+        const start = lineStarts[index]!;
+        const entry = located.find((candidate) => candidate.start <= start && start <= candidate.end);
+
+        return entry !== undefined && ("gap" in entry || (entry.token.type !== "paragraph" && entry.token.type !== "blockquote"));
+    });
+}
+
+/**
+ * Tells whether a quote's blocks can be recorded as parts: every line of its
+ * source opens with `>` (a lazy line would put a line without a marker into a
+ * kept block) and none holds a tab (a tab reads by its column).
+ *
+ * @param lines - The lines of the quote's source.
+ * @returns `true` when the quote's blocks keep their lines as written.
+ */
+function isRecordableQuote(lines: readonly string[]): boolean {
+    return lines.every((line) => OPENS_WITH_QUOTE_MARKER.test(line)) && !lines.some((line) => line.includes("\t"));
+}
+
+/**
+ * Records the blocks of a quote when the load is recording parts: each
+ * block's source and the text after it in the quote's own text, and the same
+ * stretches as written, markers kept, so a save of an edited quote writes it
+ * as a document is written. Nothing is recorded for a quote that is not
+ * recordable ({@link isRecordableQuote}).
+ *
+ * @param quote - The quote's key.
+ * @param lines - The lines of the quote's source.
+ * @param text - The quote's text.
+ * @param located - The quote's located blocks.
+ * @param blocks - The nodes built for them, one each.
+ */
+function recordQuoteBlocks(quote: NodeKey, lines: readonly string[], text: string, located: LocatedBlock[], blocks: LexicalNode[]): void {
+    const parts = IMPORT_PARTS.current;
+
+    if (parts === null || located.length === 0 || !isRecordableQuote(lines)) {
+        return;
+    }
+
+    const lineStarts = lineStartsOf(text);
+    const linesBetween = (from: number, to: number): string => lines.slice(from, to).join("\n");
+    const columnLoad: ColumnLoad = {
+        prefix:          text.slice(0, located[0]!.start),
+        endsWithNewline: false,
+        blockCount:      located.length,
+        endsOpen:        endsOpen(text, located),
+    };
+
+    located.forEach((entry, index) => {
+        const first = lineIndexAt(lineStarts, entry.start);
+        const last = lineIndexAt(lineStarts, entry.end);
+        const next = located[index + 1];
+        const nextFirst = next === undefined ? lines.length : lineIndexAt(lineStarts, next.start);
+
+        parts.set(quoteBlockKey(blocks[index]!.getKey()), {
+            kind:         "quoteBlock",
+            node:         blocks[index]!.getKey(),
+            quote,
+            columnLoad,
+            index,
+            body:         text.slice(entry.start, entry.end),
+            after:        text.slice(entry.end, next?.start ?? text.length),
+            quotedBody:   linesBetween(first, last + 1),
+            quotedAfter:  linesBetween(last + 1, nextFirst),
+            quotedPrefix: linesBetween(0, first),
+        });
+    });
 }
 
 /**
@@ -1728,7 +1917,7 @@ function recordColumnBlocks(section: string, located: LocatedBlock[], blocks: Le
  * Appends inline tokens into a block element, keeping as written the
  * constructs its standard form could not write back ({@link $buildKeepingConstructs}).
  *
- * @param block - The paragraph, heading or quote.
+ * @param block - The paragraph or heading.
  * @param tokens - Its inline tokens.
  * @param isHeading - Whether the block is a heading, whose id the standard form must keep.
  * @returns `block`.

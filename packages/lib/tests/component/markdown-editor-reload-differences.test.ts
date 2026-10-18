@@ -378,7 +378,7 @@ describe('the editor shows what its save reloads to: whitespace at a line\'s sta
 
     it.each([
         ['a heading', '# h0', 'h0', 'heading("xh0")', '# xh0'],
-        ['a quote', '> q0', 'q0', 'quote("xq0")', '> xq0'],
+        ['a quote', '> q0', 'q0', 'markdown-quote(paragraph("xq0"))', '> xq0'],
         ['a list item', '- i0', 'i0', 'tight(markdown-list-item(markdown-list-item-text("xi0")))', '- xi0'],
         ['a task item, after its marker', '- [ ] t0', 't0', 'tight(markdown-list-item(markdown-list-item-text("[ ] ", "xt0")))', '- [ ] xt0'],
         ['a further paragraph of an item', '- a\n\n  m0', 'm0', 'loose(markdown-list-item(markdown-list-item-text("a"), paragraph("xm0")))', '- a\n\n  xm0'],

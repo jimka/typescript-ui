@@ -213,7 +213,7 @@ const HEADING: Clipboard = { name: 'heading', source: '## H\n\nP2', from: ['H', 
 const CODE: Clipboard = { name: 'code', source: '```\ncode\n```\n\nP2', from: ['code', 0], to: ['P2', 2], types: ['code', 'paragraph'] };
 const LIST: Clipboard = { name: 'list', source: '- x\n- y\n\nP2', from: ['x', 0], to: ['P2', 2], types: ['list', 'paragraph'] };
 const TABLE: Clipboard = { name: 'table', source: '| h |\n| --- |\n| c |\n\nP2', from: ['h', 0], to: ['P2', 2], types: ['table', 'paragraph'] };
-const QUOTE: Clipboard = { name: 'quote', source: '> q\n\nP2', from: ['q', 0], to: ['P2', 2], types: ['quote', 'paragraph'] };
+const QUOTE: Clipboard = { name: 'quote', source: '> q\n\nP2', from: ['q', 0], to: ['P2', 2], types: ['markdown-quote', 'paragraph'] };
 
 const FENCE: Clipboard = {
     name: 'fence', source: '::: {align=center}\n**f**\n:::\n\nP2', from: ['f', 0], to: ['P2', 2], types: ['markdown-block', 'paragraph'],
@@ -333,7 +333,7 @@ describe('a paste into a list item saves each block where the editor shows it', 
         ['P6: a paragraph and a code block', NESTED, PARAGRAPH_CODE, 3, '- a\n  - bcdP1\n\n  ```\n  code\n  ```\n\n  - e\n\n- f'],
         ['P7: a list and a paragraph', NESTED, LIST, 1, '- a\n  - b\n  - x\n  - y\n\n  P2cd\n\n  - e\n\n- f'],
         ['P8: a table and a paragraph', NESTED, TABLE, 1, '- a\n  - b\n\n  | h |\n  | --- |\n  | c |\n\n  P2cd\n\n  - e\n\n- f'],
-        ['P9: a quote and a paragraph', NESTED, QUOTE, 1, '- a\n  - bq\n\n  P2cd\n\n  - e\n\n- f'],
+        ['P9: a quote and a paragraph', NESTED, QUOTE, 1, '- a\n  - b\n\n  > q\n\n  P2cd\n\n  - e\n\n- f'],
         ['P10: a fence and a paragraph at a nested item\'s start', NESTED, FENCE, 0,
             '- a\n\n  ::: {align=center}\n  **f**\n  :::\n\n  P2bcd\n\n  - e\n\n- f'],
         ['P11: paragraphs inside an ordered nested item', ORDERED, PARAGRAPHS, 1, '1. a\n   1. bP1\n\n   P2cd\n\n   1. e\n\n2. f'],
@@ -536,8 +536,8 @@ describe('a copied list keeps the paragraphs its items hold', () => {
             'paragraph("b") | list(markdown-list-item(markdown-list-item-text("a"), paragraph("p"), paragraph("r")), markdown-list-item(markdown-list-item-text("k"))) | paragraph("cd")',
             'b\n\n- a\n\n  p\n\n  r\n\n- k\n\ncd'],
         ['into a quote', QUOTED, ITEM_PARAGRAPHS,
-            'quote("b") | list(markdown-list-item(markdown-list-item-text("a"), paragraph("p"), paragraph("r")), markdown-list-item(markdown-list-item-text("k"))) | paragraph("cd")',
-            '> b\n\n- a\n\n  p\n\n  r\n\n- k\n\ncd'],
+            'markdown-quote(paragraph("b"), list(markdown-list-item(markdown-list-item-text("a"), paragraph("p"), paragraph("r")), markdown-list-item(markdown-list-item-text("k"))), paragraph("cd"))',
+            '> b\n>\n> - a\n>\n>   p\n>\n>   r\n>\n> - k\n>\n> cd'],
         ['into a top-level item', TOP_LEVEL, ITEM_PARAGRAPHS,
             'list(markdown-list-item(markdown-list-item-text("b")), markdown-list-item(markdown-list-item-text("a"), paragraph("p"), paragraph("r")), markdown-list-item(markdown-list-item-text("kcd")), markdown-list-item(markdown-list-item-text("z")))',
             '- b\n\n- a\n\n  p\n\n  r\n\n- kcd\n\n- z'],
@@ -550,7 +550,7 @@ describe('a copied list keeps the paragraphs its items hold', () => {
             'paragraph("b") | list(markdown-list-item(markdown-list-item-text("[ ] ", "a"), paragraph("p")), markdown-list-item(markdown-list-item-text("[x] ", "k"))) | paragraph("cd")',
             'b\n\n- [ ] a\n\n  p\n\n- [x] k\n\ncd'],
         ['a paragraph after an item\'s quote', PARAGRAPH, QUOTE_PARAGRAPH,
-            'paragraph("b") | list(markdown-list-item(quote("q"), paragraph("p")), markdown-list-item(markdown-list-item-text("k"))) | paragraph("cd")',
+            'paragraph("b") | list(markdown-list-item(markdown-quote(paragraph("q")), paragraph("p")), markdown-list-item(markdown-list-item-text("k"))) | paragraph("cd")',
             'b\n\n- > q\n\n  p\n\n- k\n\ncd'],
         ['a nested item\'s paragraph', PARAGRAPH, NESTED_PARAGRAPH,
             'paragraph("b") | list(markdown-list-item(markdown-list-item-text("a"), list(markdown-list-item(markdown-list-item-text("n"), paragraph("p")))), markdown-list-item(markdown-list-item-text("k"))) | paragraph("cd")',
@@ -937,7 +937,7 @@ describe('blocks pasted into a block that a list item holds become blocks of the
     it.each<[string, string, Clipboard, TextPoint, string]>([
         ['Y1: paragraphs into an item\'s paragraph', '- x\n\n  cd\n- z', PARAGRAPHS, ['cd', 1], '- x\n\n  cP1\n\n  P2d\n\n- z'],
         ['Y2: paragraphs into an item\'s heading', '- x\n\n  ## cd\n- z', PARAGRAPHS, ['cd', 1], '- x\n\n  ## cP1\n\n  P2d\n\n- z'],
-        ['Y3: paragraphs into an item\'s quote', '- x\n\n  > cd\n- z', PARAGRAPHS, ['cd', 1], '- x\n\n  > cP1\n\n  P2d\n\n- z'],
+        ['Y3: paragraphs into an item\'s quote', '- x\n\n  > cd\n- z', PARAGRAPHS, ['cd', 1], '- x\n\n  > cP1\n  >\n  > P2d\n\n- z'],
         ['Y4: a list into an item\'s paragraph', '- x\n\n  cd\n- z', ITEMS, ['cd', 1], '- x\n\n  c\n\n  - k\n  - m\n\n  d\n\n- z'],
         ['Y5: a table and a paragraph into an item\'s paragraph', '- x\n\n  cd\n- z', TABLE, ['cd', 1],
             '- x\n\n  c\n\n  | h |\n  | --- |\n  | c |\n\n  P2d\n\n- z'],

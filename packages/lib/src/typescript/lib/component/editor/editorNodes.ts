@@ -7,6 +7,7 @@ import { CodeNode, CodeHighlightNode } from "@lexical/code";
 import { TableNode, TableRowNode, TableCellNode } from "@lexical/table";
 import type { Klass, LexicalNode, LexicalNodeReplacement } from "lexical";
 import { MarkdownListItemNode, MarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
+import { MarkdownQuoteNode } from "~/component/editor/markdownQuoteNode.js";
 import { MarkdownBlockNode, MarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { ReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
@@ -18,7 +19,9 @@ import { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor
  * @remarks
  * A Lexical editor can only build or parse a node type whose class it was
  * created with, so this set must cover every construct the Markdown importer
- * produces: headings (`HeadingNode`), blockquotes (`QuoteNode`),
+ * produces: headings (`HeadingNode`), blockquotes (`MarkdownQuoteNode`, which
+ * replaces Lexical's `QuoteNode` wherever one is created, so a quote never is
+ * of another class, and holds blocks),
  * ordered/unordered lists (`ListNode` + `MarkdownListItemNode`, which
  * replaces Lexical's `ListItemNode` wherever one is created, so a list never
  * holds an item of another class, + `MarkdownListItemTextNode` for an item's
@@ -36,7 +39,8 @@ import { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor
  */
 export const EDITOR_NODES: ReadonlyArray<Klass<LexicalNode> | LexicalNodeReplacement> = [
     HeadingNode,
-    QuoteNode,
+    MarkdownQuoteNode,
+    { replace: QuoteNode, with: (): MarkdownQuoteNode => new MarkdownQuoteNode(), withKlass: MarkdownQuoteNode },
     ListNode,
     MarkdownListItemNode,
     { replace: ListItemNode, with: (): MarkdownListItemNode => new MarkdownListItemNode(), withKlass: MarkdownListItemNode },
