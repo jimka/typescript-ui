@@ -521,6 +521,46 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         run.editor.dispose();
     });
 
+    // Vitest's default per-test timeout is 5s. The sweep builds an editor for each of 20 commands at each of 24 offsets.
+    const FREEZE_SWEEP_TIMEOUT_MS = 60_000;
+
+    // The document opens with newlines, the shape a line-start helper once looped on for good. Every command ends at once, and
+    // the caret in the raw HTML block of the list item changes nothing.
+    it('every source-mode command ends at once at every offset of a document that opens with newlines', () => {
+        const doc = '\n\n 1.\t</pre>\n \t  >\t#\th\n';
+        // The bound of row 5.21 above: a command that once looped for good takes tens of milliseconds, never a second.
+        const FREEZE_BOUND_MS = 1_000;
+        const commands: Array<[string, (editor: MarkdownEditor) => unknown]> = [
+            ...Object.entries(COMMANDS),
+            ['insertTable', (editor) => editor.insertTable(2, 2)],
+            ['insertParagraphBeforeBlock', (editor) => editor.insertParagraphBeforeBlock()],
+            ['insertParagraphAfterBlock', (editor) => editor.insertParagraphAfterBlock()],
+        ];
+
+        const slow: string[] = [];
+        const changed: string[] = [];
+
+        for (const [name, command] of commands) {
+            for (let at = 0; at <= doc.length; at++) {
+                const started = performance.now();
+                const run = runInSource(doc, { from: at, to: at }, command);
+
+                if (performance.now() - started >= FREEZE_BOUND_MS) {
+                    slow.push(`${name}@${at}`);
+                }
+
+                if (at === 7 && name in COMMANDS && run.text !== doc) {
+                    changed.push(name);
+                }
+
+                run.editor.dispose();
+            }
+        }
+
+        expect(slow).toEqual([]);
+        expect(changed).toEqual([]);
+    }, FREEZE_SWEEP_TIMEOUT_MS);
+
     it('5.22: one replacement, as the smallest edit between the two texts', () => {
         const run = runInSource('hello world', { from: 8, to: 8 }, COMMANDS.bold!);
 

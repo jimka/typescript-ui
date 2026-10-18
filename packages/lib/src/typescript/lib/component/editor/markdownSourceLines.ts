@@ -246,7 +246,8 @@ function expectLeaves(leaves: readonly LeafView[], change: (leaf: LeafView) => E
  * @returns The line's start.
  */
 function lineStartAt(text: string, offset: number): number {
-    return text.lastIndexOf("\n", offset - 1) + 1;
+    // At the document start there is no line before: `lastIndexOf("\n", -1)` would find a newline at 0.
+    return offset <= 0 ? 0 : text.lastIndexOf("\n", offset - 1) + 1;
 }
 
 /**

@@ -180,6 +180,21 @@ describe('paragraphAroundBlockSource', () => {
 });
 
 describe('tableSource', () => {
+    // A text that opens with a newline: the caret at 0 is on the blank first line, and the table goes on that line.
+    it('puts the table on the blank first line for a caret at the document start', () => {
+        const text = '\nabc';
+
+        expect(apply(text, tableSource(2, 2)(text, 0, 0)!)).toBe('|  |  |\n| --- | --- |\n|  |  |\n\n\nabc');
+        expect(tableSource(2, 2)(text, 0, 0)!.selection).toEqual({ from: 2, to: 2 });
+    });
+
+    it('puts the table on the second blank line for a caret there', () => {
+        const text = '\nabc';
+
+        expect(apply(text, tableSource(2, 2)(text, 1, 1)!)).toBe('\n|  |  |\n| --- | --- |\n|  |  |\n\nabc');
+        expect(tableSource(2, 2)(text, 1, 1)!.selection).toEqual({ from: 3, to: 3 });
+    });
+
     it('emits the delimiter row formatDelimiterRow emits, as the insert\'s second line', () => {
         for (const columns of [1, 3, 5]) {
             const edit = tableSource(2, columns)('', 0, 0)!;
