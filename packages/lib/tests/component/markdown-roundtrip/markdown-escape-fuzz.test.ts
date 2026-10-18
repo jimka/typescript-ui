@@ -294,6 +294,9 @@ function randomDocument(random: () => number): MarkdownEditor {
 }
 
 describe('a save escapes only what would read otherwise, and reloads as shown', () => {
+    // Vitest's default per-test timeout is 5s. Saving and loading the seeded documents took about 5s under load.
+    const FUZZ_TIMEOUT_MS = 60_000;
+
     const runs: Array<[title: string, emphasis: boolean, seed: number]> = [
         [`${DOCUMENTS} seeded documents of text with Markdown punctuation`, false, FUZZ_SEED],
         [`${DOCUMENTS} seeded documents of bold and struck text between brackets, with link reference definitions`, true, FUZZ_SEED + 1],
@@ -308,7 +311,7 @@ describe('a save escapes only what would read otherwise, and reloads as shown', 
             } finally {
                 withEmphasis = false;
             }
-        });
+        }, FUZZ_TIMEOUT_MS);
     }
 });
 
