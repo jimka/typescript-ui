@@ -10082,7 +10082,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * followed by an empty paragraph.
      *
      * In `"source"` mode, inserts the raw-Markdown GFM table skeleton above
-     * the block holding the caret instead.
+     * the block holding the caret instead, and does nothing on a blank line
+     * inside a list or a quote, where the table would split it.
      *
      * @param rows - The number of rows, including the header row.
      * @param columns - The number of columns.

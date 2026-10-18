@@ -25,6 +25,9 @@ const CONTAINER_NODE_TYPES: ReadonlySet<string> = new Set(["blockquote", "list",
 /** The top-level block types {@link paragraphAroundBlockSource} steps out of: a quote, a list, a table and a code block. */
 const SURROUNDED_BLOCK_TYPES: ReadonlySet<string> = new Set(["blockquote", "list", "mdtable", "code"]);
 
+/** The containers a table written on one of their blank lines would split: a quote and a list. */
+const TABLE_SPLIT_CONTAINER_TYPES: ReadonlySet<string> = new Set(["blockquote", "list"]);
+
 /** The block signatures that open a container in the analysis's entries; each is closed by a `/`-prefixed one. */
 const OPENING_SIGNATURE = /^(?:quote|list:|item:|fence:|column|table:|row|cell:)/;
 
@@ -301,8 +304,10 @@ function leafNodes(analysis: SourceAnalysis): SourceBlockNode[] {
  * @param from - The caret.
  * @returns The line's start, or `null` when the climb stops inside a quote or
  *   list item's content (a table written at column 0 there would split it,
- *   and the WYSIWYG editor holds no table there) or the caret's line holds
- *   source no block holds.
+ *   and the WYSIWYG editor holds no table there), the caret's line holds
+ *   source no block holds, or the caret is on a blank line inside a quote or
+ *   a list past its first line, where a table written at column 0 would
+ *   split it.
  */
 function tableInsertionLine(analysis: SourceAnalysis, from: number): number | null {
     const text = analysis.text;
@@ -312,7 +317,13 @@ function tableInsertionLine(analysis: SourceAnalysis, from: number): number | nu
         && line.start <= lineStartAt(text, Math.max(leaf.start, leaf.end - 1)));
 
     if (node === undefined) {
-        return CONTAINER_SYNTAX_ONLY.test(text.slice(line.start, line.end)) ? line.start : null;
+        // A blank line past a quote's or list's first line is inside it: a table there would split it.
+        const isInsideContainer = allNodes(analysis.tree).some((container) => TABLE_SPLIT_CONTAINER_TYPES.has(container.type)
+            && container.start !== -1 && lineStartAt(text, container.start) < line.start && line.start <= lineStartAt(text, container.end - 1));
+
+        const isContainerSyntax = CONTAINER_SYNTAX_ONLY.test(text.slice(line.start, line.end));
+
+        return isContainerSyntax && !isInsideContainer ? line.start : null;
     }
 
     while (node.parent !== null && node.parent.type !== "column" && node.parent.children[0] === node) {
@@ -337,8 +348,9 @@ function tableInsertionLine(analysis: SourceAnalysis, from: number): number | nu
  * first header cell. The result must read as the same blocks with one more
  * table. Declines (`null`) inside a quote or list item's content past its
  * first block (a table written at column 0 there splits it, and the WYSIWYG
- * editor holds no table inside an item), and on a line of source the viewer
- * does not show.
+ * editor holds no table inside an item), on a blank line inside a quote or a
+ * list past its first line (where a table written at column 0 would split
+ * it), and on a line of source the viewer does not show.
  *
  * @param rows - The number of rows, including the header row.
  * @param columns - The number of columns.

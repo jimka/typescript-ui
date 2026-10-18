@@ -8,7 +8,7 @@ import { $isListItemNode } from "@lexical/list";
 import { $isTableCellNode, $isTableNode, $isTableRowNode } from "@lexical/table";
 import type { TableNode } from "@lexical/table";
 import { $dfs } from "@lexical/utils";
-import { lineEndAt } from "~/component/display/markdownAttributes.js";
+import { COLUMN_SEPARATOR, lineEndAt } from "~/component/display/markdownAttributes.js";
 import { lexMarkdownLinkDefinitions } from "~/component/display/markdownExtensions.js";
 import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import type { MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
@@ -99,6 +99,14 @@ const BLOCK_END = /\n|\||\\n\\n/;
 const NO_INLINES: readonly SourceInline[] = [];
 
 /**
+ * What an offset on a blank line between the blocks of a container takes
+ * ({@link $placeOfSourceOffset}): the start of the next block, the end of the
+ * previous block, or no place. Where that block starts or ends with a unit
+ * that is no text (an image, a line break), the place is beside the unit.
+ */
+export type BetweenBlocksPlace = "next" | "previous" | "none";
+
+/**
  * Where an offset of a block's Markdown stands in the block a load built of
  * it: after everything the block shows whose source ends at or before the
  * offset, and before everything else it shows. Nothing the block shows is
@@ -132,6 +140,10 @@ const NO_INLINES: readonly SourceInline[] = [];
  *   that shows something elsewhere, is in that item or cell
  *   ({@link $emptyBlockAt}), never at the end of the text before it or the
  *   start of the text after it, which belong to a neighbour.
+ * - An offset on a blank line between the blocks of a container
+ *   ({@link standsBetweenBlocks}) takes what `betweenBlocks` says. Without
+ *   `betweenBlocks`, such an offset is placed as any other, which is where a
+ *   caret mapped out of a raw block goes.
  *
  * There is no place, and the caller falls back, where the block shows
  * nothing, and where the block holds, beside the offset or after it,
@@ -151,9 +163,12 @@ const NO_INLINES: readonly SourceInline[] = [];
  * @param block - The block a load built of `text` from `start` to `end`.
  * @param start - The block's first offset in `text`.
  * @param end - The offset past its last.
+ * @param betweenBlocks - What an offset on a blank line between the blocks of a container takes; left out, such an offset is placed like any other.
  * @returns The place, or `null` when it is not found.
  */
-export function $placeOfSourceOffset(text: string, offset: number, block: LexicalNode, start: number, end: number): SourcePlace | null {
+export function $placeOfSourceOffset(
+    text: string, offset: number, block: LexicalNode, start: number, end: number, betweenBlocks?: BetweenBlocksPlace,
+): SourcePlace | null {
     const { walk, analysis, isRawBlock } = $locatedWalk(text, block, start, end);
     const source = text.slice(start);
 
@@ -164,9 +179,100 @@ export function $placeOfSourceOffset(text: string, offset: number, block: Lexica
         return { node: empty, offset: 0 };
     }
 
-    const place = $placeAmongUnits(walk.units, offset - start, source, walk.inlines);
+    const isBetweenBlocks = betweenBlocks !== undefined && standsBetweenBlocks(source, offset - start, analysis, end - start);
+    const place = $placeAmongUnits(walk.units, offset - start, source, walk.inlines, isBetweenBlocks ? betweenBlocks : undefined);
 
     return place === null ? null : $placeOutsideSourceNode(place);
+}
+
+/**
+ * Whether an offset stands on a line between the blocks of a container that
+ * names no block ({@link standsBetweenBlocks}), in a block the load built of
+ * the text.
+ *
+ * @param text - The Markdown the block was built of, with the blocks beside it.
+ * @param offset - The offset in `text`.
+ * @param block - The block a load built of `text` from `start` to `end`.
+ * @param start - The block's first offset in `text`.
+ * @param end - The offset past its last.
+ * @returns Whether it does.
+ */
+export function $standsBetweenBlocksIn(text: string, offset: number, block: LexicalNode, start: number, end: number): boolean {
+    const { analysis } = $locatedWalk(text, block, start, end);
+
+    return standsBetweenBlocks(text.slice(start), offset - start, analysis, end - start);
+}
+
+/**
+ * What lies on the inward side of a line between a container's blocks, when
+ * {@link $placeOfSourceOffset} found no place for it because the block there
+ * shows nothing: the offset of the empty leaf block, the delimiter row's
+ * neighbour line, or `"empty-column"` for a column holding nothing.
+ */
+export type BlockBesideLine = number | "empty-column";
+
+/**
+ * Finds the block on the inward side of a line between a container's blocks
+ * (the next block for a range's start, the previous one for its end) that
+ * shows nothing, so that no place was found for the line: an empty list item,
+ * a table row beside a delimiter row, or a column of a `:::` fence that holds
+ * nothing. Where there is such a block the container has a block on that
+ * side, and the range end belongs in it, not beyond the container.
+ *
+ * @param text - The Markdown the block was built of, with the blocks beside it.
+ * @param offset - The offset in `text`, on a line that {@link $standsBetweenBlocksIn} accepts.
+ * @param block - The block a load built of `text` from `start` to `end`.
+ * @param start - The block's first offset in `text`.
+ * @param end - The offset past its last.
+ * @param side - `"next"` for a range's start, `"previous"` for its end.
+ * @returns The offset in `text` to place the end at, `"empty-column"` where a column holds nothing, or `null` where the container has no block on that side.
+ */
+export function $blockBesideLine(text: string, offset: number, block: LexicalNode, start: number, end: number, side: "next" | "previous"): BlockBesideLine | null {
+    const { analysis } = $locatedWalk(text, block, start, end);
+    const source = text.slice(start);
+    const at = offset - start;
+    const lineStart = at <= 0 ? 0 : source.lastIndexOf("\n", at - 1) + 1;
+    const newline = source.indexOf("\n", at);
+    const lineEnd = newline === -1 ? source.length : newline;
+    const lineOf = (position: number): number => (position <= 0 ? 0 : source.lastIndexOf("\n", position - 1) + 1);
+    const contentOf = (from: number, to: number): string => source.slice(from, to).replace(LINE_PREFIX, "").trim();
+    const leaves = leafSourceNodesOf(analysis, end - start).filter((leaf) => leaf.start !== NOT_FOUND);
+
+    if (side === "next") {
+        const beyond = leaves.filter((leaf) => lineOf(Math.max(leaf.start, leaf.end - 1)) > lineStart);
+        const nearest = beyond.reduce<SourceBlockNode | null>((best, leaf) => (best === null || leaf.start < best.start ? leaf : best), null);
+
+        if (nearest !== null) {
+            return start + Math.max(nearest.start, lineEnd + 1);
+        }
+
+        const following = source.indexOf("\n", lineEnd + 1);
+        const nextLine = contentOf(lineEnd + 1, following === -1 ? source.length : following);
+
+        return lineEnd < source.length && isFenceSyntax(contentOf(lineStart, lineEnd)) && isFenceSyntax(nextLine) ? "empty-column" : null;
+    }
+
+    const before = leaves.filter((leaf) => lineOf(leaf.start) < lineStart);
+    const nearest = before.reduce<SourceBlockNode | null>((best, leaf) => (best === null || leaf.end > best.end ? leaf : best), null);
+
+    if (nearest !== null) {
+        return start + Math.min(nearest.end, lineStart - 1);
+    }
+
+    const previousStart = lineStart === 0 ? 0 : lineOf(lineStart - 1);
+
+    return lineStart > 0 && isFenceSyntax(contentOf(lineStart, lineEnd)) && isFenceSyntax(contentOf(previousStart, lineStart - 1)) ? "empty-column" : null;
+}
+
+/**
+ * Whether a line, past its prefix, is a `:::` fence's opening or closing line
+ * or a column separator.
+ *
+ * @param content - The line's content, trimmed.
+ * @returns Whether it is.
+ */
+function isFenceSyntax(content: string): boolean {
+    return content === COLUMN_SEPARATOR || FENCE_LINE.test(content);
 }
 
 /** A block's units with their source found, the analysis they were found from, and whether the block is a raw block. */
@@ -360,6 +466,72 @@ function sourceNodesOf(analysis: SourceAnalysis, length: number, type: string): 
 
     const collect = (node: SourceBlockNode): void => {
         if (node.type === type) {
+            found.push(node);
+        }
+
+        node.children.forEach(collect);
+    };
+
+    ownBlocks(analysis, length).forEach(collect);
+
+    return found;
+}
+
+/** A `:::` fence's opening or closing line: three or more colons, then anything the fence's label holds. */
+const FENCE_LINE = /^:{3,}/;
+
+/**
+ * Whether an offset stands on a line between the blocks of a container that
+ * names no block: a line of container syntax that no block's source holds,
+ * or the delimiter row of a table.
+ *
+ * - A line of container syntax holds only spaces, tabs and `>` (the line
+ *   prefix a quote or list item gives a line), or besides that a column
+ *   separator (`|||`) or a `:::` fence's opening or closing line.
+ * - A table's delimiter row is the second line of the table, which shows no
+ *   row.
+ * - No leaf block's source — a block that holds no other, such as a
+ *   paragraph, a code block or an empty item — lies on the line, but for
+ *   the table of the delimiter row. A code block's empty line is the code
+ *   block's.
+ *
+ * @param source - The block's Markdown, with what follows it.
+ * @param offset - The offset in `source`.
+ * @param analysis - The analysis of `source`.
+ * @param length - The length of the block's own Markdown.
+ * @returns Whether it does; `false` when a leaf block's source is not found.
+ */
+function standsBetweenBlocks(source: string, offset: number, analysis: SourceAnalysis, length: number): boolean {
+    // At the source's start there is no line before: `lastIndexOf("\n", -1)` would find a newline at 0.
+    const lineStart = offset <= 0 ? 0 : source.lastIndexOf("\n", offset - 1) + 1;
+    const newline = source.indexOf("\n", offset);
+    const lineEnd = newline === -1 ? source.length : newline;
+    const content = source.slice(lineStart, lineEnd).replace(LINE_PREFIX, "");
+    const lineOf = (at: number): number => (at <= 0 ? 0 : source.lastIndexOf("\n", at - 1) + 1);
+    const leaves = leafSourceNodesOf(analysis, length);
+
+    const isContainerSyntax = content.trim() === "" || content.trim() === COLUMN_SEPARATOR || FENCE_LINE.test(content);
+    const isDelimiterRowOf = (leaf: SourceBlockNode): boolean => leaf.type === "mdtable" && lineStart <= leaf.end
+        && source.slice(lineOf(leaf.start), lineStart).split("\n").length - 1 === TABLE_DELIMITER_LINE;
+
+    const isLeafOnThisLine = (leaf: SourceBlockNode): boolean => leaf.start === NOT_FOUND
+        || (lineOf(leaf.start) <= lineStart && lineStart <= lineOf(Math.max(leaf.start, leaf.end - 1)) && !isDelimiterRowOf(leaf));
+
+    return (isContainerSyntax || leaves.some(isDelimiterRowOf)) && !leaves.some(isLeafOnThisLine);
+}
+
+/**
+ * The block-level source nodes in a block's source that hold no other block.
+ *
+ * @param analysis - The analysis of the block's Markdown and what follows it.
+ * @param length - The length of the block's own Markdown.
+ * @returns The nodes in document order.
+ */
+function leafSourceNodesOf(analysis: SourceAnalysis, length: number): SourceBlockNode[] {
+    const found: SourceBlockNode[] = [];
+
+    const collect = (node: SourceBlockNode): void => {
+        if (node.children.length === 0) {
             found.push(node);
         }
 
@@ -1128,9 +1300,12 @@ function givesFormat(inline: SourceInline): boolean {
  * @param offset - The offset in the block's Markdown.
  * @param text - The block's Markdown.
  * @param inlines - Its inline tokens.
+ * @param betweenBlocks - What an offset that stands between two blocks takes.
  * @returns The place, or `null` when the offset is inside the source of several characters, the source of the unit before it or of a unit after it is not found, or the units' sources are not in the units' order.
  */
-function $placeAmongUnits(units: readonly ShownUnit[], offset: number, text: string, inlines: readonly SourceInline[]): SourcePlace | null {
+function $placeAmongUnits(
+    units: readonly ShownUnit[], offset: number, text: string, inlines: readonly SourceInline[], betweenBlocks?: BetweenBlocksPlace,
+): SourcePlace | null {
     const firstAfter = units.findIndex((unit) => unit.start !== NOT_FOUND && unit.end > offset);
     const index = firstAfter === -1 ? units.length : firstAfter;
     const before = units[index - 1];
@@ -1149,7 +1324,7 @@ function $placeAmongUnits(units: readonly ShownUnit[], offset: number, text: str
     const around = inlines.filter((inline) => givesFormat(inline) && inline.start < offset && offset < inline.end
         && inline.innerStart <= offset && offset <= inline.innerEnd);
 
-    return $placeBetween(before, after, around, text, offset);
+    return $placeBetween(before, after, around, text, offset, betweenBlocks);
 }
 
 /**
@@ -1160,14 +1335,29 @@ function $placeAmongUnits(units: readonly ShownUnit[], offset: number, text: str
  * @param around - The format-giving tokens the offset is inside.
  * @param text - The block's Markdown.
  * @param offset - The offset.
- * @returns The place, or `null` when there is no unit at all.
+ * @param betweenBlocks - What an offset that stands between two blocks takes; left out, any other offset.
+ * @returns The place, or `null` when there is no unit at all, or the offset takes no place.
  */
 function $placeBetween(
     before: ShownUnit | undefined, after: ShownUnit | undefined, around: readonly SourceInline[], text: string, offset: number,
+    betweenBlocks?: BetweenBlocksPlace,
 ): SourcePlace | null {
     // A unit that shows nothing has no character to stand after: the place is its node's only one.
     const endOfBefore = before !== undefined && $isTextNode(before.node) ? { node: before.node, offset: before.offset + before.char.length } : null;
     const startOfAfter = after !== undefined && $isTextNode(after.node) ? { node: after.node, offset: after.offset } : null;
+
+    // Only an offset that stands between blocks is asked for a block's own side; a unit that is no text is stood beside.
+    if (betweenBlocks === "none") {
+        return null;
+    }
+
+    if (betweenBlocks === "previous") {
+        return endOfBefore ?? $placeBesideNode(before, undefined);
+    }
+
+    if (betweenBlocks === "next") {
+        return startOfAfter ?? $placeBesideNode(undefined, after);
+    }
 
     if (endOfBefore === null || startOfAfter === null) {
         return endOfBefore ?? startOfAfter ?? $placeBesideNode(before, after);

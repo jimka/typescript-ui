@@ -91,6 +91,20 @@ describe('code fences and tables stay out of list items', () => {
         expect(tableSource(2, 2)('- a\n\n  b', 7, 7)).toBeNull();
         expect(tableSource(2, 2)('- x\n  - a', 8, 8)).toBeNull();
     });
+
+    const TABLE = '|  |  |\n| --- | --- |\n|  |  |\n';
+
+    it('declines a table on a blank line inside a list or a quote, and keeps one in a column', () => {
+        expect(tableSource(2, 2)('- a\n\n- b', 4, 4)).toBeNull();
+        expect(tableSource(2, 2)('> a\n>\n> b', 4, 4)).toBeNull();
+        expect(tableSource(2, 2)('> a\n>', 4, 4)).toBeNull();
+        expect(apply('>\n> a', tableSource(2, 2)('>\n> a', 0, 0)!)).toBe(TABLE + '\n>\n> a');
+
+        const column = '::: columns\na\n\nb\n|||\nc\n:::';
+
+        expect(apply(column, tableSource(2, 2)(column, 14, 14)!)).toBe('::: columns\na\n\n' + TABLE + '\n\nb\n|||\nc\n:::');
+        expect(apply('one\n\ntwo', tableSource(2, 2)('one\n\ntwo', 4, 4)!)).toBe('one\n\n' + TABLE + '\n\ntwo');
+    });
 });
 
 // Whole-stack review fixes (source-mode fuzz): the line commands find the
@@ -188,7 +202,7 @@ describe('tableSource', () => {
         expect(tableSource(2, 2)(text, 0, 0)!.selection).toEqual({ from: 2, to: 2 });
     });
 
-    it('puts the table on the second blank line for a caret there', () => {
+    it('puts the table above the second line for a caret at its start', () => {
         const text = '\nabc';
 
         expect(apply(text, tableSource(2, 2)(text, 1, 1)!)).toBe('\n|  |  |\n| --- | --- |\n|  |  |\n\nabc');
