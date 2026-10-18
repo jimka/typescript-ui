@@ -413,7 +413,7 @@ documents the same way.
 | Source | Before | After |
 |---|---|---|
 | `Title` over `---` | a table, header `Title` | a level-2 heading `Title` |
-| a blank line, then `---` | a table with an empty header | a thematic break, shown as its literal `---` |
+| a blank line, then `---` | a table with an empty header | a horizontal rule |
 | a delimiter row holding a `\|` or a `:` (`a` over `:--`) | a table | a table (unchanged) |
 
 **Who needs to act.** Content that wrote a one-column table with a delimiter
@@ -605,3 +605,34 @@ it raw (`> <div>x</div>`); it used to escape the block's text.
 `setBlockType("paragraph")` calls `setBlockType("quote")` instead. A toolbar
 that wires its Quote button to `setBlockType("quote")` needs no change: the
 button now toggles.
+
+## `---` is a horizontal rule in `Markdown` and `MarkdownEditor`
+
+**What changed and why.** A thematic break (`---`, `***` or `___`, with the
+spaces, tabs and up to three spaces of indentation CommonMark allows) is now a
+construct of its own on both surfaces. `Markdown` rendered it through its
+plain-text fallback, so the literal `---` showed; `MarkdownEditor` kept it as a
+raw Markdown block of monospace text. The viewer renders an `<hr>`, and the
+editor has a node for a rule, saved as it was written (a rule made in the
+editor is saved `---`).
+
+| | Before | Now |
+|---|---|---|
+| `---` in `Markdown` | the literal text `---` | an `<hr>` |
+| `---` in `MarkdownEditor` | a raw block of monospace text | a horizontal rule node, saved as written |
+| a raw block edited into `---` | stayed a raw block | shows as a rule |
+| `MarkdownEditorSelectionState` | no `canInsertHorizontalRule` | gains `canInsertHorizontalRule` |
+
+**Who needs to act.** Content that used `---` as visible text writes `\---`
+(or puts it in a code span). Code that builds a whole
+`MarkdownEditorSelectionState` object adds the field. Code that read the
+editor's tree for a `markdown-raw-block` holding `---` reads
+`markdown-horizontal-rule` instead.
+
+```markdown
+<!-- Before: showed the text --- -->
+---
+
+<!-- After: still shows the text -->
+\---
+```
