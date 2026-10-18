@@ -1934,6 +1934,27 @@ page resets to empty.
   is removed with the table and no break is added. No consumer
   action is needed.
 
+- **`MarkdownEditor`: a selection removed from a raw Markdown block into a
+  later block no longer makes a heading or code block at the joint.**
+  Deleting from the
+  start of a nested item's text in a raw list (`- a`, `  - b`, `    > q`,
+  `  - c`) to the end of a later paragraph left the item's `-` alone under
+  `a`, where it reads as a heading's underline, and saved `- ## a`; the
+  item now stays, empty, saved `- a` and `  *`. The spaces or tab that the
+  rest of the later block started with stayed in front of it where it
+  opened a line of the raw block, so `x`, a tab and `# y` joined at a
+  thematic break's start became a code block holding `\# y`, and four
+  spaces after a list marker made the item's text code; they are now kept
+  only as far as the line still reads as that text. Typing, a paste and the
+  other edits over such a selection give the same, as they remove it as
+  Delete does first. A later HTML block or code block joined at such a line
+  start keeps its lines as they are, but for the first: its leading
+  whitespace is kept only as far as the line still reads as its text, and a
+  first character that would make a heading or a code block (`# y`, a
+  fence) gets a backslash. The later lines of such a block, and a later
+  raw Markdown block such as a list, join as before. No consumer action is
+  needed.
+
 - **A raw Markdown block left holding nothing shows as an empty paragraph.**
   Deleting all that a raw block holds, or a selection from its start on into
   a later block, left a raw block of no text. A save writes nothing for one,
