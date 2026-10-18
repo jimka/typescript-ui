@@ -66,7 +66,7 @@ import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent } from "@lexica
 import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
 import {
-    $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $serializeMarkdownWithPlaces, $serializeRestOfBlock, $writtenListMarker,
+    $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $serializeMarkdownWithPlaces, $serializeRestOfBlock, $writtenListMarker, escapeLineStart, markdownBlockShape, SETEXT_H2_UNDERLINE, UNDER_TEXT_BULLET,
 } from "~/component/editor/markdownSerializer.js";
 import {
     $breakRuleContainerOf, $contentFollows, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
@@ -3621,13 +3621,16 @@ const UNCLOSED_TAG_OPENING = /<[A-Za-z/!?][^>]*$/;
  * block's own save writes that rest, after the character before the point
  * in that block; into a raw block, as Markdown with every escape, after the
  * character before the joint in the raw block, except that a joint where
- * the line holds nothing yet but container markers and indentation
- * ({@link RAW_LINE_OPENING}) opens a line, so the rest keeps the escapes a
- * line start needs there. A `>` that opens the rest is escaped when the raw
- * text before the joint holds a `<` that opens a tag and is not closed:
- * the `>` would close it, making a tag of the two blocks' text. The tag may
- * span lines, so it is read off the text before the joint, which the
- * serializer's one character of context before the rest cannot carry.
+ * the line holds nothing yet but container markers and indentation,
+ * counting the whitespace the rest opens with ({@link RAW_LINE_OPENING}),
+ * opens a line, so the rest keeps the escapes a line start needs there. The
+ * whitespace a rest that opens a line starts with is written as
+ * {@link restWrittenAtLineStart} decides. A `>` that opens the rest is
+ * escaped when the raw text before the joint holds a `<` that opens a tag and
+ * is not closed: the `>` would close it, making a tag of the two blocks'
+ * text. The tag may span lines, so it is read off the text before the
+ * joint, which the serializer's one character of context before the rest
+ * cannot carry.
  *
  * @param target - The raw block or code block the rest joins.
  * @param source - The block the rest comes from.
@@ -3644,12 +3647,160 @@ function $joinedMarkdown(target: ElementNode, source: ElementNode, nodes: Lexica
     }
 
     const lineBeforeJoint = textBeforeJoint.slice(textBeforeJoint.lastIndexOf("\n") + 1);
-    const opensLine = RAW_LINE_OPENING.test(lineBeforeJoint);
-    const markdown = $inlineMarkdown(nodes, opensLine ? "" : textBeforeJoint.slice(-1));
+    // Whitespace the rest opens with completes a marker the selection left bare (`-` then ` # y`).
+    const leading = /^[ \t]*/.exec(nodes.map((node) => node.getTextContent()).join(""))![0];
+    const opensLine = RAW_LINE_OPENING.test(lineBeforeJoint + leading);
+    const written = $inlineMarkdown(nodes, opensLine ? "" : textBeforeJoint.slice(-1));
+    const markdown = opensLine ? restWrittenAtLineStart(textBeforeJoint, lineBeforeJoint, written) : written;
     // The quote markers at the lines' starts are no `>` that closes a tag.
     const opensTag = UNCLOSED_TAG_OPENING.test(textBeforeJoint.replace(QUOTE_MARKERS, ""));
 
     return opensTag ? markdown.replace(/^([ \t]*)>/, "$1\\>") : markdown;
+}
+
+/**
+ * The joined Markdown of a rest that opens a raw block's line, its leading
+ * whitespace written only as far as the raw block still reads as the rest
+ * opening the line's content: as written, else one space, else none. Four
+ * columns of whitespace would make the line an indented code block. A tab
+ * is never kept as written: its width depends on the column the raw block is
+ * saved at (indented, in a list item), which this text does not show.
+ *
+ * @param textBeforeJoint - The raw block's text before the joint.
+ * @param lineBeforeJoint - The part of it on the joint's line.
+ * @param markdown - The rest's Markdown, with the whitespace it opens with.
+ * @returns The Markdown to join.
+ */
+function restWrittenAtLineStart(textBeforeJoint: string, lineBeforeJoint: string, markdown: string): string {
+    const trimmed = markdown.replace(/^[ \t]+/, "");
+
+    if (trimmed === markdown) {
+        return markdown;
+    }
+
+    // After a marker the selection left bare (`-`), one space keeps it a marker.
+    const separator = lineBeforeJoint === "" || /[ \t]$/.test(lineBeforeJoint) ? "" : " ";
+    const shape = markdownBlockShape(textBeforeJoint + separator + trimmed);
+    const holdsTab = /^[ \t]*\t/.test(markdown);
+    const candidates = holdsTab ? [` ${trimmed}`, trimmed] : [markdown, ` ${trimmed}`, trimmed];
+
+    // One candidate is always the reference itself (the separator and the trimmed rest, or the rest on its own), so one is found.
+    return candidates.find((candidate) => markdownBlockShape(textBeforeJoint + candidate) === shape)!;
+}
+
+/**
+ * How many blocks of the given types the viewer's lexer reads in a stretch of
+ * Markdown, at any depth.
+ *
+ * @param markdown - The Markdown.
+ * @param types - The block types to count, such as `heading` and `code`.
+ * @returns The count.
+ */
+function blockCount(markdown: string, types: readonly string[]): number {
+    return markdownBlockShape(markdown).match(new RegExp(`\\b(?:${types.join("|")})\\b`, "g"))?.length ?? 0;
+}
+
+/** The block types a line start can create by accident when text that was no Markdown joins a raw block: a heading and a code block. */
+const LINE_START_CREATED_TYPES = ["heading", "code"] as const;
+
+/**
+ * The text of a later raw block or code block, which holds literal text and
+ * no Markdown (an HTML block's lines, a code block's lines), joined to a raw
+ * block at a line start, with the line start changed only where it creates a
+ * heading or a code block the raw block did not hold. The leading whitespace
+ * is written by {@link restWrittenAtLineStart}; then, if the joined line
+ * still creates one of them (`# y`, a fence), its first character is escaped,
+ * when that removes it and a backslash may stand there. The lines after the
+ * first are left as they were: they are raw text the selection was made
+ * across, and read as what they are, as an edit inside one raw block reads.
+ * Where the joint does not open a line, the later block is no HTML block or
+ * code block, or the raw block is a code block, the text joins as it is.
+ *
+ * @param target - The raw block or code block the rest joins.
+ * @param text - The rest, as text.
+ * @param textBeforeJoint - The raw block's or code block's text before the joint.
+ * @param isLiteral - Whether the later block holds literal text: a code block or an HTML block.
+ * @returns The text to join.
+ */
+function joinedRawText(target: ElementNode, text: string, textBeforeJoint: string, isLiteral: boolean): string {
+    const lineBeforeJoint = textBeforeJoint.slice(textBeforeJoint.lastIndexOf("\n") + 1);
+    const leading = /^[ \t]*/.exec(text)![0];
+
+    if ($isCodeNode(target) || !isLiteral || leading === text || !RAW_LINE_OPENING.test(lineBeforeJoint + leading)) {
+        return text;
+    }
+
+    const written = restWrittenAtLineStart(textBeforeJoint, lineBeforeJoint, text);
+    const lineEnd = written.includes("\n") ? written.indexOf("\n") : written.length;
+    const created = (line: string): number => blockCount(textBeforeJoint + line, LINE_START_CREATED_TYPES);
+    // The joint's own line is what the joined line start forms, so only the lines before it are the count to stay within.
+    const held = blockCount(textBeforeJoint.slice(0, textBeforeJoint.length - lineBeforeJoint.length), LINE_START_CREATED_TYPES);
+
+    if (created(written.slice(0, lineEnd)) <= held) {
+        return written;
+    }
+
+    const indent = /^[ \t]*/.exec(written)![0];
+    const body = written.slice(indent.length);
+    const escaped = escapeLineStart(body);
+    // The serializer's escape leaves a line that starts no block as it is; a line it changes is escaped where a backslash may stand.
+    const candidate = escaped === body ? null : indent + escaped;
+    const candidateEnd = candidate === null ? 0 : (candidate.includes("\n") ? candidate.indexOf("\n") : candidate.length);
+
+    return candidate !== null && created(candidate.slice(0, candidateEnd)) <= held ? candidate : written;
+}
+
+/**
+ * A raw block's line holding only container markers that ends in a bare `-`
+ * bullet: the markers before it (group 1) and the whitespace after it
+ * (group 2). The prefix is {@link RAW_LINE_OPENING}'s.
+ */
+const EMPTY_DASH_ITEM_LINE = new RegExp(`^(${RAW_LINE_OPENING.source.slice(1, -1)})${SETEXT_H2_UNDERLINE[0]}([ \\t]*)$`);
+
+/**
+ * Keeps an emptied list item an item: when a raw block's last line holds
+ * only container markers ending in a bare `-`, and the lexer reads that `-`
+ * as the underline of a setext heading (the text with `-` holds more
+ * headings than with `*`), writes it `*`, as the save writes an empty item
+ * right under a line of text. The character is replaced in the text node
+ * that holds it, so the caret keeps its offset.
+ *
+ * @param block - The raw block, after a removal left it without text joined on the joint's line.
+ * @param joint - Where the removal started in the raw block's text: the line it is on is the one checked.
+ */
+function $keepEmptyDashItemAnItem(block: MarkdownRawBlockNode, joint: number): void {
+    const text = block.getTextContent();
+    // At the text's start there is no line before: `lastIndexOf("\n", -1)` would find a newline at 0.
+    const lineStart = joint <= 0 ? 0 : text.lastIndexOf("\n", joint - 1) + 1;
+    const lineEnd = text.includes("\n", joint) ? text.indexOf("\n", joint) : text.length;
+    const match = EMPTY_DASH_ITEM_LINE.exec(text.slice(lineStart, lineEnd));
+
+    if (match === null) {
+        return;
+    }
+
+    const dash = lineStart + match[1]!.length;
+    const starred = `${text.slice(0, dash)}${UNDER_TEXT_BULLET}${text.slice(dash + 1)}`;
+
+    if (blockCount(text, ["heading"]) <= blockCount(starred, ["heading"])) {
+        return;
+    }
+
+    let at = 0;
+
+    for (const child of block.getChildren()) {
+        const size = child.getTextContentSize();
+
+        if ($isTextNode(child) && dash < at + size) {
+            const own = child.getTextContent();
+
+            child.setTextContent(`${own.slice(0, dash - at)}${UNDER_TEXT_BULLET}${own.slice(dash - at + 1)}`);
+
+            return;
+        }
+
+        at += size;
+    }
 }
 
 /**
@@ -3688,10 +3839,12 @@ function $textBeforePoint(block: ElementNode, point: PointType): string {
  * Deletes a range that starts inside a raw Markdown block or a code block
  * and ends in a later block: the rest of that later block after the range
  * joins as {@link $joinedMarkdown} writes it (as its text, when it is a raw
- * block or code block too), so nothing it holds is dropped and its escapes
- * keep its text as it was shown. A range that ends on a list item itself, between two of its
+ * block or code block too, with its first line changed only where it lands
+ * at a line start: {@link joinedRawText}), so nothing it holds is dropped and
+ * its escapes keep its text as it was shown. A range that ends on a list item itself, between two of its
  * blocks, has the item's later blocks follow the block as blocks of their
- * own.
+ * own. When nothing joins, an emptied list item's bare `-` that would read
+ * as a heading's underline is written `*` ({@link $keepEmptyDashItemAnItem}).
  *
  * @param selection - A non-collapsed range selection.
  * @returns Whether the range started in a raw block or code block and ended
@@ -3709,12 +3862,17 @@ function $deleteRangeFromTextOnlyBlock(selection: RangeSelection): boolean {
 
     const startPoint: [string, number, "text" | "element"] = [start.key, start.offset, start.type];
     const textBeforeJoint = $textBeforePoint(block, start);
+    const isTextOnlyTail = $isTextOnlyBlock(tailBlock);
+    // A code block, or a raw block read as HTML, holds literal text: its lines were no Markdown where they stood.
+    const isLiteral = isTextOnlyTail && ($isCodeNode(tailBlock) || markdownBlockShape(tailBlock.getTextContent()).startsWith("html"));
     const rest = $detachRestOfBlock(tailBlock, end);
     // The rest of a list item, for an end between its blocks, is blocks: they follow the block, they are no text of it.
     const following = $takeBlocksOutOf(rest);
     // What the tail block keeps once its rest is detached is what came before the rest.
     const restBefore = $characterBeforeRest(tailBlock);
-    const tail = $isTextOnlyBlock(tailBlock) ? rest.getTextContent() : $joinedMarkdown(block, tailBlock, rest.getChildren(), textBeforeJoint, restBefore);
+    const tail = isTextOnlyTail
+        ? joinedRawText(block, rest.getTextContent(), textBeforeJoint, isLiteral)
+        : $joinedMarkdown(block, tailBlock, rest.getChildren(), textBeforeJoint, restBefore);
     const range = tailBlock.selectEnd();
 
     range.anchor.set(...startPoint);
@@ -3734,6 +3892,13 @@ function $deleteRangeFromTextOnlyBlock(selection: RangeSelection): boolean {
             restored.anchor.set(...joint);
             restored.focus.set(...joint);
         }
+    }
+
+    const target = block.getLatest();
+
+    // With no text joined on the joint's line (nothing, or a rest that starts with a line end), that line ends at the joint.
+    if ($isMarkdownRawBlockNode(target) && target.isAttached() && /^[ \t]*(?:\n|$)/.test(tail)) {
+        $keepEmptyDashItemAnItem(target, textBeforeJoint.length);
     }
 
     return true;

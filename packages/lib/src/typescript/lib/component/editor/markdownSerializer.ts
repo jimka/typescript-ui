@@ -189,7 +189,7 @@ const SETEXT_MAX_LEVEL = 2;
 const SETEXT_H1_UNDERLINE = "===";
 
 /** The underline of a level 2 setext heading: three `-`, the shortest run that is not a list item's marker. */
-const SETEXT_H2_UNDERLINE = "---";
+export const SETEXT_H2_UNDERLINE = "---";
 
 /**
  * A line `marked`'s setext-heading rule will not read as heading content: a
@@ -248,7 +248,7 @@ const CELL_HARD_BREAK = "<br>";
  * marker right under a line of text, where a bare `-` would be a setext
  * underline.
  */
-const UNDER_TEXT_BULLET = "*";
+export const UNDER_TEXT_BULLET = "*";
 
 /** The whole-cell texts the table import reads as merge continuations, so a cell holding one is escaped. */
 const MERGE_MARKERS: ReadonlySet<string> = new Set(["<<", "^^"]);
@@ -2743,6 +2743,18 @@ function ownText(token: Token, inListItem: boolean): string {
  */
 function blockShape(tokens: Token[]): string {
     return blockStructure(tokens, (token) => token.type);
+}
+
+/**
+ * The block structure the viewer's lexer reads a stretch of Markdown as:
+ * each block's type, a list's items' blocks, a quote's and a `:::` fence's
+ * blocks. Two texts with equal shapes read as the same blocks.
+ *
+ * @param markdown - The Markdown.
+ * @returns A string naming the structure.
+ */
+export function markdownBlockShape(markdown: string): string {
+    return blockShape(lexMarkdown(markdown));
 }
 
 /**
@@ -7451,7 +7463,7 @@ function needsEscape(char: string, site: EscapeSite): boolean {
  * @param lean - What the lean rules know beyond the line, for a lean writing; `null` for every escape.
  * @returns The line, safe at a line start.
  */
-function escapeLineStart(line: string, lean: LeanLine | null = null): string {
+export function escapeLineStart(line: string, lean: LeanLine | null = null): string {
     const number = ORDERED_LIST_MARKER.exec(line);
     const full = LINE_START_ESCAPED.has(line[0] ?? "") || number !== null;
     const escapes = lean === null ? full : leanLineStartEscaped(line, lean.continuation, lean.afterMarker);
