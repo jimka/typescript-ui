@@ -8,6 +8,7 @@ import {
 } from 'lexical';
 import type { LexicalEditor, LexicalNode } from 'lexical';
 import { $isListItemNode, $isListNode } from '@lexical/list';
+import { lexMarkdown } from '~/component/display/markdownExtensions';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { listLooseState } from '~/component/editor/markdownNodeState';
 import { $createMarkdownRawBlockNode } from '~/component/editor/markdownSourceNodes';
@@ -272,6 +273,62 @@ describe('the editor shows what its save reloads to: a line end inside a text', 
         type(editor, 'x');
 
         expectShownAndReloaded(editor, 'code("axb")'.replace('axb', 'ax\\nb'), '```\nax\nb\n```');
+    });
+
+    // A code block's empty line is saved as a line holding only the `\` of its break: the hard break that ends the empty line,
+    // the form two Shift+Enters save, and the viewer reads it as a line break, not as text.
+    describe('an empty line among a code block\'s lines', () => {
+        const EMPTY_LINE_CODE = '```\na\n\nb\n```';
+        const TWO_BREAKS = ['text', 'br', 'br', 'text'];
+
+        /** The types of the inline tokens a save's first block holds, the item's first block when the block is a list. */
+        function inlineTypesOfFirstBlock(saved: string): string[] {
+            const block = lexMarkdown(saved)[0] as { type: string; tokens?: Array<{ type: string }>; items?: Array<{ tokens: Array<{ tokens: Array<{ type: string }> }> }> };
+            const inlines = block.type === 'list' ? block.items![0]!.tokens[0]!.tokens : block.tokens!;
+
+            return inlines.map((token) => token.type);
+        }
+
+        it('made a paragraph holds two line breaks', () => {
+            const editor = load(EMPTY_LINE_CODE);
+
+            lexicalOf(editor).update(() => { $getRoot().getAllTextNodes()[0]!.select(1, 1); }, { discrete: true });
+            editor.setBlockType('paragraph');
+
+            expectShownAndReloaded(editor, 'paragraph("a", linebreak, linebreak, "b")', 'a\\\n\\\nb');
+            expect(inlineTypesOfFirstBlock(editor.getValue())).toEqual(TWO_BREAKS);
+        });
+
+        it('made a heading 2 holds two line breaks', () => {
+            const editor = load(EMPTY_LINE_CODE);
+
+            lexicalOf(editor).update(() => { $getRoot().getAllTextNodes()[0]!.select(1, 1); }, { discrete: true });
+            editor.setBlockType('h2');
+
+            expectShownAndReloaded(editor, 'heading("a", linebreak, linebreak, "b")', 'a\\\n\\\nb\n---');
+            expect(inlineTypesOfFirstBlock(editor.getValue())).toEqual(TWO_BREAKS);
+        });
+
+        it('made a list item holds two line breaks', () => {
+            const editor = load(EMPTY_LINE_CODE);
+
+            lexicalOf(editor).update(() => { $getRoot().getAllTextNodes()[0]!.select(1, 1); }, { discrete: true });
+            editor.toggleUnorderedList();
+
+            expectShownAndReloaded(editor, 'tight(markdown-list-item(markdown-list-item-text("a", linebreak, linebreak, "b")))', '- a\\\n  \\\n  b');
+            expect(inlineTypesOfFirstBlock(editor.getValue())).toEqual(TWO_BREAKS);
+        });
+
+        it('two Shift+Enters save the same form', () => {
+            const editor = load('ab');
+
+            select(editor, 'ab', 1);
+            lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+            lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+
+            expectShownAndReloaded(editor, 'paragraph("a", linebreak, linebreak, "b")', 'a\\\n\\\nb');
+            expect(inlineTypesOfFirstBlock(editor.getValue())).toEqual(TWO_BREAKS);
+        });
     });
 });
 
