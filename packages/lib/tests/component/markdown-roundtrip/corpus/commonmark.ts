@@ -12,7 +12,7 @@ export const COMMONMARK_CASES: readonly CorpusCase[] = [
     { name: 'CommonMark 8 (Tabs)', source: '    foo\n\tbar\n', blocks: 'code"foo⏎bar"' },
     { name: 'CommonMark 9 (Tabs)', source: ' - foo\n   - bar\n\t - baz\n', blocks: 'ul[li[p"foo" ul[li[p"bar" ul[li[p"baz"]]]]]]' },
     { name: 'CommonMark 10 (Tabs)', source: '#\tFoo\n' },
-    { name: 'CommonMark 11 (Tabs)', source: '*\t*\t*\t\n', blocks: 'raw"* * *"' },
+    { name: 'CommonMark 11 (Tabs)', source: '*\t*\t*\t\n', blocks: 'rule' },
     { name: 'CommonMark 15 (Backslash escapes)', source: '\\\\*emphasis*\n' },
     { name: 'CommonMark 16 (Backslash escapes)', source: 'foo\\\nbar\n' },
     { name: 'CommonMark 17 (Backslash escapes)', source: '`` \\[\\` ``\n' },

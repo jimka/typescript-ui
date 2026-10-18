@@ -233,4 +233,10 @@ export const DIALECT_CASES: readonly CorpusCase[] = [
     { name: 'html block start two blank lines before a paragraph', source: '<div\n\n\nb' },
     { name: 'raw list before an html block', source: '- a\n  > x\n\n<div>\ny\n</div>', known: { surface: 'listItemBlocks' } },
     { name: 'list, definition line and an indented raw list', source: '- a\n\n[//]: #\n\n  - x\n  - y\n- z\n  > q', known: { surface: 'listItemBlocks' } },
+    { name: 'a rule in a quote', source: '> a\n>\n> ---' },
+    { name: 'a rule in a column', source: '::: columns\n---\n|||\nx\n:::' },
+    { name: 'a rule after an item\'s text', source: '- a\n\n  ***\n\n- b' },
+    { name: 'a spaced rule', source: '- - -' },
+    { name: 'a rule of underscores with spaces', source: '_ _ _' },
+    { name: 'a rule interrupting a paragraph', source: 'a\n***\nb' },
 ];

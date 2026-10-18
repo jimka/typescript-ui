@@ -30,6 +30,7 @@ import {
     $runsReadingOtherwise, $serializeBlock, $writesSomething, $writesSyntaxBeforeText, $writtenListMarker, definitionsOfSource, keptImageShown, NO_DEFINITIONS_SOURCE, rawBlockStandsInItem,
 } from "~/component/editor/markdownSerializer.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
+import { $isMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
 import {
     $createMarkdownListItemTextNode, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $movePointsBetween, $removePlainly,
     MarkdownListItemTextNode,
@@ -171,12 +172,12 @@ export function $moveBlocksOutAfter(container: ElementNode): void {
  */
 export function $takeBlocksOutOf(container: ElementNode): LexicalNode[] {
     const children = container.getChildren();
-    const firstBlock = children.findIndex($isBlock);
+    const firstBlock = children.findIndex($standsAsBlock);
     const blocks: LexicalNode[] = [];
     let textAfterBlock: ElementNode | null = null;
 
     for (const child of firstBlock === -1 ? [] : children.slice(firstBlock)) {
-        const isBlock = $isBlock(child);
+        const isBlock = $standsAsBlock(child);
 
         if (!isBlock && textAfterBlock === null) {
             textAfterBlock = $createParagraphNode();
@@ -203,6 +204,19 @@ export function $takeBlocksOutOf(container: ElementNode): LexicalNode[] {
  */
 export function $isBlock(node: LexicalNode): node is ElementNode {
     return $isElementNode(node) && !node.isInline();
+}
+
+/**
+ * Tells whether a node stands as a block among its siblings: a block, or a
+ * horizontal rule, which is no element yet stands where a block does. It
+ * takes {@link $isBlock}'s place where blocks are sorted from text;
+ * {@link $isBlock} itself is for callers that read the node as an element.
+ *
+ * @param node - The node.
+ * @returns `true` for a block or a horizontal rule.
+ */
+export function $standsAsBlock(node: LexicalNode): boolean {
+    return $isBlock(node) || $isMarkdownHorizontalRuleNode(node);
 }
 
 // ---------------------------------------------------------------- lists
@@ -300,7 +314,7 @@ function $wrapInlineRuns(container: ElementNode): void {
     let wrapped = false;
 
     for (const child of children) {
-        if ($isBlock(child)) {
+        if ($standsAsBlock(child)) {
             run = null;
 
             continue;
@@ -737,13 +751,29 @@ function registerTableRules(editor: LexicalEditor): () => void {
  * inline content only, so a heading, quote or code block pasted there is
  * written as its inline content, a list as each item's text and each of its
  * blocks on a line of its own, and a block that has come to stand inside a
- * paragraph of the cell likewise — never as the block it shows.
+ * paragraph of the cell likewise — never as the block it shows. A horizontal
+ * rule is dropped: Markdown has none in a cell.
  *
  * @param cell - The table cell.
  */
 function $keepCellParagraphs(cell: TableCellNode): void {
     for (const child of cell.getChildren()) {
-        const isTextParagraph = $isParagraphNode(child) && !child.getChildren().some($isBlock);
+        const holdsRulesAlone = $isParagraphNode(child) && !child.isEmpty() && child.getChildren().every($isMarkdownHorizontalRuleNode);
+
+        if ($isMarkdownHorizontalRuleNode(child) || holdsRulesAlone) {
+            const after = child.getNextSibling();
+
+            // The half Lexical's insert split off after a pasted rule.
+            if ($isMarkdownHorizontalRuleNode(child) && $isParagraphNode(after) && after.isEmpty()) {
+                after.remove();
+            }
+
+            child.remove();
+
+            continue;
+        }
+
+        const isTextParagraph = $isParagraphNode(child) && !child.getChildren().some($standsAsBlock);
         const isBlockToWrite = !isTextParagraph && $isElementNode(child);
 
         if (!isBlockToWrite) {
@@ -780,7 +810,10 @@ function $cellLines(block: ElementNode): ParagraphNode[] {
     };
 
     for (const child of block.getChildren()) {
-        if ($isBlock(child)) {
+        if ($isMarkdownHorizontalRuleNode(child)) {
+            // A rule writes no line in a cell.
+            flush();
+        } else if ($isBlock(child)) {
             flush();
             lines.push(...$cellLines(child));
         } else {
@@ -1370,7 +1403,7 @@ function $showRawBlocksBeforeAsWritten(node: LexicalNode): void {
             reached.unshift(current);
         }
 
-        const endsReach = !current.is(node) && $isElementNode(current) && $writesSomething(current);
+        const endsReach = !current.is(node) && ($isMarkdownHorizontalRuleNode(current) || ($isElementNode(current) && $writesSomething(current)));
 
         if (endsReach) {
             break;
@@ -2305,7 +2338,7 @@ function $dropUnwritableBreaks(container: ElementNode): void {
         const previous: LexicalNode | null = child.getPreviousSibling();
 
         // A block a join left in the container is moved out by its own rule; the breaks before it are read then.
-        if (!$isBlock(child)) {
+        if (!$standsAsBlock(child)) {
             atEnd = !$dropBreaksBeforeEnd(child);
 
             if (atEnd) {

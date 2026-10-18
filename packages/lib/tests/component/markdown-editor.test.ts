@@ -9,7 +9,7 @@ import type {
 import type { MenuItemConfig } from '~/component/container/MenuItem';
 import type { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
 import { Component } from '~/core/Component';
-import { ORDERED_LIST_SHORTCUT, SHORTCUT_TRANSFORMERS } from '~/component/editor/markdownTransformers';
+import { HORIZONTAL_RULE_SHORTCUT, ORDERED_LIST_SHORTCUT, SHORTCUT_TRANSFORMERS } from '~/component/editor/markdownTransformers';
 import { EDITOR_NODES } from '~/component/editor/editorNodes';
 import { ensureMarkdownEditorClassRules } from '~/component/editor/editorTheme';
 import {
@@ -24,7 +24,7 @@ import { MarkdownRawBlockNode, MarkdownSourceTextNode } from '~/component/editor
 import { ReferenceLinkNode } from '~/component/editor/markdownReferenceLinkNode';
 import { TableNode, TableRowNode, TableCellNode, $createTableSelectionFrom, $isTableCellNode } from '@lexical/table';
 import {
-    $createRangeSelection, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isParagraphNode, $isTextNode, $selectAll,
+    $createParagraphNode, $createRangeSelection, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isParagraphNode, $isTextNode, $selectAll,
     $setSelection, FORMAT_TEXT_COMMAND, KEY_ENTER_COMMAND, PASTE_COMMAND, UNDO_COMMAND,
 } from 'lexical';
 import type { LexicalEditor, ElementNode, LexicalNode, ParagraphNode, RangeSelection, TextNode } from 'lexical';
@@ -149,7 +149,7 @@ function contextMenuMethodsOf(editor: MarkdownEditor): {
 const AVAILABILITY_FIELDS = [
     'canFormat', 'canStyle', 'canLink', 'canRemoveLink', 'canClearFormatting',
     'canSetBlockType', 'canSetBlockLayout', 'canInsertParagraphAroundBlock',
-    'canInsertTable', 'canInsertImage', 'canEditTable', 'canMergeCells', 'canUnmergeCell',
+    'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage', 'canEditTable', 'canMergeCells', 'canUnmergeCell',
 ] as const satisfies ReadonlyArray<keyof CommandAvailability>;
 
 /** The availability record in which exactly `available` are `true`. */
@@ -161,14 +161,14 @@ function availabilityOf(...available: Array<keyof CommandAvailability>): Command
 const ALL_AVAILABLE: CommandAvailability = availabilityOf(...AVAILABILITY_FIELDS);
 
 /** The availability with no selection at all: only the commands that make a selection of their own apply. */
-const NO_SELECTION: CommandAvailability = availabilityOf('canInsertTable', 'canInsertImage');
+const NO_SELECTION: CommandAvailability = availabilityOf('canInsertTable', 'canInsertHorizontalRule', 'canInsertImage');
 
 /**
  * The availability at a caret or a range in ordinary prose: no link to
  * remove, no format to clear, no block to put a line around, no table.
  */
 const IN_PROSE: CommandAvailability = availabilityOf(
-    'canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage',
+    'canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage',
 );
 
 /** Folds every apply patch for `handle` into the attribute state it produces. */
@@ -230,12 +230,12 @@ function caretIsInAParagraph(editor: MarkdownEditor): boolean {
 }
 
 describe('markdownTransformers curation', () => {
-    it('contains exactly the eleven typing shortcuts', () => {
-        expect(SHORTCUT_TRANSFORMERS).toHaveLength(11);
+    it('contains exactly the twelve typing shortcuts', () => {
+        expect(SHORTCUT_TRANSFORMERS).toHaveLength(12);
         expect(SHORTCUT_TRANSFORMERS).toEqual(expect.arrayContaining([
             HEADING, QUOTE, CODE, UNORDERED_LIST, ORDERED_LIST_SHORTCUT,
             BOLD_STAR, ITALIC_STAR, INLINE_CODE, STRIKETHROUGH, LINK,
-            UNDERLINE,
+            UNDERLINE, HORIZONTAL_RULE_SHORTCUT,
         ]));
     });
 
@@ -1423,12 +1423,13 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         // A block or a nested list indented with a tab lifts as it lifts written with the spaces the tab stands for.
         ['E25', '- one\n\n\tsecond\n- two', 'second', null, 'UL', '- one\n\n- second\n\n- two'],
         ['E26', '- one\n\t- nested\n- two', 'nested', null, 'UL', '- one\n\nnested\n\n- two'],
+        // A horizontal rule is a block of its own, which a list toggle over a range leaves where it stands.
+        ['E9', 'one\n\n---\n\ntwo', 'one', 'two', 'UL', '- one\n\n---\n\n- two'],
     ];
 
     /** Rows whose selection touches a raw block: the WYSIWYG surface writes the block's text escaped, and source mode leaves the document as it is. */
     const RAW_DECLINES: ParityRow[] = [
         ['E8', '<div>x</div>\n\ntwo', 'x', null, 'UL', '- \\<div>x\\</div>\n\ntwo'],
-        ['E9', 'one\n\n---\n\ntwo', 'one', 'two', 'UL', '- one\n- \\---\n- two'],
         ['E11', '- one\n\n  <div>x</div>\n\n- two', 'x', null, 'UL', '- one\n\n- \\<div>x\\</div>\n\n- two'],
         ['E22', '* # alpha\n  1. beta\n* gamma', 'beta', null, 'UL', '- \\* # alpha\\\n  1\\. beta\\\n  \\* gamma'],
         ['E22', '* # alpha\n  1. beta\n* gamma', 'beta', null, 'OL', '1. \\* # alpha\\\n   1\\. beta\\\n   \\* gamma'],
@@ -2386,7 +2387,7 @@ describe('MarkdownEditor source-mode commands', () => {
             bold: true, italic: false, underline: false, strikethrough: false, code: false,
             hasSelectedText: true, linkUrl: null,
             canFormat: true, canStyle: true, canLink: true, canRemoveLink: false,
-            canSetBlockType: true, canSetBlockLayout: false, canInsertTable: true, canInsertImage: true,
+            canSetBlockType: true, canSetBlockLayout: false, canInsertTable: true, canInsertImage: true, canInsertHorizontalRule: true,
             canEditTable: false, canMergeCells: false, canUnmergeCell: false,
             inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
         });
@@ -2407,7 +2408,7 @@ describe('MarkdownEditor source-mode commands', () => {
             bold: false, italic: false, underline: false, strikethrough: false, code: false,
             hasSelectedText: false, linkUrl: null,
             canFormat: true, canStyle: true, canLink: true, canRemoveLink: false,
-            canSetBlockType: true, canSetBlockLayout: false, canInsertTable: true, canInsertImage: true,
+            canSetBlockType: true, canSetBlockLayout: false, canInsertTable: true, canInsertImage: true, canInsertHorizontalRule: true,
             canEditTable: false, canMergeCells: false, canUnmergeCell: false,
             inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
         }]);
@@ -2596,6 +2597,10 @@ describe('MarkdownEditor source-mode command wiring', () => {
             run: (editor) => editor.insertImage('/d.png', { alt: 'Diagram', width: 320 }),
             changes: { from: 2, to: 7, insert: '![Diagram](/d.png){width=320}' },
         },
+        {
+            name: 'insertHorizontalRule', doc: 'abc', anchor: 1, head: 1,
+            run: (editor) => editor.insertHorizontalRule(), changes: { from: 0, to: 0, insert: '---\n\n' },
+        },
     ];
 
     for (const testCase of CASES) {
@@ -2657,6 +2662,25 @@ describe('MarkdownEditor source-mode block commands', () => {
     it('insertTable writes a GFM skeleton', () => {
         expect(new MarkdownEditor('', { mode: 'source' }).insertTable(2, 3).getValue())
             .toContain('| --- | --- | --- |');
+    });
+
+    it('insertHorizontalRule writes a rule line above the block holding the caret', () => {
+        expect(new MarkdownEditor('abc', { mode: 'source' }).insertHorizontalRule().getValue()).toBe('---\n\nabc');
+    });
+
+    it('a read-only editor refuses insertHorizontalRule in source mode, reporting it once', () => {
+        const editor = new MarkdownEditor('abc', { mode: 'source', readOnly: true });
+        const refused = vi.fn();
+
+        editor.on('readonlyedit', refused);
+        editor.insertHorizontalRule();
+
+        expect(editor.getValue()).toBe('abc');
+        expect(refused).toHaveBeenCalledTimes(1);
+    });
+
+    it('canInsertHorizontalRule is true in source mode', () => {
+        expect(new MarkdownEditor('abc', { mode: 'source' }).getSelectionState().canInsertHorizontalRule).toBe(true);
     });
 
     it('the 11 backlog commands still no-op', () => {
@@ -4018,7 +4042,7 @@ describe('$classifyContextMenuTarget', () => {
             kind: 'table-cell', hasSelectedText: false, bold: false, italic: false, strikethrough: false, code: false,
             underline: false, hasEnclosingBlock: true, linkUrl: null, columnAlignment: 'none',
             // No selection, and the document ends in a cell, where a table inserted at its end would nest.
-            availability: { ...NO_SELECTION, canInsertTable: false },
+            availability: { ...NO_SELECTION, canInsertTable: false, canInsertHorizontalRule: false },
         });
     });
 
@@ -4137,7 +4161,7 @@ describe('MarkdownEditor.getSelectionState() / "selectionstate"', () => {
         bold: false, italic: false, strikethrough: false, code: false, underline: false,
         hasSelectedText: false, linkUrl: null,
         canFormat: false, canStyle: false, canLink: false, canRemoveLink: false,
-        canSetBlockType: false, canSetBlockLayout: false, canInsertTable: true, canInsertImage: true,
+        canSetBlockType: false, canSetBlockLayout: false, canInsertTable: true, canInsertImage: true, canInsertHorizontalRule: true,
         canEditTable: false, canMergeCells: false, canUnmergeCell: false,
         inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
     };
@@ -4333,7 +4357,7 @@ describe('MarkdownEditor.getSelectionState() / "selectionstate"', () => {
         }, { discrete: true });
 
         // The format toggles apply to the selected cells, which can be merged; the document ends in a cell, where a table would nest.
-        expect(editor.getSelectionState()).toEqual({ ...NEUTRAL, canFormat: true, canInsertTable: false, canMergeCells: true });
+        expect(editor.getSelectionState()).toEqual({ ...NEUTRAL, canFormat: true, canInsertTable: false, canInsertHorizontalRule: false, canMergeCells: true });
     });
 
     it('a selection running out of the table it is anchored in is in no table: inTable, the column alignment and the table commands are off', () => {
@@ -4446,7 +4470,7 @@ describe('MarkdownEditor.getSelectionState() / "selectionstate"', () => {
         (editor as unknown as { ensureEditor(): LexicalEditor }).ensureEditor();
 
         expect(reported).toEqual([[false, false]]);
-        expect(editor.getSelectionState()).toEqual({ ...NEUTRAL, canInsertTable: false, canInsertImage: false });
+        expect(editor.getSelectionState()).toEqual({ ...NEUTRAL, canInsertTable: false, canInsertImage: false, canInsertHorizontalRule: false });
     });
 
     it('does not fire for the editor\'s initial load', () => {
@@ -5101,13 +5125,33 @@ describe('MarkdownEditor context menu', () => {
         ]);
     });
 
-    it('an "empty-line" context\'s Insert submenu offers Quote, Code block, Bulleted list, Numbered list, Table, and Image…, in that order', () => {
+    it('an "empty-line" context\'s Insert submenu offers Quote, Code block, Bulleted list, Numbered list, Table, Image…, and Horizontal rule, in that order', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true, availability: ALL_AVAILABLE });
 
         expect(submenuItemsOf(findItem(items, 'Insert'))?.map((item) => item.text ?? '(separator)')).toEqual([
-            'Quote', 'Code block', 'Bulleted list', 'Numbered list', '(separator)', 'Table', 'Image…',
+            'Quote', 'Code block', 'Bulleted list', 'Numbered list', '(separator)', 'Table', 'Image…', 'Horizontal rule',
         ]);
+    });
+
+    it('the Horizontal rule entry of an "empty-line" context\'s Insert submenu inserts a rule when it is run', () => {
+        const editor = new MarkdownEditor();
+
+        editor.setValue('a\n\nb');
+        lexicalOf(editor).update(() => {
+            const empty = $createParagraphNode();
+
+            $getRoot().getFirstChildOrThrow().insertAfter(empty);
+            empty.select();
+        }, { discrete: true });
+
+        const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: false, availability: ALL_AVAILABLE });
+        const entry = submenuItemsOf(findItem(items, 'Insert'))!.find((item) => item.text === 'Horizontal rule')!;
+
+        entry.action!();
+
+        expect(editor.getValue()).toContain('---');
+        expect(lexicalOf(editor).read(() => $getRoot().getChildren().map((node) => node.getType()))).toContain('markdown-horizontal-rule');
     });
 
     it('a "table-cell" context with linkUrl: null returns 17 entries: Cut/Copy/Paste, 5 format rows, Insert link, Text style, Clear formatting, then a Table submenu', () => {
@@ -5962,7 +6006,7 @@ describe('MarkdownEditor context menu — caret and availability', () => {
         /** What is available at a caret or a range inside the items of a list. */
         const IN_LIST: Array<keyof CommandAvailability> = [
             'canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertParagraphAroundBlock',
-            'canInsertTable', 'canInsertImage',
+            'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage',
         ];
 
         /** Selects from `fromOffset` in the text node showing `from` to `toOffset` in the one showing `to`. */
@@ -6020,47 +6064,47 @@ describe('MarkdownEditor context menu — caret and availability', () => {
             {
                 name: 'A1: a caret inside a plain word', markdown: 'hello world',
                 select: (editor) => caretIn(editor, 'hello world', 'hello wo'.length),
-                available: ['canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 // Offset 2 sits between the two spaces: the caret expands to nothing, so a format or style is
                 // left pending at it, and there is no word for a link to take.
                 name: 'a bare caret in prose', markdown: BARE_CARET,
                 select: (editor) => caretIn(editor, BARE_CARET, 2),
-                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 name: 'N1: a caret inside the word of a task-list marker', markdown: '- [ ] one\n- [x] two',
                 select: (editor) => caretIn(editor, '[x] ', 1),
-                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertParagraphAroundBlock', 'canInsertTable', 'canInsertImage'],
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertParagraphAroundBlock', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 name: 'N2: a caret at the end of a run kept as Markdown source', markdown: 'kept <span>x</span> source',
                 select: (editor) => caretIn(editor, '<span>', 6),
-                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 name: 'N3: a bare caret inside a link', markdown: 'A [te  xt](https://x) link.',
                 select: (editor) => caretIn(editor, 'te  xt', 3),
                 available: [
-                    'canFormat', 'canLink', 'canRemoveLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage',
+                    'canFormat', 'canLink', 'canRemoveLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage',
                 ],
             },
             {
                 name: 'N4: a caret at the end of a paragraph, after a full stop', markdown: 'Left column.',
                 select: (editor) => caretIn(editor, 'Left column.', 12),
-                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 name: 'N5: a caret in a paragraph holding an image alone', markdown: '![i](/i.png)',
                 select: (editor) => selectStart(editor),
-                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 name: 'N6: an underlined word selected from code', markdown: '++c++ x',
                 select: (editor) => selectPoints(editor, { text: 'c', offset: 0 }, { text: 'c', offset: 1 }),
                 available: [
-                    'canFormat', 'canStyle', 'canLink', 'canClearFormatting', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable',
+                    'canFormat', 'canStyle', 'canLink', 'canClearFormatting', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule',
                     'canInsertImage',
                 ],
             },
@@ -6069,7 +6113,7 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                 select: (editor) => caretIn(editor, 'bold', 2),
                 available: [
                     'canFormat', 'canStyle', 'canLink', 'canClearFormatting', 'canSetBlockType', 'canSetBlockLayout',
-                    'canInsertTable', 'canInsertImage',
+                    'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage',
                 ],
             },
             {
@@ -6087,47 +6131,47 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                 select: (editor) => caretIn(editor, 'quoted', 2),
                 available: [
                     'canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertParagraphAroundBlock',
-                    'canInsertTable', 'canInsertImage',
+                    'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage',
                 ],
             },
             {
                 name: 'A4: a caret inside a run kept as Markdown source', markdown: SOURCE_RUN,
                 select: (editor) => caretIn(editor, '<span>', 3),
-                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 name: 'A5: a range holding a run kept as Markdown source', markdown: SOURCE_RUN,
                 select: (editor) => lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true }),
-                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 name: 'A6: a caret inside a link\'s text', markdown: LINK_PROSE,
                 select: (editor) => caretIn(editor, 'text', 2),
-                available: ['canFormat', 'canLink', 'canRemoveLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canFormat', 'canLink', 'canRemoveLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 // Offset 6 of "https://y.test/b-c" stands between `:` and `/`, no word character on either side, so the caret expands to nothing.
                 name: 'A7: a bare caret in a link nested in a link', markdown: NESTED_LINK,
                 select: (editor) => caretIn(editor, 'https://y.test/b-c', 6),
-                available: ['canFormat', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canFormat', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 name: 'A7: a caret inside a word of a link nested in a link', markdown: NESTED_LINK,
                 select: (editor) => caretIn(editor, 'https://y.test/b-c', 2),
-                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 // The range is removed before a table goes in, its table included, so the table does not nest.
                 name: 'A8: a range from a paragraph into a table cell', markdown: PROSE_AND_TABLE,
                 select: (editor) => selectAcross(editor, 'para', 'c'),
-                available: ['canFormat', 'canStyle', 'canLink', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canFormat', 'canStyle', 'canLink', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 // The same range made the other way: its anchor is in the cell, so a line goes around the table.
                 name: 'a range from a table cell back into a paragraph', markdown: PROSE_AND_TABLE,
                 select: (editor) => selectAcross(editor, 'c', 'para'),
                 available: [
-                    'canFormat', 'canStyle', 'canLink', 'canSetBlockLayout', 'canInsertParagraphAroundBlock', 'canInsertTable', 'canInsertImage',
+                    'canFormat', 'canStyle', 'canLink', 'canSetBlockLayout', 'canInsertParagraphAroundBlock', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage',
                 ],
             },
             {
@@ -6148,86 +6192,86 @@ describe('MarkdownEditor context menu — caret and availability', () => {
             {
                 name: 'a table selection', markdown: `${TABLE}\n\nafter`,
                 select: (editor) => selectLastRowCells(editor),
-                available: ['canFormat', 'canInsertTable', 'canInsertImage', 'canMergeCells'],
+                available: ['canFormat', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage', 'canMergeCells'],
             },
             {
                 // Markdown merges body cells only, so the header row's cells are not offered a merge.
                 name: 'a table selection holding a header cell', markdown: `${TABLE}\n\nafter`,
                 select: (editor) => selectFirstRowCells(editor),
-                available: ['canFormat', 'canInsertTable', 'canInsertImage'],
+                available: ['canFormat', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 name: 'a table selection of one cell', markdown: `${TABLE}\n\nafter`,
                 select: (editor) => selectOneCell(editor),
-                available: ['canFormat', 'canInsertTable', 'canInsertImage'],
+                available: ['canFormat', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 // The format toggles leave out a cell holding a run kept as source, and here both cells hold one.
                 name: 'a table selection whose cells all hold a run kept as Markdown source', markdown: SOURCE_CELLS,
                 select: (editor) => selectLastRowCells(editor),
-                available: ['canInsertTable', 'canInsertImage', 'canMergeCells'],
+                available: ['canInsertTable', 'canInsertHorizontalRule', 'canInsertImage', 'canMergeCells'],
             },
             {
                 name: 'a table selection of empty cells', markdown: EMPTY_CELLS,
                 select: (editor) => selectLastRowCells(editor),
-                available: ['canInsertTable', 'canInsertImage', 'canMergeCells'],
+                available: ['canInsertTable', 'canInsertHorizontalRule', 'canInsertImage', 'canMergeCells'],
             },
             {
                 // The image cell takes no format, so the toggle reads the bold cell alone and takes its bold off.
                 name: 'a table selection of a cell holding an image alone and a bold cell', markdown: IMAGE_AND_BOLD_CELLS,
                 select: (editor) => selectLastRowCells(editor),
-                available: ['canFormat', 'canInsertTable', 'canInsertImage', 'canMergeCells'],
+                available: ['canFormat', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage', 'canMergeCells'],
             },
             {
                 name: 'a table selection of cells holding an image alone', markdown: IMAGE_CELLS,
                 select: (editor) => selectLastRowCells(editor),
-                available: ['canInsertTable', 'canInsertImage', 'canMergeCells'],
+                available: ['canInsertTable', 'canInsertHorizontalRule', 'canInsertImage', 'canMergeCells'],
             },
             {
                 // What Shift+Right at a line's end selects: the range holds no text for a format, a style or a link.
                 name: 'a range from the end of one block to the start of the next', markdown: 'one\n\ntwo',
                 select: (editor) => selectBetween(editor, 'one', 3, 'two', 0),
-                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 // A link wraps an image as it wraps text; a format or a style has no text to go on.
                 name: 'a range over an image alone', markdown: 'a ![i](/i.png) b',
                 select: (editor) => selectBetween(editor, 'a ', 2, ' b', 0),
-                available: ['canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 name: 'a range over the line break between two lines of a paragraph', markdown: 'one  \ntwo',
                 select: (editor) => selectBetween(editor, 'one', 3, 'two', 0),
-                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 // The same place named twice, the first time as a point on the paragraph: an empty range, which
                 // holds no text though the text node before the image is among its nodes.
                 name: 'a range from a point on a paragraph to the same place in its text', markdown: 'a ![i](/i.png) b',
                 select: (editor) => selectPoints(editor, { block: 0, offset: 1 }, { text: 'a ', offset: 2 }),
-                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 name: 'a range from a place in a paragraph\'s text to the same place as a point on the paragraph', markdown: 'a ![i](/i.png) b',
                 select: (editor) => selectPoints(editor, { text: ' b', offset: 0 }, { block: 0, offset: 2 }),
-                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 // The range of the case above made of points on the two blocks: the list toggles still take both.
                 name: 'a range from a point at the end of one block to a point at the start of the next', markdown: 'one\n\ntwo',
                 select: (editor) => selectPoints(editor, { block: 0, offset: 1 }, { block: 1, offset: 0 }),
-                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 name: 'the same range of points on two blocks, made backward', markdown: 'one\n\ntwo',
                 select: (editor) => selectPoints(editor, { block: 1, offset: 0 }, { block: 0, offset: 1 }),
-                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 // A format or a style is left pending at the caret; there is no text for a link to take.
                 name: 'a caret in an empty paragraph', markdown: '',
                 select: (editor) => selectStart(editor),
-                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 name: 'a caret in an item of a bulleted list', markdown: BULLETED_LIST,
@@ -6294,7 +6338,7 @@ describe('MarkdownEditor context menu — caret and availability', () => {
             {
                 name: 'no selection', markdown: 'hello world',
                 select: selectNoneOf,
-                available: ['canInsertTable', 'canInsertImage'],
+                available: ['canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
                 // With no selection the two inserts go in at the document's end, which here is inside the code block.
@@ -6346,6 +6390,7 @@ describe('MarkdownEditor context menu — caret and availability', () => {
             ],
             canInsertTable: [['insertTable', (editor) => editor.insertTable(2, 2)]],
             canInsertImage: [['insertImage', (editor) => editor.insertImage('https://x/a.png')]],
+            canInsertHorizontalRule: [['insertHorizontalRule', (editor) => editor.insertHorizontalRule()]],
             canEditTable:   [
                 ['insertTableRow', (editor) => editor.insertTableRow()],
                 ['deleteTableRow', (editor) => editor.deleteTableRow()],
@@ -6377,7 +6422,7 @@ describe('MarkdownEditor context menu — caret and availability', () => {
 
         /** The fields of the availability record the selection state reports. */
         const REPORTED = [
-            'canFormat', 'canStyle', 'canLink', 'canRemoveLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage',
+            'canFormat', 'canStyle', 'canLink', 'canRemoveLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage',
             'canEditTable', 'canMergeCells', 'canUnmergeCell',
         ] as const;
 
@@ -7039,31 +7084,37 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                     .map((item) => [item.text, item.enabled]),
             );
 
-            const neither = build({ ...ALL_AVAILABLE, canSetBlockType: false, canInsertTable: false, canInsertImage: false });
+            const neither = build({ ...ALL_AVAILABLE, canSetBlockType: false, canInsertTable: false, canInsertImage: false, canInsertHorizontalRule: false });
 
             expect(findItem(neither, 'Heading')?.enabled).toBe(false);
             expect(insertEnabled(neither)).toEqual({
-                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Table': false, 'Image…': false,
+                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Table': false, 'Image…': false, 'Horizontal rule': false,
             });
 
             const noBlockType = build({ ...ALL_AVAILABLE, canSetBlockType: false });
 
             expect(findItem(noBlockType, 'Heading')?.enabled).toBe(false);
             expect(insertEnabled(noBlockType)).toEqual({
-                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Table': true, 'Image…': true,
+                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Table': true, 'Image…': true, 'Horizontal rule': true,
             });
 
             const noTable = build({ ...ALL_AVAILABLE, canInsertTable: false });
 
             expect(findItem(noTable, 'Heading')?.enabled).toBe(true);
             expect(insertEnabled(noTable)).toEqual({
-                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': false, 'Image…': true,
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': false, 'Image…': true, 'Horizontal rule': true,
             });
 
             const noImage = build({ ...ALL_AVAILABLE, canInsertImage: false });
 
             expect(insertEnabled(noImage)).toEqual({
-                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': false,
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': false, 'Horizontal rule': true,
+            });
+
+            const noRule = build({ ...ALL_AVAILABLE, canInsertHorizontalRule: false });
+
+            expect(insertEnabled(noRule)).toEqual({
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': true, 'Horizontal rule': false,
             });
         });
 

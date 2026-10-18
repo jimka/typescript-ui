@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { $createParagraphNode, $isElementNode, $isLineBreakNode, $isTextNode } from 'lexical';
+import { $createParagraphNode, $getSelection, $isElementNode, $isLineBreakNode, $isNodeSelection, $isRangeSelection, $isTextNode } from 'lexical';
 import type { LexicalEditor, LexicalNode, TextNode } from 'lexical';
 import { $dfs } from '@lexical/utils';
 import { expandPrefixTabs, prefixTabLines } from '~/component/display/markdownTabs';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { $readRawBlockAsBlocks } from '~/component/editor/markdownImporter';
+import { $selectSourceRange } from '~/component/editor/markdownSourceModel';
 import { $placeOfSourceOffset, $placeOutsideSourceNode, $sourceOffsetOfPoint } from '~/component/editor/markdownSourcePlaces';
 import type { SourcePlace } from '~/component/editor/markdownSourcePlaces';
 import { DOM } from '~/core/DOM';
@@ -12,6 +13,7 @@ import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { CORPUS } from './markdown-roundtrip/corpus';
 import { tabDocuments } from './markdown-roundtrip/tabDocuments';
+import { sourceMapOfEditor } from './markdown-roundtrip/sourceCaret';
 import { blockOutline, viewerModel } from './markdown-roundtrip/viewModel';
 
 const CONFIG = {
@@ -791,6 +793,60 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
         ['- one\n- two', null, 1, 8],
     ])('SP24: the offset of a point is the start of the source of what the block shows there: %j at %j %i', (text, shown, offset, expected) => {
         expect(offsetOfPoint(text, shown, offset)).toBe(expected);
+    });
+
+    // A horizontal rule is one shown thing whose source is its line: an offset in the line, from its first character, is
+    // before the rule, and the line's end is after it. Seen as the ends of a source selection over `a` / `---` / `b`.
+    it.each<[number, number, string]>([
+        [0, 3, 'text@0..root@1'],
+        [0, 6, 'text@0..root@2'],
+        [3, 9, 'root@1..text@1'],
+        [6, 9, 'root@2..text@1'],
+    ])('SP27: an offset on a horizontal rule\'s line is before the rule, its line end after it: %i to %i', (from, to, expected) => {
+        const text = 'a\n\n---\n\nb';
+        const rules = new MarkdownEditor();
+
+        rules.setValue(text);
+
+        const map = sourceMapOfEditor(rules);
+        const lexical = (rules as unknown as { _editor: LexicalEditor })._editor;
+        let selected = '';
+
+        lexical.update(() => {
+            const placed = $selectSourceRange(text, map, from, to);
+            const selection = $getSelection();
+
+            expect(placed).toBe(true);
+            expect($isRangeSelection(selection)).toBe(true);
+
+            if ($isRangeSelection(selection)) {
+                const end = (point: typeof selection.anchor): string => `${point.type === 'text' ? 'text' : point.getNode().getType()}@${point.offset}`;
+
+                selected = `${end(selection.anchor)}..${end(selection.focus)}`;
+            }
+        }, { discrete: true });
+        rules.dispose();
+
+        expect(selected).toBe(expected);
+    });
+
+    it('SP27: a collapsed caret on a horizontal rule\'s line selects the rule', () => {
+        const text = 'a\n\n---\n\nb';
+        const rules = new MarkdownEditor();
+
+        rules.setValue(text);
+
+        const map = sourceMapOfEditor(rules);
+        const lexical = (rules as unknown as { _editor: LexicalEditor })._editor;
+
+        for (const offset of [3, 4, 5, 6]) {
+            lexical.update(() => {
+                expect($selectSourceRange(text, map, offset, offset), `offset ${offset}`).toBe(true);
+                expect($isNodeSelection($getSelection()), `offset ${offset}`).toBe(true);
+            }, { discrete: true });
+        }
+
+        rules.dispose();
     });
 
     it('SP25: a point in an empty paragraph has no offset', () => {

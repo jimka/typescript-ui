@@ -304,9 +304,10 @@ function fenceRanges(fence: { columns: Token[][] }, source: string, start: numbe
 
 /**
  * The block token types whose `raw` is set back to the source: the containers,
- * which a raw block shows and a save writes as they are, and the blocks that
- * are raw blocks themselves. The others keep the expanded form their text is
- * read from.
+ * which a raw block shows and a save writes as they are, the blocks that are
+ * raw blocks themselves, and the thematic break, whose line a horizontal rule
+ * keeps as its state (a rule in a list item keeps the tabs it was written
+ * with). The others keep the expanded form their text is read from.
  */
 const SOURCE_KEPT_TYPES: ReadonlySet<string> = new Set(["blockquote", "list", "list_item", "html", "def", "hr"]);
 

@@ -47,6 +47,7 @@ import {
 import type { KeptSource } from "~/component/editor/markdownNodeState.js";
 import { $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import type { ReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
+import { $horizontalRuleMarkdown, $isMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
 import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import type { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import { columnBlockKey, EMPTY_SOURCE_MAP, quoteBlockKey } from "~/component/editor/markdownSourceMap.js";
@@ -2336,6 +2337,10 @@ function serializeBlock(node: LexicalNode, definitions: Links | null): string {
         return serializeFence(node, definitions);
     }
 
+    if ($isMarkdownHorizontalRuleNode(node)) {
+        return $horizontalRuleMarkdown(node);
+    }
+
     if ($isMarkdownRawBlockNode(node)) {
         return serializeRawBlock(node, definitions);
     }
@@ -3199,7 +3204,7 @@ function indentLines(markdown: string, indent: string): string[] {
  * @param underText - Whether the list's first line follows a line of text in
  *   the same container: a bare `-` marker there would be a setext underline,
  *   so a `-` bullet list whose first line is a bare marker is written with `*`.
- *   That switch also applies when the first item opens with a raw thematic
+ *   That switch also applies when the first item opens with a thematic
  *   break of the bullet's own character, which would stand under a bare marker.
  * @param marker - The bullet or delimiter to write instead of the authored one.
  * @returns One line or more per item, joined by newlines.
@@ -3248,7 +3253,7 @@ function listLayout(list: ListNode, items: readonly (readonly ItemBlock[])[], un
     const opening = items[0]?.[0];
     const plainMarker = listMarkerWriter(list, false, marker)(0);
 
-    // A raw thematic break of the bullet's own character opening the first item puts the marker on a line of
+    // A thematic break of the bullet's own character opening the first item puts the marker on a line of
     // its own (see `listItemLines`), which under a line of text is a setext underline, as an empty item's is.
     const opensWithBreak = opening !== undefined && opening.withMarker === undefined
         && THEMATIC_BREAK.test(`${plainMarker} ${opening.markdown.split("\n")[0]!}`);
@@ -3579,7 +3584,8 @@ function itemBlockKinds(item: ListItemNode): Array<"list" | "text" | "block"> {
     let isInRun = false;
 
     for (const child of item.getChildren()) {
-        const isInline = !$isElementNode(child) || child.isInline();
+        // A horizontal rule is no element, yet a block.
+        const isInline = $isElementNode(child) ? child.isInline() : !$isMarkdownHorizontalRuleNode(child);
 
         if (isInline) {
             // Inline nodes straight in an item, as Lexical's list code and its HTML import put them, before the
@@ -3595,7 +3601,9 @@ function itemBlockKinds(item: ListItemNode): Array<"list" | "text" | "block"> {
 
         isInRun = false;
 
-        const writes = $isListNode(child) ? child.getChildrenSize() > 0 : $writesSomething(child);
+        const writes = $isListNode(child)
+            ? child.getChildrenSize() > 0
+            : $isMarkdownHorizontalRuleNode(child) || $writesSomething(child as ElementNode);
 
         if (writes) {
             kinds.push($isListNode(child) ? "list" : $isParagraphNode(child) ? "text" : "block");
@@ -3725,7 +3733,7 @@ function listItemLines(
         return listItemLines(marker, [{ ...nested, markdown: nested.withMarker(bullet), marker: bullet }, ...blocks.slice(1)], nestedSeparated, spacing, standardBlocks);
     }
 
-    // An item opening with a raw thematic break of its bullet's own character would read as one break
+    // An item opening with a thematic break of its bullet's own character would read as one break
     // (`- ---`): the marker stands on a line of its own and the block under it, which `marked` reads as the
     // item's block.
     const opensWithOwnBreak = nested.withMarker === undefined && THEMATIC_BREAK.test(first);

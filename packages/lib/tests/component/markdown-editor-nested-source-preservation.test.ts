@@ -754,3 +754,32 @@ describe('8. quote blocks', () => {
         { id: '8.9', source: lines('>a', '>', '>b'), edit: () => undefined, saved: lines('>a', '>', '>b') },
     ]);
 });
+
+describe('9. horizontal rules', () => {
+    runRows([
+        {
+            id: '9.1', source: lines('- a', '', '  * * *', '- b'), edit: (editor) => append(editor, 'a'),
+            saved: lines('- a!', '', '  * * *', '', '- b'),
+        },
+        {
+            id: '9.2', source: lines('- a', '', '     ***', '- b'), edit: (editor) => append(editor, 'a'),
+            saved: lines('- a!', '', '  ***', '', '- b'),
+        },
+        {
+            id: '9.3', source: lines('> a', '>', '>   _ _ _', '>', '> b'), edit: (editor) => append(editor, 'b'),
+            saved: lines('> a', '>', '>   _ _ _', '>', '> b!'),
+        },
+        {
+            id: '9.4', source: lines('::: columns', 'a', '', ' -  -  -', '|||', 'x', ':::'), edit: (editor) => append(editor, 'a'),
+            saved: lines('::: columns', 'a!', '', ' -  -  -', '|||', 'x', ':::'),
+        },
+        {
+            id: '9.5', source: lines('- a', '', '  *\t*\t*'), edit: (editor) => update(editor, () => { $textNode('a').toggleFormat('bold'); }),
+            saved: lines('- **a**', '', '  *\t*\t*'),
+        },
+        {
+            id: '9.6', source: lines('- ***', '- b'), edit: (editor) => append(editor, 'b'),
+            saved: lines('- ***', '- b!'),
+        },
+    ]);
+});

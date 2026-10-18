@@ -46,6 +46,7 @@ const UNDERLINE_CLASS    = "ts-ui-md-underline";
 const BLOCK_CLASS         = "ts-ui-md-block";
 const COLUMN_CLASS        = "ts-ui-md-column";
 const IMAGE_CLASS         = "ts-ui-md-image";
+const HORIZONTAL_RULE_CLASS = "ts-ui-md-horizontal-rule";
 /**
  * The literal two-character sequence (backslash, `n`) a `MarkdownEditor`
  * table cell's saved Markdown writes twice (see below) in place of a real
@@ -230,6 +231,19 @@ function ensureMarkdownClassRules(): void {
             borderLeft:  "3px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
             paddingLeft: "1em",
             marginLeft:  "0",
+        },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   HORIZONTAL_RULE_CLASS,
+        styles: {
+            // The browser's inset border dropped for a one-pixel line in the token and weight of the table cells'
+            // borders, and the 1em block margin a paragraph and a `:::` block stand apart by. Matches the
+            // editor's own HORIZONTAL_RULE_CLASS rule (editorTheme.ts).
+            border:    "0",
+            borderTop: "1px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
+            margin:    "1em 0",
         },
     });
 
@@ -563,7 +577,7 @@ const _defaultMarkdownOptions: Partial<MarkdownOptions> = { userSelect: "text", 
  * `lexMarkdown` in `markdownExtensions.ts`): the component walks the returned
  * token AST and builds every prose element
  * (`<h1>`–`<h6>`, `<p>`, `<ul>`/`<ol>`/`<li>`, `<blockquote>`, `<pre>`/`<code>`,
- * `<strong>`, `<em>`, `<a>`, `<table>`) through the DOM sink. There is no
+ * `<strong>`, `<em>`, `<a>`, `<hr>`, `<table>`) through the DOM sink. There is no
  * HTML-string assignment path, so untrusted Markdown can never inject markup,
  * and the render runs against the modelled DOM source in tests.
  *
@@ -572,8 +586,9 @@ const _defaultMarkdownOptions: Partial<MarkdownOptions> = { userSelect: "text", 
  * reference-style; a reference definition renders nothing), hard line breaks,
  * GFM pipe tables (including per-column alignment, widths, and merged cells),
  * underline, coloured/sized/font-styled spans, `:::` alignment/multi-column
- * fences, and sized images validated against a scheme allow-list. Any other
- * token type (raw HTML, a thematic break, a task-list item's `[ ]` / `[x]`
+ * fences, thematic breaks (a horizontal rule), and sized images validated
+ * against a scheme allow-list. Any other
+ * token type (raw HTML, a task-list item's `[ ]` / `[x]`
  * marker, the remaining GFM extensions) falls through to a defined fallback
  * that renders the token's plain text — never a crash, never markup.
  *
@@ -1649,6 +1664,7 @@ class Markdown extends Component<MarkdownOptions> {
             case "code":       this.appendCode(parent, token as Tokens.Code);                         break;
             case "mdtable":    this.appendTable(parent, token as MdTableToken);                        break;
             case "mdblock":    this.appendBlock(parent, token as MdBlockToken, headingIds);             break;
+            case "hr":         this.appendHorizontalRule(parent);                                     break;
 
             // Blank line between blocks — nothing to render.
             case "space": break;
@@ -1882,6 +1898,18 @@ class Markdown extends Component<MarkdownOptions> {
         }
 
         DOM.sink.appendChild(section, row);
+    }
+
+    /**
+     * Builds an `<hr>` for a thematic break.
+     *
+     * @param parent - The element handle to append into.
+     */
+    private appendHorizontalRule(parent: Handle): void {
+        const rule = this.create("hr");
+
+        DOM.sink.apply(rule, { addClass: [HORIZONTAL_RULE_CLASS] });
+        DOM.sink.appendChild(parent, rule);
     }
 
     /**

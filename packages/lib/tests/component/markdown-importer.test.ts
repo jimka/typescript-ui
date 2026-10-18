@@ -237,11 +237,11 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
         expectSurface(editor, 'foo\\\nbar');
     });
 
-    it('I5: a thematic break is a raw block', () => {
+    it('I5: a thematic break is a horizontal rule', () => {
         const editor = load('***');
 
-        expect(rootTypes(editor)).toEqual(['markdown-raw-block']);
-        expect(rootTexts(editor)).toEqual(['***']);
+        expect(rootTypes(editor)).toEqual(['markdown-horizontal-rule']);
+        expect(editor.getValue()).toBe('***');
         expectSurface(editor, '***');
     });
 
@@ -890,7 +890,7 @@ describe('MarkdownSourceTextNode and MarkdownRawBlockNode', () => {
     });
 
     it('both nodes survive a JSON round trip of the editor state (the copy-paste and history path)', () => {
-        const source = 'a\nb <i>c</i>\n\n***';
+        const source = 'a\nb <i>c</i>\n\n<div></div>\n\n***';
         const editor = load(source);
         const lexical = lexicalOf(editor);
         const saved = editor.getValue();
@@ -898,7 +898,7 @@ describe('MarkdownSourceTextNode and MarkdownRawBlockNode', () => {
 
         lexicalOf(restored).setEditorState(lexicalOf(restored).parseEditorState(JSON.stringify(lexical.getEditorState().toJSON())));
 
-        expect(rootTypes(restored)).toEqual(['paragraph', 'markdown-raw-block']);
+        expect(rootTypes(restored)).toEqual(['paragraph', 'markdown-raw-block', 'markdown-horizontal-rule']);
         expect(firstBlockInline(restored)).toEqual(firstBlockInline(editor));
         expect(restored.getValue()).toBe(saved);
     });
@@ -932,7 +932,7 @@ describe('MarkdownSourceTextNode and MarkdownRawBlockNode', () => {
     });
 
     it('Backspace at the start of a raw block with text keeps it', () => {
-        const editor = load('***\n\npara');
+        const editor = load('<div></div>\n\npara');
         let removed = true;
 
         lexicalOf(editor).update(() => {
@@ -1041,13 +1041,13 @@ describe('editing raw blocks and source nodes', () => {
     });
 
     it('Enter at the end of a raw block starts a paragraph after it', () => {
-        const editor = load('***');
+        const editor = load('<div></div>');
 
-        placeCaret(editor, 0, 3);
+        placeCaret(editor, 0, 11);
         pressEnter(editor);
 
         expect(rootTypes(editor)).toEqual(['markdown-raw-block', 'paragraph']);
-        expect(editor.getValue()).toBe('***');
+        expect(editor.getValue()).toBe('<div></div>');
     });
 
     /**
@@ -1241,13 +1241,13 @@ describe('editing raw blocks and source nodes', () => {
     });
 
     it('a link applied to a selection inside a raw block is declined', () => {
-        const editor = load('___');
+        const editor = load('<div></div>');
 
-        selectInFirstBlock(editor, [0, 0], [0, 3]);
+        selectInFirstBlock(editor, [0, 0], [0, 11]);
         editor.toggleLink('https://u.test');
 
         expect(holdsFormatting(editor)).toBe(false);
-        expect(editor.getValue()).toBe('___');
+        expect(editor.getValue()).toBe('<div></div>');
     });
 
     it('a format command reaching a raw block from the keyboard (FORMAT_TEXT_COMMAND) is declined', () => {
@@ -1263,7 +1263,7 @@ describe('editing raw blocks and source nodes', () => {
     });
 
     it('a format toggle over a selection reaching from a paragraph into a raw block is declined', () => {
-        const editor = load('para\n\n***');
+        const editor = load('para\n\n<div></div>');
 
         lexicalOf(editor).update(() => {
             const [paragraph, raw] = $getRoot().getChildren() as ElementNode[];
@@ -1276,7 +1276,7 @@ describe('editing raw blocks and source nodes', () => {
         editor.toggleBold();
 
         expect(holdsFormatting(editor)).toBe(false);
-        expect(editor.getValue()).toBe('para\n\n***');
+        expect(editor.getValue()).toBe('para\n\n<div></div>');
     });
 
     it('formatting a paragraph still applies (control for the raw-block guards)', () => {
@@ -2310,9 +2310,9 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         });
 
         it('a raw block after an indented list still loses its indent (control)', () => {
-            const editor = load('  - n\n\n  ***');
+            const editor = load('  - n\n\n  <div></div>');
 
-            expect(rootTexts(editor)[1]).toBe('***');
+            expect(rootTexts(editor)[1]).toBe('<div></div>');
         });
     });
 
@@ -4025,10 +4025,10 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             expectSaveShowsSurface(editor);
         });
 
-        it('a fence pasted into a thematic break\'s text shows the paragraph and code block it saves as', () => {
-            const editor = load('***');
+        it('a fence pasted into an HTML block\'s text shows the paragraph and code block it saves as', () => {
+            const editor = load('<div></div>');
 
-            select(editor, ['***', 0]);
+            select(editor, ['<div></div>', 0]);
             edit(editor, () => {
                 ($getSelection() as RangeSelection).insertRawText(' a```\nb\n``` ');
             });
@@ -4912,7 +4912,7 @@ describe('$importMarkdown — a list item holding blocks (B rows)', () => {
         ['B8: a table opening an item', '- a\n\n- | h |\n  | --- |\n  | c |\n\n- b', [['markdown-list-item-text'], ['table'], ['markdown-list-item-text']]],
         ['B9: a heading opening an item', '- # Foo\n- bar', [['heading'], ['markdown-list-item-text']]],
         ['B10: a fence opening an item', '- a\n\n- ::: {align=center}\n  **f**\n\n  g\n  :::\n\n- b', [['markdown-list-item-text'], ['markdown-block'], ['markdown-list-item-text']]],
-        ['B11: a thematic break under a bare marker', '- a\n-\n  ---\n- b', [['markdown-list-item-text'], ['markdown-raw-block'], ['markdown-list-item-text']]],
+        ['B11: a thematic break under a bare marker', '- a\n-\n  ---\n- b', [['markdown-list-item-text'], ['markdown-horizontal-rule'], ['markdown-list-item-text']]],
         ['B12: three paragraphs', '- a\n\n  second\n\n  third', [['markdown-list-item-text', 'paragraph', 'paragraph']]],
         ['B13: a link reference definition opening an item', '- [q]: https://q.com\n\nSee [q].', [['markdown-raw-block']]],
         ['B14: a link reference definition after a nested list', '- a\n  - b\n\n  [x]: /url\n\nsee [x]', [['markdown-list-item-text', 'list', 'markdown-raw-block']]],

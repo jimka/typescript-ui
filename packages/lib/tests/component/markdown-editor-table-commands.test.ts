@@ -644,6 +644,7 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
     it.each([
         ['insertImage', (editor: MarkdownEditor) => editor.insertImage('/i.png', { alt: 'i' })],
         ['insertTable', (editor: MarkdownEditor) => editor.insertTable(2, 2)],
+        ['insertHorizontalRule', (editor: MarkdownEditor) => editor.insertHorizontalRule()],
     ])('P13: %s declines once the point settles into a code block', (_name, command) => {
         const cases: Array<[string, Spot]> = [
             ['::: columns\n```\ncode\n```\n|||\nB\n:::', { on: 'fence', at: 0 }],
@@ -892,6 +893,7 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
         const COMMANDS: Array<[string, (editor: MarkdownEditor) => void, boolean]> = [
             ['insertImage', (editor) => { editor.insertImage('/i.png', { alt: 'i' }); }, false],
             ['insertTable', (editor) => { editor.insertTable(2, 2); }, false],
+            ['insertHorizontalRule', (editor) => { editor.insertHorizontalRule(); }, false],
             ['cut', (editor) => { editor.cut(); }, false],
             ['Enter', (editor) => { lexicalOf(editor).dispatchCommand(KEY_ENTER_COMMAND, null); }, false],
             ['INSERT_PARAGRAPH_COMMAND', (editor) => { lexicalOf(editor).dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined); }, false],

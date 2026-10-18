@@ -28,6 +28,8 @@ const BLOCK_CLASS                = "ts-ui-mde-block";
 const COLUMN_CLASS               = "ts-ui-mde-column";
 const IMAGE_CLASS                = "ts-ui-mde-image";
 const RAW_BLOCK_CLASS            = "ts-ui-mde-raw-block";
+const HORIZONTAL_RULE_CLASS          = "ts-ui-mde-horizontal-rule";
+const HORIZONTAL_RULE_SELECTED_CLASS = "ts-ui-mde-horizontal-rule-selected";
 
 /** Guards the module-singleton class-rule registration in {@link ensureMarkdownEditorClassRules}. */
 let _classRulesEnsured = false;
@@ -278,6 +280,30 @@ export function ensureMarkdownEditorClassRules(): void {
         // Monospace, as the code rules: a raw block shows Markdown source.
         styles: { fontFamily: "var(--ts-ui-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)" },
     });
+
+    new StyleRule({
+        scope:  "class",
+        name:   HORIZONTAL_RULE_CLASS,
+        // Matches the viewer's own HORIZONTAL_RULE_CLASS rule (Markdown.ts): the browser's inset border dropped for
+        // a one-pixel line in the table cells' border token, and the block margin a paragraph stands apart by.
+        styles: {
+            border:    "0",
+            borderTop: "1px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
+            margin:    "1em 0",
+        },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   HORIZONTAL_RULE_SELECTED_CLASS,
+        // A node selection is no DOM selection, so a selected rule is drawn with the focus ring's width and accent;
+        // an outline, not the ring's inset pseudo-element, because an <hr> has no content box to inset into. The
+        // offset keeps the ring clear of the one-pixel line it rings.
+        styles: {
+            outline:       "2px solid var(--ts-ui-indicator-focus, rgb(30, 100, 200))",
+            outlineOffset: "2px",
+        },
+    });
 }
 
 /**
@@ -324,4 +350,6 @@ export const EDITOR_THEME: EditorThemeClasses = {
     mdColumn:          COLUMN_CLASS,
     mdImage:           IMAGE_CLASS,
     mdRawBlock:        RAW_BLOCK_CLASS,
+    mdHorizontalRule:         HORIZONTAL_RULE_CLASS,
+    mdHorizontalRuleSelected: HORIZONTAL_RULE_SELECTED_CLASS,
 };

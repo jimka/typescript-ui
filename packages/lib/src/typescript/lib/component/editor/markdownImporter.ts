@@ -33,6 +33,8 @@ import { $createMarkdownBlockNode, $createMarkdownColumnNode, $isMarkdownColumnN
 import type { MarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
 import { $createMarkdownQuoteNode } from "~/component/editor/markdownQuoteNode.js";
 import { $createMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
+import { $createMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
+import type { MarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
 import type { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { $createMarkdownListItemTextNode, $isMarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
 import {
@@ -389,7 +391,7 @@ export interface RawBlockReading {
  * quote with a lazy line outside a paragraph, a list or a table the nodes
  * cannot hold is a raw block); every other type is a raw block.
  */
-const HELD_BLOCK_TYPES: ReadonlySet<string> = new Set(["heading", "paragraph", "code", "blockquote", "list", "mdtable", "mdblock"]);
+const HELD_BLOCK_TYPES: ReadonlySet<string> = new Set(["heading", "paragraph", "code", "blockquote", "list", "mdtable", "mdblock", "hr"]);
 
 /**
  * Reads a raw block's text with a line end after it, as a save writes it
@@ -1123,8 +1125,20 @@ function $buildBlock(token: Token, source: string): LexicalNode {
         case "list":       return $buildList(token as Tokens.List) ?? $buildRawBlock(source, true);
         case "mdtable":    return $buildTable(token as unknown as MdTableToken) ?? $buildRawBlock(source);
         case "mdblock":    return $buildFence(token as unknown as MdBlockToken);
+        case "hr":         return $buildHorizontalRule(token as Tokens.Hr);
         default:           return $buildRawBlock(source);
     }
+}
+
+/**
+ * Builds a horizontal rule holding the line it was written with
+ * (`horizontalRuleMarkerState`).
+ *
+ * @param token - The thematic break token.
+ * @returns The rule.
+ */
+function $buildHorizontalRule(token: Tokens.Hr): MarkdownHorizontalRuleNode {
+    return $createMarkdownHorizontalRuleNode(token.raw.trim());
 }
 
 /**

@@ -327,6 +327,7 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
             { separator: true },
             { text: "Table", enabled: state.canInsertTable, action: () => this._editor.insertTable(2, 3) },
             { text: "Image…", enabled: state.canInsertImage, action: () => void this.promptAndInsertImage() },
+            { text: "Horizontal rule", enabled: state.canInsertHorizontalRule, action: () => this._editor.insertHorizontalRule() },
         ];
     }
 

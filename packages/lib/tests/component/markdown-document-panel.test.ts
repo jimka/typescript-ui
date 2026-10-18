@@ -739,7 +739,7 @@ describe('MarkdownDocumentPanel live toolbar state', () => {
             panel.getEditor().setReadOnly(true);
 
             expect(controlsEnabled()).toEqual([false, false, false, false, false, false, false, false, false, false]);
-            expect(Object.values(insertEntriesEnabled(panel))).toEqual([false, false, false, false, false, false]);
+            expect(Object.values(insertEntriesEnabled(panel))).toEqual([false, false, false, false, false, false, false]);
 
             panel.getEditor().setReadOnly(false);
 
@@ -753,32 +753,45 @@ describe('MarkdownDocumentPanel live toolbar state', () => {
             return Object.fromEntries(items.filter((item) => item.separator !== true).map((item) => [item.text, item.enabled !== false]));
         }
 
-        it('the Insert dropdown dims Table and Image… in a raw Markdown block, and nothing with the caret in text', () => {
+        it('the Insert dropdown dims Table, Image… and Horizontal rule in a raw Markdown block, and nothing with the caret in text', () => {
             const panel = new MarkdownDocumentPanel();
 
             panel.setValue(`${RAW_BLOCK}\n\ntext`);
             caretIn(panel.getEditor(), RAW_BLOCK, 3);
 
             expect(insertEntriesEnabled(panel)).toEqual({
-                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': false, 'Image…': false,
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': false, 'Image…': false, 'Horizontal rule': false,
             });
 
             caretIn(panel.getEditor(), 'text', 2);
 
             expect(insertEntriesEnabled(panel)).toEqual({
-                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': true,
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': true, 'Horizontal rule': true,
             });
         });
 
-        it('the Insert dropdown dims the block conversions and Table in a table cell, and leaves Image… enabled', () => {
+        it('the Insert dropdown dims the block conversions, Table and Horizontal rule in a table cell, and leaves Image… enabled', () => {
             const panel = new MarkdownDocumentPanel();
 
             panel.setValue('| a |\n| --- |\n| 1 |');
             caretIn(panel.getEditor(), '1', 1);
 
             expect(insertEntriesEnabled(panel)).toEqual({
-                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Table': false, 'Image…': true,
+                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Table': false, 'Image…': true, 'Horizontal rule': false,
             });
+        });
+
+        it('the Insert dropdown\'s Horizontal rule entry inserts a rule at the caret when it is run', () => {
+            const panel = new MarkdownDocumentPanel();
+
+            panel.setValue('one\n\ntwo');
+            caretIn(panel.getEditor(), 'one', 3);
+
+            const items = resolveItems(findMenuButton(panel, 'Insert…').getMenuItems());
+
+            findItem(items, 'Horizontal rule').action!();
+
+            expect(panel.getValue()).toBe('one\n\n---\n\ntwo');
         });
 
         it('the Insert dropdown dims nothing on the source surface', () => {
@@ -789,7 +802,7 @@ describe('MarkdownDocumentPanel live toolbar state', () => {
             panel.getEditor().setMode('source');
 
             expect(insertEntriesEnabled(panel)).toEqual({
-                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': true,
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': true, 'Horizontal rule': true,
             });
         });
     });

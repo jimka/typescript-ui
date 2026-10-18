@@ -50,6 +50,13 @@ const CONTAINER_SYNTAX_ONLY = /^(?:[ \t>]|(?:[-+*]|\d{1,9}[.)])(?=[ \t]|$))*$/;
  */
 const UNALIGNED_DELIMITER_CELL = "---";
 
+/**
+ * The line a horizontal rule made in the editor is written as. Spelled out here rather than taken from
+ * `markdownHorizontalRuleNode.ts`'s `STANDARD_HORIZONTAL_RULE`, a Lexical module this leaf module must not import;
+ * the test suite pins the two to be the same.
+ */
+const HORIZONTAL_RULE_LINE = "---";
+
 /** The character a paragraph-around edit is checked with, typed where it leaves the caret. */
 const PROBE_CHARACTER = "x";
 
@@ -385,6 +392,69 @@ export function tableSource(rows: number, columns: number): MarkdownSourceTransf
 
         return addsOneTable(analysis, edit) ? edit : null;
     };
+}
+
+/**
+ * Builds the horizontal-rule-insertion transform: a `---` line above the block
+ * holding the caret's line, where {@link tableSource} puts a table (the whole
+ * paragraph, code block, HTML block or table, and the quote or list around it
+ * when the block is that container's first), a blank line before it unless the
+ * line above is blank or the rule lands at the document's start, and a blank
+ * line after it. The caret keeps its character: the selection moves down by
+ * what was inserted. The result must read as the same blocks with one more
+ * rule. Declines (`null`) wherever {@link tableSource} does.
+ *
+ * @returns The transform.
+ */
+export function horizontalRuleSource(): MarkdownSourceTransform {
+    return (text, from, to) => {
+        const analysis = analyzeMarkdownSource(text);
+        const start = tableInsertionLine(analysis, from);
+
+        if (start === null) {
+            return null;
+        }
+
+        // As for a table, what decides the separator is the line preceding the insertion point.
+        const above = text.slice(0, start);
+        const previousLine = above.slice(0, -1).split("\n").pop() ?? "";
+        const separatorNeeded = above !== "" && previousLine.trim() !== "";
+        const insert = (separatorNeeded ? "\n" : "") + HORIZONTAL_RULE_LINE + "\n\n";
+        const edit = { from: start, to: start, insert, selection: { from: from + insert.length, to: to + insert.length } };
+
+        return addsOneHorizontalRule(analysis, edit) ? edit : null;
+    };
+}
+
+/**
+ * Whether a horizontal rule insertion's result reads as the document did,
+ * with one more rule: the same leaves in the same blocks and containers.
+ *
+ * @param analysis - The pre-edit document's analysis.
+ * @param edit - The insertion.
+ * @returns Whether it does.
+ */
+function addsOneHorizontalRule(analysis: SourceAnalysis, edit: MarkdownSourceEdit): boolean {
+    const text = analysis.text;
+    const rules = (entries: SourceAnalysis["entries"]): number => entries.filter((entry) => entry.key === "hr").length;
+    const after = analyzeMarkdownSource(text.slice(0, edit.from) + edit.insert + text.slice(edit.to));
+    const insertedTo = edit.from + edit.insert.length;
+
+    if (rules(after.entries) !== rules(analysis.entries) + 1) {
+        return false;
+    }
+
+    // The new rule is the one leaf the result has that the document did not: read as a stretch whose leaves are not
+    // predicted, so every other leaf must read as it did.
+    const inserted = readLeaves(after).find((leaf) => leaf.key === "hr" && leaf.offset >= edit.from && leaf.offset < insertedTo);
+
+    if (inserted === undefined) {
+        return false;
+    }
+
+    const expected = expectLeaves(readLeaves(analysis), () => null);
+
+    return readsAsExpected(text, edit, expected, [{ from: edit.from, to: insertedTo, path: inserted.path }]);
 }
 
 /**

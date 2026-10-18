@@ -80,8 +80,8 @@ describe('viewer projection', () => {
         ]);
     });
 
-    it('V5. keeps a thematic break as the raw text block the viewer prints', () => {
-        expect(viewerModel('---').blocks).toEqual([{ kind: 'raw', text: '---' }]);
+    it('V5. projects a thematic break to a rule', () => {
+        expect(viewerModel('---').blocks).toEqual([{ kind: 'rule' }]);
     });
 
     it('V6. projects an empty or blank document to no blocks and no headings', () => {
