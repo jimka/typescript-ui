@@ -1573,3 +1573,246 @@ beside it). What it did and found:
     `@lezer/markdown` does not export it, and the extension is built in
     `loadExtension` so the module still loads no grammar package. The
     code-editor suite passes with it, Enter's prefix rules included.
+
+---
+
+## Implementation Notes
+
+What the plan called for, what was done instead, and why. The plan body above is unchanged.
+
+- **Built on the finished horizontal-rules branch.** The plan was drafted
+  while that branch was still being written; every site it names by line was
+  found by its symbol. The code it relies on from that plan exists as the plan
+  describes (the node shape, the click listener, the `hr` case of the source
+  places, the 12 typing shortcuts), so nothing needed bridging in the source.
+- **A box unchecked and checked again is written `[x]`, not the `[X]` it was
+  loaded with.** The plan's table says the state "no longer says the box's
+  state once unchecked, and is not written again". `setChecked` therefore
+  clears the marker state when it stops agreeing with the new checked state,
+  as well as `$taskMarkerMarkdown` ignoring a state that disagrees.
+- **Enter tags its update so the emptied upper item keeps its checkbox.** With
+  the empty-item rule as the plan gives it, `- [x] two` split right after the
+  checkbox left the upper item holding its checkbox alone with the caret in the
+  lower item, and the rule turned that checkbox into the text `[ ]` in the
+  same update. The plan's table (`- [ ]` / `- [x] two`) wants the box kept, so
+  the Enter listener adds the update tag `markdown-task-item-opened`
+  (`TASK_ITEM_OPENED_TAG`, exported from `markdownWritable.ts`) and the rule
+  leaves the checkbox alone in that update. The caret is also settled after a
+  checkbox the listener puts first in an item.
+- **A text `[ ]` shown by the empty-item rule saves as `- \[ \]`.** The plan
+  gives `- [ ]` for the row where an edit leaves the caret outside an emptied
+  task item. The rule shows the plain text `[ ]`, and the serializer escapes
+  the brackets of plain text at an item's start, as it did before this plan
+  (`- \[ \]` reloads as the same text `[ ]`). The checkbox itself, while it is
+  shown, saves as `- [ ]` (`- \[x\]` when checked), as the plan says. The row
+  pins `- \[ \]`.
+- **The blanks-that-end-an-item rows save as the source.** The plan's table
+  lists the loaded shape (`"[ ]"`, `"a"`); an unedited item is saved as its
+  source by the source map, so the save of `- [ ] ` is `- [ ] ` and of
+  `- a ` / `- b` is `- a ` / `- b`. The rows pin that.
+- **`SP16`'s row that takes what the prototype gives is `¦- [x]`, tab,
+  `Alpha beta`** (an offset before the list marker), not `- ¦[x]` as the plan
+  names it: `- ¦[x]` is inside the checkbox's source and is placed after the
+  checkbox like the other rows.
+- **`Delete` before a checkbox is tested as the settle only.** The character
+  `Delete` removes is found through the browser's selection, which neither
+  test DOM implements. The mounted row checks that the key's guard moves the
+  caret to right after the checkbox; the deletion itself after it is Lexical's
+  and a manual check.
+- **A copy inside one task item's text is built by hand in the paste row.**
+  Lexical's copy of a range from the start of an item's text to a point in it
+  copies the whole list, so the row *a checkbox pasted mid-text becomes its
+  text* pastes the item text's two inline nodes (the checkbox and `x`) as
+  exported JSON, which is what a copy confined to one block holds.
+- **`markdown-editor-readonly-mounted.test.ts` had no `toggleOrderedList`
+  command list** to extend, so a row of its own (`M8`) checks `toggleTaskList`
+  is refused with one `"readonlyedit"` and one flash. The source-mode refusal
+  has a row (`5.36`) in `markdown-source-mode-through-model.test.ts`, whose
+  command table (`COMMANDS`, which the freeze sweep and the WYSIWYG
+  differential run) gains `task`.
+- **The source-mode highlighter's types** are derived in `languages.ts` from
+  `markdown()`'s signature, as `markdownTabStops.ts` derives its own, because
+  `@lezer/markdown` is not a direct dependency. The `tags` argument is typed
+  with a type-only import of `@lezer/highlight`, so the module still loads no
+  grammar package.
+- **Smaller changes.** `strayTaskMarkersAsText` and both
+  `TASK_MARKER_SOURCE` constants are gone, as the plan says. The JSDoc of the
+  held-block shortcuts, of `MarkdownSourceTextNode`, of the source places'
+  module comment and of the command guards that named the run were corrected
+  too. `known-issues-2026-10.md` lost the three entries this fixes (the
+  defined-label task marker, the no-break space second half of the second
+  entry, the trailing space of `[ ] `).
+- **Not run: the eleven manual browser checks** of *Expected Behaviour ›
+  Manual (browser) checks*, and the Chromium and WebKitGTK looks they name.
+  This environment drives no browser. The demo surface (`packages/qa`) is a
+  performance harness with no per-feature page, so no demo was added.
+
+### After the first review
+
+- **A link never wraps a checkbox.** The plan's section on the format toggles
+  says the formats apply to a task item's text "wherever the checkbox is in the
+  selection", and its changelog wording said every format is written after the
+  marker. That holds for the format toggles and the text styles, which skip a
+  checkbox. It did not hold for a link: `toggleLink` wrapped the checkbox, and
+  the checkbox rule then turned it into the text `[ ] `. The link route of the
+  horizontal rules (`$toggleLinkLeavingRules`) now also leaves a checkbox out:
+  a range that takes one in links the text of each block it touches, one
+  block at a time. Rows: a range from before the checkbox, Select All over
+  two items and a range across two items, with one undo step.
+- **The checkbox's HTML is read back.** The plan's paste footnote said a paste
+  between two editors uses Lexical's own clipboard format, which carries the
+  node. That is wrong: the clipboard format names the namespace of the editor
+  that wrote it, which every editor makes at random, so another editor (or the
+  same one after a reload) reads the HTML. The node now has an `importDOM` for
+  an `<input type="checkbox">` inside a list item, which reads exactly what
+  `exportDOM` writes (its `checked` attribute is the state) and the input of
+  GitHub's loose item (`<li class="task-list-item"><p><input> x</p></li>`)
+  that Lexical's own list conversion does not reach. An input outside a list
+  item still shows nothing. The list conversion no longer adds a second
+  checkbox to an item whose input was read, and a checkbox first in the
+  paragraph a pasted item first holds stands until the item's rule makes that
+  paragraph its text. The editor's namespace is unchanged. Rows: two editors,
+  the editor's own exported HTML read back for a bulleted, a numbered and a
+  nested list, and the loose GitHub form.
+- **Enter at the start of a link, bold or italic text.** Whether only the
+  checkbox stands before the caret is now read from the item text's children
+  before the caret, through the inline element that holds the caret, not from
+  the siblings of the text node. Rows: a link and bold or italic text, after
+  text and right after the checkbox.
+- **A block insert with the caret before the checkbox goes above the item.**
+  The plan listed `insertTable` and `insertHorizontalRule` among the commands
+  that settle the caret after the checkbox without checking what those two do
+  there: they split the item, and the item lost its checkbox. They now leave
+  the caret before the checkbox, so the block goes above the item as it does
+  for a plain item, and the item keeps its checkbox. `insertImage` and the
+  other guarded commands still settle after the checkbox. Rows for both
+  inserts at a first, a later and a nested item, compared with the plain
+  item's result.
+- **A checkbox is removed only when its item leaves the list.** The Enter
+  listener of a task item no longer removes a checkbox that holds the text
+  alone. The blank-text rule decides as for a plain item: an item that stays
+  (it holds a further paragraph) keeps its checkbox, through the same update
+  tag the split uses, and the caret goes into the paragraph; an item that
+  leaves the list loses its checkbox as it leaves, so none is left as text.
+  A range inside one task item's text, after its checkbox, is removed first
+  and then handled as a caret is: text on both sides opens an unchecked task
+  item, and a range that empties the text splits the item as it does a plain
+  item, or leaves the list when the item holds further blocks. A range that
+  takes in the checkbox or another block keeps the earlier path. Rows: an
+  emptied item with a further paragraph, nested, with a quote and with a
+  nested list, and the three range cases.
+- **The missing source-mode row** is added: a source caret in `[x]` and
+  `setBlockType("h2")` gives `- [ ] one` / (blank) / `## \[x\] two`.
+- **Highlighting reads an item's first block only.** The marker is tagged only
+  where the item's first block begins, as the viewer reads it: the leaf test
+  is given what stood before the line's content by a block parser that reads
+  no block. `- a` / (blank) / `  [ ] b` has no marker node.
+- **Read-only checkbox.** A checkbox draws with `aria-readonly="true"` and the
+  class `ts-ui-mde-task-checkbox-read-only` (the default cursor) while the
+  editor is read-only; `setReadOnly` draws the checkboxes again, with no
+  content change and no undo step.
+- **Typing cost.** The held-block shortcut listener starts an update for an
+  item's own text only when the typed text node is the text's first child and
+  starts with `[`. A test counts the commits of a typed character.
+- **Test gaps.** The read-only click row asserts the wash; every toggle row
+  and Ctrl/Cmd+Enter row undoes to its source; the placements of a checkbox
+  made in the editor cover five markers by eleven placements.
+- **Known issues** gained the element caret on a list item node, Enter on an
+  emptied item that holds a nested list, and the split by an insert right after
+  a checkbox (the horizontal rules entry).
+
+### After the second review
+
+- **`toggleTaskList` over an empty block makes a task item that keeps its
+  checkbox.** The toggle put a checkbox into the empty text of an item or
+  paragraph, and the empty-item rule turned it into the text `[ ]` in the same
+  update (saved `- \[ \]`; a second toggle then compounded it). The toggle's
+  update now carries the update tag the Enter that opens a task item carries
+  (`TASK_ITEM_OPENED_TAG`, whose documentation now names both), so the empty
+  item keeps its checkbox, as the item Enter opens does, and the caret is
+  settled after the checkbox. Toggling off removes those checkboxes and leaves
+  no text. The save of an empty task item is `- [ ]` (`- \[x\]` when checked),
+  which a reload reads as the text `[ ]`; the rows say so, and pin the exact
+  save and shape for: an item with no text between two items (on, off, on
+  again, one undo each), an empty paragraph made by Enter between two
+  paragraphs, and a lone empty item. In source mode the same toggle writes the
+  same lines; a second toggle over those saved lines reads the middle line as
+  the text `[ ]`, which is what Markdown reads it as, so a row pins that
+  result too (`- [ ] \[ \]` for the middle line).
+- **Enter on an emptied item with a further paragraph: the mechanism.** The
+  update tag added in the blank-text rule's paragraph branch did nothing: the
+  item's text is not dirty there, so the empty-item rule never runs on it. It is
+  removed. The checkbox stays because the key does not touch the text. The row
+  pins the save `- [ ]` / (blank) / `  p` and that a reload shows the text
+  `[ ]`. The earlier note that the update tag keeps this checkbox was wrong.
+- **`$enterSplitsTaskItem` is split into its phases** (the range removal and the
+  split), and its documentation says who removes a checkbox (the blank-text rule,
+  only when the item leaves its list), how a range is handled (removed first,
+  then as a caret; a range that takes in the checkbox or another block is left
+  alone) and what it returns (`false` for a range that was only removed).
+- **Pasted HTML reads only a checkbox that opens an item's text.** The input
+  must be the first thing in its `<li>` or in the `<li>`'s first `<p>`, so
+  `<li>Agree <input type="checkbox"> to terms</li>` makes no checkbox in the
+  middle of the text. Rows for text before the input, a later paragraph and the
+  first paragraph. Lexical's import drops the space before an inline input, the
+  same on the base (known issues).
+- **Named numbers.** The marker's length (`TASK_MARKER_LENGTH`, three) and the
+  priority of the input conversion (`INPUT_CONVERSION_PRIORITY`, one above the
+  default of zero) are named constants with their explanation.
+- **Shared types.** `MarkdownExtension`, `MarkdownConfig` and `BlockParser` are
+  exported from `markdownTabStops.ts`, which `languages.ts` already imports, and
+  `languages.ts` no longer copies them; there is no cycle.
+- **The test helper `selectText2`** is `caretAtStartOf(text)`, without its unused
+  parameter.
+- **Docs and changelog** say what Enter does on a task item with no text that
+  holds a further paragraph, and what `toggleTaskList` does to an empty block.
+  The known-issues entry about inserts after a checkbox now names
+  `insertHorizontalRule` and `insertTable` (the same on the base), not
+  `insertImage`, and the lost space before a pasted inline input is added.
+
+### After the third review
+
+- **A source caret at the start of a later task item's line is in that item.**
+  The plan's `[^places]` footnote counted a checkbox as ending at its start so
+  that an offset inside its marker lands after it, and missed the list marker in
+  front of the checkbox: an offset before the checkbox on a later item's line (at
+  the line's start, or between the list marker and its space) fell back to the end
+  of the item above, so a heading, a quote, a list toggle, `toggleTaskList` and
+  `insertImage` acted on the wrong item. Such an offset, with another item's unit
+  before it, is now placed after the checkbox, at the start of its text, as it is
+  for a plain item; an offset at the end of the line above stays at the end of that
+  item, and the first item of a block keeps the place before its checkbox (the
+  restated `SP16` row). The raw-block re-read in `markdownWritable.ts` calls the
+  same function and so gets the same answer. Place rows for a bulleted, a nested and
+  a numbered item, and command rows (heading, quote, bulleted toggle, task toggle)
+  that compare the line's start and the offset after the list marker with a caret
+  inside the item's text. A heading from a nested item's line start still writes
+  `- - [x] b`, as it does from inside the item (known issues).
+- **Switching read-only draws the checkboxes again only when it must.** The redraw
+  ran on every `setReadOnly` call and wrote the editor's selection into the page,
+  taking the keyboard in a browser. It now runs only when the value changes and the
+  document holds a checkbox, and carries the tag that keeps the selection out of the
+  page unless the surface holds the keyboard, as `loadWysiwygDocument` does. Mounted
+  rows check that the keyboard and the page selection stay on an outside button
+  through lock and unlock, that a surface holding the keyboard keeps it, and that
+  setting the value it already has draws nothing.
+- **Docs.** The `toggleTaskList()` row writes the checked empty save as `- \[x\]`.
+- **Test names** of the empty-block rows are descriptive. The Ctrl/Cmd+Enter rows
+  test the forms apart: Ctrl alone toggles and Meta alone does nothing off macOS (the
+  code reads `IS_APPLE ? metaKey : ctrlKey`, by intent), and a file that gives the
+  platform before Lexical loads checks Cmd alone toggles and Ctrl alone does nothing
+  on an Apple keyboard.
+- **Pasted HTML: leading whitespace.** The seam has no way to read the text before an
+  input, so the conversion reads any checkbox input in a list item, and the item,
+  once built, keeps only a checkbox that opens its text (whitespace-only text before
+  it is dropped) and drops the others. `<li> <input> a</li>` makes a checkbox; `Agree
+  <input> to terms` still makes none.
+- **`- [x] &#32;`** loads as a lone checkbox in the viewer and the editor alike
+  (a character reference for a space is no blank to `marked`). A row pins that and
+  the save as written; its standard form is `- \[x\]`, so it cannot run the save
+  checks of the other rows, and a click that unchecks it saves `- [ ]`, which reloads
+  as text. Recorded as a known issue, not widened.
+- **`TASK_MARKER_LENGTH`** in `languages.ts` and `markdownTaskCheckboxNode.ts` point
+  at each other: `languages.ts` cannot import the node module without loading Lexical.
+- **Known issues** gained `setBlockType('code')` on an emptied checked task item, the
+  nested source heading (the `- - b` family), and the lone checkbox above.
