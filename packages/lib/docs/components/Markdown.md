@@ -55,7 +55,7 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | `` `inline code` `` | `<code>` |
 | fenced ```` ``` ```` block | `<pre>` › `<code>` (literal text, newlines preserved), or a syntax-highlighted `CodeEditor` for a supported language — see [Syntax highlighting](#syntax-highlighting-in-fenced-code-blocks) |
 | `-`/`*` and `1.` lists | `<ul>`/`<ol>` with `<li>` items |
-| `- [ ] task`, `- [x] done` | an `<li>` whose text — in a loose list, whose first paragraph — starts with the literal `[ ]` / `[x]` marker — no checkbox |
+| `- [ ] task`, `- [x] done` | an `<li>` whose text — in a loose list, whose first paragraph — starts with a read-only checkbox (`role="checkbox"`), checked for `[x]` and `[X]`; the marker needs text after it on its line |
 | `> quote` | `<blockquote>` |
 | `---`, `***` or `___` | `<hr>` — a horizontal rule, also in a list item, a quote and a `:::` column |
 | `[text](url)` | `<a href target="_blank" rel="noopener noreferrer">`; a link written around a link (`[[a](/in)](/out)`) is no link, and its brackets and destination show as text around the inner link |
@@ -164,7 +164,7 @@ Every attribute value is validated against a per-key allow-list before it is app
 
 ### Fallback for unsupported tokens
 
-Any token type not in the v1 set — raw HTML and the remaining GFM extensions (task lists) — falls through to a **defined fallback** that renders the token's plain text. It never crashes and never emits the corresponding element. Support for a new token type is added by extending the internal token switch, with no structural rewrite.
+Any token type not in the v1 set — raw HTML alone — falls through to a **defined fallback** that renders the token's plain text. It never crashes and never emits the corresponding element. Support for a new token type is added by extending the internal token switch, with no structural rewrite.
 
 ### Sizing
 
