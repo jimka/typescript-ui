@@ -505,6 +505,29 @@ describe('Menu keyboard session — session start', () => {
 
         expect(active()).toBe(openerEl);
     });
+
+    it('showClearOf after a key press takes focus and highlights the first enabled row, as show does', () => {
+        // Built before the key press: constructing a menu starts the input watch.
+        const menu = makeMenu();
+
+        keyInput();
+        menu.showClearOf(AT, AT, rect(0, 0, 50, 20), [{ text: 'Cut', enabled: false }, { text: 'Copy' }]);
+
+        expect(active()).toBe(menu.getElement());
+        expect(menu.getFocusedIndex()).toBe(1);
+        expect(Menu.hasKeyboardSessionFrom(openerEl)).toBe(true);
+    });
+
+    it('showClearOf after a pointer press leaves focus on the opener and starts no session', () => {
+        const menu = makeMenu();
+
+        pointerInput();
+        menu.showClearOf(AT, AT, rect(0, 0, 50, 20), [{ text: 'A' }, { text: 'B' }]);
+
+        expect(active()).toBe(openerEl);
+        expect(menu.getFocusedIndex()).toBe(-1);
+        expect(Menu.hasKeyboardSessionFrom(openerEl)).toBe(false);
+    });
 });
 
 describe('Menu keyboard session — nothing focused', () => {

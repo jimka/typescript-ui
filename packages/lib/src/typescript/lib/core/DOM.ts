@@ -1613,6 +1613,28 @@ export interface DOMSource {
     readDocumentSelection<T>(reader: (selection: Selection | null) => T): T | null;
 
     /**
+     * Measures the text range `build` returns and gives its client rectangles
+     * back as plain {@link Rect}s — the second read-side named escape, for a
+     * foreign live widget mounted through `DOM.sink.mountView` that can turn
+     * its own document positions into a DOM range over the elements it
+     * rendered (Lexical's `createDOMRange`), where this seam cannot name those
+     * elements. One rectangle per line box the range covers.
+     *
+     * @remarks The live `Range` exists only for the duration of the call; the
+     * result holds no reference to it. A modelled source has no ranges and
+     * returns `[]` without calling `build`, so the caller no-ops offline. An
+     * environment whose `Range` has no `getClientRects` (jsdom) also returns
+     * `[]`. `build`'s return is deliberately left unannotated at call sites
+     * outside this seam, for the same `no-raw-dom`-hold-clause reason
+     * `mountView`'s factory is.
+     *
+     * @param build - Builds the range to measure, or `null` for none.
+     * @returns The range's client rectangles; `[]` for no range, no geometry,
+     *   or offline.
+     */
+    readRangeRects(build: () => Range | null): Rect[];
+
+    /**
      * Reads plain text from the system clipboard.
      *
      * @returns The clipboard text; `""` for an empty clipboard; `null` when
@@ -3000,6 +3022,18 @@ export class ProductionDOMSource implements DOMSource {
     /** @inheritDoc */
     readDocumentSelection<T>(reader: (selection: Selection | null) => T): T | null {
         return reader(window.getSelection());
+    }
+
+    /** @inheritDoc */
+    readRangeRects(build: () => Range | null): Rect[] {
+        const range = build();
+
+        // No Range geometry in this environment (jsdom): nothing to measure, as decodeImage's guard.
+        if (range === null || typeof range.getClientRects !== "function") {
+            return [];
+        }
+
+        return Array.from(range.getClientRects(), toRect);
     }
 
     /** @inheritDoc */

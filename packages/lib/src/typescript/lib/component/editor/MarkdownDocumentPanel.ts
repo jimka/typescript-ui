@@ -391,7 +391,7 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
         ];
     }
 
-    /** Text style dropdown contents — verbatim from MarkdownEditor's own buildTextStyleMenuItem. */
+    /** Text style dropdown contents — the same presets as MarkdownEditor's context menu, as plain items that close the dropdown. */
     private buildTextStyleMenuItems(): MenuItemConfig[] {
         return [
             {

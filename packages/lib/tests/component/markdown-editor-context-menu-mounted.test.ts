@@ -212,6 +212,21 @@ describe('MarkdownEditor context menu, mounted: the browser\'s selection', () =>
     });
 });
 
+describe('MarkdownEditor context menu, mounted: the text to keep clear', () => {
+    it('a right-click in prose, where jsdom has no range geometry, opens at the pointer with show and throws nothing', () => {
+        const editor = mounted(PROSE_AND_CODE);
+        const menu = (editor as unknown as { _contextMenu: { showClearOf(...args: unknown[]): unknown; show(...args: unknown[]): unknown } })._contextMenu;
+        const showClearOf = vi.spyOn(menu, 'showClearOf').mockImplementation(() => menu);
+
+        caretIn(editor, 'plain ', 2);
+
+        expect(() => rightClickIn(editor, 'plain ', 2)).not.toThrow();
+        expect(showClearOf).not.toHaveBeenCalled();
+        // rightClickIn replaced show with a spy; the event was at (40, 50).
+        expect((menu as unknown as { show: { mock: { calls: unknown[][] } } }).show.mock.calls[0].slice(0, 2)).toEqual([40, 50]);
+    });
+});
+
 describe('MarkdownEditor context menu, mounted: a table selection', () => {
     it('reports the format toggles as available, and a toggle formats the selected cells', async () => {
         const editor = mounted(TABLE_AND_PROSE);

@@ -63,6 +63,11 @@ function placeVertically(m: Menu, growTop: number, anchorTop: number, total: num
     return (m as any).placeVertically(growTop, anchorTop, total, vpHeight);
 }
 
+/** Bracket-accesses the private placeSubmenuVertically with explicit numeric args. */
+function placeSubmenuVertically(m: Menu, itemTop: number, total: number, vpHeight: number): number {
+    return (m as any).placeSubmenuVertically(itemTop, total, vpHeight);
+}
+
 describe('Menu mode guards', () => {
     afterEach(() => DOM.reset());
 
@@ -81,6 +86,7 @@ describe('Menu mode guards', () => {
         const menu = new Menu([{ text: 'A', action: () => {} }], () => {});
 
         expect(() => menu.show(0, 0, [])).toThrow(/rebuild mode/);
+        expect(() => menu.showClearOf(0, 0, rect(0, 0, 0, 0), [])).toThrow(/rebuild mode/);
         expect(() => menu.hide()).toThrow(/rebuild mode/);
         expect(() => menu.setMenuWidth(100)).toThrow(/rebuild mode/);
         expect(() => menu.setScrollToBottomOnShow(true)).toThrow(/rebuild mode/);
@@ -2220,5 +2226,373 @@ describe('Menu — a submenu hover pending at close', () => {
         vi.advanceTimersByTime(PAST_HOVER_DELAY_MS);
 
         expect((menu as any)._openSubmenuPanel).toBeInstanceOf(Menu);
+    });
+});
+
+describe('Menu showClearOf — placement', () => {
+    afterEach(() => DOM.reset());
+
+    const TWO_ITEMS: MenuItemConfig[] = [{ text: 'A' }, { text: 'B' }];
+
+    it('opens below the kept-clear area when there is room, its left edge at the pointer', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.showClearOf(300, 110, rect(250, 100, 350, 120), TWO_ITEMS);
+
+        expect(menu.getX()).toBe(300);
+        expect(menu.getY()).toBe(120);
+    });
+
+    it('opens at the pointer when the pointer is below the area', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.showClearOf(300, 130, rect(250, 100, 350, 120), TWO_ITEMS);
+
+        expect(menu.getY()).toBe(130);
+    });
+
+    it('flips above the area when the room below is short', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.showClearOf(300, 770, rect(250, 760, 350, 780), TWO_ITEMS);
+
+        expect(menu.getY() + menu.getHeight()).toBe(760);
+    });
+
+    it('ends at the pointer near the right edge, and still opens below the area', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.showClearOf(1270, 110, rect(1200, 100, 1275, 120), TWO_ITEMS);
+
+        expect(menu.getX() + menu.getWidth()).toBe(1270);
+        expect(menu.getY()).toBe(120);
+    });
+
+    it('keeps the viewport margin at the left edge, as show does', () => {
+        installTestDOM(CONFIG);
+
+        const clear = new Menu();
+        const plain = new Menu();
+
+        clear.showClearOf(0, 110, rect(0, 100, 50, 120), TWO_ITEMS);
+        plain.show(0, 110, TWO_ITEMS);
+
+        expect(clear.getX()).toBe(VIEWPORT_MARGIN);
+        expect(clear.getX()).toBe(plain.getX());
+        expect(clear.getY()).toBe(120);
+    });
+
+    it('cuts an area that runs off the top to the viewport', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.showClearOf(300, 5, rect(250, -10, 350, 10), TWO_ITEMS);
+
+        expect(menu.getY()).toBe(10);
+    });
+
+    it('ignores an area with no part on screen: it opens as show would', () => {
+        installTestDOM(CONFIG);
+
+        const clear = new Menu();
+        const plain = new Menu();
+
+        clear.showClearOf(300, 770, rect(250, 900, 350, 920), TWO_ITEMS);
+        plain.show(300, 770, TWO_ITEMS);
+
+        expect(clear.getX()).toBe(plain.getX());
+        expect(clear.getY()).toBe(plain.getY());
+    });
+
+    it('caps a long menu to the room below an area in the middle, and scrolls', () => {
+        installTestDOM(CONFIG);
+
+        const menu  = new Menu();
+        const items = Array.from({ length: 60 }, (_, i) => ({ text: `Item ${i}` }));
+
+        menu.showClearOf(300, 400, rect(250, 380, 350, 420), items);
+
+        expect(menu.getY()).toBe(420);
+        expect(menu.getMaxSize()!.height).toBe(376);
+    });
+
+    it('puts a long menu above a low area, capped to the room above', () => {
+        installTestDOM(CONFIG);
+
+        const menu  = new Menu();
+        const items = Array.from({ length: 60 }, (_, i) => ({ text: `Item ${i}` }));
+
+        menu.showClearOf(300, 610, rect(250, 600, 350, 620), items);
+
+        expect(menu.getY()).toBe(VIEWPORT_MARGIN);
+        expect(menu.getMaxSize()!.height).toBe(596);
+        expect(menu.getY() + menu.getHeight()).toBe(600);
+    });
+
+    it('registers with LayerManager, exempts excludeEl, and fires onClose once on hide', () => {
+        installTestDOM(CONFIG);
+
+        const menu     = new Menu();
+        const onClose  = vi.fn();
+        const excluded = DOM.sink.createElement('div');
+
+        menu.showClearOf(300, 110, rect(250, 100, 350, 120), TWO_ITEMS, onClose, excluded);
+
+        expect(LayerManager.getTopLayer()).toBe(menu);
+        expect(menu.getAnchorElement()).toBe(excluded);
+
+        menu.hide();
+
+        expect(onClose).toHaveBeenCalledTimes(1);
+        expect(LayerManager.getTopLayer()).not.toBe(menu);
+    });
+});
+
+describe('Menu showClearOf — submenus', () => {
+    afterEach(() => DOM.reset());
+
+    const TWO_ITEMS: MenuItemConfig[] = [{ text: 'A' }, { text: 'B' }];
+
+    it('records the band below the area when the menu landed below', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.showClearOf(300, 110, rect(250, 100, 350, 120), TWO_ITEMS);
+
+        expect((menu as any)._submenuBand).toEqual({ top: 120, bottom: 800 });
+    });
+
+    it('records the band above the area when the menu landed above', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.showClearOf(300, 770, rect(250, 760, 350, 780), TWO_ITEMS);
+
+        expect((menu as any)._submenuBand).toEqual({ top: 0, bottom: 760 });
+    });
+
+    it('records no band for show or toggleFor, also on a menu that carried one', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.showClearOf(300, 110, rect(250, 100, 350, 120), TWO_ITEMS);
+        menu.show(300, 110, TWO_ITEMS);
+
+        expect((menu as any)._submenuBand).toBeNull();
+
+        menu.showClearOf(300, 110, rect(250, 100, 350, 120), TWO_ITEMS);
+        menu.toggleFor(DOM.sink.createElement('div'), rect(10, 10, 60, 30), TWO_ITEMS);
+
+        expect((menu as any)._submenuBand).toBeNull();
+    });
+
+    it('flips a submenu up inside a band above the area, to end at its item', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu([{ text: 'A' }], () => {});
+
+        (menu as any)._submenuBand = { top: 0, bottom: 400 };
+
+        expect(placeSubmenuVertically(menu, 380, 100, 800)).toBe(280);
+        expect(menu.getMaxSize()!.height).toBe(376);
+    });
+
+    it('places a submenu as today when it does not fit the band at full height', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu([{ text: 'A' }], () => {});
+
+        (menu as any)._submenuBand = { top: 0, bottom: 400 };
+
+        expect(placeSubmenuVertically(menu, 380, 500, 800)).toBe(380);
+    });
+
+    it('grows a submenu down as today inside a band below the area', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu([{ text: 'A' }], () => {});
+
+        (menu as any)._submenuBand = { top: 320, bottom: 800 };
+
+        expect(placeSubmenuVertically(menu, 400, 200, 800)).toBe(400);
+    });
+
+    it('places a submenu as placeVertically does when there is no band', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu([{ text: 'A' }], () => {});
+
+        expect(placeSubmenuVertically(menu, 380, 100, 800)).toBe(380);
+        expect(placeSubmenuVertically(menu, 380, 100, 800)).toBe(placeVertically(menu, 380, 380, 100, 800));
+    });
+
+    it('a submenu panel opened from a showClearOf menu reads the band from its root menu', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        menu.showClearOf(300, 110, rect(250, 100, 350, 120), [
+            { text: 'Open', action: () => {} },
+            { text: 'Export', submenu: { label: 'Export', items: [{ text: 'CSV', action: () => {} }] } },
+        ]);
+
+        const exportItem = (menu as any)._menuItems.find((i: any) => typeof i.hasSubmenu === 'function' && i.hasSubmenu());
+
+        exportItem._onOpenSubmenu(exportItem);
+
+        const child = (menu as any)._openSubmenuPanel as Menu;
+
+        expect(child).toBeInstanceOf(Menu);
+        expect((child as any).rootMenu()).toBe(menu);
+        expect((child as any).rootMenu()._submenuBand).toEqual({ top: 120, bottom: 800 });
+    });
+});
+
+describe('Menu showClearOf — a submenu opened from the menu', () => {
+    afterEach(() => DOM.reset());
+
+    /** Eleven plain items and a last "Style" item with a four-item submenu. */
+    function itemsWithStyleSubmenu(): MenuItemConfig[] {
+        return [
+            ...Array.from({ length: 11 }, (_, i) => ({ text: `Item ${i}`, action: () => {} })),
+            { text: 'Style', submenu: { label: 'Style', items: [1, 2, 3, 4].map((n) => ({ text: `Style ${n}`, action: () => {} })) } },
+        ];
+    }
+
+    /** Lays the menu out and opens the submenu of its last submenu item; returns the submenu panel. */
+    function openLastSubmenu(menu: Menu): Menu {
+        (menu as any).flushLayout();
+
+        const item = (menu as any)._menuItems.filter((i: any) => typeof i.hasSubmenu === 'function' && i.hasSubmenu()).pop();
+
+        item._onOpenSubmenu(item);
+
+        return (menu as any)._openSubmenuPanel as Menu;
+    }
+
+    it('lands clear of the kept-clear area when the menu sits above it, where show would let it grow down over the area', () => {
+        installTestDOM(CONFIG);
+
+        const clear = new Menu();
+        const plain = new Menu();
+
+        clear.showClearOf(300, 510, rect(250, 500, 350, 520), itemsWithStyleSubmenu());
+
+        // The menu ends at the area's top; its last item, and so the submenu's opening point, is near that edge.
+        expect(clear.getY() + clear.getHeight()).toBeLessThanOrEqual(500);
+
+        const child = openLastSubmenu(clear);
+
+        expect(child.getY() + child.getHeight()).toBeLessThanOrEqual(500);
+
+        // Control: the same menu under show(), at the same height, lets the submenu grow down past 500.
+        plain.show(300, clear.getY() + clear.getHeight(), itemsWithStyleSubmenu());
+
+        const plainChild = openLastSubmenu(plain);
+
+        expect(plainChild.getY() + plainChild.getHeight()).toBeGreaterThan(500);
+    });
+
+    it('lands as it does today when the menu sits below the area', () => {
+        installTestDOM(CONFIG);
+
+        const clear = new Menu();
+        const plain = new Menu();
+
+        clear.showClearOf(300, 110, rect(250, 100, 350, 120), itemsWithStyleSubmenu());
+        plain.show(300, 120, itemsWithStyleSubmenu());
+
+        const child = openLastSubmenu(clear);
+        const plainChild = openLastSubmenu(plain);
+
+        expect(child.getY()).toBe(plainChild.getY());
+        expect(child.getHeight()).toBe(plainChild.getHeight());
+    });
+});
+
+describe('Menu showClearOf — an area that leaves no room', () => {
+    afterEach(() => DOM.reset());
+
+    const TWELVE_ITEMS: MenuItemConfig[] = Array.from({ length: 12 }, (_, i) => ({ text: `Item ${i}` }));
+
+    /** Where `show` places the same menu at the same pointer. */
+    function placedByShow(x: number, y: number): { x: number; y: number; height: number; maxHeight: number } {
+        const menu = new Menu();
+
+        menu.show(x, y, TWELVE_ITEMS);
+
+        return { x: menu.getX(), y: menu.getY(), height: menu.getHeight(), maxHeight: menu.getMaxSize()!.height };
+    }
+
+    const FALLBACK_CASES: Array<[string, Rect]> = [
+        ['an area filling the viewport', rect(0, 0, 600, 800)],
+        ['an area running past both edges', rect(0, -50, 600, 900)],
+        ['an area leaving a margin on each side', rect(0, 10, 600, 790)],
+        ['an area leaving 36 px below and nothing above', rect(0, 0, 600, 760)],
+    ];
+
+    for (const [name, area] of FALLBACK_CASES) {
+        it(`${name}: opens at the pointer as show places it, on screen`, () => {
+            installTestDOM(CONFIG);
+
+            const menu = new Menu();
+            const shown = placedByShow(300, 400);
+
+            menu.showClearOf(300, 400, area, TWELVE_ITEMS);
+
+            expect({ x: menu.getX(), y: menu.getY(), height: menu.getHeight(), maxHeight: menu.getMaxSize()!.height }).toEqual(shown);
+            expect(menu.getHeight()).toBeGreaterThan(0);
+            expect(menu.getY() + menu.getHeight()).toBeLessThanOrEqual(800);
+            expect((menu as any)._submenuBand).toBeNull();
+        });
+    }
+
+    it('keeps the area clear, capped to the room, when the room is below the menu\'s height but not below four rows', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        // 800 - 676 - VIEWPORT_MARGIN = 120 px: well under the twelve rows, over four of them.
+        menu.showClearOf(300, 400, rect(0, 0, 600, 676), TWELVE_ITEMS);
+
+        expect(menu.getY()).toBe(676);
+        expect(menu.getMaxSize()!.height).toBe(120);
+        expect((menu as any)._submenuBand).toEqual({ top: 676, bottom: 800 });
+    });
+
+    it('gives the area up once the room falls below four rows', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+        const shown = placedByShow(300, 400);
+
+        // 800 - 740 - VIEWPORT_MARGIN = 56 px: under four rows.
+        menu.showClearOf(300, 400, rect(0, 0, 600, 740), TWELVE_ITEMS);
+
+        expect(menu.getY()).toBe(shown.y);
+        expect((menu as any)._submenuBand).toBeNull();
+    });
+
+    it('keeps the area clear when the whole menu fits in a small room', () => {
+        installTestDOM(CONFIG);
+
+        const menu = new Menu();
+
+        // One row in 56 px of room: the menu fits, so there is no reason to give the area up.
+        menu.showClearOf(300, 400, rect(0, 0, 600, 740), [{ text: 'A' }]);
+
+        expect(menu.getY()).toBe(740);
     });
 });

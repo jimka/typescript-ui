@@ -2,8 +2,9 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
-import type { TimerId } from "~/core/DOM.js";
+import type { Rect, TimerId } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
+import { Util } from "~/core/Util.js";
 import { Insets } from "~/primitive/Insets.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
@@ -14,6 +15,7 @@ import { Notification } from "~/overlay/Notification.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
 import { buildClipboardMenuItems } from "~/component/shared/buildClipboardMenuItems.js";
 import { CheckboxMenuRow } from "~/component/container/CheckboxMenuRow.js";
+import { RadioMenuRow } from "~/component/container/RadioMenuRow.js";
 import { CodeEditor } from "~/component/editor/CodeEditor.js";
 import type { CodeEditorChange } from "~/component/editor/CodeEditor.js";
 import { TextField } from "~/component/input/TextField.js";
@@ -63,7 +65,7 @@ import {
 } from "@lexical/table";
 import type { TableRowNode, TableSelection } from "@lexical/table";
 import { mergeRegister, $dfs, $getNearestNodeOfType, $handleIndentAndOutdent } from "@lexical/utils";
-import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent } from "@lexical/selection";
+import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent, createDOMRange, $getSelectionStyleValueForProperty } from "@lexical/selection";
 import { SHORTCUT_TRANSFORMERS, TASK_ITEM_SHORTCUT } from "~/component/editor/markdownTransformers.js";
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
 import {
@@ -8160,6 +8162,457 @@ export function $contextMenuNodeFor(target: LexicalNode): LexicalNode {
     return $isRangeSelection(selection) ? selection.anchor.getNode() : target;
 }
 
+/** The Large size preset's scale, in `em`; also the growth the kept-clear area leaves room for. */
+const LARGE_TEXT_SCALE = 1.2;
+
+/** Tallest selection kept clear whole, in heights of the pointer's line: three lines at line height 1.8 measure 4.6. */
+const KEPT_CLEAR_MAX_TEXT_HEIGHTS = 5;
+
+/**
+ * Largest share of the viewport's height a selection kept clear whole may take. A third because a
+ * selection that tall still leaves at least a third of the viewport, on its roomier side, for the menu.
+ */
+const KEPT_CLEAR_MAX_VIEWPORT_SHARE = 1 / 3;
+
+/** One preset of the Text style submenus: its label and the value it applies (`null` clears it). */
+interface TextStylePreset {
+    text: string;
+    value: string | null;
+}
+
+/** The Colour presets of the Text style submenu. */
+const TEXT_COLOUR_PRESETS: readonly TextStylePreset[] = [
+    { text: "Red", value: "#cc0000" },
+    { text: "Green", value: "#008000" },
+    { text: "Blue", value: "#2563eb" },
+    { text: "Default", value: null },
+];
+
+/** The Font presets of the Text style submenu. */
+const FONT_FAMILY_PRESETS: readonly TextStylePreset[] = [
+    { text: "Serif", value: "Georgia, serif" },
+    { text: "Monospace", value: "monospace" },
+    { text: "Default", value: null },
+];
+
+/** The Size presets of the Text style submenu. */
+const FONT_SIZE_PRESETS: readonly TextStylePreset[] = [
+    { text: "Small", value: "0.8em" },
+    { text: "Large", value: `${LARGE_TEXT_SCALE}em` },
+    { text: "Default", value: null },
+];
+
+/** One end of the range the context menu keeps clear. */
+interface KeptClearPoint {
+    node: LexicalNode;
+    offset: number;
+}
+
+/**
+ * The range a format or style command acts on, as the two ends the context
+ * menu measures to keep that text clear: the selection itself, the word or
+ * formatted run a collapsed caret widens to ({@link $computeWordExpansion}),
+ * or the caret's own point when it widens to nothing.
+ *
+ * @remarks Exported (not part of the public `MarkdownEditor` callable) so it
+ * can be tested directly, mirroring {@link $contextMenuNodeFor}.
+ *
+ * @returns The range's anchor and focus, or `null` unless the selection is a
+ *   range selection (a table selection, a selected image or rule, or none).
+ */
+export function $keptClearPoints(): { anchor: KeptClearPoint; focus: KeptClearPoint } | null {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return null;
+    }
+
+    const anchor = { node: selection.anchor.getNode(), offset: selection.anchor.offset };
+
+    if (!selection.isCollapsed()) {
+        return { anchor, focus: { node: selection.focus.getNode(), offset: selection.focus.offset } };
+    }
+
+    const expansion = $computeWordExpansion();
+
+    if (expansion === null) {
+        return { anchor, focus: anchor };
+    }
+
+    return {
+        anchor: { node: expansion.node, offset: expansion.start },
+        focus:  { node: expansion.node, offset: expansion.end },
+    };
+}
+
+/**
+ * Whether `outer` holds `inner` and is larger than it.
+ *
+ * @param outer - The candidate container.
+ * @param inner - The candidate contained rectangle.
+ * @returns `true` when `outer` lies around `inner` and is not the same size.
+ */
+function holdsSmaller(outer: Rect, inner: Rect): boolean {
+    const holds = outer.left <= inner.left && outer.right >= inner.right && outer.top <= inner.top && outer.bottom >= inner.bottom;
+
+    return holds && outer.width * outer.height > inner.width * inner.height;
+}
+
+/**
+ * Drops the rectangles that are not lines of text: those with no height, and
+ * an element's box, which holds another measured rectangle and is larger than
+ * it. A rectangle of zero width (a caret) is never counted as held.
+ *
+ * @param rects - The measured rectangles.
+ * @returns The rectangles left.
+ */
+function withoutElementBoxes(rects: readonly Rect[]): Rect[] {
+    // A rectangle can only hold ones that start within its own vertical span, so each is compared
+    // against the run of rectangles, sorted by top, that begins at its top and ends at its bottom.
+    const byTop = [...rects].sort((a, b) => a.top - b.top);
+
+    return rects.filter((rect) => {
+        if (rect.height <= 0) {
+            return false;
+        }
+
+        let index = firstTopAtLeast(byTop, rect.top);
+
+        while (index < byTop.length && byTop[index].top <= rect.bottom) {
+            const other = byTop[index];
+
+            if (other.width > 0 && other.height > 0 && holdsSmaller(rect, other)) {
+                return false;
+            }
+
+            index += 1;
+        }
+
+        return true;
+    });
+}
+
+/**
+ * The index of the first rectangle whose top is at least `top`, by binary search.
+ *
+ * @param byTop - Rectangles sorted by top, ascending.
+ * @param top - The top to find.
+ * @returns The index, or the length of `byTop` when none qualifies.
+ */
+function firstTopAtLeast(byTop: readonly Rect[], top: number): number {
+    let low = 0;
+    let high = byTop.length;
+
+    while (low < high) {
+        const middle = (low + high) >> 1;
+
+        if (byTop[middle].top < top) {
+            low = middle + 1;
+        } else {
+            high = middle;
+        }
+    }
+
+    return low;
+}
+
+/**
+ * The share of the shorter of two rectangles' heights that must lie within the
+ * other's vertical span for them to count as parts of one line of text: half,
+ * so a fragment sitting on a line (inline code, a smaller word) joins it while
+ * the line above or below, which at most touches, does not.
+ */
+const SAME_LINE_MIN_OVERLAP_SHARE = 0.5;
+
+/**
+ * Whether two rectangles are parts of one line of text.
+ *
+ * @param a - One rectangle.
+ * @param b - The other rectangle.
+ * @returns `true` when their vertical spans overlap by at least {@link SAME_LINE_MIN_OVERLAP_SHARE} of the shorter one's height.
+ */
+function sharesLine(a: Rect, b: Rect): boolean {
+    const overlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+
+    return overlap >= Math.min(a.height, b.height) * SAME_LINE_MIN_OVERLAP_SHARE;
+}
+
+/**
+ * The measured rectangle whose vertical span holds `pointerY`, the shortest
+ * one when several do; when none does, the one nearest to it vertically, the
+ * earlier one on a tie.
+ *
+ * @param lines - The measured line rectangles; not empty.
+ * @param pointerY - The pointer's viewport y.
+ * @returns The rectangle under the pointer.
+ */
+function rectUnderPointer(lines: readonly Rect[], pointerY: number): Rect {
+    const distanceTo = (line: Rect): number => Math.max(line.top - pointerY, pointerY - line.bottom, 0);
+
+    return lines.reduce((best, line) => {
+        const nearer = distanceTo(line) < distanceTo(best);
+        const equallyNearAndShorter = distanceTo(line) === distanceTo(best) && distanceTo(line) === 0 && line.height < best.height;
+
+        return nearer || equallyNearAndShorter ? line : best;
+    });
+}
+
+/**
+ * The whole line of text under the pointer: the rectangle under it
+ * ({@link rectUnderPointer}) joined with every rectangle that shares its line,
+ * so a fragment such as inline code or a smaller word does not stand for the
+ * line, and a larger word on it is counted.
+ *
+ * @param lines - The measured line rectangles; not empty.
+ * @param pointerY - The pointer's viewport y.
+ * @returns The bounding rectangle of the line under the pointer.
+ */
+function lineUnderPointer(lines: readonly Rect[], pointerY: number): Rect {
+    const seed = rectUnderPointer(lines, pointerY);
+
+    return boundingRect(lines.filter((line) => sharesLine(seed, line)));
+}
+
+/**
+ * The smallest rectangle holding all of `rects`.
+ *
+ * @param rects - The rectangles; not empty.
+ * @returns Their bounding rectangle.
+ */
+function boundingRect(rects: readonly Rect[]): Rect {
+    let left = Infinity;
+    let top = Infinity;
+    let right = -Infinity;
+    let bottom = -Infinity;
+
+    for (const rect of rects) {
+        left = Math.min(left, rect.left);
+        top = Math.min(top, rect.top);
+        right = Math.max(right, rect.right);
+        bottom = Math.max(bottom, rect.bottom);
+    }
+
+    return { x: left, y: top, left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
+/**
+ * `rect` grown by `amount` above and below.
+ *
+ * @param rect - The rectangle to grow.
+ * @param amount - How far to grow each of the top and bottom edges.
+ * @returns The grown rectangle.
+ */
+function grownVertically(rect: Rect, amount: number): Rect {
+    const top = rect.top - amount;
+    const bottom = rect.bottom + amount;
+
+    return { ...rect, y: top, top, bottom, height: bottom - top };
+}
+
+/**
+ * How far apart (px) the edges of two rectangles may be for them to count as
+ * one box: the range read and the image's own measurement both round layout
+ * to the pixel grid, and may differ by one pixel at an edge.
+ */
+const SAME_BOX_TOLERANCE_PX = 1;
+
+/**
+ * Whether two rectangles are one box, within {@link SAME_BOX_TOLERANCE_PX}.
+ *
+ * @param a - One rectangle.
+ * @param b - The other rectangle.
+ * @returns `true` when every edge is within the tolerance.
+ */
+function isSameBox(a: Rect, b: Rect): boolean {
+    return Math.abs(a.left - b.left) <= SAME_BOX_TOLERANCE_PX
+        && Math.abs(a.right - b.right) <= SAME_BOX_TOLERANCE_PX
+        && Math.abs(a.top - b.top) <= SAME_BOX_TOLERANCE_PX
+        && Math.abs(a.bottom - b.bottom) <= SAME_BOX_TOLERANCE_PX;
+}
+
+/**
+ * Whether the rectangle's vertical span holds `y`.
+ *
+ * @param rect - The rectangle.
+ * @param y - A viewport y.
+ * @returns `true` when `y` lies from its top to its bottom.
+ */
+function spansY(rect: Rect, y: number): boolean {
+    return rect.top <= y && y <= rect.bottom;
+}
+
+/**
+ * Whether a selection of this height is small enough to keep clear whole.
+ *
+ * @param height - The selection's height.
+ * @param textHeight - The height of the text line the limit is counted in.
+ * @param viewportHeight - The viewport's height.
+ * @returns `true` when it is within both {@link KEPT_CLEAR_MAX_TEXT_HEIGHTS} text heights and {@link KEPT_CLEAR_MAX_VIEWPORT_SHARE} of the viewport.
+ */
+function keptClearWhole(height: number, textHeight: number, viewportHeight: number): boolean {
+    return height <= KEPT_CLEAR_MAX_TEXT_HEIGHTS * textHeight && height <= viewportHeight * KEPT_CLEAR_MAX_VIEWPORT_SHARE;
+}
+
+/**
+ * The area to keep clear when the pointer is on an image (and on no text), in
+ * a selection too large to keep clear whole: the image's box joined with the
+ * text rectangles that share its vertical span, grown by the tallest of that
+ * text; with no such text, the image's own box, without growth.
+ *
+ * @param image - The image box under the pointer.
+ * @param lines - The measured text rectangles.
+ * @returns The area to keep clear.
+ */
+function imageLineArea(image: Rect, lines: readonly Rect[]): Rect {
+    const beside = lines.filter((line) => sharesLine(image, line));
+
+    if (beside.length === 0) {
+        return image;
+    }
+
+    return grownVertically(boundingRect([image, ...beside]), tallestHeight(beside) * LARGE_TEXT_SCALE - tallestHeight(beside));
+}
+
+/**
+ * The greatest height among `rects`.
+ *
+ * @param rects - The rectangles; not empty.
+ * @returns The tallest one's height.
+ */
+function tallestHeight(rects: readonly Rect[]): number {
+    let tallest = 0;
+
+    for (const rect of rects) {
+        tallest = Math.max(tallest, rect.height);
+    }
+
+    return tallest;
+}
+
+/**
+ * The area the context menu keeps clear, from the rectangles measured over the
+ * text its commands act on. The whole selection is kept clear when it is at
+ * most {@link KEPT_CLEAR_MAX_TEXT_HEIGHTS} line heights and
+ * {@link KEPT_CLEAR_MAX_VIEWPORT_SHARE} of the viewport tall, wherever the
+ * pointer is; otherwise only the line under the pointer. The result is grown
+ * above and below by the text's line height so the text can grow to the Large
+ * size preset without reaching the menu.
+ *
+ * The boxes of non-text inline content (an image) are not text: they never
+ * set the growth. With the pointer on an image and on no text, the line under
+ * the pointer is the image's box joined with the text that shares its vertical
+ * span, and the line height counted is the tallest text rectangle measured; with
+ * no text on its line, the image's own box is kept clear, without growth. The
+ * menu gives the area up if it is too tall for either side (see
+ * `Menu.showClearOf`).
+ *
+ * @remarks Exported (not part of the public `MarkdownEditor` callable) so it
+ * can be tested directly, mirroring {@link $contextMenuNodeFor}.
+ *
+ * @param rects - The client rectangles measured over the selected content, images included.
+ * @param pointerY - The pointer's viewport y.
+ * @param viewportHeight - The viewport's height.
+ * @param imageRects - The boxes of the images in the selection.
+ * @returns The area to keep clear, or `null` when nothing was measured.
+ */
+export function contextMenuKeptClearArea(
+    rects: readonly Rect[],
+    pointerY: number,
+    viewportHeight: number,
+    imageRects: readonly Rect[] = [],
+): Rect | null {
+    const images = imageRects.filter((image) => image.height > 0);
+    const lines = withoutElementBoxes(rects.filter((rect) => !images.some((image) => isSameBox(rect, image))));
+
+    if (lines.length === 0) {
+        return images.length === 0 ? null : rectUnderPointer(images, pointerY);
+    }
+
+    const whole = boundingRect([...lines, ...images]);
+    const imageUnderPointer = lines.some((line) => spansY(line, pointerY)) ? [] : images.filter((image) => spansY(image, pointerY));
+    const line = imageUnderPointer.length > 0 ? null : lineUnderPointer(lines, pointerY);
+    const textHeight = line === null ? tallestHeight(lines) : line.height;
+    const growth = textHeight * LARGE_TEXT_SCALE - textHeight;
+
+    if (keptClearWhole(whole.height, textHeight, viewportHeight)) {
+        return grownVertically(whole, growth);
+    }
+
+    if (line === null) {
+        return imageLineArea(rectUnderPointer(imageUnderPointer, pointerY), lines);
+    }
+
+    return grownVertically(line, growth);
+}
+
+/**
+ * The boxes of the images in the selection, measured through the seam by the
+ * range that spans each image among its parent's children. Call inside a
+ * Lexical read.
+ *
+ * @param editor - The editor whose rendered content is measured.
+ * @returns The images' boxes; `[]` for a caret or a selection with no image.
+ */
+function $imageRectsInSelection(editor: LexicalEditor): Rect[] {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection) || selection.isCollapsed()) {
+        return [];
+    }
+
+    return selection.getNodes().filter($isMarkdownImageNode).flatMap((image) => {
+        const parent = image.getParent();
+        const index = image.getIndexWithinParent();
+
+        return parent === null ? [] : DOM.source.readRangeRects(() => createDOMRange(editor, parent, index, parent, index + 1));
+    });
+}
+
+/**
+ * The bottom-left corner of the caret at the selection's focus, measured on
+ * screen. Call inside a Lexical read.
+ *
+ * @param editor - The editor whose rendered text is measured.
+ * @returns The corner, or `null` when the selection is not a range selection or the caret cannot be measured.
+ */
+function $caretCorner(editor: LexicalEditor): { x: number; y: number } | null {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return null;
+    }
+
+    const focusNode = selection.focus.getNode();
+    const [caret] = DOM.source.readRangeRects(() => createDOMRange(editor, focusNode, selection.focus.offset, focusNode, selection.focus.offset));
+
+    return caret === undefined ? null : { x: caret.left, y: caret.bottom };
+}
+
+/**
+ * The selection whose text a style command acts on: a collapsed caret
+ * widened to its word or formatted run (see {@link $computeWordExpansion}),
+ * as the commands widen it, and any other selection as it is. Call inside a
+ * Lexical read.
+ *
+ * @param selection - The editor's selection.
+ * @returns The selection to read the style of.
+ */
+function $styleSelectionOf(selection: BaseSelection): BaseSelection {
+    const expansion = $computeWordExpansion();
+
+    if (expansion === null) {
+        return selection;
+    }
+
+    const wordSelection = $createRangeSelection();
+    const key = expansion.node.getKey();
+
+    wordSelection.anchor.set(key, expansion.start, "text");
+    wordSelection.focus.set(key, expansion.end, "text");
+
+    return wordSelection;
+}
+
 /**
  * Classifies an already-resolved Lexical node for the right-click context
  * menu: a table cell wins even when empty, an empty paragraph outside any
@@ -9064,7 +9517,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * The right-click context menu shown over the WYSIWYG surface, in rebuild
      * mode — one instance whose item list is fully rebuilt on every
-     * {@link Menu.show}, mirroring `Table`'s `_columnContextMenu`. The three
+     * {@link Menu.show} or {@link Menu.showClearOf}, mirroring `Table`'s `_columnContextMenu`. The three
      * contexts this editor's own right-click can resolve to are mutually
      * exclusive per click, so one instance is safe to reuse across all of them.
      */
@@ -12077,11 +12530,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * `WysiwygSurface`'s `"contextmenu"` handler: resolves the native event's
      * DOM target to a Lexical node, classifies it (and the current
-     * selection) for the menu, and shows the resulting context menu at the
-     * click point. A menu opened from the keyboard (Shift+F10, the
-     * ContextMenu key) targets the editor root, so it is built for the caret
-     * instead (see {@link $contextMenuNodeFor}), at the point the browser
-     * reports for it, which is the caret's.
+     * selection) for the menu, and shows the resulting context menu clear of
+     * the text its items act on: below it, or above it when the room below is
+     * short, level with the pointer (see {@link Menu.showClearOf}). When no
+     * text can be measured (a table selection, a selected image or rule, no
+     * selection) the menu opens at the pointer. A menu opened from the
+     * keyboard (Shift+F10, the ContextMenu key) targets the editor root, so it
+     * is built for the caret instead (see {@link $contextMenuNodeFor}), and is
+     * placed under the caret's text.
      *
      * The editor's selection is first brought to the one the browser holds
      * (see {@link $adoptDomSelection}): where a right-click moves the caret
@@ -12104,6 +12560,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const domTarget = event.target;
         const editor = this.ensureEditor();
         let context: ContextMenuTarget | null = null;
+        let isRootTarget = false;
 
         // The live selection is read through the seam's named escape, and Lexical keeps none of it:
         // what comes back is a selection of Lexical's own document, or null offline and outside the editor.
@@ -12118,6 +12575,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 return;
             }
 
+            isRootTarget = $isRootNode(node);
             context = $classifyContextMenuTarget($contextMenuNodeFor(node));
         });
 
@@ -12125,7 +12583,72 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             return;
         }
 
-        this._contextMenu.show(event.clientX, event.clientY, this.buildContextMenuItems(context));
+        const items = this.buildContextMenuItems(context);
+        const placement = this.contextMenuPlacement(event, isRootTarget);
+
+        if (placement.keepClear === null) {
+            this._contextMenu.show(placement.x, placement.y, items);
+
+            return;
+        }
+
+        this._contextMenu.showClearOf(placement.x, placement.y, placement.keepClear, items);
+    }
+
+    /**
+     * Where the WYSIWYG context menu opens: the point it is aligned to and the
+     * area it keeps clear. The area is measured over the text the menu's format
+     * and style commands act on ({@link $keptClearPoints}), through the seam's
+     * {@link DOM.source} range read with Lexical's own range builder. The point
+     * is the event's, except for a menu opened from the keyboard, which is
+     * placed at the bottom-left corner of the caret when it can be measured.
+     *
+     * @param event - The native `contextmenu` event.
+     * @param isRootTarget - Whether the event's target resolved to the editor root, as a keyboard-opened menu's does.
+     * @returns The point to align to, and the area to keep clear (`null` when no text could be measured).
+     */
+    private contextMenuPlacement(event: MouseEvent, isRootTarget: boolean): { x: number; y: number; keepClear: Rect | null } {
+        const editor = this.ensureEditor();
+        let rects: Rect[] = [];
+        let imageRects: Rect[] = [];
+        let point = { x: event.clientX, y: event.clientY };
+
+        editor.read(() => {
+            const points = $keptClearPoints();
+
+            if (points === null) {
+                return;
+            }
+
+            rects = DOM.source.readRangeRects(() => createDOMRange(editor, points.anchor.node, points.anchor.offset, points.focus.node, points.focus.offset));
+            imageRects = $imageRectsInSelection(editor);
+
+            if (isRootTarget && Menu.lastInputWasKeyPress()) {
+                point = this.clampedToEditor($caretCorner(editor)) ?? point;
+            }
+        });
+
+        return { ...point, keepClear: contextMenuKeptClearArea(rects, point.y, DOM.source.getViewportSize().height, imageRects) };
+    }
+
+    /**
+     * Pins a point to the editor's visible box, as a keyboard-opened `Tree`,
+     * `List` or `Table` menu is pinned to its widget's box (see
+     * `resolveContextMenuTarget`), for a caret that lies partly outside it.
+     * The caret is not scrolled into view: it is where the user is typing, so
+     * it is already in view.
+     *
+     * @param point - The point to pin, or `null`.
+     * @returns The pinned point, or `null` for `null`.
+     */
+    private clampedToEditor(point: { x: number; y: number } | null): { x: number; y: number } | null {
+        if (point === null) {
+            return null;
+        }
+
+        const box = DOM.source.getViewportRect(this._wysiwyg);
+
+        return { x: Util.clamp(point.x, box.left, box.right), y: Util.clamp(point.y, box.top, box.bottom) };
     }
 
     /**
@@ -12298,16 +12821,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Builds the "Text style" submenu shared by the text and table-cell
      * context menus: three sub-submenus (Colour, Font, Size), each a fixed
-     * preset list plus a "Default" item that clears the override by calling
-     * the setter with `null`.
+     * preset list plus a "Default" row that clears the override. Each preset is
+     * a radio row that keeps the menu open and shows the current value, so
+     * several can be tried on the same word (see {@link buildStylePresetItems}).
      *
      * @param enabled - Whether the text-style commands would apply at the
      *   selection; `false` dims the item, which then does not open.
      * @returns The `MenuItemConfig` for the "Text style" submenu.
      */
     private buildTextStyleMenuItem(enabled: boolean): MenuItemConfig {
-        const presetItem = (text: string, action: () => void): MenuItemConfig => ({ text, action });
-
         return {
             text: "Text style",
             enabled,
@@ -12318,39 +12840,85 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                         text: "Colour",
                         submenu: {
                             label: "Colour",
-                            items: [
-                                presetItem("Red", () => this.setTextColor("#cc0000")),
-                                presetItem("Green", () => this.setTextColor("#008000")),
-                                presetItem("Blue", () => this.setTextColor("#2563eb")),
-                                presetItem("Default", () => this.setTextColor(null)),
-                            ],
+                            items: this.buildStylePresetItems("color", TEXT_COLOUR_PRESETS, (value) => this.setTextColor(value)),
                         },
                     },
                     {
                         text: "Font",
                         submenu: {
                             label: "Font",
-                            items: [
-                                presetItem("Serif", () => this.setFontFamily("Georgia, serif")),
-                                presetItem("Monospace", () => this.setFontFamily("monospace")),
-                                presetItem("Default", () => this.setFontFamily(null)),
-                            ],
+                            items: this.buildStylePresetItems("font-family", FONT_FAMILY_PRESETS, (value) => this.setFontFamily(value)),
                         },
                     },
                     {
                         text: "Size",
                         submenu: {
                             label: "Size",
-                            items: [
-                                presetItem("Small", () => this.setFontSize("0.8em")),
-                                presetItem("Large", () => this.setFontSize("1.2em")),
-                                presetItem("Default", () => this.setFontSize(null)),
-                            ],
+                            items: this.buildStylePresetItems("font-size", FONT_SIZE_PRESETS, (value) => this.setFontSize(value)),
                         },
                     },
                 ],
             },
         };
+    }
+
+    /**
+     * Builds the radio rows of one Text style submenu. Picking a row applies
+     * its preset, then re-reads the live style value and writes every row's
+     * checked state from it, so the menu stays open and follows the choice.
+     * Each time the submenu opens its rows read the current value afresh.
+     *
+     * @param property - The CSS property the presets set.
+     * @param presets - The presets, in the order shown.
+     * @param apply - Applies a preset's value; `null` clears the style.
+     * @returns One row factory per preset.
+     */
+    private buildStylePresetItems(
+        property: "color" | "font-family" | "font-size",
+        presets: readonly TextStylePreset[],
+        apply: (value: string | null) => void,
+    ): MenuItemConfig[] {
+        // Reassigned each time the submenu opens: a submenu panel calls every factory again.
+        const rows: Array<RadioMenuRow | null> = presets.map(() => null);
+        const isCurrent = (preset: TextStylePreset, current: string): boolean => (preset.value ?? "") === current;
+
+        const syncRows = (): void => {
+            const current = this.readSelectionStyleValue(property);
+
+            presets.forEach((preset, index) => { rows[index]?.setChecked(isCurrent(preset, current)); });
+        };
+
+        return presets.map((preset, index) => ({
+            row: () => {
+                const row = new RadioMenuRow({ text: preset.text, checked: isCurrent(preset, this.readSelectionStyleValue(property)) });
+
+                const applyPreset = (): void => {
+                    apply(preset.value);
+                    syncRows();
+                };
+
+                row.on("action", applyPreset);
+                rows[index] = row;
+
+                return row;
+            },
+        }));
+    }
+
+    /**
+     * The style value every text node a style command would act on carries: for
+     * a caret, the word or run the commands widen it to. Lexical reports a
+     * selection whose parts differ as `""`, the same as no value.
+     *
+     * @param property - The CSS property to read.
+     * @returns The shared value, or `""`.
+     */
+    private readSelectionStyleValue(property: string): string {
+        return this.ensureEditor().read(() => {
+            const selection = $getSelection();
+
+            return selection === null ? "" : $getSelectionStyleValueForProperty($styleSelectionOf(selection), property, "");
+        });
     }
 
     /**
