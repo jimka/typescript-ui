@@ -259,6 +259,11 @@ describe('Markdown heading ids', () => {
 });
 
 describe('extractMarkdownHeadings', () => {
+    it('reads an image in a heading as its alt text, titled or not', () => {
+        expect(extractMarkdownHeadings('# ![a](/i.png "t") x')[0]!.text).toBe('a x');
+        expect(extractMarkdownHeadings('# ![a](/i.png) x')[0]!.text).toBe('a x');
+    });
+
     it('extracts top-level headings in document order with their depth', () => {
         expect(extractMarkdownHeadings('# A\n\n## B\n')).toEqual([
             { id: 'a', text: 'A', depth: 1 },
@@ -1512,6 +1517,54 @@ describe('Markdown images', () => {
         new Markdown('![d](data:image/png;base64,iVBOR)').getElement(true);
 
         expect(createdTags()).toContain('img');
+    });
+});
+
+describe('Markdown images: every CommonMark image form', () => {
+    /** The writes that set an image's `src`. */
+    function imageWrites(): Record<string, string>[] {
+        return attrWrites().filter((write) => write.src !== undefined);
+    }
+
+    it.each([
+        ['spec 572: an image with a title', '![foo](/url "title")', { src: '/url', alt: 'foo', title: 'title' }],
+        ['spec 579: spaces around the destination and title', 'My ![foo bar](/path/to/train.jpg  "title"   )', { src: '/path/to/train.jpg', alt: 'foo bar', title: 'title' }],
+        ['spec 580: an angle-bracket destination loses its brackets', '![foo](<url>)', { src: 'url', alt: 'foo' }],
+        ['spec 577: a full reference with emphasis in the alt text', '![foo *bar*][foobar]\n\n[FOOBAR]: train.jpg "train & tracks"', { src: 'train.jpg', alt: 'foo bar', title: 'train & tracks' }],
+        ['spec 586: a collapsed reference matched case-insensitively', '![Foo][]\n\n[foo]: /url "title"', { src: '/url', alt: 'Foo', title: 'title' }],
+        ['spec 591: a shortcut reference', '![Foo]\n\n[foo]: /url "title"', { src: '/url', alt: 'Foo', title: 'title' }],
+        ['spec 574: an image inside the alt text', '![foo ![bar](/url)](/url2)', { src: '/url2', alt: 'foo bar' }],
+        ['a titled image with a size group', '![a](/i.png "t"){width=10}', { src: '/i.png', alt: 'a', width: '10', title: 't' }],
+        ['a full reference with a size group', '![a][r]{width=10}\n\n[r]: /i.png', { src: '/i.png', alt: 'a', width: '10' }],
+        ['a shortcut reference with a size group', '![a]{width=10}\n\n[a]: /i.png', { src: '/i.png', alt: 'a', width: '10' }],
+        ['escapes and character references are read', '![a &copy; \\_b](/a\\_b.png "&amp;")', { src: '/a_b.png', alt: 'a \u00a9 _b', title: '&' }],
+    ])('%s', (_name, source, expected) => {
+        new Markdown(source).getElement(true);
+
+        expect(imageWrites()).toEqual([expected]);
+    });
+
+    it('spec 574 creates one <img> for an image inside the alt text', () => {
+        new Markdown('![foo ![bar](/url)](/url2)').getElement(true);
+
+        expect(createdTags().filter((tag) => tag === 'img')).toHaveLength(1);
+    });
+
+    it.each([
+        ['an angle-bracket destination with a refused scheme', '![a](<javascript:alert(1)>)'],
+        ['a reference whose definition has a refused scheme', '![a][r]\n\n[r]: javascript:alert(1)'],
+        ['a destination whose scheme is written as a character reference', '![a](javascript&#58;alert(1))'],
+    ])('creates no <img> for %s', (_name, source) => {
+        new Markdown(source).getElement(true);
+
+        expect(createdTags()).not.toContain('img');
+    });
+
+    it('shows a shortcut reference with no definition as the text ! and a styled span', () => {
+        new Markdown('![a]{width=10}').getElement(true);
+
+        expect(createdTags()).not.toContain('img');
+        expect(textWrites()).toContain('!');
     });
 });
 

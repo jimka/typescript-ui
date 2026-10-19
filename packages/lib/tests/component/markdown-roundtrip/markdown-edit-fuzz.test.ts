@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $isRootNode, $isTextNode } from 'lexical';
+import { $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $getState, $isRootNode, $isTextNode } from 'lexical';
 import type { LexicalEditor, LexicalNode, TextNode } from 'lexical';
 import { $dfs, $findMatchingParent } from '@lexical/utils';
 import { decodeCharacterReferences } from '~/component/display/markdownCharacterReferences';
 import type { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { $isReferenceLinkNode } from '~/component/editor/markdownReferenceLinkNode';
+import { $isMarkdownImageNode } from '~/component/editor/markdownImageNode';
+import { imageWrittenState } from '~/component/editor/markdownNodeState';
 import { $readDefinitions } from '~/component/editor/markdownSerializer';
 import type { MarkdownSourceMap } from '~/component/editor/markdownSourceMap';
 import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode, type MarkdownRawBlockNode } from '~/component/editor/markdownSourceNodes';
@@ -310,7 +312,11 @@ function checkNoWordLost(testCase: CorpusCase, run: FuzzRun): void {
 
         return {
             shown:  $shownWords($getRoot()),
-            labels: new Set(nodes.filter($isReferenceLinkNode).flatMap((link) => [...wordsOf(link.getReference().label)])),
+            labels: new Set([
+                ...nodes.filter($isReferenceLinkNode).flatMap((link) => [...wordsOf(link.getReference().label)]),
+                ...nodes.filter($isMarkdownImageNode).map((image) => $getState(image, imageWrittenState))
+                    .filter((written) => written.endsWith(']')).flatMap((written) => [...wordsOf(written)]),
+            ]),
         };
     });
     const kept = [...wordsOf(decodeCharacterReferences(testCase.source))].filter((word) => !run.record.released.has(word) && !labels.has(word));

@@ -86,7 +86,7 @@ import type { MarkdownSourceBlock, MarkdownSourceMap, MarkdownSourcePart } from 
 import {
     $createMarkdownRawBlockNode, $isMarkdownRawBlockNode, $isMarkdownSourceTextNode, MarkdownRawBlockNode,
 } from "~/component/editor/markdownSourceNodes.js";
-import { keptSourceState, listLooseState, nestedLinkState } from "~/component/editor/markdownNodeState.js";
+import { imageMarksState, keptSourceState, listLooseState, nestedLinkState } from "~/component/editor/markdownNodeState.js";
 import { EDITOR_NODES } from "~/component/editor/editorNodes.js";
 import {
     $createMarkdownListItemTextNode, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $liftItemOut, $movePointsBetween, $outdentItem,
@@ -11230,7 +11230,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Clears every inline text format (bold, italic, strikethrough, inline code,
      * and any other Lexical text format) from the current selection, leaving
-     * plain text. No-op without a range selection. Block type is untouched.
+     * plain text, and the bold, italic, strikethrough and underline marks of the
+     * images in it. No-op without a range selection. Block type is untouched.
      *
      * In `"source"` mode, runs this command on the Markdown around the selection as
      * on the WYSIWYG surface and writes back the text it changes; no-op where the
@@ -11261,6 +11262,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 for (const node of selection.getNodes()) {
                     if ($isTextNode(node)) {
                         node.setFormat($formatOnceCleared(node));
+                    } else if ($isMarkdownImageNode(node) && $getState(node, keptSourceState) === null) {
+                        $setState(node, imageMarksState, "");
                     }
                 }
             });
@@ -11868,9 +11871,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * at the document's end. With a horizontal rule selected it goes in a
      * paragraph of its own directly after the rule, in the rule's own parent.
      *
-     * No-op, leaving the selection as it is, when `src` fails the scheme
-     * allow-list — never inserts a broken or unsafe image — when `alt` holds
-     * a `[` or `]`, which Markdown's image syntax cannot hold, and when the
+     * No-op, leaving the selection as it is, when `src` is empty, or fails the scheme
+     * allow-list — never inserts a broken or unsafe image — and when the
      * selection touches a raw Markdown block or a code block (or, without a
      * text selection, the document ends in one); `canInsertImage` reports
      * the last of these. A selection that runs from outside a table into one
@@ -11885,14 +11887,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      *
      * @param src - The image source (a relative path, `http:`/`https:` URL,
      *   or an allow-listed `data:image/…` base64 URI).
-     * @param options - Optional `alt` text and explicit pixel `width`/`height`.
+     * @param options - Optional `alt` text, `title` (shown as the image's tooltip and
+     *   written as `![alt](src "title")`) and explicit pixel `width`/`height`.
      * @returns This component, for method chaining.
      */
-    insertImage(src: string, options?: { alt?: string; width?: number; height?: number }): this {
-        // The image syntax's alt text cannot hold a bracket: a save would drop it.
-        const altHoldsBracket = /[[\]]/.test(options?.alt ?? "");
-
-        if (altHoldsBracket) { return this; }
+    insertImage(src: string, options?: { alt?: string; title?: string; width?: number; height?: number }): this {
+        // An image with no source is no image to insert, as an `<img>` with no `src` pastes as nothing.
+        if (src === "") { return this; }
 
         const handledBySource = this.editSourceThroughModel(() => this.insertImage(src, options));
 
@@ -11916,7 +11917,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             const selectedRule = $selectedHorizontalRule();
 
             if (selectedRule !== null) {
-                const image = $createMarkdownImageNode(spec);
+                const image = $createMarkdownImageNode(spec, options?.title ?? null);
 
                 selectedRule.insertAfter($createParagraphNode().append(image));
                 image.selectNext();
@@ -11942,7 +11943,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
                 $removeHorizontalRulesAtRangeEnds(selection);
                 $removeRangeBeforeImage(selection);
-                selection.insertNodes([$createMarkdownImageNode(spec)]);
+                selection.insertNodes([$createMarkdownImageNode(spec, options?.title ?? null)]);
             }
         }, { discrete: true, tag: RUN_EDGE_TAG });
 

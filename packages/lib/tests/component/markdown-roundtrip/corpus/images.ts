@@ -1,0 +1,48 @@
+import type { CorpusCase } from './types';
+
+/**
+ * Image cases: the CommonMark 0.31.2 image examples the other files do not hold, named by example number and section,
+ * and the dialect's size attributes after every image form. Listed last in the corpus, so every other case keeps its
+ * place: the source-mode differential picks each document's commands by that place.
+ */
+export const IMAGE_CASES: readonly CorpusCase[] = [
+    { name: 'CommonMark 520 (Links)', source: '![[[foo](uri1)](uri2)](uri3)\n' },
+    { name: 'CommonMark 573 (Images)', source: '![foo *bar*]\n\n[foo *bar*]: train.jpg "train & tracks"\n' },
+    { name: 'CommonMark 574 (Images)', source: '![foo ![bar](/url)](/url2)\n' },
+    { name: 'CommonMark 575 (Images)', source: '![foo [bar](/url)](/url2)\n' },
+    { name: 'CommonMark 576 (Images)', source: '![foo *bar*][]\n\n[foo *bar*]: train.jpg "train & tracks"\n' },
+    { name: 'CommonMark 577 (Images)', source: '![foo *bar*][foobar]\n\n[FOOBAR]: train.jpg "train & tracks"\n' },
+    { name: 'CommonMark 579 (Images)', source: 'My ![foo bar](/path/to/train.jpg  "title"   )\n' },
+    { name: 'CommonMark 580 (Images)', source: '![foo](<url>)\n' },
+    { name: 'CommonMark 583 (Images)', source: '![foo][bar]\n\n[BAR]: /url\n' },
+    { name: 'CommonMark 585 (Images)', source: '![*foo* bar][]\n\n[*foo* bar]: /url "title"\n' },
+    { name: 'CommonMark 586 (Images)', source: '![Foo][]\n\n[foo]: /url "title"\n' },
+    { name: 'CommonMark 587 (Images)', source: '![foo] \n[]\n\n[foo]: /url "title"\n' },
+    { name: 'CommonMark 589 (Images)', source: '![*foo* bar]\n\n[*foo* bar]: /url "title"\n' },
+    { name: 'CommonMark 590 (Images)', source: '![[foo]]\n\n[[foo]]: /url "title"\n' },
+    { name: 'CommonMark 591 (Images)', source: '![Foo]\n\n[foo]: /url "title"\n' },
+    { name: 'CommonMark 592 (Images)', source: '!\\[foo]\n\n[foo]: /url "title"\n' },
+    { name: 'titled sized image', source: '![a](/i.png "t"){width=10}' },
+    { name: 'image titles in single quotes and parentheses', source: "![a](/i.png 't') ![b](/j.png (u))" },
+    { name: 'angle-bracket image destination with a space', source: '![a](</my img.png> "t")' },
+    { name: 'image destination with balanced parentheses', source: '![a](/i(1).png)' },
+    { name: 'escapes and character references in an image', source: '![a\\_b &copy;](/a\\_b.png "&amp;")' },
+    { name: 'image alt text holding brackets', source: '![a \\[b\\] c](/i.png)' },
+    { name: 'image alt text holding emphasis, code and a line break', source: '![*a* `b`\nc](/i.png)' },
+    { name: 'titled image in a heading', source: '# ![a](/i.png "t") x' },
+    { name: 'titled image in a table cell', source: '| a |\n| --- |\n| ![i](/i.png "t") |' },
+    { name: 'titled linked image', source: '[![img](/i.png "t")](https://e.com)' },
+    { name: 'sized reference images in every form', source: '![a][r]{width=10} ![r][]{height=5} ![r]{width=3}\n\n[r]: /i.png "T"', links: [] },
+    { name: 'shortcut reference image before a link', source: '![r][] [x](/u)\n\n[r]: /i.png', links: ['/u'] },
+    { name: 'reference image in a table cell', source: '| a |\n| --- |\n| ![i][r] |\n\n[r]: /i.png', links: [] },
+    { name: 'linked reference image', source: '[![a][r]](https://e.com)\n\n[r]: /i.png', links: ['https://e.com'] },
+    { name: 'reference image whose definition the scheme allow-list rejects', source: '![a][r] x\n\n[r]: javascript:alert(1)', links: [] },
+    { name: 'reference image with an undefined label', source: '![a][nope] x', links: [] },
+    { name: 'reference image alt text holding a reference link', source: '![a [b] c][r]\n\n[r]: /i.png\n[b]: /b', links: [] },
+    { name: 'emphasis around a titled image', source: '*![a](/i.png "t")*' },
+    { name: 'strong around a reference image', source: '**![a][r]**\n\n[r]: /i.png', links: [] },
+    { name: 'emphasis around a shortcut reference image', source: '*![a]*\n\n[a]: /i.png', links: [] },
+    { name: 'strikethrough around a plain image', source: '~~![a](/i.png)~~' },
+    { name: 'text and a titled image inside one strong run', source: '**a ![i](/i.png "t") b**' },
+    { name: 'emphasis around a linked titled image', source: '*[![a](/i.png "t")](/u)*', links: ['/u'] },
+];

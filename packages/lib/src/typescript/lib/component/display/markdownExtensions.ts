@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { Marked, Tokenizer } from "marked";
+import { Lexer as MarkedLexer, Marked, Tokenizer } from "marked";
 import type { Lexer, Links, Token, TokenizerExtension, TokenizerObject, Tokens } from "marked";
 import {
     FENCE_ATTRIBUTE_GROUP, lineEndAt, parseAttributes, readFenceLine, splitColumnSections, startFenceLineScan,
@@ -8,6 +8,17 @@ import {
 import { decodeCharacterReferences, decodeEscapesAndCharacterReferences } from "~/component/display/markdownCharacterReferences.js";
 import { tokenizeTable } from "~/component/display/markdownTableExtension.js";
 import { expandPrefixTabs, restoreTokenSources, tabWidthAt } from "~/component/display/markdownTabs.js";
+
+/**
+ * `marked`'s own patterns for a full reference (`[text][label]`, `![alt][label]`)
+ * and for a collapsed or shortcut one (`[label][]`, `[label]`, with a leading
+ * `!` for an image) — the patterns that produce a reference's `link` or image
+ * token, so a label holding an escaped bracket or a code span is read exactly
+ * as the viewer reads it. The reference-link importer and the image writer
+ * match whole written forms against them.
+ */
+export const FULL_REFERENCE = MarkedLexer.rules.inline.gfm.reflink;
+export const SHORT_REFERENCE = MarkedLexer.rules.inline.gfm.nolink;
 
 /** The `mdblock` token the fence extension emits — one token list per column. */
 export interface MdBlockToken {
@@ -18,32 +29,27 @@ export interface MdBlockToken {
 }
 
 /**
- * `![alt](src){width=… height=…}` — replaces `marked`'s built-in image
- * tokenizer entirely, so every image (sized or not) arrives as one `mdimage`
- * token the viewer's own scheme allow-list validates before rendering.
+ * The `mdimage` token every image arrives as, whatever form it was written in.
+ * It is a leaf: it has no `tokens` field, so every walker that treats an image
+ * as one atom keeps doing so.
  */
-const IMAGE_EXTENSION: TokenizerExtension = {
-    name:  "mdimage",
-    level: "inline",
-    start(src) {
-        return src.indexOf("![");
-    },
-    tokenizer(src) {
-        const match = /^!\[([^[\]]*)\]\(([^()\s]+)\)(?:\{([^{}]*)\})?/.exec(src);
-
-        if (match === null) {
-            return undefined;
-        }
-
-        return {
-            type:       "mdimage",
-            raw:        match[0],
-            alt:        match[1],
-            src:        match[2],
-            attributes: parseAttributes(match[3] ?? ""),
-        };
-    },
-};
+export interface MdImageToken {
+    type:          "mdimage";
+    /** The image and its attribute group, as written. */
+    raw:           string;
+    /** The image as written, without its attribute group. */
+    imageRaw:      string;
+    /** The description's plain text. */
+    alt:           string;
+    /** The destination as read: escapes and references read, `<…>` dropped. */
+    src:           string;
+    /** The title as read; `null` when there is none or it is empty. */
+    title:         string | null;
+    /** The attribute group, parsed. */
+    attributes:    Record<string, string>;
+    /** The group's text between its braces; `""` when there is none. */
+    attributeText: string;
+}
 
 /**
  * `++text++` — an inline-format-style extension so nested emphasis
@@ -590,18 +596,20 @@ function fencesReadingReferences(this: Tokenizer, src: string): Tokens.Code | un
 }
 
 /**
- * The three tokenizers that read character references (`&copy;`, `&#169;`)
- * where CommonMark reads them: in text and in link destinations and titles
- * (inline links and link reference definitions, so a reference link gets its
- * definition's read values). Code fence info strings are read the same way by
+ * The two tokenizers that read character references (`&copy;`, `&#169;`)
+ * where CommonMark reads them: in text and in link reference definitions'
+ * destinations and titles, so a reference link gets its definition's read
+ * values. A link's own destination and title are read the same way by
+ * {@link linkReadingReferences}, which {@link DIALECT_IMAGE_TOKENIZERS} wraps
+ * in the `link` slot, and code fence info strings by
  * {@link fencesReadingReferences}, which {@link fencesWithColumnIndent} wraps
  * in the `fences` slot. `marked` reads only numeric references, and only in
  * text; it keeps a named one as written. Each runs `marked`'s own method;
- * `link` and `def` run it on {@link keepingEscapes}'s view and then read the
- * escapes and references together
- * ({@link decodeEscapesAndCharacterReferences}), so an escaped `&`
- * (`\&copy;`) stays text. Text inside raw HTML (`marked`'s `escaped`), code
- * spans, code blocks and autolinks is not read: those keep what is written.
+ * `def` runs it on {@link keepingEscapes}'s view and then reads the escapes
+ * and references together ({@link decodeEscapesAndCharacterReferences}), so an
+ * escaped `&` (`\&copy;`) stays text. Text inside raw HTML (`marked`'s
+ * `escaped`), code spans, code blocks and autolinks is not read: those keep
+ * what is written.
  */
 const CHARACTER_REFERENCE_TOKENIZERS: TokenizerObject = {
     inlineText(src) {
@@ -619,19 +627,6 @@ const CHARACTER_REFERENCE_TOKENIZERS: TokenizerObject = {
 
         return token;
     },
-    link(src) {
-        const token = Tokenizer.prototype.link.call(keepingEscapes(this), src);
-
-        if (token !== undefined) {
-            token.href = readEscapesAndReferences(token.href);
-
-            if (token.title) {
-                token.title = readEscapesAndReferences(token.title);
-            }
-        }
-
-        return token;
-    },
     def(src) {
         const token = Tokenizer.prototype.def.call(keepingEscapes(this), src);
 
@@ -644,6 +639,105 @@ const CHARACTER_REFERENCE_TOKENIZERS: TokenizerObject = {
         }
 
         return token;
+    },
+};
+
+/**
+ * Runs `marked`'s link tokenizer and reads the character references and
+ * backslash escapes of the destination and title, as CommonMark reads them.
+ * {@link DIALECT_IMAGE_TOKENIZERS} wraps it in the `link` slot.
+ *
+ * @param src - The remaining source at the current inline position.
+ * @returns The link or image token, or `undefined` when no inline link starts here.
+ */
+function linkReadingReferences(this: Tokenizer, src: string): Tokens.Link | Tokens.Image | undefined {
+    const token = Tokenizer.prototype.link.call(keepingEscapes(this), src);
+
+    if (token !== undefined) {
+        token.href = readEscapesAndReferences(token.href);
+
+        if (token.title) {
+            token.title = readEscapesAndReferences(token.title);
+        }
+    }
+
+    return token;
+}
+
+/** An image's attribute group, read directly after the image: its text between the braces. */
+const IMAGE_ATTRIBUTE_GROUP = /^\{([^{}]*)\}/;
+
+/**
+ * The plain text of an image's description, as CommonMark specifies for the
+ * `alt` attribute: emphasis, links and spans give their text, a nested image
+ * gives its own alt text, a code span its code, a hard line break a line feed.
+ *
+ * @param tokens - The tokens of the image's description.
+ * @returns The plain text.
+ */
+function imageAltText(tokens: readonly Token[]): string {
+    return tokens.map((token) => {
+        const generic = token as Tokens.Generic;
+
+        if (token.type === "mdimage") {
+            return generic.alt as string;
+        }
+
+        if (token.type === "br") {
+            return "\n";
+        }
+
+        const children = generic.tokens as Token[] | undefined;
+
+        if (children !== undefined && children.length > 0) {
+            return imageAltText(children);
+        }
+
+        return (generic.text as string | undefined) ?? token.raw;
+    }).join("");
+}
+
+/**
+ * Turns `marked`'s image token into the dialect's `mdimage` token, with the
+ * `{…}` attribute group that follows the image, if there is one.
+ *
+ * @param image - `marked`'s image token.
+ * @param src - The remaining source the image was read from.
+ * @returns The `mdimage` token.
+ */
+function dialectImage(image: Tokens.Image, src: string): MdImageToken {
+    const group = IMAGE_ATTRIBUTE_GROUP.exec(src.slice(image.raw.length));
+
+    return {
+        type:          "mdimage",
+        raw:           image.raw + (group?.[0] ?? ""),
+        imageRaw:      image.raw,
+        alt:           imageAltText(image.tokens),
+        src:           image.href,
+        title:         image.title ?? null,
+        attributes:    parseAttributes(group?.[1] ?? ""),
+        attributeText: group?.[1] ?? "",
+    };
+}
+
+/**
+ * Reads every image form through `marked`'s own `link` and `reflink`
+ * tokenizers: each runs `marked`'s method (the `link` slot through
+ * {@link linkReadingReferences}) and, when the token it returns is an image,
+ * turns it into the dialect's `mdimage` token with any `{…}` group that
+ * follows. A link, or a reference that names no definition, is returned as
+ * `marked` read it.
+ */
+const DIALECT_IMAGE_TOKENIZERS: TokenizerObject = {
+    link(src) {
+        const token = linkReadingReferences.call(this, src);
+
+        return token?.type === "image" ? dialectImage(token, src) as unknown as Tokens.Image : token;
+    },
+    reflink(src, links) {
+        const token = Tokenizer.prototype.reflink.call(this, src, links);
+
+        return token?.type === "image" ? dialectImage(token, src) as unknown as Tokens.Image : token;
     },
 };
 
@@ -898,7 +992,7 @@ const BOUNDED_BLOCK_TOKENIZERS: TokenizerObject = {
  * block-rule guards and windows if everything else about it is identical.
  */
 const MARKDOWN_EXTENSIONS: TokenizerExtension[] = [
-    UNDERLINE_EXTENSION, STYLED_SPAN_EXTENSION, BLOCK_EXTENSION, IMAGE_EXTENSION,
+    UNDERLINE_EXTENSION, STYLED_SPAN_EXTENSION, BLOCK_EXTENSION,
 ];
 
 /**
@@ -907,7 +1001,7 @@ const MARKDOWN_EXTENSIONS: TokenizerExtension[] = [
  * `use()` would change parsing for any other consumer of `marked` in the same
  * bundle.
  */
-const _marked = new Marked({ extensions: MARKDOWN_EXTENSIONS, tokenizer: { ...BOUNDED_BLOCK_TOKENIZERS, ...CHARACTER_REFERENCE_TOKENIZERS } });
+const _marked = new Marked({ extensions: MARKDOWN_EXTENSIONS, tokenizer: { ...BOUNDED_BLOCK_TOKENIZERS, ...CHARACTER_REFERENCE_TOKENIZERS, ...DIALECT_IMAGE_TOKENIZERS } });
 
 /**
  * The unbounded twin's instance, created on first use so production code — which
@@ -928,7 +1022,7 @@ let _unboundedMarked: Marked | null = null;
  * @returns The top-level token list.
  */
 export function lexMarkdownUnbounded(source: string): Token[] {
-    _unboundedMarked ??= new Marked({ extensions: MARKDOWN_EXTENSIONS, tokenizer: { ...DIALECT_BLOCK_TOKENIZERS, ...CHARACTER_REFERENCE_TOKENIZERS } });
+    _unboundedMarked ??= new Marked({ extensions: MARKDOWN_EXTENSIONS, tokenizer: { ...DIALECT_BLOCK_TOKENIZERS, ...CHARACTER_REFERENCE_TOKENIZERS, ...DIALECT_IMAGE_TOKENIZERS } });
 
     return _unboundedMarked.lexer(source);
 }
@@ -1009,8 +1103,15 @@ export function lexMarkdownWithDefinitions(source: string, definitions: Links): 
  * as they do in the viewer.
  *
  * @param source - The inline Markdown to lex.
+ * @param definitions - The link reference definitions the source's references resolve against, filed the way {@link lexMarkdownWithDefinitions} files them; none by default.
  * @returns The inline token list.
  */
-export function lexMarkdownInline(source: string): Token[] {
-    return _marked.Lexer.lexInline(source, _marked.defaults);
+export function lexMarkdownInline(source: string, definitions?: Links): Token[] {
+    const lexer = new _marked.Lexer(_marked.defaults);
+
+    if (definitions !== undefined) {
+        Object.assign(lexer.tokens.links, definitions);
+    }
+
+    return lexer.inlineTokens(source);
 }

@@ -13,7 +13,7 @@ import { buildSelectionCopyMenuItems } from "~/component/shared/buildSelectionCo
 import type { Token, Tokens } from "marked";
 import { headingSlug } from "~/component/display/markdownHeadingIds.js";
 import { lexMarkdown } from "~/component/display/markdownExtensions.js";
-import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
+import type { MdBlockToken, MdImageToken } from "~/component/display/markdownExtensions.js";
 import { resolveSpanStyle, resolveBlockStyle, resolveImageSpec } from "~/component/display/markdownAttributes.js";
 import { CELL_LINE_BREAK_TAG } from "~/component/display/markdownTableExtension.js";
 import type { MdTableToken, MdTableHeaderCell, MdTableBodyCell } from "~/component/display/markdownTableExtension.js";
@@ -638,8 +638,9 @@ const _defaultMarkdownOptions: Partial<MarkdownOptions> = { userSelect: "text", 
  * GFM pipe tables (including per-column alignment, widths, and merged cells),
  * underline, coloured/sized/font-styled spans, `:::` alignment/multi-column
  * fences, thematic breaks (a horizontal rule), task-list items (a read-only
- * checkbox before the item's text), and sized images validated against a
- * scheme allow-list. Any other token type (raw HTML, the remaining GFM
+ * checkbox before the item's text), and images — inline or reference-style,
+ * with a title and the dialect's size attributes — validated against a scheme
+ * allow-list. Any other token type (raw HTML, the remaining GFM
  * extensions) falls through to a defined fallback that renders the token's
  * plain text — never a crash, never markup.
  *
@@ -2144,9 +2145,8 @@ class Markdown extends Component<MarkdownOptions> {
             }
 
             case "mdimage": {
-                const image = (token as Tokens.Generic);
-                const spec = resolveImageSpec(
-                    image.src as string, image.alt as string, image.attributes as Record<string, string>);
+                const image = token as unknown as MdImageToken;
+                const spec = resolveImageSpec(image.src, image.alt, image.attributes);
 
                 // A src failing the scheme allow-list renders nothing at
                 // all — never a broken/unsafe <img>.
@@ -2163,6 +2163,10 @@ class Markdown extends Component<MarkdownOptions> {
 
                 if (spec.height !== null) {
                     setAttr.height = String(spec.height);
+                }
+
+                if (image.title !== null) {
+                    setAttr.title = image.title;
                 }
 
                 DOM.sink.apply(img, { addClass: [IMAGE_CLASS], setAttr });
@@ -2335,6 +2339,7 @@ function inlineText(tokens: Token[]): string {
             case "em":       return inlineText((token as Tokens.Em).tokens);
             case "codespan": return (token as Tokens.Codespan).text;
             case "link":     return inlineText((token as Tokens.Link).tokens);
+            case "mdimage":  return (token as unknown as MdImageToken).alt;
             case "br":       return " ";
             default:         return (token as Tokens.Text).text ?? token.raw ?? "";
         }

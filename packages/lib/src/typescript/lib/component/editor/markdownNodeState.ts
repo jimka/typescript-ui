@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { createState } from "lexical";
-import type { StateConfig } from "lexical";
+import type { StateConfig, TextFormatType } from "lexical";
 
 /**
  * The authored marker of a hard line break, kept on its `LineBreakNode`: `\`
@@ -60,6 +60,29 @@ export const fenceOpeningState: StateConfig<"mdFenceOpening", string> = createSt
  * default) writes the size's attributes.
  */
 export const imageAttributesState: StateConfig<"mdImageAttributes", string> = createState("mdImageAttributes", {
+    parse: (value) => (typeof value === "string" ? value : ""),
+});
+
+/** The text formats an image keeps as marks around it ({@link imageMarksState}): the ones a mark delimiter writes. */
+export const IMAGE_MARK_FORMATS: readonly TextFormatType[] = ["bold", "italic", "strikethrough", "underline"];
+
+/**
+ * The inline marks an image was read inside, as the Lexical format names of
+ * the ones a mark delimiter writes (`bold`, `italic`, `strikethrough`,
+ * `underline`) joined by spaces, so a save writes the image back inside the
+ * same delimiters (`*![a](/i.png "t")*`): an image node carries no text
+ * format of its own. `""` (the default) is an image outside any mark.
+ */
+export const imageMarksState: StateConfig<"mdImageMarks", string> = createState("mdImageMarks", {
+    parse: (value) => (typeof value === "string" ? value : ""),
+});
+
+/**
+ * The Markdown an image was loaded with, without its attribute group, written
+ * back while it still reads as the image; `""` (the default) is an image made
+ * in the editor, written in the standard form.
+ */
+export const imageWrittenState: StateConfig<"mdImageWritten", string> = createState("mdImageWritten", {
     parse: (value) => (typeof value === "string" ? value : ""),
 });
 
@@ -140,7 +163,7 @@ export interface KeptSource {
     readonly writes: number;
     /** The Markdown an image or line break run writes; `""` for a source run, which holds its own. */
     readonly source: string;
-    /** For an image run, what it showed at load (its source, alt text and size); `""` otherwise. */
+    /** For an image run, what it showed at load (its source, alt text, title and size); `""` otherwise. */
     readonly shown:  string;
 }
 

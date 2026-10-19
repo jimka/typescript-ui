@@ -17,6 +17,8 @@ import {
     $createMarkdownRawBlockNode, $isMarkdownRawBlockNode, $isMarkdownSourceTextNode,
 } from '~/component/editor/markdownSourceNodes';
 import type { MarkdownRawBlockNode } from '~/component/editor/markdownSourceNodes';
+import { $isMarkdownImageNode } from '~/component/editor/markdownImageNode';
+import type { MarkdownImageNode } from '~/component/editor/markdownImageNode';
 import { lexMarkdown } from '~/component/display/markdownExtensions';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
@@ -513,12 +515,12 @@ describe('definitions edited after load: the editor shows what the save reads as
         expect(lexicalOf(editor).read(() => $getRoot().getTextContent())).toBe('a [][ref] b');
     });
 
-    it('DEF2: a reference image whose definition is removed shows its source as text', () => {
+    it('DEF2: a reference image whose definition is removed keeps its source, saved inline', () => {
         const editor = load('![foo][bar] y\n\n[bar]: /url');
 
         update(editor, () => $rawBlocks()[0]!.remove());
 
-        expect(expectShownAsSaved(editor)).toBe('!\\[foo\\]\\[bar\\] y');
+        expect(expectShownAsSaved(editor)).toBe('![foo](/url) y');
     });
 
     it('DEF3: a reference kept as written is shown anew when its definition stops naming its label, as the viewer reads it', () => {
@@ -572,7 +574,7 @@ describe('definitions edited after load: the editor shows what the save reads as
         update(editor, () => $rawBlocks()[0]!.remove());
 
         // The quote stays, emptied, as an emptied list item does.
-        expect(expectShownAsSaved(editor)).toBe('>\n\n!\\[a\\]\\[q\\] z');
+        expect(expectShownAsSaved(editor)).toBe('>\n\n![a](/q) z');
     });
 
     it('DEF7: a definition held in a list item is edited', () => {
@@ -613,9 +615,10 @@ describe('definitions edited after load: the editor shows what the save reads as
             expectShownAsSaved(editor);
         }
 
-        // Shown as text at the first step, as a reload of that step's save shows them, the runs stay text: text
-        // never becomes a reference.
-        expect(editor.getValue()).toBe('!\\[foo\\]\\[bar\\] y and \\[\\]\\[bar\\]\n\n[bar]: /url');
+        // The image keeps its source while the label stops resolving, and its block is rebuilt from that save at the
+        // first step, so it stays inline; the empty reference shows as text at that step and stays text: text never
+        // becomes a reference.
+        expect(editor.getValue()).toBe('![foo](/url) y and \\[\\]\\[bar\\]\n\n[bar]: /url');
     });
 
     it('DEF10: definitions pasted into a raw block leave bracket text, in a link or not, as text', () => {
@@ -644,7 +647,7 @@ describe('definitions edited after load: the editor shows what the save reads as
 
         update(editor, () => $rawBlocks()[0]!.remove());
 
-        expect(expectShownAsSaved(editor)).toBe('a \\[\\]\\[ref\\] b !\\[i\\]\\[ref\\]');
+        expect(expectShownAsSaved(editor)).toBe('a \\[\\]\\[ref\\] b ![i](https://e.com)');
     });
 
     it('DEF12: an edit that leaves the definitions as they were keeps every run kept as written', () => {
@@ -856,5 +859,43 @@ describe('reference links: loading cost', () => {
 
         expect(editor.getValue()).toBe(source);
         expect(lexedLength).toBeLessThan(source.length * 4);
+    });
+});
+
+describe('reference images keep their own source and title when the definitions change', () => {
+    /** The document's image nodes. Must run inside a read or update. */
+    function $images(): MarkdownImageNode[] {
+        return $dfs().map(({ node }) => node).filter($isMarkdownImageNode);
+    }
+
+    it.each([
+        ['the definition\'s raw block is removed', '![foo][bar] y\n\n[bar]: /url', (editor: MarkdownEditor) => update(editor, () => $rawBlocks()[0]!.remove()), '![foo](/url) y'],
+        ['the definition\'s address changes', '![foo][bar] y\n\n[bar]: /url', (editor: MarkdownEditor) => retypeRawBlock(editor, '[bar]: /other'), '![foo](/url) y\n\n[bar]: /other'],
+        ['the definition\'s title changes', '![foo][bar] y\n\n[bar]: /url "a"', (editor: MarkdownEditor) => retypeRawBlock(editor, '[bar]: /url "b"'), '![foo](/url "a") y\n\n[bar]: /url "b"'],
+        ['the definition changes and then changes back', '![foo][bar] y\n\n[bar]: /url', (editor: MarkdownEditor) => { retypeRawBlock(editor, '[bar]: /other'); retypeRawBlock(editor, '[bar]: /url'); }, '![foo][bar] y\n\n[bar]: /url'],
+    ])('when %s', (_name, source, edit, saved) => {
+        const editor = load(source);
+
+        edit(editor);
+
+        expect(expectShownAsSaved(editor)).toBe(saved);
+    });
+
+    it('adopts the title a definition gives once it holds a blank line', () => {
+        const editor = load('![foo][]\n\n[foo]: /url "\n\ntitle"');
+
+        retypeRawBlock(editor, '[foo]: /url "\n\ntitle2"');
+
+        expect(expectShownAsSaved(editor)).toBe('![foo][]\n\n[foo]: /url "\n\ntitle2"');
+        expect(lexicalOf(editor).read(() => $images().map((image) => image.getTitle()))).toEqual(['\n\ntitle2']);
+    });
+
+    it('shows an image inside a construct kept as written anew when a definition it names changes', () => {
+        const editor = load('~~5 [~<https://a.test/b> ![a][r] \\]~)]()~~ w\n\n[r]: /g');
+
+        retypeRawBlock(editor, '[r]: /h');
+
+        expect(expectShownAsSaved(editor)).toBe('~~5 [~<https://a.test/b> ![a][r] \\]~)]()~~ w\n\n[r]: /h');
+        expect(lexicalOf(editor).read(() => $images().map((image) => image.getSrc()))).toEqual(['/h']);
     });
 });

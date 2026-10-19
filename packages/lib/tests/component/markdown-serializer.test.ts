@@ -1045,7 +1045,7 @@ describe('$serializeMarkdown — constructs the viewer would read into the text'
 
         expect(output).toBe('![a](/i.png)\\{width=3}');
         expect(viewerModel(output).blocks).toEqual([para(
-            { kind: 'image', src: '/i.png', alt: 'a', width: null, height: null, link: null }, run('{width=3}'),
+            { kind: 'image', src: '/i.png', alt: 'a', title: null, width: null, height: null, link: null }, run('{width=3}'),
         )]);
     });
 
@@ -1646,18 +1646,18 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
     });
 
     describe('a link title holding line breaks', () => {
-        it('in a paragraph, a blank line in it is written as one line break, which does not end the paragraph', () => {
+        it('in a paragraph, a blank line in it is written as character references, which do not end the paragraph and keep the title', () => {
             const output = serialize(() => [p('a ', fill($createLinkNode('/u', { title: 'x\n\ny' }), ['t']), ' b')]);
 
-            expect(output).toBe('a [t](/u "x\ny") b');
-            expect(viewerModel(output).blocks).toEqual([para(run('a '), run('t', [], { href: '/u', title: 'x\ny' }), run(' b'))]);
+            expect(output).toBe('a [t](/u "x&#10;&#10;y") b');
+            expect(viewerModel(output).blocks).toEqual([para(run('a '), run('t', [], { href: '/u', title: 'x\n\ny' }), run(' b'))]);
         });
 
-        it('in a heading, a line break in it is written as a space, which keeps the heading on its line', () => {
+        it('in a heading, a line break in it is written as a character reference, which keeps the heading on its line and the title as it is', () => {
             const output = serialize(() => [fill($createHeadingNode('h3'), [fill($createLinkNode('/u', { title: 'x\ny' }), ['t'])])]);
 
-            expect(output).toBe('### [t](/u "x y")');
-            expect(viewerModel(output).blocks).toEqual([{ kind: 'heading', depth: 3, runs: [run('t', [], { href: '/u', title: 'x y' })] }]);
+            expect(output).toBe('### [t](/u "x&#10;y")');
+            expect(viewerModel(output).blocks).toEqual([{ kind: 'heading', depth: 3, runs: [run('t', [], { href: '/u', title: 'x\ny' })] }]);
         });
     });
 

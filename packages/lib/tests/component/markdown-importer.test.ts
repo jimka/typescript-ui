@@ -453,10 +453,11 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
         expect(canonicalSave(load(canonicalSave(editor)))).toBe(canonicalSave(editor));
     });
 
-    it('I19: an image with a title is a source node showing its alt text', () => {
+    it('I19: an image with a title is an image node holding its title', () => {
         const editor = load('![a](/u "t")');
+        const titles = readDocument(editor, () => $dfs().map(({ node }) => node).filter($isMarkdownImageNode).map((image) => image.getTitle()));
 
-        expect(firstBlockInline(editor)).toEqual([{ source: '![a](/u "t")', display: 'a' }]);
+        expect(titles).toEqual(['t']);
         expectSurface(editor, '![a](/u "t")');
     });
 
@@ -3441,14 +3442,17 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         });
 
         for (const alt of ['a[b]', 'a]', '[']) {
-            it(`an image whose alt text holds a bracket (${alt}) is declined: the image syntax cannot hold one`, () => {
+            it(`an image whose alt text holds a bracket (${alt}) is inserted, its brackets escaped`, () => {
                 const editor = load('x');
 
                 select(editor, ['x', 1]);
                 editor.insertImage('https://i.test/a.png', { alt });
 
-                expect(readDocument(editor, () => $dfs().some(({ node }) => $isMarkdownImageNode(node)))).toBe(false);
-                expect(editor.getValue()).toBe('x');
+                const alts = readDocument(editor, () => $dfs().map(({ node }) => node).filter($isMarkdownImageNode).map((image) => image.getAlt()));
+
+                expect(alts).toEqual([alt]);
+                expectSaveShowsSurface(editor);
+                expect(canonicalSave(load(editor.getValue()))).toBe(canonicalSave(editor));
             });
         }
 
@@ -4099,7 +4103,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
 
         // [name, source, its save once a word is typed at the block's end]
         const cases: Array<[string, string, string]> = [
-            ['strikethrough over a space before a linked image', '~~5 [![](g)]()~~', '~~5 [![](g)]()~~ w'],
+            ['strikethrough over a space before a struck link holding an autolink', '~~5 [~<https://a.test/b> \\]~)]()~~', '~~5 [~<https://a.test/b> \\]~)]()~~ w'],
             ['a bare URL right after a word, in a heading whose id it is part of', '# 1http://3', '# 1http://3 w'],
             ['a styled span with an attribute the editor drops, in a heading', '## [http://2]{m}', '## [http://2]{m} w'],
             ['a link holding an autolink, in a heading', '# [0<http://3.test>](p)', '# [0<http://3.test>](p) w'],
@@ -4122,25 +4126,25 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         }
 
         it('only the construct is kept: the text around it stays plain, editable text', () => {
-            const editor = load('x ~~5 [![](g)]()~~ y');
+            const editor = load('x [~<https://a.test/b> \\]~)]() y');
 
             expect(plainTexts(editor)).toEqual(['x ', ' y']);
             appendWord(editor);
-            expect(editor.getValue()).toBe('x ~~5 [![](g)]()~~ y w');
+            expect(editor.getValue()).toBe('x [~<https://a.test/b> \\]~)]() y w');
         });
 
         it('clearing formatting over a construct keeps the formats its source writes, its spaces\' too', () => {
-            const editor = load('a ~~5 [![](g)]()~~ w');
+            const editor = load('a [~<https://a.test/b> \\]~)]() w');
 
             select(editor, ['a ', 0], [' w', 2]);
             editor.clearFormatting();
 
-            expect(editor.getValue()).toBe('a ~~5 [![](g)]()~~ w');
+            expect(editor.getValue()).toBe('a [~<https://a.test/b> \\]~)]() w');
             expectSaveShowsSurface(editor);
         });
 
         it('a construct an edit takes apart shows and saves what is left of it, as ordinary text', () => {
-            const editor = load('~~5 [![](g)]()~~ w');
+            const editor = load('~~5 [~<https://a.test/b> ![a](g) \\]~)]()~~ w');
 
             edit(editor, () => {
                 $dfs().map(({ node }) => node).find($isMarkdownImageNode)!.remove();
@@ -4553,7 +4557,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             expectSaveShowsSurface(editor);
         });
 
-        it('a reference image kept as source, a link written right after it, is written so the two stay apart', () => {
+        it('a shortcut reference image, a link written right after it, is written collapsed so the two stay apart', () => {
             const editor = load('![foo]\n\n[foo]: /url');
 
             edit(editor, () => {

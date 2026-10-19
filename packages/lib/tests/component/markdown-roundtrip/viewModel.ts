@@ -34,7 +34,7 @@ export interface LinkTarget { href: string; title: string | null }
 /** One inline piece of a block: formatted text, an image, or a line break. */
 export type Run =
     | { kind: 'text'; text: string; marks: Mark[]; link: LinkTarget | null; style: MarkdownSpanStyle | null }
-    | { kind: 'image'; src: string; alt: string; width: number | null; height: number | null; link: LinkTarget | null }
+    | { kind: 'image'; src: string; alt: string; title: string | null; width: number | null; height: number | null; link: LinkTarget | null }
     | { kind: 'break' }
     | { kind: 'checkbox'; checked: boolean };
 
@@ -583,7 +583,7 @@ function viewerImage(runs: Run[], token: Tokens.Generic, context: RunContext): v
         return;
     }
 
-    runs.push({ kind: 'image', src: spec.src, alt: spec.alt, width: spec.width, height: spec.height, link: context.link });
+    runs.push({ kind: 'image', src: spec.src, alt: spec.alt, title: (token.title as string | null) ?? null, width: spec.width, height: spec.height, link: context.link });
 }
 
 // ---------------------------------------------------------------- editor side
@@ -780,6 +780,7 @@ function editorInlineNode(runs: Run[], node: LexicalNode, context: RunContext): 
             kind:   'image',
             src:    node.getSrc(),
             alt:    node.getAlt(),
+            title:  node.getTitle(),
             width:  node.getImageWidth(),
             height: node.getImageHeight(),
             link:   context.link,
