@@ -2,10 +2,10 @@
 
 [`Menu`](/api/overlay/classes/Menu) is the framework's floating menu panel. It operates in one of two modes determined by the constructor:
 
-- **Rebuild mode** — `Menu()` — a right-click context menu. Items are passed per `show(x, y, items)` call and rebuilt on each invocation. Best for menus whose contents depend on what the user clicked.
+- **Rebuild mode** — `Menu()` — a right-click context menu. Items are passed per `show(x, y, items)` call (or `showClearOf(x, y, keepClear, items)`, which keeps a rectangle uncovered) and rebuilt on each invocation. Best for menus whose contents depend on what the user clicked.
 - **Persistent mode** — `Menu(items, onClose)` — a [`MenuBar`](/components/MenuBar) dropdown. Items are built once in the constructor and reused across `open()` / `close()` cycles. Used internally by `MenuBar`.
 
-Most of the API belongs to one mode. `show()` / `hide()` / `setMenuWidth()` are valid only in rebuild mode; `open()` / `close()` / `setExcludedElement()` are valid only in persistent mode. Calling a method outside its mode throws. The keyboard-highlight methods — `focusItem`, `focusNext`, `focusPrev`, `activateFocused`, `getFocusedIndex` and `handleKey` — work in both. A context menu opened from the keyboard needs none of them: it takes focus and handles its own keys (see [Keyboard](#keyboard)).
+Most of the API belongs to one mode. `show()` / `showClearOf()` / `hide()` / `setMenuWidth()` are valid only in rebuild mode; `open()` / `close()` / `setExcludedElement()` are valid only in persistent mode. Calling a method outside its mode throws. The keyboard-highlight methods — `focusItem`, `focusNext`, `focusPrev`, `activateFocused`, `getFocusedIndex` and `handleKey` — work in both. A context menu opened from the keyboard needs none of them: it takes focus and handles its own keys (see [Keyboard](#keyboard)).
 
 ## Rebuild mode (right-click context menu)
 
@@ -33,6 +33,12 @@ For a **left-click dropdown trigger** — a [`SplitButton`](/components/SplitBut
 
 ```typescript
 trigger.on('click', () => menu.toggleFor(trigger.getElement(true), DOM.source.getViewportRect(trigger), items));
+```
+
+**Keeping an area clear.** `showClearOf(x, y, keepClear, items, onClose?, excludeEl?)` opens like `show()` at the pointer, but below or above `keepClear` — a viewport rectangle, such as the text the menu's items will change — so the menu covers neither it nor the pointer. It stays aligned to the pointer horizontally, flips above `keepClear` when the room below is short, and ignores a `keepClear` that has no part on screen (it then opens as `show()` does). The one exception is a `keepClear` that leaves no room: when the room on its roomier side is both less than the menu's height and less than four rows, `showClearOf()` gives it up and places the menu at the pointer exactly as `show()` does, covering the area if it must. Its submenus stay on the menu's side of `keepClear` when they fit there: a menu above the area flips a submenu up against its item instead of letting it grow down over the area, and a submenu too tall for that room is placed as usual. Keyboard focus, `onClose` and `excludeEl` behave as in `show()`.
+
+```typescript
+menu.showClearOf(e.clientX, e.clientY, DOM.source.getViewportRect(label), items);
 ```
 
 ## Persistent mode (MenuBar dropdown)
@@ -103,7 +109,7 @@ A menu is worked from the keyboard in one of two ways, depending on how it was o
 
 ### Context menus (`show()`)
 
-A context menu has no host control to forward keys to it, so what `show()` does depends on the user's last press: a key, or a pointer button. A modifier pressed by itself and the auto-repeat of a held key do not count as a key press, so a Control-held right-click is still a mouse open.
+A context menu has no host control to forward keys to it, so what `show()` (and `showClearOf()`, which takes focus and handles keys exactly as `show()` does) does depends on the user's last press: a key, or a pointer button. A modifier pressed by itself and the auto-repeat of a held key do not count as a key press, so a Control-held right-click is still a mouse open.
 
 **Opened with the mouse** — the last press was a pointer button — the menu takes no focus, highlights no row and handles no key. Focus stays where it was, and `Escape` still closes the menu.
 
