@@ -11,6 +11,7 @@ import { MarkdownQuoteNode } from "~/component/editor/markdownQuoteNode.js";
 import { MarkdownBlockNode, MarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { MarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
+import { MarkdownTaskCheckboxNode } from "~/component/editor/markdownTaskCheckboxNode.js";
 import { ReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 
@@ -32,7 +33,8 @@ import { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor
  * (`TableNode` + `TableRowNode` + `TableCellNode`), `:::` alignment /
  * column-region fences (`MarkdownBlockNode` + its `MarkdownColumnNode` column
  * children), sized images (`MarkdownImageNode`), horizontal rules
- * (`MarkdownHorizontalRuleNode`), and the Markdown kept as
+ * (`MarkdownHorizontalRuleNode`), task items' checkboxes
+ * (`MarkdownTaskCheckboxNode`), and the Markdown kept as
  * source (`MarkdownSourceTextNode` inline, `MarkdownRawBlockNode` for a
  * block). The remaining dialect
  * constructs — bold, italic, inline code, paragraphs — are plain text formats
@@ -45,7 +47,8 @@ export const EDITOR_NODES: ReadonlyArray<Klass<LexicalNode> | LexicalNodeReplace
     { replace: QuoteNode, with: (): MarkdownQuoteNode => new MarkdownQuoteNode(), withKlass: MarkdownQuoteNode },
     ListNode,
     MarkdownListItemNode,
-    { replace: ListItemNode, with: (): MarkdownListItemNode => new MarkdownListItemNode(), withKlass: MarkdownListItemNode },
+    // Keeps the checked state of an item Lexical's HTML conversion built, which the list conversion makes a checkbox of.
+    { replace: ListItemNode, with: (node: ListItemNode): MarkdownListItemNode => new MarkdownListItemNode(undefined, node.__checked), withKlass: MarkdownListItemNode },
     MarkdownListItemTextNode,
     LinkNode,
     ReferenceLinkNode,
@@ -58,6 +61,7 @@ export const EDITOR_NODES: ReadonlyArray<Klass<LexicalNode> | LexicalNodeReplace
     MarkdownColumnNode,
     MarkdownImageNode,
     MarkdownHorizontalRuleNode,
+    MarkdownTaskCheckboxNode,
     MarkdownSourceTextNode,
     MarkdownRawBlockNode,
 ];

@@ -48,6 +48,7 @@ import type { KeptSource } from "~/component/editor/markdownNodeState.js";
 import { $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import type { ReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import { $horizontalRuleMarkdown, $isMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
+import { $emptyTaskItemMarkdown, $isMarkdownTaskCheckboxNode, $openingCheckbox, $taskMarkerMarkdown } from "~/component/editor/markdownTaskCheckboxNode.js";
 import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import type { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import { columnBlockKey, EMPTY_SOURCE_MAP, quoteBlockKey } from "~/component/editor/markdownSourceMap.js";
@@ -500,9 +501,6 @@ const AFTER_SHORTCUT_GUARDED = "([{";
 /** A shortcut reference that, opening a list item's text before whitespace, is a task item's checkbox instead. */
 const TASK_CHECKBOX_SHORTCUT = /^\[[ xX]\]$/;
 
-/** A task item's checkbox as the importer keeps it, a source run: its marker and the space after it. */
-const TASK_MARKER_SOURCE = /^\[[ xX]\] $/;
-
 /** A blank line in a link title: a line break, then whitespace alone up to the next one. */
 const BLANK_LINE_IN_TITLE = /\n[ \t]*\n/;
 
@@ -527,7 +525,7 @@ interface InlineContext {
      * The content is a paragraph after a list item's text. `marked` reads all
      * of an item line by line, so a continuation line opening an HTML block
      * ends that paragraph too; its first line, unlike the item's own, holds
-     * no task marker.
+     * no task checkbox.
      */
     readonly inItemParagraph?: boolean;
     /**
@@ -573,7 +571,7 @@ interface InlineContext {
      * after text already on that line (a raw block's or code block's line it
      * joins). That line is escaped against it and takes no escape a line's
      * start needs: no block starter, HTML block start, link reference
-     * definition or task checkbox opens there. Absent when the content opens
+     * definition opens there. Absent when the content opens
      * its line.
      */
     readonly continuesAfter?: string;
@@ -1359,7 +1357,7 @@ export function $serializeBlockContent(block: ElementNode): string {
  * escape a paragraph's line start needs (`+alpha`, not `\+alpha`) and its
  * trailing `#` run escaped (`alpha \#`), or the lines of its setext form. A
  * paragraph's content is its lines, a list item's text its lines
- * with a task marker as written. Only the first line of a rest that
+ * with its checkbox's marker as written. Only the first line of a rest that
  * continues a line (`before` neither `""` nor `"\n"`) leaves out a line
  * start's escapes. The text is written for a code block or raw block, which
  * holds no line edge of its own: a no-break space at its edge is the
@@ -1396,8 +1394,31 @@ function $writeRestOfBlock(block: ElementNode, nodes: LexicalNode[], before: str
         ...MULTI_LINE, definitions, inListItem: $isMarkdownListItemTextNode(block), continuesAfter: continuationOf(before),
         ...(joinsIntoRawBlock ? { joinsIntoRawBlock } : {}),
     };
+    const written = serializeInlineNodes(nodes, context);
 
-    return serializeInlineNodes(nodes, context);
+    // The checkbox is written by the item's writer, not inline: the nodes open with the item's own checkbox.
+    return $isMarkdownListItemTextNode(block) && $isMarkdownTaskCheckboxNode(nodes[0]) ? withTaskMarker(block, written) : written;
+}
+
+/**
+ * An item's text with the marker of the checkbox it opens with. The text is
+ * written as the start of a line, which is how Markdown reads what follows a
+ * task marker; written inline after the marker, a `[x]` reference link and a
+ * no-break space at the edge would read differently.
+ *
+ * @param text - The item's text.
+ * @param written - The Markdown its inline content was written as.
+ * @returns The marker and the content, or the content alone when the text opens with no checkbox. A checkbox alone
+ *   is written as the text Markdown reads it as ({@link $emptyTaskItemMarkdown}).
+ */
+function withTaskMarker(text: ElementNode, written: string): string {
+    const box = $openingCheckbox(text);
+
+    if (box === null) {
+        return written;
+    }
+
+    return written === "" ? $emptyTaskItemMarkdown(box) : $taskMarkerMarkdown(box) + written;
 }
 
 /**
@@ -1480,7 +1501,7 @@ export interface StandardFormReading {
  * inside an `editor.read` or `editor.update`.
  *
  * @param container - The block (a table cell for a cell's content).
- * @param tokens - The inline tokens it was loaded from (a task item's checkbox first).
+ * @param tokens - The inline tokens it was loaded from (a task item's, without its checkbox).
  * @param isHeading - Whether the block is a heading, whose id the standard form is read for.
  * @param definitions - The document's link reference definitions, which keep a reference link in its written form; `null` for none.
  * @returns How far the standard form reads as the tokens do.
@@ -3560,7 +3581,7 @@ function buildItemBlocks(item: ListItemNode, definitions: Links | null): ItemBlo
                 continuesText: underText && markdown.split("\n").every((line) => BARE_LIST_MARKER_LINE.test(line)),
             });
         } else if ($isMarkdownListItemTextNode(child)) {
-            push(serializeInline(child, { ...MULTI_LINE, definitions, inListItem: true }), false, true);
+            push(withTaskMarker(child, serializeInline(child, { ...MULTI_LINE, definitions, inListItem: true })), false, true);
         } else if ($isParagraphNode(child)) {
             push(serializeInline(child, { ...MULTI_LINE, definitions, inItemParagraph: true }), false, true);
         } else {
@@ -4771,6 +4792,8 @@ function appendSegments(nodes: LexicalNode[], link: LinkNode | null, segments: S
             segments.push(keptLeafSegment({ kind: "break", marker: $getState(node, hardBreakMarkerState), link }, node));
         } else if ($isMarkdownImageNode(node)) {
             segments.push(keptLeafSegment({ kind: "image", node, link }, node));
+        } else if ($isMarkdownTaskCheckboxNode(node)) {
+            // Not inline content: the item's writer writes its marker (withTaskMarker).
         } else if ($isMarkdownSourceTextNode(node) && $getState(node, keptSourceState) === null && node.hasFormat("code") && !/\S/.test(node.getSource())) {
             // A soft break inside a code span shows as the span's space; written as one, it stays in the span.
             segments.push({ kind: "text", text: " ", marks: MARK_ORDER.filter((mark) => node.hasFormat(MARK_FORMATS[mark])), code: true, style: spanAttributeText(node), link });
@@ -6664,13 +6687,9 @@ function assembleLines(
         )),
         choices.switched,
     );
-    // A first line that continues a line opens no block: no definition or task checkbox starts there.
+    // A first line that continues a line opens no block: no definition starts there.
     const continues = context.continuesAfter !== undefined;
     let written = continues;
-
-    lineContents.forEach((pieces, index) => {
-        lineContents[index] = strayTaskMarkersAsText(pieces, context.inListItem === true && index === 0 && !continues);
-    });
 
     const block = context.lean === true ? leanBlock(lineContents) : null;
 
@@ -7020,30 +7039,6 @@ function delimiterRun(pieces: readonly LinePiece[], index: number): { before: st
  */
 function isFlankingPunctuation(char: string, run: string): boolean {
     return FLANKING_PUNCTUATION.test(char) && !(run === "*" && char === "~");
-}
-
-/**
- * Writes a task item's checkbox kept as source as the text it shows wherever
- * it is not that item's checkbox: anywhere but the start of a list item's
- * first line, or there with no text after it. The viewer reads no checkbox
- * there, but `[x]` as text, or as a reference link where a definition names
- * it — so text typed before it, a line break moving it off the first line,
- * or a paste carrying it elsewhere leaves it literal.
- *
- * @param pieces - A line's pieces.
- * @param itemFirstLine - Whether the line is a list item's first line.
- * @returns The pieces, each stray checkbox turned into its text.
- */
-function strayTaskMarkersAsText(pieces: LinePiece[], itemFirstLine: boolean): LinePiece[] {
-    const isCheckbox = (index: number): boolean => itemFirstLine && index === 0 && pieces.length > 1;
-
-    return pieces.map((piece, index) => {
-        if (piece.kind !== "source" || !TASK_MARKER_SOURCE.test(piece.text) || isCheckbox(index)) {
-            return piece;
-        }
-
-        return { kind: "text", text: index === pieces.length - 1 ? piece.text.trimEnd() : piece.text };
-    });
 }
 
 /**

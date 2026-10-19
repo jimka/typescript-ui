@@ -31,6 +31,7 @@ import {
 } from "~/component/editor/markdownSerializer.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { $isMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
+import { $isMarkdownTaskCheckboxNode, $taskMarkerMarkdown, MarkdownTaskCheckboxNode, TASK_MARKER_LENGTH } from "~/component/editor/markdownTaskCheckboxNode.js";
 import {
     $createMarkdownListItemTextNode, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $movePointsBetween, $removePlainly,
     MarkdownListItemTextNode,
@@ -88,7 +89,80 @@ export function registerWritableStateRules(editor: LexicalEditor): () => void {
         ...[ParagraphNode, MarkdownListItemTextNode, HeadingNode]
             .map((klass) => editor.registerNodeTransform(klass, $keepBlocksOutOfText)),
         editor.registerNodeTransform(MarkdownQuoteNode, $keepQuoteShape),
+        editor.registerNodeTransform(MarkdownTaskCheckboxNode, $keepCheckboxOpeningItemText),
+        editor.registerNodeTransform(MarkdownListItemTextNode, $keepCheckboxesOfItemText),
     );
+}
+
+/**
+ * Keeps a task item's checkbox where Markdown reads one: first in a list
+ * item's text, or first straight in a list item, where Lexical's list code
+ * and its HTML import put inline nodes before the item's rule wraps them in
+ * its text. Anywhere else it is replaced by a text node of its marker
+ * (`[ ]`, `[x]` or `[X]`), followed by a space unless nothing follows it: the
+ * marker stays a marker while its item stays an item, and becomes the text it
+ * shows when its text leaves the list.
+ *
+ * @param box - The checkbox that changed.
+ */
+function $keepCheckboxOpeningItemText(box: MarkdownTaskCheckboxNode): void {
+    const parent = box.getParent();
+
+    if (parent === null) {
+        return;
+    }
+
+    const opensItemText = $isMarkdownListItemTextNode(parent) && $isMarkdownListItemNode(parent.getParent());
+    const opensItem = $isMarkdownListItemNode(parent);
+    // The paragraph a pasted `<li><p><input> x</p></li>` first holds, which the item's rule then makes its text.
+    const opensItemParagraph = $isParagraphNode(parent) && parent.getPreviousSibling() === null && $isMarkdownListItemNode(parent.getParent());
+
+    if ((opensItemText || opensItem || opensItemParagraph) && box.getPreviousSibling() === null) {
+        return;
+    }
+
+    const marker = $taskMarkerMarkdown(box).slice(0, TASK_MARKER_LENGTH);
+
+    box.replace($createTextNode(box.getNextSibling() === null ? marker : marker + " "));
+}
+
+/**
+ * The update tag of an update that makes a task item with no text: the Enter that
+ * opens one, and `toggleTaskList` over an empty block. The item keeps its
+ * checkbox ({@link $keepCheckboxesOfItemText}) though the selection no longer
+ * stands in it. Added by those two.
+ */
+export const TASK_ITEM_OPENED_TAG = "markdown-task-item-opened";
+
+/**
+ * The checkbox rules a list item's text answers for. A checkbox that is no
+ * longer its first child takes {@link $keepCheckboxOpeningItemText}'s rule. A
+ * text that holds its checkbox alone (blank text aside) shows the text its
+ * save reads it as (`[ ]`, `[x]`: Markdown has no empty task item) once the
+ * selection no longer stands in it, so the editor shows what a reload shows;
+ * while the selection stands there, the checkbox stays, so Enter can open a
+ * task item and its text be typed. A load keeps what it loaded, and so does
+ * an update that makes a task item with no text ({@link TASK_ITEM_OPENED_TAG}),
+ * whose emptied upper item keeps its checkbox.
+ *
+ * @param text - The list item's text that changed.
+ */
+function $keepCheckboxesOfItemText(text: MarkdownListItemTextNode): void {
+    for (const child of text.getChildren().slice(1)) {
+        if ($isMarkdownTaskCheckboxNode(child)) {
+            $keepCheckboxOpeningItemText(child);
+        }
+    }
+
+    const box = text.getFirstChild();
+    const holdsBoxAlone = $isMarkdownTaskCheckboxNode(box)
+        && text.getChildren().slice(1).every((child) => $isTextNode(child) && child.getTextContent().trim() === "");
+
+    const isKept = $hasUpdateTag(MARKDOWN_IMPORT_TAG) || $hasUpdateTag(TASK_ITEM_OPENED_TAG);
+
+    if (holdsBoxAlone && !isKept && !$selectionStandsIn(text)) {
+        box.replace($createTextNode($taskMarkerMarkdown(box).slice(0, TASK_MARKER_LENGTH)));
+    }
 }
 
 /**
@@ -1869,9 +1943,6 @@ const LEADING_WHITESPACE = /^[ \t]*/;
 /** The source of a soft line break: a source run that shows a space and saves a line end. */
 const SOFT_BREAK_SOURCE = "\n";
 
-/** The source of a task item's marker, kept as a source run at the start of the item's text. */
-const TASK_MARKER_SOURCE = /^\[[ xX]\] $/;
-
 /** The spaces and tabs one text node holds at the start of a line: the node, and how many characters. */
 interface LineStartWhitespace {
     readonly node:   TextNode;
@@ -1882,7 +1953,7 @@ interface LineStartWhitespace {
  * Removes the spaces and tabs at the start of each line of a block, which
  * the save drops and a load does not bring back: at the start of a
  * paragraph, a list item's text or a heading, after a line break or
- * a soft line break in one, after the task marker that opens an item's
+ * a soft line break in one, after the checkbox that opens an item's
  * text, and at the start of each paragraph of a table cell. Only the block
  * an end of the selection stands in is read: the block being edited, never
  * one an edit only passes text through. While the caret stands in that
@@ -1930,7 +2001,7 @@ function $dropWhitespaceAtLineStarts(text: TextNode): void {
  * spaces and tabs, and the leading spaces and tabs of the next. A line ends
  * at a line break or a soft line break, except in a table cell, whose save
  * keeps the whitespace after a break, and in a heading written on one line,
- * whose breaks become spaces. A task marker opening an item's text
+ * whose breaks become spaces. A checkbox opening an item's text
  * comes before the line's start. The whitespace before a source run that
  * opens a later line is left out: the save keeps it.
  *
@@ -2003,15 +2074,14 @@ function $endsLine(node: LexicalNode): boolean {
 }
 
 /**
- * Whether an inline node is the task marker that opens a list item's text.
+ * Whether an inline node is the checkbox that opens a list item's text.
  *
  * @param block - The block holding the node.
  * @param node - The inline node.
  * @returns `true` when it is.
  */
 function $opensTaskItem(block: ElementNode, node: LexicalNode): boolean {
-    return $isMarkdownListItemTextNode(block) && node.getPreviousSibling() === null
-        && $isMarkdownSourceTextNode(node) && TASK_MARKER_SOURCE.test(node.getSource());
+    return $isMarkdownListItemTextNode(block) && node.getPreviousSibling() === null && $isMarkdownTaskCheckboxNode(node);
 }
 
 /**

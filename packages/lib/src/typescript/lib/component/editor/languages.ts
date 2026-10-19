@@ -11,6 +11,7 @@
 // ones `CodeEditor` itself imports, so they are in that chunk already; the
 // other static imports are this library's own modules, or types.
 
+import type { tags as highlightTags } from "@lezer/highlight";
 import { syntaxTree } from "@codemirror/language";
 import type { Language, TreeIndentContext } from "@codemirror/language";
 import { countColumn, EditorSelection, Prec } from "@codemirror/state";
@@ -25,6 +26,7 @@ import { formatWithSql } from "~/component/editor/formatters/sql.js";
 import { atMarkdownTabStops } from "~/component/editor/markdownTabStopCommands.js";
 import type { SyntaxNode } from "~/component/editor/markdownTabStopCommands.js";
 import { MARKDOWN_TAB_STOPS, readQuoteContinuationTabs } from "~/component/editor/markdownTabStops.js";
+import type { BlockParser, MarkdownConfig } from "~/component/editor/markdownTabStops.js";
 import { collectSyntaxErrors } from "~/component/editor/syntaxDiagnostics.js";
 
 /** Loads the babel + estree plugins Prettier's `babel-ts` and `json` parsers need. */
@@ -455,6 +457,101 @@ function insertNewlineKeepPrefix(markdownLanguage: Language): StateCommand {
     };
 }
 
+/** The parser of a leaf block (a paragraph's text) that a block parser's `leaf` hands out. */
+type LeafParser = NonNullable<ReturnType<NonNullable<BlockParser["leaf"]>>>;
+
+/** The parse state and the leaf block a leaf parser finishes. */
+type LeafParserFinish = Parameters<LeafParser["finish"]>;
+
+/**
+ * A task item's marker, which a leaf block opening a list item's paragraph
+ * begins with: `[ ]`, `[x]` or `[X]`, the blanks after it, and a character
+ * that is not blank. The test the viewer's lexer (`marked`) makes; lezer's own
+ * task parser takes any blank after the marker, a bare `- [ ]` and a marker
+ * followed by a tab included, which `marked` reads differently.
+ */
+const TASK_MARKER_LEAF = /^\[[ xX]\][ \t]+\S/;
+
+/** The parse state and the line a block parser's `parse` is given. */
+type BlockParseArguments = Parameters<NonNullable<BlockParser["parse"]>>;
+
+/**
+ * What stands before the content of the line a block parser last read, per parse: the container markup and the list
+ * marker of an item's first line, only the indentation and quote marks of a later paragraph's. A leaf parser is
+ * given the leaf alone, so this is how it tells an item's first block from a later one.
+ */
+const LINE_HEADS = new WeakMap<BlockParseArguments[0], string>();
+
+/** The end of an item's first line before its content: a list marker and the blanks after it. */
+const ITEM_FIRST_LINE_HEAD = /(?:^|[\s>])(?:[-*+]|\d{1,9}[.)])[ \t]*$/;
+
+/**
+ * The length of a task marker: `[`, the letter or space, and `]`. The same number as `TASK_MARKER_LENGTH` in
+ * `markdownTaskCheckboxNode.ts`, which this module does not import so as to load no Lexical module.
+ */
+const TASK_MARKER_LENGTH = 3;
+
+/**
+ * Parses a leaf block that begins with a task marker: a `Task` node holding a
+ * `TaskMarker` and the inline content after it. Lezer's own `TaskParser`,
+ * which `@lezer/markdown` does not export.
+ */
+class TaskLeafParser implements LeafParser {
+    nextLine(): boolean {
+        return false;
+    }
+
+    finish(...[cx, leaf]: LeafParserFinish): boolean {
+        cx.addLeafElement(leaf, cx.elt("Task", leaf.start, leaf.start + leaf.content.length, [
+            cx.elt("TaskMarker", leaf.start, leaf.start + TASK_MARKER_LENGTH),
+            ...cx.parser.parseInline(leaf.content.slice(TASK_MARKER_LENGTH), leaf.start + TASK_MARKER_LENGTH),
+        ]));
+
+        return true;
+    }
+}
+
+/**
+ * Lezer's own `TaskList` extension with two changes: the leaf test is
+ * {@link TASK_MARKER_LEAF}, the viewer's, and the `TaskMarker` node is styled
+ * `processingInstruction`, the tag of a list's marker, so the editor theme
+ * mutes `[ ]` and `[x]` as it mutes `-`. Built here, from the `tags` the
+ * caller imports, so this module still loads no grammar package.
+ *
+ * @param tags - The `tags` of `@lezer/highlight`.
+ * @returns The extension.
+ */
+function taskMarkerExtension(tags: typeof highlightTags): MarkdownConfig {
+    return {
+        defineNodes: [
+            { name: "Task", block: true, style: tags.list },
+            { name: "TaskMarker", style: tags.processingInstruction },
+        ],
+        parseBlock: [
+            {
+                // Reads no block: it notes what stands before the line's content, for the leaf test below.
+                name: "TaskListLineHead",
+                parse: (cx, line) => {
+                    LINE_HEADS.set(cx, line.text.slice(0, line.pos));
+
+                    return false;
+                },
+                before: "LinkReference",
+            },
+            {
+                name: "TaskList",
+                // The viewer reads a marker only at the start of an item's first block: later paragraphs of the item are text.
+                leaf: (cx, leaf) => {
+                    const startsItem = ITEM_FIRST_LINE_HEAD.test(LINE_HEADS.get(cx) ?? "");
+
+                    return TASK_MARKER_LEAF.test(leaf.content) && cx.parentType().name === "ListItem" && startsItem ? new TaskLeafParser() : null;
+                },
+                after: "SetextHeading",
+            },
+        ],
+    };
+}
+
 registerLanguage({
     id: "markdown",
     label: "Markdown",
@@ -486,7 +583,10 @@ registerLanguage({
         // stops; the stock parser does not (see markdownTabStops.ts). The
         // parser markdown() configured here is this language's own, so the
         // second call changes no other language.
-        const support = markdown({ htmlTagLanguage: literalHtml, extensions: MARKDOWN_TAB_STOPS, addKeymap: false });
+        const { tags } = await import("@lezer/highlight");
+        const support = markdown({
+            htmlTagLanguage: literalHtml, extensions: [MARKDOWN_TAB_STOPS, taskMarkerExtension(tags)], addKeymap: false,
+        });
 
         readQuoteContinuationTabs(support.language.parser);
 

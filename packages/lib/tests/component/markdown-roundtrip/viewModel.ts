@@ -1,3 +1,4 @@
+import { $isMarkdownTaskCheckboxNode } from '~/component/editor/markdownTaskCheckboxNode';
 import type { Token, Tokens } from 'marked';
 import { $getRoot, $getState, $isElementNode, $isLineBreakNode, $isParagraphNode, $isTextNode } from 'lexical';
 import type { LexicalEditor, LexicalNode, TextFormatType } from 'lexical';
@@ -34,7 +35,8 @@ export interface LinkTarget { href: string; title: string | null }
 export type Run =
     | { kind: 'text'; text: string; marks: Mark[]; link: LinkTarget | null; style: MarkdownSpanStyle | null }
     | { kind: 'image'; src: string; alt: string; width: number | null; height: number | null; link: LinkTarget | null }
-    | { kind: 'break' };
+    | { kind: 'break' }
+    | { kind: 'checkbox'; checked: boolean };
 
 /** One table cell: alignment, merge span and inline content. */
 export interface Cell { align: string | null; colSpan: number; rowSpan: number; runs: Run[] }
@@ -395,7 +397,7 @@ function viewerListItem(item: Tokens.ListItem): Block[] {
 
         const text = token as Tokens.Text;
         const inline = text.tokens && text.tokens.length > 0 ? text.tokens : [text];
-        const marker = checkbox === null ? [] : [{ type: 'text', raw: checkbox.raw, text: checkbox.raw } as Tokens.Text];
+        const marker = checkbox === null ? [] : [checkbox];
 
         blocks.push({ kind: 'paragraph', runs: viewerRuns([...marker, ...inline], PLAIN) });
         checkbox = null;
@@ -516,6 +518,9 @@ function viewerInlineToken(runs: Run[], token: Token, context: RunContext): void
             break;
         case 'br':
             runs.push({ kind: 'break' });
+            break;
+        case 'checkbox':
+            runs.push({ kind: 'checkbox', checked: (token as Tokens.Checkbox).checked });
             break;
         case 'html': {
             const text = (token as Tokens.HTML).text;
@@ -768,6 +773,8 @@ function editorInlineNode(runs: Run[], node: LexicalNode, context: RunContext): 
         runs.push({ kind: 'break' });
     } else if ($isLinkNode(node)) {
         editorInline(runs, node.getChildren(), { ...context, link: { href: node.getURL(), title: node.getTitle() ?? null } });
+    } else if ($isMarkdownTaskCheckboxNode(node)) {
+        runs.push({ kind: 'checkbox', checked: node.isChecked() });
     } else if ($isMarkdownImageNode(node)) {
         runs.push({
             kind:   'image',
@@ -841,7 +848,7 @@ function collectRunLinks(runs: Run[], targets: string[]): void {
     let previous: LinkTarget | null = null;
 
     for (const run of runs) {
-        const link = run.kind === 'break' ? null : run.link;
+        const link = run.kind === 'break' || run.kind === 'checkbox' ? null : run.link;
 
         if (link !== null && JSON.stringify(link) !== JSON.stringify(previous)) {
             targets.push(link.href);
@@ -868,7 +875,7 @@ function outlineText(text: string): string {
  * @returns Their text, an image as `!` and a line break as `⏎`.
  */
 function outlineRuns(runs: Run[]): string {
-    return runs.map((run) => (run.kind === 'text' ? run.text : run.kind === 'image' ? '!' : '⏎')).join('');
+    return runs.map((run) => (run.kind === 'text' ? run.text : run.kind === 'image' ? '!' : run.kind === 'checkbox' ? (run.checked ? '[x] ' : '[ ] ') : '⏎')).join('');
 }
 
 /**

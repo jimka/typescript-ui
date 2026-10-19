@@ -101,6 +101,10 @@ const HELD_KINDS: readonly HeldKind[] = [
     ['a list number in a quote in a list item', '- a\n\n  > 1\\. ;cd', '- a\n\n  > 1. cd', '- a\n\n  > 1\\. cd'],
     ['a horizontal rule in a quote', '> a\n>\n> \\-\\-\\- ;', '> a\n>\n> ---', '> a\n>\n> \\---'],
     ['a horizontal rule in a list item\'s further paragraph', '- a\n\n  \\*\\*\\* ;', '- a\n\n  ***', '- a\n\n  \\***'],
+    ['an unchecked task item marker at the start of a list item\'s text', '- \\[ \\] ;cd', '- [ ] cd', '- \\[ \\] cd'],
+    ['a checked task item marker at the start of a list item\'s text', '- \\[x\\] ;cd', '- [x] cd', '- \\[x\\] cd'],
+    ['an upper-case task item marker at the start of a list item\'s text', '- \\[X\\] ;cd', '- [X] cd', '- \\[X\\] cd'],
+    ['a task item marker at the start of a nested list item\'s text', '- a\n  - \\[ \\] ;cd', '- a\n  - [ ] cd', '- a\n  - \\[ \\] cd'],
 ];
 
 /** One way of removing a selection. */
@@ -907,5 +911,157 @@ describe('a Markdown typing shortcut is applied by typing alone (TY rows)', () =
         expect(settledValue(editor)).toBe('```\n+alpha\n```');
 
         editor.dispose();
+    });
+});
+
+/**
+ * Types characters one at a time at the caret, each in an update of its own that commits before the next, as typing does.
+ *
+ * @param editor - The editor.
+ * @param characters - The characters.
+ */
+function typeCharacters(editor: MarkdownEditor, characters: string): void {
+    for (const character of characters) {
+        dispatch(editor, CONTROLLED_TEXT_INSERTION_COMMAND, character, true);
+        settledValue(editor);
+    }
+}
+
+/**
+ * Puts the caret in the first text node whose text is exactly `text`, at an offset.
+ *
+ * @param editor - The editor.
+ * @param text - The node's text.
+ * @param offset - The caret's offset in it.
+ */
+function caretAt(editor: MarkdownEditor, text: string, offset: number): void {
+    lexicalOf(editor).update(() => {
+        const node = $dfs().map((entry) => entry.node).find((found) => $isTextNode(found) && found.getTextContent() === text) as TextNode;
+
+        node.select(offset, offset);
+    }, { discrete: true });
+}
+
+describe('the task item typing shortcut: [ ] , [x]  or [X]  at the start of a list item\'s text', () => {
+    it.each([
+        ['an unchecked marker', '[ ] ', '- a', '- [ ] a', '- \\[ \\] a'],
+        ['a checked marker', '[x] ', '- a', '- [x] a', '- \\[x\\] a'],
+        ['an upper-case marker', '[X] ', '- a', '- [X] a', '- \\[X\\] a'],
+    ])('makes a task item from %s typed before the text, and one undo gives back the typed characters', (_name, typed, source, applied, text) => {
+        const editor = load(source);
+
+        caretAt(editor, 'a', 0);
+        typeCharacters(editor, typed);
+
+        expect(settledValue(editor)).toBe(applied);
+
+        lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+
+        expect(settledValue(editor)).toBe(text);
+
+        editor.dispose();
+    });
+
+    it('makes a task item of an empty item, the caret after the checkbox', () => {
+        const editor = select('- \\[ \\] ;', 1, false);
+
+        remove(editor, 'Delete', true);
+        typeCharacters(editor, ' ');
+
+        expect(settledValue(editor)).toBe('- [ ]');
+
+        typeCharacters(editor, 'z');
+
+        expect(settledValue(editor)).toBe('- [ ] z');
+
+        editor.dispose();
+    });
+
+    it('leaves a paragraph\'s text alone', () => {
+        const editor = load('a');
+
+        caretAt(editor, 'a', 0);
+        typeCharacters(editor, '[ ] ');
+
+        expect(settledValue(editor)).toBe('\\[ \\] a');
+
+        editor.dispose();
+    });
+
+    it('leaves the text after an existing checkbox alone', () => {
+        const editor = load('- [ ] a');
+
+        caretAt(editor, 'a', 0);
+        typeCharacters(editor, '[ ] ');
+
+        expect(settledValue(editor)).toBe('- [ ] \\[ \\] a');
+
+        lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+
+        expect(settledValue(editor)).toBe('- [ ] a');
+
+        editor.dispose();
+    });
+
+    it('is a second shortcut after the bullet shortcut made the item', () => {
+        const editor = load('a');
+
+        caretAt(editor, 'a', 0);
+        typeCharacters(editor, '- ');
+
+        expect(settledValue(editor)).toBe('- a');
+
+        typeCharacters(editor, '[ ] ');
+
+        expect(settledValue(editor)).toBe('- [ ] a');
+
+        editor.dispose();
+    });
+
+    it('does nothing on Enter after the marker', () => {
+        const editor = load('- \\[ \\]');
+
+        caretAt(editor, '[ ]', 3);
+        lexicalOf(editor).dispatchCommand(KEY_ENTER_COMMAND, null);
+
+        expect(settledValue(editor)).not.toContain('- [ ] ');
+
+        editor.dispose();
+    });
+});
+
+describe('typing in a list item\'s text starts no update of its own unless it may form the task item shortcut', () => {
+    /**
+     * Types one character at the caret and counts the updates that commit while it does.
+     *
+     * @param source - The document.
+     * @param text - The text node the caret is put in.
+     * @param offset - The caret's offset.
+     * @param typed - The character.
+     * @returns The number of committed updates.
+     */
+    function commitsWhileTyping(source: string, text: string, offset: number, typed: string): number {
+        const editor = load(source);
+        let commits = 0;
+
+        caretAt(editor, text, offset);
+        lexicalOf(editor).registerUpdateListener(() => { commits += 1; });
+        dispatch(editor, CONTROLLED_TEXT_INSERTION_COMMAND, typed, true);
+        settledValue(editor);
+        editor.dispose();
+
+        return commits;
+    }
+
+    it('a character typed in the middle of an item\'s text is one update', () => {
+        expect(commitsWhileTyping('- abc', 'abc', 1, 'x')).toBe(1);
+    });
+
+    it('a character typed in the text of a task item is one update', () => {
+        expect(commitsWhileTyping('- [ ] abc', 'abc', 1, 'x')).toBe(1);
+    });
+
+    it('a space typed after a marker-shaped start takes a second update, the shortcut', () => {
+        expect(commitsWhileTyping('- [ ]abc', '[ ]abc', 3, ' ')).toBe(2);
     });
 });

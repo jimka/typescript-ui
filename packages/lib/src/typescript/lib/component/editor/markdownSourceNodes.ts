@@ -20,8 +20,7 @@ function keepElement<T>(element: T): T {
 
 /**
  * An inline run of Markdown the editor has no rich-text form for — a soft
- * line break, inline HTML, a task-list checkbox, an image the viewer does
- * not render as one — shown as the text the viewer shows for it and saved as
+ * line break, inline HTML, an image the viewer does not render as one — shown as the text the viewer shows for it and saved as
  * the exact Markdown it came from.
  *
  * A `TextNode`, so it carries bold, italic and a span style like the text

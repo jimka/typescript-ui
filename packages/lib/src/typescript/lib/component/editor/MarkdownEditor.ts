@@ -32,7 +32,7 @@ import {
     HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG, BEFORE_INPUT_COMMAND, INPUT_COMMAND, COMMAND_PRIORITY_EDITOR, COMPOSITION_END_TAG,
     COMPOSITION_START_COMMAND, $getEditor, $insertNodeToNearestRootAtCaret, SKIP_DOM_SELECTION_TAG, COLLABORATION_TAG, HISTORIC_TAG,
     $splitAtPointCaretNext, $getCaretInDirection, $isTextPointCaret, $getSiblingCaret, $isChildCaret,
-    $isNodeSelection, $createRangeSelection, CLICK_COMMAND,
+    $isNodeSelection, $createRangeSelection, CLICK_COMMAND, IS_APPLE,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
@@ -62,9 +62,9 @@ import {
     $createTableNodeWithDimensions, $computeTableMapSkipCellCheck, $createTableCellNode, $createTableNode, $createTableRowNode,
 } from "@lexical/table";
 import type { TableRowNode, TableSelection } from "@lexical/table";
-import { mergeRegister, $getNearestNodeOfType, $handleIndentAndOutdent } from "@lexical/utils";
+import { mergeRegister, $dfs, $getNearestNodeOfType, $handleIndentAndOutdent } from "@lexical/utils";
 import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent } from "@lexical/selection";
-import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
+import { SHORTCUT_TRANSFORMERS, TASK_ITEM_SHORTCUT } from "~/component/editor/markdownTransformers.js";
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
 import {
     $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $serializeMarkdownWithPlaces, $serializeRestOfBlock, $writtenListMarker, escapeLineStart, markdownBlockShape, SETEXT_H2_UNDERLINE, UNDER_TEXT_BULLET,
@@ -72,7 +72,7 @@ import {
 import {
     $breakRuleContainerOf, $contentFollows, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
     $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $standsAsBlock, $selectionHasFormat, $showRawBlockAsSaved, $takeBlocksOutOf, RUN_EDGE_TAG,
-    registerWritableStateRules,
+    registerWritableStateRules, TASK_ITEM_OPENED_TAG,
 } from "~/component/editor/markdownWritable.js";
 import { registerMarkdownHistory } from "~/component/editor/markdownHistory.js";
 import {
@@ -101,6 +101,10 @@ import {
     $createMarkdownHorizontalRuleNode, $horizontalRuleMarkdown, $isMarkdownHorizontalRuleNode, $selectNodeAlone,
 } from "~/component/editor/markdownHorizontalRuleNode.js";
 import type { MarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
+import {
+    $createMarkdownTaskCheckboxNode, $isMarkdownTaskCheckboxNode, $openingCheckbox,
+} from "~/component/editor/markdownTaskCheckboxNode.js";
+import type { MarkdownTaskCheckboxNode } from "~/component/editor/markdownTaskCheckboxNode.js";
 import { cssTextToAttributes, resolveImageSpec } from "~/component/display/markdownAttributes.js";
 import { readSourceSelectionState } from "~/component/editor/markdownSourceEdits.js";
 import type { MarkdownSourceEdit, MarkdownSourceTransform } from "~/component/editor/markdownSourceEdits.js";
@@ -223,7 +227,7 @@ export interface MarkdownEditorSelectionState {
      */
     canRemoveLink: boolean;
     /**
-     * Whether the block conversions (`setBlockType` and the two list
+     * Whether the block conversions (`setBlockType` and the three list
      * toggles) would apply at the selection. `false` with no selection,
      * while table cells are selected, when the selection reaches into a
      * table cell, which holds text only, and when it stands on a table
@@ -403,8 +407,8 @@ function createBlockNode(type: Exclude<MarkdownBlockType, "quote">): ElementNode
  * the formatting, links and images it cannot hold, and nothing is lost. A
  * heading's text is written as its own line holds it (`### +alpha` gives
  * `+alpha`, with none of the escapes a paragraph's line start needs). A
- * list item's text is written as an item's text is, so a task marker it
- * opens with goes into the code as it was written (`[ ] `). A raw block or
+ * list item's text is written as an item's text is, so the marker of a
+ * checkbox it opens with goes into the code as it was written (`[ ] `). A raw block or
  * a code block already holds only its text and is left as it is.
  *
  * @param block - The block being converted; its children move into `code`.
@@ -2439,13 +2443,20 @@ function $readEndPastContainerStart(point: PointType): void {
  * or on a block of text.
  *
  * @param selection - The selection, moved in place.
+ * @param pastCheckbox - Whether a caret before a task item's checkbox moves to right after it
+ *   ({@link $settleCaretPastCheckbox}); `false` for the block inserts, which put their block above the item.
  * @returns Whether a point moved.
  */
-function $settleSelectionOffContainers(selection: BaseSelection | null): boolean {
+function $settleSelectionOffContainers(selection: BaseSelection | null, pastCheckbox: boolean = true): boolean {
     const isRange = $isRangeSelection(selection);
 
     if (!isRange) {
         return false;
+    }
+
+    // A caret before a task item's checkbox acts as the caret right after it.
+    if (pastCheckbox && $settleCaretPastCheckbox(selection)) {
+        return true;
     }
 
     const isCollapsed = selection.isCollapsed();
@@ -4600,6 +4611,56 @@ function $toggleListOfTouchedBlocks(selection: RangeSelection, type: ListType): 
 }
 
 /**
+ * Toggles task items over the blocks a selection touches. Where every block
+ * is the text of a task item the toggle is off: each checkbox is removed and
+ * the items stay where they are. Otherwise it is on: each block that opens no
+ * item of a list leaves the lists it is in and becomes a bulleted item, as the
+ * bulleted toggle makes one, joining the list next to it; then each block
+ * that opens an item and has no checkbox gets an unchecked one. A heading that
+ * opens an item becomes the item's text first. A task item is no third kind of
+ * list: the toggle adds or removes checkboxes and never changes a list's kind,
+ * so a numbered item stays numbered, and a list can hold task items and plain
+ * ones together.
+ *
+ * @param selection - The selection.
+ */
+function $toggleTaskItemsOfTouchedBlocks(selection: RangeSelection): void {
+    const blocks = $touchedBlocksLastFirst(selection);
+    const opensItem = (block: ElementNode): boolean => $opensItemOfListType(block, "bullet") || $opensItemOfListType(block, "number");
+    const isOff = blocks.every((block) => $isMarkdownListItemTextNode(block) && $openingCheckbox(block) !== null && opensItem(block));
+
+    if (isOff) {
+        blocks.forEach((block) => $openingCheckbox(block)?.remove());
+
+        return;
+    }
+
+    const lifted = blocks.filter((block) => !opensItem(block)).map($liftBlockOutOfLists).reverse();
+
+    $makeItemsOf(lifted, "bullet");
+
+    // Read again: the selection moved with the blocks.
+    const after = $getSelection();
+
+    if (!$isRangeSelection(after)) {
+        return;
+    }
+
+    for (const block of $touchedBlocksLastFirst(after)) {
+        const text = $isHeadingNode(block) && opensItem(block) ? block.replace($createMarkdownListItemTextNode(), true) : block;
+
+        if ($isMarkdownListItemTextNode(text) && $openingCheckbox(text) === null) {
+            text.splice(0, 0, [$createMarkdownTaskCheckboxNode(false)]);
+        }
+    }
+
+    // A block with no text becomes a task item that keeps its checkbox, as the item Enter opens does, and a caret in
+    // it stands after the checkbox.
+    $addUpdateTag(TASK_ITEM_OPENED_TAG);
+    $settleCaretPastCheckbox($getSelection());
+}
+
+/**
  * The child of a block-holding node that holds a node, at any depth.
  *
  * @param holder - The node the child belongs to; an ancestor of `node`.
@@ -4841,11 +4902,10 @@ function $cellTakesFormat(cell: TableCellNode): boolean {
 
 /**
  * Whether the selection holds part of a run kept as Markdown source (a
- * `MarkdownSourceTextNode`: inline HTML, a task-list marker, a link nested
- * in a link, …) other than a soft line break. Such a run saves its source as
- * written, so a format, style or link put on it would be shown but not saved
- * the way it is shown — and wrapping its source in markers can change what
- * it is (a task-list marker inside `**` is no longer one) — so the commands
+ * `MarkdownSourceTextNode`: inline HTML, a link nested in a link, …) other
+ * than a soft line break. Such a run saves its source as written, so a
+ * format, style or link put on it would be shown but not saved the way it is
+ * shown — and wrapping its source in markers can change what it is — so the commands
  * that add them decline, as they do in a raw block. A soft break's
  * whitespace takes the marks around it, so it does not count; neither does a
  * run the selection only borders.
@@ -5186,12 +5246,15 @@ function $splitOffShortcutMarker(anchor: TextNode, offset: number): { marker: Te
  * @param anchor - The text node the caret is in, the first child of the block.
  * @param offset - The caret's offset in it.
  * @param onEnter - Whether Enter triggered the shortcut; only a shortcut that fires on Enter is then tried.
+ * @param shortcuts - The shortcuts to try, in order; the one-line block shortcuts when omitted.
  * @returns Whether a shortcut was applied.
  */
-function $applyElementShortcut(block: ElementNode, anchor: TextNode, offset: number, onEnter: boolean): boolean {
+function $applyElementShortcut(
+    block: ElementNode, anchor: TextNode, offset: number, onEnter: boolean, shortcuts: readonly ElementTransformer[] = ELEMENT_SHORTCUTS,
+): boolean {
     const text = anchor.getTextContent();
 
-    for (const shortcut of ELEMENT_SHORTCUTS.filter((candidate) => !onEnter || candidate.triggerOnEnter)) {
+    for (const shortcut of shortcuts.filter((candidate) => !onEnter || candidate.triggerOnEnter)) {
         const match = text.match(shortcut.regExp);
         const expectedLength = onEnter || match?.[0].endsWith(" ") ? offset : offset - 1;
 
@@ -5244,12 +5307,25 @@ function $applyMultilineShortcut(block: ElementNode, anchor: TextNode, offset: n
 }
 
 /**
+ * Tells whether a node is a list item's text in a list item: where the task
+ * item shortcut applies ({@link TASK_ITEM_SHORTCUT}).
+ *
+ * @param node - The node.
+ * @returns `true` for such a text.
+ */
+function $isTaskShortcutBlock(node: LexicalNode | null): node is MarkdownListItemTextNode {
+    return $isMarkdownListItemTextNode(node) && $isMarkdownListItemNode(node.getParent());
+}
+
+/**
  * Applies the block shortcut whose marker the text before the caret is, in a
  * paragraph or heading that a quote or a list item holds
  * ({@link $isHeldBlockTakingText}): what Lexical's registration does for a
  * block of the document, with the check of the block's parent replaced. The
  * order is Lexical's: one-line shortcuts, then the code fence on typing; the
  * code fence, then the one-line shortcuts that fire on Enter, on Enter.
+ * A list item's own text takes the task item shortcut alone
+ * ({@link TASK_ITEM_SHORTCUT}), on typing only.
  *
  * @param block - The block the caret is in.
  * @param anchor - The text node the caret is in.
@@ -5258,11 +5334,17 @@ function $applyMultilineShortcut(block: ElementNode, anchor: TextNode, offset: n
  * @returns Whether a shortcut was applied.
  */
 function $runHeldBlockShortcut(block: LexicalNode, anchor: TextNode, offset: number, onEnter: boolean): boolean {
-    const isFirstText = $isHeldBlockTakingText(block) && block.getFirstChild()?.is(anchor) === true;
+    const isTaskBlock = $isTaskShortcutBlock(block);
+    const isFirstText = ($isHeldBlockTakingText(block) || isTaskBlock) && block.getFirstChild()?.is(anchor) === true;
     const endsInSpace = anchor.getTextContent()[offset - 1] === " ";
 
     if (!isFirstText || !(onEnter || endsInSpace)) {
         return false;
+    }
+
+    // A list item's own text takes the task shortcut alone, on typing only.
+    if (isTaskBlock) {
+        return !onEnter && $applyElementShortcut(block, anchor, offset, false, [TASK_ITEM_SHORTCUT]);
     }
 
     return onEnter
@@ -5272,7 +5354,8 @@ function $runHeldBlockShortcut(block: LexicalNode, anchor: TextNode, offset: num
 
 /**
  * Registers the block typing shortcuts in the paragraphs and headings that a
- * quote or a list item holds, on the two paths Lexical's
+ * quote or a list item holds, and the task item shortcut in a list item's
+ * text, on the two paths Lexical's
  * `registerMarkdownShortcuts` uses: the update after a typed character (or a
  * composition's end), and Enter at the end of the text. The conditions and
  * update tags are Lexical's; the parent check is the one difference, so the
@@ -5308,7 +5391,13 @@ function registerHeldBlockShortcuts(editor: LexicalEditor): () => void {
             }
 
             // Looked at in the committed state first, so a character typed anywhere else starts no update.
-            const isInHeldBlock = editorState.read(() => $isHeldBlockTakingText(node.getParent()));
+            // An item's own text can only form the task item shortcut, which opens with `[`: no other character starts an update.
+            const isInHeldBlock = editorState.read(() => {
+                const parent = node.getParent();
+                const mayFormTaskMarker = $isTaskShortcutBlock(parent) && parent.getFirstChild()?.is(node) === true && node.getTextContent().startsWith("[");
+
+                return $isHeldBlockTakingText(parent) || mayFormTaskMarker;
+            });
 
             if (!isInHeldBlock) {
                 return;
@@ -5737,11 +5826,13 @@ function $setPointAtLeaf(point: PointType, leaf: LexicalNode, bound: PointType, 
 }
 
 /**
- * Wraps the selection in a link to `url`, leaving a horizontal rule it crosses
- * as it is: a range that takes in a rule links the text of each block it
- * touches, one block at a time, where Lexical's own wrapping would make a link
- * of the rule and a paragraph around it that saves as a bracket pair holding a
- * line end. A selection with no rule in it is wrapped as it always was.
+ * Wraps the selection in a link to `url`, leaving a horizontal rule or a task
+ * item's checkbox it crosses as it is: a range that takes in either links the
+ * text of each block it touches, one block at a time. Lexical's own wrapping
+ * would make a link of the rule and a paragraph around it that saves as a
+ * bracket pair holding a line end, and a link around a checkbox that is no
+ * longer first in its item's text, which the checkbox rule turns into the text
+ * `[ ] `. A selection with neither in it is wrapped as it always was.
  *
  * @param url - The link target.
  */
@@ -5749,7 +5840,7 @@ function $toggleLinkLeavingRules(url: string): void {
     const selection = $getSelection();
     const nodes = $isRangeSelection(selection) ? selection.getNodes() : [];
 
-    if (!$isRangeSelection(selection) || !nodes.some($isMarkdownHorizontalRuleNode)) {
+    if (!$isRangeSelection(selection) || !nodes.some((node) => $isMarkdownHorizontalRuleNode(node) || $isMarkdownTaskCheckboxNode(node))) {
         $toggleLink(url);
 
         return;
@@ -5759,7 +5850,8 @@ function $toggleLinkLeavingRules(url: string): void {
     const leavesByBlock = new Map<ElementNode, LexicalNode[]>();
 
     for (const node of nodes) {
-        const block = $isElementNode(node) || $isMarkdownHorizontalRuleNode(node) ? null : $findEnclosingBlock(node);
+        const isLeftAlone = $isElementNode(node) || $isMarkdownHorizontalRuleNode(node) || $isMarkdownTaskCheckboxNode(node);
+        const block = isLeftAlone ? null : $findEnclosingBlock(node);
 
         if (block !== null) {
             leavesByBlock.set(block, [...(leavesByBlock.get(block) ?? []), node]);
@@ -6019,19 +6111,24 @@ function $enterLeavesListAtBlankItemText(): boolean {
     }
 
     const following = text.getNextSibling();
-    const opensOverParagraph = text.isEmpty() && !$isMarkdownListItemTextNode(following) && $isParagraphNode(following);
+    const holdsNothingButCheckbox = text.isEmpty() || (text.getChildrenSize() === 1 && $openingCheckbox(text) !== null);
+    const opensOverParagraph = holdsNothingButCheckbox && !$isMarkdownListItemTextNode(following) && $isParagraphNode(following);
 
     if (opensOverParagraph) {
+        // The item stays with its further paragraph, and so does a checkbox it holds alone: it is removed only when its item leaves the list.
         following.selectStart();
 
         return true;
     }
 
-    // Blank text counts as none, as in Lexical's own rule for an empty item.
-    const isBlank = text.getChildren().every((child) => $isTextNode(child) && child.getTextContent().trim() === "");
+    // Blank text counts as none, as in Lexical's own rule for an empty item; so does a checkbox that opens the text.
+    const isBlank = text.getChildren().every((child) => ($isTextNode(child) && child.getTextContent().trim() === "")
+        || (child.is(text.getFirstChild()) && $isMarkdownTaskCheckboxNode(child)));
     const outdented = isBlank && $outdentItem(item);
 
     if (isBlank && !outdented) {
+        // The item leaves its list, where its checkbox would only turn into text.
+        $openingCheckbox(text)?.remove();
         $liftItemOut(item);
     }
 
@@ -6118,6 +6215,310 @@ function $itemBlocksCarriedAlong(isIndent: boolean): Set<NodeKey> {
     }
 
     return carried;
+}
+
+/**
+ * Registers the rules of task items: a click on a checkbox toggles it
+ * ({@link $toggleClickedTaskCheckbox}), Ctrl or Cmd with Enter toggles the
+ * checkboxes of the task items the selection touches
+ * ({@link $toggleTouchedTaskItems}), Enter in a task item's text opens an
+ * unchecked one ({@link $enterSplitsTaskItem}), and a composition started
+ * before a checkbox starts after it ({@link $settleCaretPastCheckbox}).
+ *
+ * @remarks
+ * Call before {@link registerListItemRules}: the Enter listener is at the
+ * same priority as that function's and must run first, ahead of
+ * {@link $enterLeavesListAtBlankItemText}, which ends the list on an item
+ * whose text is blank.
+ *
+ * @param editor - The editor.
+ * @param isReadOnly - Whether the editor is read-only, which a click on a checkbox is refused in.
+ * @param onRefused - Called when an edit is refused for being read-only.
+ * @returns The unregister function.
+ */
+function registerTaskItemRules(editor: LexicalEditor, isReadOnly: () => boolean, onRefused: () => void): () => void {
+    return mergeRegister(
+        editor.registerCommand(CLICK_COMMAND, (event) => $toggleClickedTaskCheckbox(event, isReadOnly, onRefused), COMMAND_PRIORITY_LOW),
+        editor.registerCommand(KEY_ENTER_COMMAND, $toggleTouchedTaskItems, COMMAND_PRIORITY_HIGH),
+        editor.registerCommand(INSERT_PARAGRAPH_COMMAND, $enterSplitsTaskItem, COMMAND_PRIORITY_HIGH),
+        editor.registerCommand(COMPOSITION_START_COMMAND, () => {
+            $settleCaretPastCheckbox($getSelection());
+
+            return false;
+        }, COMMAND_PRIORITY_CRITICAL),
+    );
+}
+
+/**
+ * `CLICK_COMMAND` listener: a click on a task item's checkbox toggles it, as
+ * one undo step. A read-only editor lets the click through to this listener,
+ * which changes nothing there and reports the refused edit, as any refused
+ * edit is reported.
+ *
+ * @param event - The click.
+ * @param isReadOnly - Whether the editor is read-only.
+ * @param onRefused - Called when the click is refused.
+ * @returns Whether the click was on a checkbox.
+ */
+function $toggleClickedTaskCheckbox(event: CommandPayloadType<typeof CLICK_COMMAND>, isReadOnly: () => boolean, onRefused: () => void): boolean {
+    const target = event.target;
+    const node = isDOMNode(target) ? $getNearestNodeFromDOMNode(target) : null;
+
+    if (!$isMarkdownTaskCheckboxNode(node)) {
+        return false;
+    }
+
+    if (isReadOnly()) {
+        onRefused();
+
+        return true;
+    }
+
+    node.setChecked(!node.isChecked());
+    // Two quick clicks are two undo steps, whatever the history's merge window.
+    $addUpdateTag(HISTORY_PUSH_TAG);
+
+    return true;
+}
+
+/**
+ * The checkboxes of the task items a selection touches: those of the list
+ * item texts its anchor, its focus and the nodes between hold.
+ *
+ * @param selection - The selection.
+ * @returns The checkboxes, each once, in document order.
+ */
+function $touchedCheckboxes(selection: RangeSelection): MarkdownTaskCheckboxNode[] {
+    const texts = new Map<NodeKey, MarkdownListItemTextNode>();
+
+    for (const node of [selection.anchor.getNode(), selection.focus.getNode(), ...selection.getNodes()]) {
+        const block = $findEnclosingBlock(node);
+
+        if ($isMarkdownListItemTextNode(block)) {
+            texts.set(block.getKey(), block);
+        }
+    }
+
+    return [...texts.values()].map((text) => $openingCheckbox(text)).filter((box): box is MarkdownTaskCheckboxNode => box !== null);
+}
+
+/**
+ * `KEY_ENTER_COMMAND` listener: Ctrl+Enter (Cmd+Enter on macOS), with no Shift
+ * and no Alt, toggles the checkboxes of the task items the selection touches.
+ * It checks every one when any is unchecked, else unchecks every one; one
+ * undo step. Where the selection touches no task item the key does what it
+ * does without the modifier.
+ *
+ * @remarks
+ * A keyboard-selectable checkbox was not made: the key works with the caret
+ * in the item, over a range too, and the arrow keys pass over the checkbox as
+ * over one character. A read-only editor refuses the key before this runs,
+ * as it refuses every Enter.
+ *
+ * @param event - The key event; `null` when Enter was dispatched without one.
+ * @returns Whether the key toggled any checkbox.
+ */
+function $toggleTouchedTaskItems(event: CommandPayloadType<typeof KEY_ENTER_COMMAND>): boolean {
+    const isModified = event !== null && (IS_APPLE ? event.metaKey : event.ctrlKey) && !event.shiftKey && !event.altKey;
+    const selection = $getSelection();
+
+    if (!isModified || !$isRangeSelection(selection)) {
+        return false;
+    }
+
+    const boxes = $touchedCheckboxes(selection);
+
+    if (boxes.length === 0) {
+        return false;
+    }
+
+    event.preventDefault();
+
+    const anyUnchecked = boxes.some((box) => !box.isChecked());
+
+    boxes.forEach((box) => box.setChecked(anyUnchecked));
+    $addUpdateTag(HISTORY_PUSH_TAG);
+
+    return true;
+}
+
+/**
+ * Whether nothing but the checkbox stands in a task item's text before a
+ * caret: the caret is right after the checkbox, as a point at the start of
+ * what follows it (a text node, or a link or styled run holding one), or an
+ * element point on the text at its start or after the checkbox.
+ *
+ * @param text - The task item's text.
+ * @param selection - The collapsed selection in it.
+ * @returns `true` when only the checkbox lies before the caret.
+ */
+function $onlyCheckboxBeforeCaret(text: MarkdownListItemTextNode, selection: RangeSelection): boolean {
+    const [start] = $orderedPoints(selection);
+    const node = start.getNode();
+
+    if (node.is(text)) {
+        return start.offset <= 1;
+    }
+
+    // The child of the item's text the point is in, which may be a link or a styled run holding the text node.
+    let child: LexicalNode = node;
+
+    while (!text.is(child.getParent())) {
+        child = child.getParentOrThrow();
+    }
+
+    const startsChild = start.offset === 0 && (child.is(node) || (child as ElementNode).getFirstDescendant()?.is(node) === true);
+
+    return startsChild && child.getPreviousSiblings().every((sibling) => $isMarkdownTaskCheckboxNode(sibling));
+}
+
+/**
+ * `INSERT_PARAGRAPH_COMMAND` listener: Enter in a task item's text.
+ *
+ * - **The text holds more than its checkbox.** The item is split with
+ *   `insertParagraph`, and the new item's text gets an unchecked checkbox,
+ *   first. When nothing but the checkbox stood before the caret, the
+ *   original checkbox moves to the new (lower) item, so `- [x] two` keeps its
+ *   state on `two`, and the upper item, left empty, gets the unchecked one.
+ * - **The text holds its checkbox alone.** This listener changes nothing and
+ *   returns `false`: {@link $enterLeavesListAtBlankItemText} decides, as it does
+ *   for a plain item, and removes the checkbox itself only when the item leaves
+ *   its list (at the top level, as an empty paragraph). A nested item moves out
+ *   one level and stays a task item, and an item that holds a further
+ *   paragraph stays, the caret going into the paragraph.
+ * - **A range inside the text, after the checkbox.** The range is removed
+ *   ({@link $removeRangeInTaskItemText}) and the key goes on as at a caret, so
+ *   text on both sides opens an unchecked task item. A range that takes in the
+ *   checkbox, or another block, is left to {@link $enterLeavesListAtBlankItemText}
+ *   untouched.
+ *
+ * @remarks
+ * The split is made in this listener, as `@lexical/list` keeps its rule for
+ * an empty item, because the item's `insertNewAfter` also splits for every
+ * newline of pasted plain text and before pasted blocks, which must not each
+ * make a checkbox.
+ *
+ * @returns `true` when it split the item. `false` otherwise, so the key goes on to the other listeners; for a
+ *   range it has then already removed the range's text, and the other listeners meet a caret.
+ */
+function $enterSplitsTaskItem(): boolean {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return false;
+    }
+
+    const isRange = !selection.isCollapsed();
+    const text = $findEnclosingBlock($orderedPoints(selection)[0].getNode());
+    const box = $isMarkdownListItemTextNode(text) ? $openingCheckbox(text) : null;
+
+    if (!$isMarkdownListItemTextNode(text) || box === null || !$isMarkdownListItemNode(text.getParent())) {
+        return false;
+    }
+
+    if (isRange && !$removeRangeInTaskItemText(selection, text)) {
+        return false;
+    }
+
+    const holdsOnlyBox = text.getChildren().every((child) => child.is(box) || ($isTextNode(child) && child.getTextContent().trim() === ""));
+
+    // The text holds its checkbox alone: the blank-text rule decides, as for a plain item. A range that emptied the
+    // text of an item holding nothing else splits it into an emptied item and a new one, as it does for a plain item.
+    if (holdsOnlyBox && !(isRange && text.getNextSibling() === null)) {
+        return false;
+    }
+
+    $splitTaskItemAtCaret(selection, text, box);
+
+    return true;
+}
+
+/**
+ * Removes a range that lies inside one task item's text and starts after its checkbox, so Enter goes on as at a caret.
+ *
+ * @param selection - The range.
+ * @param text - The task item's text the range starts in.
+ * @returns `false`, with nothing removed, for a range that takes in the checkbox or reaches another block.
+ */
+function $removeRangeInTaskItemText(selection: RangeSelection, text: MarkdownListItemTextNode): boolean {
+    const [start, end] = $orderedPoints(selection);
+    const startsAfterCheckbox = !(start.getNode().is(text) && start.offset === 0);
+
+    if (!startsAfterCheckbox || !$findEnclosingBlock(end.getNode())?.is(text)) {
+        return false;
+    }
+
+    selection.removeText();
+
+    return true;
+}
+
+/**
+ * Splits a task item's text at the caret and gives each half its checkbox: the new (lower) item an unchecked one, or,
+ * when nothing but the checkbox stood before the caret, the original checkbox, the upper item getting the unchecked one.
+ *
+ * @param selection - The collapsed selection in the text.
+ * @param text - The task item's text.
+ * @param box - The checkbox it opens with.
+ */
+function $splitTaskItemAtCaret(selection: RangeSelection, text: MarkdownListItemTextNode, box: MarkdownTaskCheckboxNode): void {
+    const caretAtStart = $onlyCheckboxBeforeCaret(text, selection);
+
+    selection.insertParagraph();
+
+    const after = $getSelection();
+    const lower = $isRangeSelection(after) ? $findEnclosingBlock(after.anchor.getNode()) : null;
+
+    if (!$isMarkdownListItemTextNode(lower)) {
+        return;
+    }
+
+    if (caretAtStart) {
+        lower.splice(0, 0, [box]);
+        text.splice(0, 0, [$createMarkdownTaskCheckboxNode(false)]);
+    } else {
+        lower.splice(0, 0, [$createMarkdownTaskCheckboxNode(false)]);
+    }
+
+    // A caret left at the start of an item that now opens with a checkbox stands after it.
+    $settleCaretPastCheckbox($getSelection());
+    // The upper item may be left holding its checkbox alone, with the caret below it: it keeps the checkbox.
+    $addUpdateTag(TASK_ITEM_OPENED_TAG);
+}
+
+/**
+ * Moves a collapsed caret that stands before a task item's checkbox (an
+ * element point on the item's text at offset 0) to right after it, so what is
+ * typed, pasted, inserted or split there goes after the checkbox, not before
+ * it, where the checkbox rule would turn the checkbox into text. A click left
+ * of the checkbox, or ArrowLeft from the start of the item's text, can put a
+ * caret there. A range is not settled.
+ *
+ * @remarks
+ * Settling at edit time is what {@link $settleSelectionOffContainers} is for.
+ * Settling whenever the selection changes was rejected: ArrowLeft from after
+ * the checkbox goes before it, and moving it back would trap the caret at the
+ * line's start.
+ *
+ * @param selection - The selection, moved in place.
+ * @returns Whether a point moved.
+ */
+function $settleCaretPastCheckbox(selection: BaseSelection | null): boolean {
+    if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+        return false;
+    }
+
+    const { anchor } = selection;
+    const node = anchor.getNode();
+
+    if (anchor.type !== "element" || anchor.offset !== 0 || !$isMarkdownListItemTextNode(node) || $openingCheckbox(node) === null) {
+        return false;
+    }
+
+    selection.anchor.set(node.getKey(), 1, "element");
+    selection.focus.set(node.getKey(), 1, "element");
+
+    return true;
 }
 
 /**
@@ -9811,13 +10212,46 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     setReadOnly(readOnly: boolean): this {
+        const changes = (this._options.readOnly ?? false) !== readOnly;
+
         this._options.readOnly = readOnly;
         this._editor?.setEditable(!readOnly);
+
+        if (changes) {
+            this.redrawTaskCheckboxes();
+        }
+
         this._wysiwyg.setReadOnly(readOnly);
         this._codeEditor.setReadOnly(readOnly);
         this.updateSelectionState();
 
         return this;
+    }
+
+    /**
+     * Draws the task checkboxes again, so each takes the read-only look (or loses it) that
+     * {@link setReadOnly} just changed. The update changes no content and is no undo step.
+     */
+    private redrawTaskCheckboxes(): void {
+        const editor = this._editor;
+
+        if (editor === null || !editor.read(() => $dfs($getRoot()).some(({ node }) => $isMarkdownTaskCheckboxNode(node)))) {
+            return;
+        }
+
+        // The update writes the editor's selection into the page unless told not to, which would take the keyboard from
+        // what holds it: it is told not to unless the surface holds the keyboard itself.
+        const tags = this.surfaceHoldsKeyboard()
+            ? [HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG]
+            : [HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG, SKIP_DOM_SELECTION_TAG];
+
+        editor.update(() => {
+            for (const { node } of $dfs($getRoot())) {
+                if ($isMarkdownTaskCheckboxNode(node)) {
+                    node.markDirty();
+                }
+            }
+        }, { discrete: true, tag: tags });
     }
 
     /**
@@ -10098,8 +10532,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * of one. When every selected block is the text an item of a bulleted
      * list opens with, those items leave the list: each text becomes a
      * paragraph, the blocks its item holds up to its first nested list follow
-     * it, and the list is split around them; a task item's `[ ]` / `[x]`
-     * marker stays as the text it shows. Otherwise every other selected
+     * it, and the list is split around them; a task item's checkbox stays as
+     * the text it shows. Otherwise every other selected
      * block becomes a bulleted item where the block stands: at the top
      * level, in its `:::` column or in its quote. An item of a numbered list changes alone, its list split
      * around it and the blocks it holds up to its first nested list kept in
@@ -10133,8 +10567,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * of one. When every selected block is the text an item of a numbered
      * list opens with, those items leave the list: each text becomes a
      * paragraph, the blocks its item holds up to its first nested list follow
-     * it, and the list is split around them; a task item's `[ ]` / `[x]`
-     * marker stays as the text it shows. Otherwise every other selected
+     * it, and the list is split around them; a task item's checkbox stays as
+     * the text it shows. Otherwise every other selected
      * block becomes a numbered item where the block stands: at the top
      * level, in its `:::` column or in its quote. An item of a bulleted list changes alone, its list split
      * around it and the blocks it holds up to its first nested list kept in
@@ -10159,6 +10593,48 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         if (!applies) { return this; }
 
         this.toggleList("number");
+
+        return this;
+    }
+
+    /**
+     * Makes the selected blocks task items, or takes their checkboxes off.
+     * When every selected block is the text of a task item, their checkboxes
+     * are removed and the items stay. Otherwise each selected block that
+     * opens no list item becomes an item of a bulleted list where it stands,
+     * as {@link MarkdownEditor.toggleUnorderedList} makes one, and every
+     * selected item without a checkbox gets an unchecked one; a list keeps its
+     * kind, so a numbered item stays numbered. A heading that opens an item
+     * becomes the item's text. One undo step. No-op without a range
+     * selection, and when the selection touches a table cell (whole cells
+     * selected included), which holds text only.
+     *
+     * In `"source"` mode, runs this command on the Markdown around the selection as
+     * on the WYSIWYG surface and writes back the text it changes; no-op where the
+     * selection touches a raw Markdown block. See *Source / WYSIWYG mode* in the
+     * component docs.
+     *
+     * @returns This component, for method chaining.
+     */
+    toggleTaskList(): this {
+        const handledBySource = this.editSourceThroughModel(() => this.toggleTaskList());
+
+        if (handledBySource) { return this; }
+
+        const applies = this.commandApplies("canSetBlockType");
+
+        if (!applies) { return this; }
+
+        this.ensureEditor().update(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                return;
+            }
+
+            $settleEndsIntoBlocksOfText(selection);
+            $toggleTaskItemsOfTouchedBlocks(selection);
+        }, { discrete: true });
 
         return this;
     }
@@ -10507,7 +10983,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * code) in place, a block in a quote included, or, with `"quote"`, puts
      * them into a quote or takes them out of it. A list item's text is taken
      * out of its lists, and the blocks the item holds up to its first nested
-     * list follow it; a task item's marker stays as the text it shows, and in
+     * list follow it; a task item's checkbox stays as the text it shows, and in
      * a code block as it was written. No-op without a range selection, and
      * when the selection touches a table cell (whole cells selected
      * included), which holds text only.
@@ -10828,7 +11304,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             const initial = $getSelection();
-            const moved = $settleSelectionOffContainers(initial);
+            // A caret before a task item's checkbox stays there: the block goes above the item, which keeps its checkbox.
+            const moved = $settleSelectionOffContainers(initial, false);
             const isTableEdge = $isTableEdgeRange(initial);
             const hadRange = $isRangeSelection(initial);
 
@@ -10905,7 +11382,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             $removeHorizontalRulesAtRangeEnds($getSelection());
 
             const initial = $getSelection();
-            const moved = $settleSelectionOffContainers(initial);
+            // A caret before a task item's checkbox stays there: the block goes above the item, which keeps its checkbox.
+            const moved = $settleSelectionOffContainers(initial, false);
             const isTableEdge = $isTableEdgeRange(initial);
 
             if (isTableEdge) {
@@ -11556,6 +12034,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             registerColumnPaste(editor),
             registerTablePartPaste(editor),
             registerHeldBlockPaste(editor),
+            registerTaskItemRules(editor, () => this.getReadOnly(), () => this.signalReadOnlyEdit()),
             registerListItemRules(editor),
             registerQuoteRules(editor),
             registerTextOnlyBlockRules(editor),
@@ -12063,6 +12542,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                         { text: "Code block", enabled: canSetBlockType, action: () => this.setBlockType("code") },
                         { text: "Bulleted list", enabled: canSetBlockType, action: () => this.toggleUnorderedList() },
                         { text: "Numbered list", enabled: canSetBlockType, action: () => this.toggleOrderedList() },
+                        { text: "Task list", enabled: canSetBlockType, action: () => this.toggleTaskList() },
                         { separator: true },
                         { text: "Table", enabled: availability.canInsertTable, action: () => this.insertTable(2, 3) },
                         { text: "Image…", enabled: availability.canInsertImage, action: () => void this.promptAndInsertImage() },

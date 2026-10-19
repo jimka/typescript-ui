@@ -209,3 +209,11 @@ const THEMATIC_BREAK_LINE = /^([-*_])(?:[ \t]*\1){2,}$/;
 export const horizontalRuleMarkerState: StateConfig<"mdHorizontalRule", string> = createState("mdHorizontalRule", {
     parse: (value) => (typeof value === "string" && THEMATIC_BREAK_LINE.test(value) ? value : ""),
 });
+
+/**
+ * The marker a task item's checkbox was loaded or typed with, as its item's first line writes it: `[ ]`, `[x]` or
+ * `[X]`, without the blanks after it. `""` — the default — is a checkbox made in the editor, written `[ ]` or `[x]`.
+ */
+export const taskMarkerState: StateConfig<"mdTaskMarker", string> = createState("mdTaskMarker", {
+    parse: (value) => (typeof value === "string" && /^\[[ xX]\]$/.test(value) ? value : ""),
+});

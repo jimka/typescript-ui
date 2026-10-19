@@ -70,6 +70,7 @@ interface SourceSelection {
 const COMMANDS: Record<string, (editor: MarkdownEditor) => unknown> = {
     bulleted:      (editor) => editor.toggleUnorderedList(),
     numbered:      (editor) => editor.toggleOrderedList(),
+    task:          (editor) => editor.toggleTaskList(),
     paragraph:     (editor) => editor.setBlockType('paragraph'),
     h2:            (editor) => editor.setBlockType('h2'),
     quote:         (editor) => editor.setBlockType('quote'),
@@ -88,7 +89,7 @@ const COMMANDS: Record<string, (editor: MarkdownEditor) => unknown> = {
 };
 
 /** The names of {@link COMMANDS} that change a block's type, and so act on whole blocks. */
-const BLOCK_COMMANDS = ['bulleted', 'numbered', 'paragraph', 'h2', 'quote', 'code'];
+const BLOCK_COMMANDS = ['bulleted', 'numbered', 'task', 'paragraph', 'h2', 'quote', 'code'];
 
 /** The names of {@link COMMANDS} that change the text inside a block. */
 const INLINE_COMMANDS = [
@@ -852,6 +853,15 @@ describe('a read-only editor refuses every source-mode command up front', () => 
         run.editor.dispose();
     });
 
+    it('5.36: toggleTaskList is refused once as the other list toggles are, before any model is built', () => {
+        const run = runReadOnly('- a', COMMANDS.task!);
+
+        expect(run.editor.getValue()).toBe('- a');
+        expect(run.counts.refusals).toBe(1);
+        expect($importMarkdown).not.toHaveBeenCalled();
+        run.editor.dispose();
+    });
+
     it('5.35: the commands that stay text surgery are refused once as well', () => {
         const run = runReadOnly('> q', (editor) => editor.insertParagraphBeforeBlock());
 
@@ -1210,4 +1220,115 @@ describe('the corpus differential', () => {
         expect(differences.slice(0, 20)).toEqual([]);
         expect(counts.compared).toBeGreaterThan(100);
     }, 900_000);
+});
+
+describe('toggleTaskList in source mode gives the document the WYSIWYG surface gives', () => {
+    /**
+     * A row: a document, the text the selection starts and ends at (the start of the first needle to the end of the
+     * last), and the save the WYSIWYG toggle gives.
+     */
+    const ROWS: ReadonlyArray<readonly [name: string, doc: string, from: string, to: string, saved: string]> = [
+        ['a caret in a plain item', '- a\n- b', 'a', 'a', '- [ ] a\n- b'],
+        ['a range over two plain items', '- a\n- b', 'a', 'b', '- [ ] a\n- [ ] b'],
+        ['a task item and a plain item', '- [ ] a\n- b', 'a', 'b', '- [ ] a\n- [ ] b'],
+        ['task items, which lose their checkboxes', '- [ ] a\n- [x] b', 'a', 'b', '- a\n- b'],
+        ['two paragraphs', 'a\n\nb', 'a', 'b', '- [ ] a\n- [ ] b'],
+        ['a numbered item', '1. a', 'a', 'a', '1. [ ] a'],
+        ['a quote\'s paragraph', '> q', 'q', 'q', '> - [ ] q'],
+        ['a further paragraph of an item', '- a\n\n  p', 'p', 'p', '- a\n\n- [ ] p'],
+        ['a heading that opens an item', '- # h', 'h', 'h', '- [ ] h'],
+    ];
+
+    // A caret on a later task item's line, before its checkbox, acts on that item, as it does on a plain item's line.
+    describe('a source caret before the checkbox of a later task item', () => {
+        const LINES: ReadonlyArray<readonly [name: string, doc: string, where: string, inside: string]> = [
+            ['a bulleted item', '- [ ] one\n- [x] two', '- [ ] one\n', 'two'],
+            ['a numbered item', '1. [ ] one\n2. [x] two', '1. [ ] one\n', 'two'],
+            ['a nested item', '- a\n  - [x] b', '- a\n', 'b'],
+        ];
+
+        it.each(LINES.flatMap(([name, doc, where, inside]) => [
+            ['the start of the line', name, doc, where.length, inside],
+            ['after the list marker', name, doc, doc.indexOf('[x]') - 1, inside],
+        ] as const).flatMap((row) => ['h2', 'quote', 'bulleted', 'task'].map((command) => [...row, command] as const)))(
+            '%s of %s: %s',
+            (_where, _name, doc, offset, inside, command) => {
+                const atLineStart = runInSource(doc, { from: offset, to: offset }, COMMANDS[command]!);
+                const insideText = doc.indexOf(inside) + 1;
+                const inItem = runInSource(doc, { from: insideText, to: insideText }, COMMANDS[command]!);
+
+                expect(atLineStart.text).toBe(inItem.text);
+                atLineStart.editor.dispose();
+                inItem.editor.dispose();
+            },
+        );
+
+        it('h2 on the line start of the second of two task items makes that item the heading', () => {
+            const run = runInSource('- [ ] one\n- [x] two', { from: 10, to: 10 }, COMMANDS.h2!);
+
+            expect(run.text).toBe('- [ ] one\n\n## \\[x\\] two');
+            run.editor.dispose();
+        });
+
+        it('insertImage on that line goes into that item', () => {
+            const run = runInSource('- [ ] one\n- [x] two', { from: 10, to: 10 }, COMMANDS.image!);
+
+            expect(run.text.startsWith('- [ ] one\n')).toBe(true);
+            expect(run.text.split('\n')[0]).toBe('- [ ] one');
+            run.editor.dispose();
+        });
+    });
+
+    // An item with no text becomes a task item that keeps its checkbox, as in the WYSIWYG editor, and saves as `- [ ]`.
+    // Markdown reads that line as an item holding the text `[ ]`, so what the source surface holds is that text: the
+    // checkboxes of the other items come off, and a toggle over all three then makes the middle item a task item
+    // whose text is `[ ]`, which is what its line reads as.
+    it('a range over an item with no text makes it a task item, saved as an empty marker', () => {
+        const doc = '- a\n-\n- c';
+        const run = runInSource(doc, { from: 2, to: doc.length }, COMMANDS.task!);
+
+        expect(run.text).toBe('- [ ] a\n- [ ]\n- [ ] c');
+        run.editor.dispose();
+    });
+
+    it('a second toggle over the saved lines reads the middle line as text', () => {
+        const doc = '- [ ] a\n- [ ]\n- [ ] c';
+        const run = runInSource(doc, { from: 6, to: doc.length }, COMMANDS.task!);
+
+        expect(run.text).toBe('- [ ] a\n- [ ] \\[ \\]\n- [ ] c');
+        run.editor.dispose();
+    });
+
+    it('a toggle over task items and an empty item takes none off while one has no checkbox', () => {
+        const doc = '- [ ] a\n-\n- [ ] c';
+        const run = runInSource(doc, { from: 6, to: doc.length }, COMMANDS.task!);
+
+        expect(run.text).toBe('- [ ] a\n- [ ]\n- [ ] c');
+        run.editor.dispose();
+    });
+
+    it('a lone empty item becomes an empty task item', () => {
+        const run = runInSource('-', { from: 1, to: 1 }, COMMANDS.task!);
+
+        expect(run.text).toBe('- [ ]');
+        run.editor.dispose();
+    });
+
+    it('a source caret inside the marker of a task item makes the item\'s text a heading with the marker as text', () => {
+        const doc = '- [ ] one\n- [x] two';
+        const caret = doc.indexOf('[x]') + 1;
+        const run = runInSource(doc, { from: caret, to: caret }, COMMANDS.h2!);
+
+        expect(run.text).toBe('- [ ] one\n\n## \\[x\\] two');
+        run.editor.dispose();
+    });
+
+    it.each(ROWS)('%s', (_name, doc, from, to, saved) => {
+        const start = doc.indexOf(from);
+        const end = doc.lastIndexOf(to) + to.length;
+        const run = runInSource(doc, { from: start, to: end }, COMMANDS.task!);
+
+        expect(run.text).toBe(saved);
+        run.editor.dispose();
+    });
 });
