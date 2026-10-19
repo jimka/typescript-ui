@@ -1073,3 +1073,69 @@ document panel), in Chromium and WebKitGTK, light and dark:
     `markdownHistory.ts:52`) turns any update that changed the document
     into a step of its own, so each pick already is one. No precedent in the
     codebase merges repeated style changes.
+
+---
+
+## Implementation Notes
+
+No plan item was dropped. Three details the plan left open, and the changes made after review, are below:
+
+- **The keyboard-open tests restart `Menu`'s input watch.** The watch is
+  installed once per process against the window of the first test's DOM, so
+  a later test's key press never reached it. The wiring tests call
+  `Menu._stopInputWatch()` and `Menu._startInputWatch()` before dispatching
+  the key press, and stop the watch afterwards, which also clears the
+  recorded key press.
+- **The keyboard session tests build the menu before the key press.**
+  Constructing a `Menu` starts the input watch, so building it inside the
+  same expression as the press (as `showFromKeyboard` does) is the wrong
+  order for a menu that is not shown through `show`.
+- **The kept-clear area's growth is computed as `height * 1.2 - height`**
+  rather than `(1.2 - 1) * height`, which in floating point gives 3.99… for
+  a 20 px line and a bottom edge of 123.99999999999999 instead of 124.
+
+Changes after the first review:
+
+- **Keyboard open point.** The caret's corner is pinned to the editor's
+  visible box, as `resolveContextMenuTarget` pins a keyboard-opened menu to
+  its widget's box. The precedent also scrolls the current item into view
+  first; the editor does not, because the caret is where the user is typing
+  and is already in view.
+- **Checked radio.** The current value is read from the word the commands
+  widen a caret to, so a caret at the end, at the start or inside a styled
+  word shows the same choice.
+- **Line under the pointer.** It is the whole line: the rectangle under the
+  pointer joined with every rectangle sharing its line, so inline code or a
+  smaller word does not stand for it and a larger word is counted.
+- **Cost.** Dropping element boxes compares each rectangle only with those
+  that start within its vertical span. For 2,000 paragraphs selected, with
+  8,000 measured rectangles, the area is computed in about 3 ms. The time to
+  build and measure the range in a real browser was not measured.
+
+Manual browser checks, run by the reviewer in Chromium, as the plan says:
+checks 1, 2, 4, 5, 6 and 8, and the submenu part of 7. Still unchecked:
+WebKitGTK, dark mode, source mode (check 10), undo after Escape in a
+browser (the rest of check 7), the right-edge case (check 3), and the table
+and image cases (check 9).
+
+Changes after the second review:
+
+- **A kept-clear area that leaves no room.** `Menu.showClearOf` opened off
+  screen for an area filling the viewport. It now falls back to `show`'s
+  placement at the pointer when the room on the roomier side is less than the
+  menu's height and less than four rows (`MIN_CLEAR_OF_ROWS`); the fallback
+  menu may cover the area, which the JSDoc, Menu.md and the changelog state.
+- **Images.** The editor measures the boxes of the images in a selection
+  separately, by the range that spans each image among its parent's children,
+  and `contextMenuKeptClearArea` takes them as a fourth argument. The
+  whole-selection check runs first: a selection small enough to keep clear
+  whole is kept clear whole wherever the pointer is, an image included. Only
+  a selection too large for that falls back to the line under the pointer,
+  and with the pointer on an image (and on no text) that line is the image's
+  box joined with the text sharing its vertical span, grown for the Large
+  size by that text only; with no such text it is the image's own box,
+  ungrown. An image never sets the growth. That image measurement is covered
+  by tests with the seam mocked; whether Lexical's range builder gives
+  exactly the image's box for that parent range in a real browser was not
+  checked.
+- **Zero-height rectangles** no longer drop a line that holds them.
