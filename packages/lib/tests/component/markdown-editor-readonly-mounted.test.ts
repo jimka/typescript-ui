@@ -408,6 +408,11 @@ function targetOf(m: Mounted, target: RouteTarget | undefined): EventTarget {
     }
 }
 
+// G2 dispatches every refused command and L6 clicks through every selection of a run. They take about
+// 1 s alone but up to 6 s when `npm test` runs every test file at once on a many-core machine, past
+// Vitest's 5 s default; 60 s, the sweeps' timeout elsewhere in the suite, leaves room for a slower machine.
+const SWEEP_TIMEOUT_MS = 60_000;
+
 describe('MarkdownEditor read-only, mounted: the surface', () => {
     it('S6: the mounted surface is the editing host, exposed as a read-only multi-line text box', () => {
         const { root } = mounted('# Hi', true);
@@ -515,7 +520,7 @@ describe('MarkdownEditor read-only, mounted: the command guard', () => {
 
             expect(undoDepthOf(m), command.type).toBe(undoDepth);
         }
-    });
+    }, SWEEP_TIMEOUT_MS);
 
     it('G3: the same commands reach their handlers on an editable editor, with no signal', () => {
         // The control for G2: each of these edits when the guard stands aside.
@@ -1904,7 +1909,7 @@ describe('MarkdownEditor read-only, mounted: following a link', () => {
             expect(expected.length).toBeLessThan(cases / 4);
             vi.restoreAllMocks();
         }
-    });
+    }, SWEEP_TIMEOUT_MS);
 
     it('L19: a run of one to eight clicks on a link opens it once, on the first click', async () => {
         // What a browser sends: a press and a click for each, the clicks counted from 1. The selection is a caret

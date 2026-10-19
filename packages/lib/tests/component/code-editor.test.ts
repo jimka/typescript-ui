@@ -4831,6 +4831,11 @@ describe('built-in markdown language typing', () => {
         expect(await typed('markdown', '> - |', '\b')).toBe('> |');
     });
 
+    // TS19 and TS20 each type into thousands of drawn documents. They take under 2 s alone but up to 10 s
+    // when `npm test` runs every test file at once on a many-core machine, past Vitest's 5 s default;
+    // 60 s, the other sweeps' timeout, leaves room for a slower machine under that load.
+    const TAB_SWEEP_TIMEOUT_MS = 60_000;
+
     // 3,000 draws give 2,932 documents and 9,285 presses. On the base, 1,329 of them end otherwise.
     it('TS19: on every drawn tab document, Enter and Backspace do what they do with its container prefixes written as spaces', async () => {
         const differing: string[] = [];
@@ -4861,7 +4866,7 @@ describe('built-in markdown language typing', () => {
         }
 
         expect(differing).toEqual([]);
-    });
+    }, TAB_SWEEP_TIMEOUT_MS);
 
     // 150 draws, the caret at every position of every line that does not end in whitespace, Enter and Backspace.
     // Two kinds of press are left out, because the two forms differ there whatever this module does:
@@ -4937,7 +4942,7 @@ describe('built-in markdown language typing', () => {
         }
 
         expect(differing).toEqual([]);
-    });
+    }, TAB_SWEEP_TIMEOUT_MS);
 
     it('TS21: Enter after an item whose marker a tab follows is one undo step', async () => {
         const start = (await buildTypingState('markdown', '-\ta|')).update({ effects: StateEffect.appendConfig.of(history()) }).state;
