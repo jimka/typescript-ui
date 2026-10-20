@@ -412,6 +412,15 @@ page resets to empty.
   an image with no address; the command now declines it, as a pasted `<img>`
   with no `src` pastes as nothing. The `Markdown` viewer still draws
   `![a]()` as an `<img src="">`, as CommonMark reads it.
+- **`Markdown` and `MarkdownEditor` read an escaped bracket in a link's or
+  image's text as a bracket.** `[see \[1\]](/u)` showed as plain text
+  wherever `[1]` was defined, an image's alt text lost such brackets
+  (`![a \[1\] b](/i.png)` had the alt `a 1 b`), and a code span in link
+  text lost the backslash before a bracket. They now read as CommonMark
+  specifies, as source mode already showed them. Brackets typed into a
+  link's text, beside an image too, save with one backslash and reload as
+  typed; a link holding an image and typed `[x]` no longer loses its link
+  on reload. No consumer action is needed.
 
 ### Core
 
