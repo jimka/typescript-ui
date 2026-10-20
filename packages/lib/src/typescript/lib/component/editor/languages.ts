@@ -11,7 +11,7 @@
 // ones `CodeEditor` itself imports, so they are in that chunk already; the
 // other static imports are this library's own modules, or types.
 
-import type { tags as highlightTags } from "@lezer/highlight";
+import type { styleTags as highlightStyleTags, tags as highlightTags } from "@lezer/highlight";
 import { syntaxTree } from "@codemirror/language";
 import type { Language, TreeIndentContext } from "@codemirror/language";
 import { countColumn, EditorSelection, Prec } from "@codemirror/state";
@@ -552,6 +552,22 @@ function taskMarkerExtension(tags: typeof highlightTags): MarkdownConfig {
     };
 }
 
+/**
+ * Tags a link title — `"t"` in `[text](url "t")` and in a link reference
+ * definition — `content`, which the editor theme leaves unstyled, in place of
+ * lezer's `string`, so a title is drawn in the text colour. A title inside a
+ * link is already text-coloured by the theme's link rule; this reaches the
+ * title of a definition, which is not inside a link. Built from the caller's
+ * imports, so this module still loads no grammar package.
+ *
+ * @param tags - The `tags` of `@lezer/highlight`.
+ * @param styleTags - The `styleTags` of `@lezer/highlight`.
+ * @returns The extension.
+ */
+function linkTitleTagExtension(tags: typeof highlightTags, styleTags: typeof highlightStyleTags): MarkdownConfig {
+    return { props: [styleTags({ LinkTitle: tags.content })] };
+}
+
 registerLanguage({
     id: "markdown",
     label: "Markdown",
@@ -583,9 +599,9 @@ registerLanguage({
         // stops; the stock parser does not (see markdownTabStops.ts). The
         // parser markdown() configured here is this language's own, so the
         // second call changes no other language.
-        const { tags } = await import("@lezer/highlight");
+        const { styleTags, tags } = await import("@lezer/highlight");
         const support = markdown({
-            htmlTagLanguage: literalHtml, extensions: [MARKDOWN_TAB_STOPS, taskMarkerExtension(tags)], addKeymap: false,
+            htmlTagLanguage: literalHtml, extensions: [MARKDOWN_TAB_STOPS, taskMarkerExtension(tags), linkTitleTagExtension(tags, styleTags)], addKeymap: false,
         });
 
         readQuoteContinuationTabs(support.language.parser);
