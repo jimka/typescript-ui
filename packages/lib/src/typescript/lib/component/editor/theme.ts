@@ -6,6 +6,7 @@ import type { TagStyle } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import type { Extension } from "@codemirror/state";
 import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
+import { MARKDOWN_SOURCE_TAGS } from "~/component/editor/markdownSourceTags.js";
 
 // The syntax palette has no dedicated project theme tokens (the framework
 // defines chrome/surface/accent tokens, not a per-token-kind syntax scheme),
@@ -21,11 +22,12 @@ export const SYNTAX_TYPE     = "#0891b2"; // teal — type names
 export const SYNTAX_PROPERTY = "#be185d"; // pink — object/attribute property names
 
 /**
- * The syntax-highlighting rules every `CodeEditor` language shares: each maps
- * lezer tags to a look. A range takes every rule its tags match, and a later
- * rule wins where two set the same property.
+ * The syntax-highlighting rules every `CodeEditor` language shares, in both
+ * themes: each maps lezer tags to a look. A range takes every rule its tags
+ * match, and a later rule wins where two set the same property. The
+ * `processingInstruction` rule colours the `html` language's `<?…?>`.
  */
-export const SYNTAX_STYLES: readonly TagStyle[] = [
+export const SHARED_SYNTAX_STYLES: readonly TagStyle[] = [
     { tag: tags.keyword,                                                    color: SYNTAX_KEYWORD },
     { tag: [tags.string, tags.special(tags.string)],                        color: SYNTAX_STRING },
     { tag: tags.comment,                                                    color: SYNTAX_COMMENT, fontStyle: "italic" },
@@ -34,31 +36,68 @@ export const SYNTAX_STYLES: readonly TagStyle[] = [
     { tag: tags.typeName,                                                   color: SYNTAX_TYPE },
     { tag: [tags.propertyName, tags.attributeName],                        color: SYNTAX_PROPERTY },
     { tag: tags.tagName,                                                    color: SYNTAX_KEYWORD },
-    // Markdown constructs (the `markdown` language, e.g. the MarkdownEditor
-    // source surface). Source mode shows Markdown as source text: colour hints
-    // at the syntax, and nothing is drawn as the Markdown viewer draws it, so
-    // no rule here sets a weight, a slant, an underline or a size, and no range
-    // is drawn in a colour with less contrast than it had before. Heading text
-    // takes the accent hue so the outline stands out; code is green, as a
-    // string is; a character reference outside a link is green too. Everything
-    // inside a link or image takes the text colour (`inherit` hands it the
-    // enclosing element's colour): its text, URL, reference label, title, any
-    // character reference, and any code. Inline HTML inside link text keeps the
-    // `html` language's colours, and an HTML comment there keeps its slant but
-    // loses its grey. The link
-    // rule comes after the heading and code rules, so a link in a heading is
-    // not heading-coloured and code in link text is not green: each of those
-    // colours has less contrast than the text colour in one of the two themes,
-    // and the base look drew all of a link in the accent blue. The markup marks
-    // (`#`, `**`, `` ` ``, `>`, `-`, `[`, `](`) and quotes are muted, after the
-    // link rule, so the content reads over the syntax.
-    { tag: [tags.heading, tags.heading1, tags.heading2, tags.heading3,
-            tags.heading4, tags.heading5, tags.heading6],                   color: SYNTAX_KEYWORD },
-    { tag: tags.monospace,                                                  color: SYNTAX_STRING },
-    { tag: tags.link,                                                       color: "inherit" },
-    { tag: [tags.quote, tags.contentSeparator],                             color: SYNTAX_COMMENT },
     { tag: tags.processingInstruction,                                      color: SYNTAX_COMMENT },
 ];
+
+/** One colour per kind of non-text Markdown, keyed as {@link MARKDOWN_SOURCE_TAGS} is. */
+export type MarkdownSourceColours = Readonly<Record<keyof typeof MARKDOWN_SOURCE_TAGS, string>>;
+
+// The colours of the `markdown` language's own tags, one set per scheme. The
+// shared palette above has no colour that reaches 4.5 : 1 (WCAG AA for normal
+// text) on both editor backgrounds, so source mode has its own. Each value was
+// picked for that ratio on the editor background (`--ts-ui-input-bg`: white
+// in ModernTheme and ClassicTheme, rgb(40, 40, 40) in DarkTheme) and on the
+// active line's tint over it (`.cm-activeLine` below), and for a CIEDE2000
+// difference of at least 18 from every other colour of its set and from the
+// text colour. The six hues are spread round the colour wheel and keep clear
+// of the viewer's link blue (`--ts-ui-indicator-focus`). Ratios are on the
+// background, then on the active line.
+export const MARKDOWN_SOURCE_LIGHT: MarkdownSourceColours = {
+    inlineMark:  "#6e6e6e", // grey   5.10 / 4.67 — the most muted, so the text reads over its marks
+    blockMark:   "#893ee0", // violet 5.48 / 5.02
+    destination: "#1a7479", // teal   5.50 / 5.03
+    escape:      "#a65217", // orange 5.47 / 5.00
+    html:        "#c92055", // rose   5.50 / 5.03
+    dialect:     "#7b6817", // gold   5.48 / 5.01
+    code:        "#407616", // green  5.50 / 5.03
+};
+
+/** The dark scheme's set; see {@link MARKDOWN_SOURCE_LIGHT}. */
+export const MARKDOWN_SOURCE_DARK: MarkdownSourceColours = {
+    inlineMark:  "#989898", // grey   5.11 / 4.64
+    blockMark:   "#ba96f9", // violet 6.19 / 5.63
+    destination: "#2eb9c0", // teal   6.19 / 5.62
+    escape:      "#f98b46", // orange 6.18 / 5.62
+    html:        "#f98498", // rose   6.17 / 5.60
+    dialect:     "#c3a629", // gold   6.18 / 5.62
+    code:        "#6abc29", // green  6.20 / 5.64
+};
+
+/**
+ * The syntax-highlighting rules of one scheme: the shared rules, then one
+ * rule per kind of non-text Markdown. Only the `markdown` language emits the
+ * tags of the Markdown rules, so they change no other language. Their order
+ * matters where a fenced code block hands its block-mark tag to everything in
+ * it: block mark after inline mark, so a fence's backticks are block marks,
+ * and code after block mark, so the fence's code is code.
+ *
+ * @param dark - Whether the dark theme is active.
+ * @returns The rules.
+ */
+export function syntaxStyles(dark: boolean): readonly TagStyle[] {
+    const colours = dark ? MARKDOWN_SOURCE_DARK : MARKDOWN_SOURCE_LIGHT;
+
+    return [
+        ...SHARED_SYNTAX_STYLES,
+        { tag: MARKDOWN_SOURCE_TAGS.inlineMark,  color: colours.inlineMark },
+        { tag: MARKDOWN_SOURCE_TAGS.blockMark,   color: colours.blockMark },
+        { tag: MARKDOWN_SOURCE_TAGS.destination, color: colours.destination },
+        { tag: MARKDOWN_SOURCE_TAGS.escape,      color: colours.escape },
+        { tag: MARKDOWN_SOURCE_TAGS.html,        color: colours.html },
+        { tag: MARKDOWN_SOURCE_TAGS.dialect,     color: colours.dialect },
+        { tag: MARKDOWN_SOURCE_TAGS.code,        color: colours.code },
+    ];
+}
 
 /** Class the reveal highlight's decoration carries; styled below, inside the editor's theme scope. */
 export const REVEAL_CLASS = "ts-ui-cm-reveal";
@@ -283,7 +322,7 @@ export function codeEditorTheme(dark: boolean): Extension {
         },
     }, { dark });
 
-    const highlight = syntaxHighlighting(HighlightStyle.define(SYNTAX_STYLES));
+    const highlight = syntaxHighlighting(HighlightStyle.define(syntaxStyles(dark)));
 
     const built: Extension = [chrome, highlight];
 

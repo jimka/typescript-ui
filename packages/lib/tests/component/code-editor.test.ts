@@ -3993,6 +3993,40 @@ describe('built-in markdown language typing', () => {
         expect(await foldableLines('#\tA\ntext\n#\tB\nmore')).toEqual(['1:3-8', '3:12-17']);
     });
 
+    // A leading `|` in a FOLD document marks the caret for `buildTypingState` and is not part of the text.
+    it('FOLD1: a fence folds from its opening line to the line before its closing line', async () => {
+        expect(await foldableLines('::: x\na\nb\n:::')).toEqual(['1:5-9', '2:7-9']);
+    });
+
+    it('FOLD2: a fence whose sections start with tables folds the fence and each table', async () => {
+        expect(await foldableLines('|::: columns\n| a |\n| - |\n| 1 |\n|||\n| b |\n| - |\n:::')).toEqual(['1:11-45', '2:17-29', '6:39-45']);
+    });
+
+    it('FOLD3: a nested fence folds on its own and the outer fence folds past it', async () => {
+        expect(await foldableLines('::: a\n::: b\nx\ny\n:::\n:::')).toEqual(['1:5-19', '2:11-15', '3:13-15']);
+    });
+
+    it('FOLD4: a fence in a quote folds inside the quote', async () => {
+        expect(await foldableLines('> ::: x\n> a\n> b\n> :::')).toEqual(['1:7-15', '2:11-15']);
+    });
+
+    it('FOLD5: a fence in a list item folds inside the item', async () => {
+        expect(await foldableLines('- ::: x\n  a\n  b\n  :::')).toEqual(['1:7-15', '2:11-15']);
+    });
+
+    it('FOLD6: a fence with no closing line folds to the end of its container', async () => {
+        expect(await foldableLines('::: x\na\nb')).toEqual(['1:5-9', '2:7-9']);
+        expect(await foldableLines('> ::: x\n> a\n> b\n\nc')).toEqual(['1:7-15', '2:11-15']);
+    });
+
+    it('FOLD7: a closing line and an empty fence fold nothing', async () => {
+        expect(await foldableLines(':::\n::: x\n:::')).toEqual([]);
+    });
+
+    it('FOLD8: a table folds below its first line', async () => {
+        expect(await foldableLines('|| a | b |\n| - | - |\n| 1 | 2 |')).toEqual(['1:9-29']);
+    });
+
     it('TAB24: Enter after an item in a quote opened by a tab starts the next item', async () => {
         expect(await typed('markdown', '>\t- a|', '\n')).toBe('>\t- a\n>   - |');
     });
@@ -4611,6 +4645,32 @@ describe('built-in markdown language typing', () => {
 
     it('F39: Enter in front of a tag on an item marker line is Markdown\'s own', async () => {
         expect(await typed('markdown', '- a |<b>x</b>', '\n')).toBe('- a\n- |<b>x</b>');
+    });
+
+    /**
+     * Presses Enter at the end of a Markdown document.
+     *
+     * @param doc - The document, without a caret marker; text holding `|` is fine.
+     * @returns The resulting document with `|` at the caret.
+     */
+    async function enterAtEnd(doc: string): Promise<string> {
+        // The leading `|` marks the caret at the start and is dropped; the caret then moves to the end.
+        const state = settle(await buildTypingState('markdown', '|' + doc));
+        const atEnd = state.update({ selection: EditorSelection.cursor(state.doc.length) }).state;
+
+        return show(typeText(atEnd, '\n'));
+    }
+
+    it('F42: Enter at the end of a column separator line that lazily continues a quote is Markdown\'s own', async () => {
+        expect(await enterAtEnd('> a\n|||')).toBe('> a\n|||\n> |');
+    });
+
+    it('F43: Enter at the end of a fence line that lazily continues a list item is Markdown\'s own', async () => {
+        expect(await enterAtEnd('- a\n:::')).toBe('- a\n:::\n|');
+    });
+
+    it('F44: Enter at the end of a fence opening line in a quote continues the quote', async () => {
+        expect(await enterAtEnd('> ::: x')).toBe('> ::: x\n> |');
     });
 
     it('F40: Backspace deletes the quote prefix of a new code line one character at a time', async () => {
