@@ -61,11 +61,23 @@ The library registers seven languages out of the box, each with a grammar and, w
 | `css` | `@codemirror/lang-css` | Prettier (`css` parser, via `prettier/plugins/postcss`) | syntax-error diagnostics |
 | `python` | `@codemirror/lang-python` | none — `format()` falls back to re-indenting | syntax-error diagnostics |
 
-The `markdown` language types HTML literally, because indentation changes what Markdown means (four spaces start a code block; in a list it decides the item). Typing `<div>` does not add `</div>`, typing `</` does not complete the tag, and Enter inside an HTML block keeps the current line's indentation, as on any other Markdown line. HTML is still highlighted, and tag completion still offers names when you type `<`. To get HTML auto-closing back, register your own `markdown` language with [`registerLanguage`](#registering-a-language).
+The `markdown` language types HTML literally, because indentation changes what Markdown means (four spaces start a code block; in a list it decides the item). Typing `<div>` does not add `</div>`, typing `</` does not complete the tag, and Enter inside an HTML block keeps the current line's indentation, as on any other Markdown line. HTML is still highlighted, and tag completion still offers names when you type `<`. To get HTML auto-closing back, register your own `markdown` language with [`registerLanguage`](#registering-a-language), but a grammar you register gets none of the built-in Markdown colours described below: only the shared rules colour its ranges, and everything else takes the text colour.
 
 The `markdown` language reads a tab as Markdown does: it reaches the next multiple of four columns. A tab after a heading's `#` run works as a space, so `#→Foo` (`→` is a tab) is a heading. After a `>`, a tab gives the marker one column, as a space would, and the rest of the tab belongs to the quote's content: `> - a` over `>→- b` nests `b` under `a`, as the [`Markdown`](/components/Markdown) viewer shows it. Highlighting, folding and Enter all read it that way.
 
-The `markdown` language is highlighted as source text: colour hints at the syntax, and nothing is drawn as the [`Markdown`](/components/Markdown) viewer draws it — no bold, italic, underline or size. Markup marks are grey: `#`, `*` and `**`, backticks, list and task markers, `>`, `---`, and a link's `[`, `](`, `)`, `<`, `>` and `:`. Heading text is blue and code green, and a character reference outside a link is green. Everything inside a link or image, one in a heading included, is in the text colour: its text, URL, reference label, title and character references, and any code in its text; so are the same parts of a link reference definition. Inline HTML inside link text keeps the `html` language's colours. Emphasised text and what the grammar does not read — `++underline++`, the `{…}` group of a `[text]{color=…}` span, other `{…}` attribute groups, tables and `:::` fences — are also in the text colour. A span's `[text]` is read as a link, so its brackets are grey. A quote is grey throughout. HTML is highlighted as in the `html` language, and an HTML comment outside a link is grey italic, as a comment is in every language; inside link text it is italic in the text colour.
+The `markdown` language colours each kind of Markdown syntax and keeps content in the text colour: prose, heading text, link text and titles, emphasised text, quotes and table cells. Nothing is drawn as the [`Markdown`](/components/Markdown) viewer draws it — no bold, italic, underline or size. Every colour reaches 4.5 : 1 contrast on the editor background, so the light and the dark theme each have their own set:
+
+| Kind | Colour | What takes it |
+| --- | --- | --- |
+| Inline marks | grey | `*`, `_`, `**`, `~~`, `++`, a code span's backticks, a link's or an image's `[`, `]`, `](`, `)` and `![`, an autolink's `<` `>`, a definition's `:` |
+| Block marks | violet | `#` runs and setext underlines, `>`, list markers, task boxes, thematic breaks, a code fence's lines and info string |
+| Destinations | teal | URLs, a reference link's `[label]`, both halves of a link reference definition |
+| Escapes | orange | backslash escapes, a backslash line break, character references such as `&amp;` |
+| HTML | rose | inline tags, HTML blocks, comments and processing instructions, whole |
+| Dialect | gold | the `{…}` group after a `[text]` span or an image, `:::` and `\|\|\|` lines, table pipes and delimiter rows, `<<` and `^^` merge cells |
+| Code | green | the text of a code span and of a fenced or indented code block |
+
+A `{…}` group after a link that ends with `)`, a single-tilde `~text~`, a bare URL and a table written directly under a paragraph line are text. A `:::` or `|||` line is coloured wherever it starts a line of text — also after a `>`, in a heading, or outside a fence — and a `<<` or `^^` cell is coloured outside the first column or the first body row even where the viewer cannot merge it. Every other language is highlighted as before.
 
 Enter in the `markdown` language does one of three things, decided by where the caret is:
 
@@ -395,7 +407,7 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 
 ## Theming
 
-The editor's chrome (background, gutters, cursor, selection) reads the project's CSS custom-property tokens directly, so a [`ThemeManager.setTheme`](/api/core/classes/ThemeManager) toggle recolours it immediately with no rebuild. The floating search panel is built from ordinary framework components, so it follows the same tokens automatically, with no theming code of its own; the match highlighting it drives, the completion tooltip, the fold gutter, and the lint markers/tooltip are themed here from the same tokens. Syntax colours come from a fixed, IDE-conventional palette (there is no per-token-kind theme token in the framework).
+The editor's chrome (background, gutters, cursor, selection) reads the project's CSS custom-property tokens directly, so a [`ThemeManager.setTheme`](/api/core/classes/ThemeManager) toggle recolours it immediately with no rebuild. The floating search panel is built from ordinary framework components, so it follows the same tokens automatically, with no theming code of its own; the match highlighting it drives, the completion tooltip, the fold gutter, and the lint markers/tooltip are themed here from the same tokens. Syntax colours come from a fixed, IDE-conventional palette (there is no per-token-kind theme token in the framework); the `markdown` language is the exception, with its own measured set of colours for the light scheme and another for the dark, chosen by the active theme's `colorScheme`. A custom theme with a dark background that declares `colorScheme: 'light'` gets the light colours.
 
 ## Linting
 
