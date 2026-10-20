@@ -412,6 +412,17 @@ page resets to empty.
   an image with no address; the command now declines it, as a pasted `<img>`
   with no `src` pastes as nothing. The `Markdown` viewer still draws
   `![a]()` as an `<img src="">`, as CommonMark reads it.
+- **`MarkdownEditor` moves a list item's nested items into the item's place
+  when the item leaves its list.** Making a list item's text a heading, a
+  paragraph, a quote or a code block, toggling its list off, Enter on its
+  emptied text and Backspace at its start left its nested list in an item
+  with no text, saved `- - b` and shown as an empty bullet. The nested
+  items now take the item's place, as siblings, at the level where the
+  item's outermost list stood (`- a`, `  - b` with a heading on `a` saves
+  `## a` and `- b`; a nested item lifted out of every list sends its own
+  nested items to that level, not under its parent), and the blocks after
+  the nested list go to the last of them. In source mode too. No consumer
+  action is needed.
 - **`Markdown` and `MarkdownEditor` read an escaped bracket in a link's or
   image's text as a bracket.** `[see \[1\]](/u)` showed as plain text
   wherever `[1]` was defined, an image's alt text lost such brackets
@@ -1202,6 +1213,17 @@ page resets to empty.
   inserted at the start left it before. The block holding the caret is now
   split only where the caret is inside its content, and a table that ends
   its container is followed by an empty paragraph. No consumer action is
+  needed.
+
+- **`MarkdownEditor` leaves no empty bullet when it inserts or pastes a
+  block in a list item.** `insertHorizontalRule()`, `insertTable()` and a
+  pasted rule or table in a nested item's text, or at the end of an item's
+  text over its nested list, left the nested list under a new empty bullet
+  (`- - b`); the block now goes into the item, in front of its nested list.
+  In a task item's text the second half lost its checkbox and now gets an
+  unchecked one, as after Enter; with the caret right after the checkbox,
+  which a click on the text's start gives, the checkbox became the text
+  `[x]` and the block now goes above the item. No consumer action is
   needed.
 
 - **`mergeTableCells()` leaves a usable table.** An empty first cell no
