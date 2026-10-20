@@ -8302,12 +8302,12 @@ describe('MarkdownEditor link, format and paste command fixes', () => {
 
     describe('D: a command declined after trying puts back all the selection carried', () => {
         const CASES: Array<{ name: string; markdown: string; text: string; offset: number; run: (editor: MarkdownEditor) => void; pending?: boolean }> = [
-            { name: 'D1: toggleUnderline() over a plus', markdown: '**a+b** x', text: 'a+b', offset: 1, run: (editor) => editor.toggleUnderline() },
+            { name: 'D1: toggleUnderline() in code between letters', markdown: 'x`(a)`b', text: '(a)', offset: 1, run: (editor) => editor.toggleUnderline() },
             { name: 'D2: setTextColor() over a bracket', markdown: '**a]b** x', text: 'a]b', offset: 1, run: (editor) => editor.setTextColor('#f00') },
             { name: 'D3: toggleBold() in code beside parentheses', markdown: 'x`(a)`b', text: '(a)', offset: 1, run: (editor) => editor.toggleBold() },
             { name: 'D4: toggleLink() with a URL holding a line break', markdown: 'hello world', text: 'hello world', offset: 8, run: (editor) => editor.toggleLink('a\nb') },
             {
-                name: 'D5: D1 with a format and a style pending at the caret', markdown: '**a+b** x', text: 'a+b', offset: 1,
+                name: 'D5: D1 with a format and a style pending at the caret', markdown: 'x`(a)`b', text: '(a)', offset: 1,
                 run: (editor) => editor.toggleUnderline(), pending: true,
             },
         ];
@@ -8347,16 +8347,16 @@ describe('MarkdownEditor link, format and paste command fixes', () => {
             });
         }
 
-        /** Runs `run` at a range over `a+b`, which no format can be saved on, and checks it changed and reported nothing. */
+        /** Runs `run` at a range over code between two letters, which underline cannot be saved on, and checks it changed and reported nothing. */
         function expectRangeLeftAlone(run: (editor: MarkdownEditor) => void): void {
-            const editor = editorOf('a+b x');
+            const editor = editorOf('x`(a)`b');
 
-            selectFromCode(editor, 'a+b x', 0, 'a+b x', 3);
+            selectFromCode(editor, '(a)', 0, '(a)', 3);
 
             const place = selectionPlaceOf(editor);
-            const untouched = editorOf('a+b x');
+            const untouched = editorOf('x`(a)`b');
 
-            selectFromCode(untouched, 'a+b x', 0, 'a+b x', 3);
+            selectFromCode(untouched, '(a)', 0, '(a)', 3);
 
             const undoDepth = undoDepthOf(untouched);
             const reported = vi.fn();
@@ -8365,13 +8365,13 @@ describe('MarkdownEditor link, format and paste command fixes', () => {
             editor.on('selectionstate', reported);
             run(editor);
 
-            expect(editor.getValue()).toBe('a+b x');
+            expect(editor.getValue()).toBe('x`(a)`b');
             expect(selectionPlaceOf(editor)).toBe(place);
             expect(reported).not.toHaveBeenCalled();
             expect(undoDepthOf(editor)).toBe(undoDepth);
         }
 
-        it('D6: toggleUnderline() over a range holding a plus is left as it was (control)', () => {
+        it('D6: toggleUnderline() over a range of code between letters is left as it was (control)', () => {
             expectRangeLeftAlone((editor) => editor.toggleUnderline());
         });
 

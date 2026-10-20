@@ -202,14 +202,14 @@ function keptImageDocument(random: () => number): MarkdownEditor {
     return editor;
 }
 
-/** Whether the documents hold bold and struck text, and link reference definitions (see {@link emphasisLine}). */
+/** Whether the documents hold bold, struck and underlined text, and link reference definitions (see {@link emphasisLine}). */
 let withEmphasis = false;
 
 /** Texts that open or close a reference label, or look like a reference, between the emphasis of {@link emphasisLine}. */
 const LABEL_TEXTS = ['[', ']', '[a]', '[A]', '[b', 'a]', '[x ', ' ]', '[a][', '(u)', '*', '_', '~', ' ', 'x'];
 
 /**
- * One line of text and bold or struck words between brackets: what `marked` masks when a definition names the label.
+ * One line of text and bold, struck or underlined words between brackets: what `marked` masks when a definition names the label.
  *
  * @param random - The stream.
  * @returns The line's text nodes.
@@ -224,6 +224,10 @@ function emphasisLine(random: () => number): LexicalNode[] {
 
         if (roll < 0.35) {
             return $createTextNode('s').toggleFormat('strikethrough');
+        }
+
+        if (roll < 0.45) {
+            return $createTextNode('u').toggleFormat('underline');
         }
 
         return $createTextNode(pick(random, LABEL_TEXTS));

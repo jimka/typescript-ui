@@ -2478,13 +2478,13 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             });
 
             it('a cell whose format the save could not write is declined alone, and the press still undoes', () => {
-                const source = `${HEAD}| a+b | d |`;
+                const source = `${HEAD}| c <b> y | d |`;
                 const editor = load(source);
 
-                selectCells(editor, 'a+b', 'd');
+                selectCells(editor, 'c ', 'd');
                 editor.toggleUnderline();
 
-                expect(editor.getValue()).toBe(`${HEAD}| a+b | ++d++ |`);
+                expect(editor.getValue()).toBe(`${HEAD}| c <b> y | ++d++ |`);
                 expectSaveShowsSurface(editor);
 
                 lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
@@ -2493,15 +2493,15 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             });
 
             it('a press every cell declines adds no undo step', () => {
-                const source = `${HEAD}| a+b | d |`;
+                const source = `${HEAD}| c <b> y | d |`;
                 const editor = load(source);
 
                 select(editor, ['d', 0], ['d', 1]);
                 editor.toggleBold();
-                selectCells(editor, 'a+b', 'a+b');
+                selectCells(editor, 'c ', 'c ');
                 editor.toggleUnderline();
 
-                expect(editor.getValue()).toBe(`${HEAD}| a+b | **d** |`);
+                expect(editor.getValue()).toBe(`${HEAD}| c <b> y | **d** |`);
 
                 lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
 
@@ -2509,10 +2509,10 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             });
 
             it('a range over that cell text declines too (control)', () => {
-                const source = `${HEAD}| a+b | d |`;
+                const source = `${HEAD}| c <b> y | d |`;
                 const editor = load(source);
 
-                select(editor, ['a+b', 0], ['a+b', 3]);
+                select(editor, ['c ', 0], [' y', 2]);
                 editor.toggleUnderline();
 
                 expect(editor.getValue()).toBe(source);
@@ -2605,15 +2605,15 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             }
 
             const ONE_COLUMN = '| h |\n| --- |\n';
-            // The source writes `C++` escaped (`C\+\+`), as saves once did; the save keeps that unedited cell as written (`C\+\+`).
-            const UNDERLINE_DECLINED_BY_ONE_CELL: ReadonlyArray<[name: string, source: string, from: string, to: string, on: string]> = [
-                ['C++ above Rust', `${ONE_COLUMN}| C\\+\\+ |\n| Rust |`, 'C++', 'Rust', `${ONE_COLUMN}| C\\+\\+ |\n| ++Rust++ |`],
-                ['a+b beside d', `${HEAD}| a+b | d |`, 'a+b', 'd', `${HEAD}| a+b | ++d++ |`],
-                ['a lone + beside d', `${HEAD}| + | d |`, '+', 'd', `${HEAD}| + | ++d++ |`],
+            // Underline holds a plus sign: a `+` at its edge is escaped, so the run of its marks stays two long.
+            const UNDERLINE_OVER_PLUS_CELLS: ReadonlyArray<[name: string, source: string, from: string, to: string, on: string]> = [
+                ['C++ above Rust', `${ONE_COLUMN}| C++ |\n| Rust |`, 'C++', 'Rust', `${ONE_COLUMN}| ++C\\+\\+++ |\n| ++Rust++ |`],
+                ['a+b beside d', `${HEAD}| a+b | d |`, 'a+b', 'd', `${HEAD}| ++a+b++ | ++d++ |`],
+                ['a lone + beside d', `${HEAD}| + | d |`, '+', 'd', `${HEAD}| ++\\+++ | ++d++ |`],
             ];
 
-            it.each(UNDERLINE_DECLINED_BY_ONE_CELL)(
-                'underline over %s is read over the cells that take it: it comes off with the second press, and each press is one undo step',
+            it.each(UNDERLINE_OVER_PLUS_CELLS)(
+                'underline over %s goes on every cell: it comes off with the second press, and each press is one undo step',
                 (_name, source, from, to, on) => {
                     const editor = load(source);
 
@@ -2647,13 +2647,11 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
                 },
             );
 
-            it.each(TOGGLES)('%s over cells taking and declining it goes on the ones taking it, comes off them, and each press undoes', (name, toggle, open, close) => {
+            it.each(TOGGLES)('%s over cells taking and declining it goes on the ones taking it, comes off them, and each press undoes', (_name, toggle, open, close) => {
                 const head = '| h | i | j |\n| --- | --- | --- |\n';
                 const source = `${head}| c <b> y | a+b | d |`;
                 const editor = load(source);
-                // Underline cannot hold the plus sign; every other format takes that cell.
-                const plusCell = name === 'underline' ? 'a+b' : `${open}a+b${close}`;
-                const on = `${head}| c <b> y | ${plusCell} | ${open}d${close} |`;
+                const on = `${head}| c <b> y | ${open}a+b${close} | ${open}d${close} |`;
 
                 selectCells(editor, 'c ', 'd');
                 toggle(editor);
@@ -2678,23 +2676,22 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
                 ['an empty cell', ''],
                 ['a cell holding an image alone', '![i](/i.png)'],
             ])('%s takes no format, so a press the one other cell declines adds no undo step', (_name, cell) => {
-                const source = `para\n\n${HEAD}| ${cell} | a+b |`;
+                const source = `para\n\n${HEAD}| ${cell} | c <b> y |`;
                 const editor = load(source);
 
                 select(editor, ['para', 0], ['para', 4]);
                 editor.toggleBold();
-                selectRowOf(editor, 'a+b');
+                selectRowOf(editor, 'c ');
                 editor.toggleUnderline();
 
-                expect(editor.getValue()).toBe(`**para**\n\n${HEAD}| ${cell} | a+b |`);
+                expect(editor.getValue()).toBe(`**para**\n\n${HEAD}| ${cell} | c <b> y |`);
 
                 undo(editor);
 
                 expect(editor.getValue()).toBe(source);
             });
 
-            it.each<[name: string, toggle: (editor: MarkdownEditor) => void, format: 'underline' | 'code', mark: string]>([
-                ['underline', (editor) => editor.toggleUnderline(), 'underline', '++'],
+            it.each<[name: string, toggle: (editor: MarkdownEditor) => void, format: 'code', mark: string]>([
                 ['inline code', (editor) => editor.toggleInlineCode(), 'code', '`'],
             ])('%s counts a space at a cell\'s edge: on all of the text but that space is not on, so the press puts it there', (_name, toggle, format, mark) => {
                 const editor = load(`${HEAD}| ${mark}c${mark} | ${mark}d${mark} |`);
@@ -3160,6 +3157,26 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             expectSaveShowsSurface(editor);
         });
 
+        it('underline over spaces around a word underlines the word only', () => {
+            const editor = load('a b c');
+
+            select(editor, ['a b c', 1], ['a b c', 4]);
+            editor.toggleUnderline();
+
+            expect(editor.getValue()).toBe('a ++b++ c');
+            expectSaveShowsSurface(editor);
+        });
+
+        it('underline over bold text against a letter is declined, as no form of it reads back', () => {
+            const editor = load('**bu**zq');
+
+            select(editor, ['bu', 0], ['bu', 2]);
+            editor.toggleUnderline();
+
+            expect(editor.getValue()).toBe('**bu**zq');
+            expectSaveShowsSurface(editor);
+        });
+
         it('italic on whitespace alone formats nothing', () => {
             const editor = load('a b');
 
@@ -3239,6 +3256,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
                 ['bold', (editor) => editor.toggleBold(), (state) => state.bold, 'This is a **string,** of text'],
                 ['italic', (editor) => editor.toggleItalic(), (state) => state.italic, 'This is a *string,* of text'],
                 ['strikethrough', (editor) => editor.toggleStrikethrough(), (state) => state.strikethrough, 'This is a ~~string,~~ of text'],
+                ['underline', (editor) => editor.toggleUnderline(), (state) => state.underline, 'This is a ++string,++ of text'],
             ];
 
             for (const [name, toggle, shown, formatted] of toggles) {
@@ -3377,7 +3395,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             ['bold whose content starts with punctuation right after a letter', 'x(a) b', ['x(a)', 1], ['x(a)', 4], (editor: MarkdownEditor) => editor.toggleBold()],
             ['italic whose content ends with punctuation right before a letter', 'a (b)c', ['(b)c', 0], ['(b)c', 3], (editor: MarkdownEditor) => editor.toggleItalic()],
             ['strikethrough over a code span right after a letter', 'a`c` d', ['a', 1], ['c', 1], (editor: MarkdownEditor) => editor.toggleStrikethrough()],
-            ['underline over a plus sign', 'a+b c', ['a+b', 0], ['a+b', 3], (editor: MarkdownEditor) => editor.toggleUnderline()],
+            ['underline over parentheses right after a letter', 'x(a) b', ['x(a)', 1], ['x(a)', 4], (editor: MarkdownEditor) => editor.toggleUnderline()],
             ['a colour over brackets', 'a[b]c d', ['a[b]c', 0], ['a[b]c', 5], (editor: MarkdownEditor) => editor.setTextColor('#cc0000')],
             ['a font over a bracket', 'a]b', ['a]b', 0], ['a]b', 3], (editor: MarkdownEditor) => editor.setFontFamily('Georgia')],
         ];
@@ -3734,7 +3752,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             expectSaveShowsSurface(editor);
         });
 
-        it('a plus sign typed into underlined text shows without the underline, as the save writes it', () => {
+        it('a plus sign typed into underlined text stays underlined, as the save writes it', () => {
             const editor = load('++ab++');
 
             select(editor, ['ab', 1]);
@@ -3745,7 +3763,8 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
                 selection.insertText('+');
             });
 
-            expect(runs(editor)).toEqual([['a', 8], ['+', 0], ['b', 8]]);
+            expect(runs(editor)).toEqual([['a+b', 8]]);
+            expect(editor.getValue()).toBe('++a+b++');
             expectSaveShowsSurface(editor);
         });
 

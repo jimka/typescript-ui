@@ -387,6 +387,7 @@ const SOURCE_COMMANDS: ReadonlyArray<readonly [name: string, run: (editor: Markd
     ['code', (editor) => editor.setBlockType('code')],
     ['bold', (editor) => editor.toggleBold()],
     ['italic', (editor) => editor.toggleItalic()],
+    ['underline', (editor) => editor.toggleUnderline()],
     ['inline code', (editor) => editor.toggleInlineCode()],
     ['link', (editor) => editor.toggleLink('https://example.com/x')],
     ['clear formatting', (editor) => editor.clearFormatting()],

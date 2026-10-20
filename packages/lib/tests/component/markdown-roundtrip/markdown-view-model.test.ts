@@ -223,13 +223,13 @@ describe('viewer projection', () => {
     });
 
     it('WS1. drops a space that follows a space, across a run boundary, as HTML collapses it', () => {
-        expect(viewerModel('++a ++ b').blocks).toEqual([
+        expect(viewerModel('++a&#32;++ b').blocks).toEqual([
             { kind: 'paragraph', runs: [textRun('a ', ['underline']), textRun('b')] },
         ]);
     });
 
     it('WS2. trims the spaces at a line edge, through a run the trim empties', () => {
-        expect(viewerModel('++ ++ a').blocks).toEqual([{ kind: 'paragraph', runs: [textRun('a')] }]);
+        expect(viewerModel('++&#32;++ a').blocks).toEqual([{ kind: 'paragraph', runs: [textRun('a')] }]);
     });
 
     it('WS3. gives a space the bold and italic of the text on both sides of it, since a space shows neither', () => {
@@ -238,6 +238,51 @@ describe('viewer projection', () => {
         expect(viewerModel('***a*** *b*').blocks).toEqual([
             { kind: 'paragraph', runs: [textRun('a', ['bold', 'italic']), textRun(' b', ['italic'])] },
         ]);
+    });
+});
+
+describe('underline pairs its ++ marks as strikethrough pairs ~~', () => {
+    const u = (text: string): Run => textRun(text, ['underline']);
+    const t = (text: string): Run => textRun(text);
+
+    // Each row: the source, what the viewer shows, and the `~~` form of the same source, which must show the same with
+    // strikethrough in place of underline.
+    const ROWS: ReadonlyArray<[source: string, runs: Run[]]> = [
+        ['C++ and C++', [t('C++ and C++')]],
+        ['Use C++ or C++20.', [t('Use C++ or C++20.')]],
+        ['x ++ y ++ z', [t('x ++ y ++ z')]],
+        ['++a ++', [t('++a ++')]],
+        ['++ a++', [t('++ a++')]],
+        ['a++ b++', [t('a++ b++')]],
+        ['a++b++c', [t('a'), u('b'), t('c')]],
+        ['++a++b', [u('a'), t('b')]],
+        ['(++a++)', [t('('), u('a'), t(')')]],
+        ['++a+b++', [u('a+b')]],
+        ['++a++ and C++', [u('a'), t(' and C++')]],
+        ['++C++ is fun++', [u('C'), t(' is fun++')]],
+        ['++a ++b++ c++', [u('a b c')]],
+    ];
+
+    for (const [source, runs] of ROWS) {
+        it(`${JSON.stringify(source)} shows as the ~~ form does`, () => {
+            const struck = runs.map((run) => (run.kind === 'text' && run.marks.includes('underline') ? textRun(run.text, ['strike']) : run));
+
+            expect(viewerModel(source).blocks).toEqual([{ kind: 'paragraph', runs }]);
+            expect(viewerModel(source.replace(/\+/g, '~')).blocks).toEqual([{ kind: 'paragraph', runs: struck.map((run) => (run.kind === 'text' ? textRun(run.text.replace(/\+/g, '~'), run.marks) : run)) }]);
+        });
+    }
+
+    it('a run of three or more plus signs neither opens nor closes', () => {
+        expect(viewerModel('+++a+++').blocks).toEqual([{ kind: 'paragraph', runs: [t('+++a+++')] }]);
+        expect(viewerModel('++a++++b++').blocks).toEqual([{ kind: 'paragraph', runs: [u('a++++b')] }]);
+        expect(viewerModel('a+++b+++c').blocks).toEqual([{ kind: 'paragraph', runs: [t('a+++b+++c')] }]);
+    });
+
+    it('an escaped plus is no part of a run, and a ++ in a code span or a link\'s text is not a mark of an underline around it', () => {
+        expect(viewerModel('\\+++a++').blocks).toEqual([{ kind: 'paragraph', runs: [t('+'), u('a')] }]);
+        expect(viewerModel('++a\\+++').blocks).toEqual([{ kind: 'paragraph', runs: [u('a+')] }]);
+        expect(viewerModel('++a `b++` c++').blocks).toEqual([{ kind: 'paragraph', runs: [u('a '), textRun('b++', ['code', 'underline']), u(' c')] }]);
+        expect(viewerModel('++[t](/a+b)++').blocks).toEqual([{ kind: 'paragraph', runs: [textRun('t', ['underline'], { href: '/a+b', title: null })] }]);
     });
 });
 

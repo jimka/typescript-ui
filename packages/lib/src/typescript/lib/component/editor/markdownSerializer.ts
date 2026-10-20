@@ -295,8 +295,14 @@ const LINE_START_ESCAPED: ReadonlySet<string> = new Set(["#", ">", "-", "+", "*"
 /** The delimiter characters a lean writing leaves bare unless the block holds two runs of one ({@link leanBlock}). */
 const PAIRING_DELIMITERS: readonly string[] = ["*", "_", "~", "`", "+"];
 
-/** A run of each pairing delimiter character; the underline grammar reads only a run of two or more `+`. */
-const DELIMITER_RUN: Readonly<Record<string, RegExp>> = { "*": /\*+/g, "_": /_+/g, "~": /~+/g, "`": /`+/g, "+": /\+{2,}/g };
+/** A run of each pairing delimiter character but `+`, whose runs pair by {@link plusRunsCanPair}. */
+const DELIMITER_RUN: Readonly<Record<string, RegExp>> = { "*": /\*+/g, "_": /_+/g, "~": /~+/g, "`": /`+/g };
+
+/** A run of `+`; the underline grammar reads only a run of exactly two ({@link UNDERLINE_RUN_LENGTH}). */
+const PLUS_RUN = /\++/g;
+
+/** The length of the `+` run an underline opens and closes with. */
+const UNDERLINE_RUN_LENGTH = 2;
 
 /** The characters whose run a delimiter run next to it joins, or changes the flanking of. */
 const DELIMITER_CHARACTERS = "*_~`+";
@@ -827,8 +833,6 @@ interface InlineWriter {
     stack: Mark[];
     /** Trailing whitespace (and soft breaks) of the last text, written after any delimiter that closes next. */
     pending: Piece[];
-    /** Whether the held-back whitespace is underlined, so an underline closing next writes it before its delimiter. */
-    pendingUnderline: boolean;
     /** Whether the output is inside a link's text. */
     inLink: boolean;
     /** Computes the order the next unit's missing marks open in, outermost first. */
@@ -1079,7 +1083,7 @@ export function $readDefinitions(): DocumentDefinitions {
  */
 export function $serializeLinkContent(link: LinkNode): string {
     const writer: InlineWriter = {
-        pieces: [], context: MULTI_LINE, policy: WRITING_POLICIES[0]!, stack: [], pending: [], pendingUnderline: false,
+        pieces: [], context: MULTI_LINE, policy: WRITING_POLICIES[0]!, stack: [], pending: [],
         inLink: true, openOrder: () => MARK_ORDER,
     };
 
@@ -1606,9 +1610,9 @@ function headingContext(node: HeadingNode): InlineContext {
 
 /**
  * Tells whether a run of inline content reads back as the editor shows it:
- * the reading of its nodes as they are — before the writer moves a `+` out
- * of underline or a bracket out of a styled span, whose grammars cannot hold
- * them — equals the reading of the Markdown written for it.
+ * the reading of its nodes as they are — before the writer moves a bracket
+ * out of a styled span, whose grammar cannot hold one — equals the reading of
+ * the Markdown written for it.
  *
  * @param nodes - The inline nodes.
  * @param context - Where they are written.
@@ -4511,7 +4515,7 @@ function leanReadsAsFull(lean: string, full: string, context: InlineContext): bo
  */
 function writeInlinePieces(segments: Segment[], context: InlineContext, policy: WritingPolicy): Piece[] {
     const writer: InlineWriter = {
-        pieces: [], context, policy, stack: [], pending: [], pendingUnderline: false, inLink: false, openOrder: () => MARK_ORDER,
+        pieces: [], context, policy, stack: [], pending: [], inLink: false, openOrder: () => MARK_ORDER,
     };
 
     writeUnits(writer, groupSegments(segments), []);
@@ -4661,8 +4665,8 @@ function readingScore(reading: readonly string[] | null, intended: readonly stri
  *
  * @param nodes - The inline nodes.
  * @param asShown - Whether to keep each text node's characters with its own
- *   marks and style, as the editor shows them, rather than moving a `+` out
- *   of underline and a bracket out of a styled span, as the writer must.
+ *   marks and style, as the editor shows them, rather than moving a bracket
+ *   out of a styled span, as the writer must.
  * @returns The segments, in document order.
  */
 function flattenInline(nodes: LexicalNode[], asShown = false): Segment[] {
@@ -4846,16 +4850,14 @@ function textNodeSegments(node: TextNode, link: LinkNode | null, asShown = false
 
 /**
  * Turns one line of a text node into segments. Styled text is split at `[`
- * and `]`, which go outside the span (its grammar cannot hold them), and
- * underlined text at `+`, which goes outside the underline (likewise).
+ * and `]`, which go outside the span (its grammar cannot hold them).
  *
  * @param line - The line's text.
  * @param base - The node's segment, its text empty.
  * @returns Its segments; none for empty text.
  */
 function textSegments(line: string, base: TextSegment): TextSegment[] {
-    const marks = base.marks;
-    const separators = (base.style !== "" ? "[]" : "") + (marks.includes("underline") ? "+" : "");
+    const separators = base.style !== "" ? "[]" : "";
     const segments: TextSegment[] = [];
     let current = "";
 
@@ -4867,10 +4869,7 @@ function textSegments(line: string, base: TextSegment): TextSegment[] {
         }
 
         segments.push({ ...base, text: current });
-
-        segments.push(char === "+"
-            ? { ...base, text: char, marks: marks.filter((mark) => mark !== "underline") }
-            : { ...base, text: char, style: "" });
+        segments.push({ ...base, text: char, style: "" });
 
         current = "";
     }
@@ -5357,11 +5356,8 @@ function writeUnits(writer: InlineWriter, units: readonly Unit[], inherited: rea
  * outermost, the one carried furthest first; the others in the fixed order.
  * The mark that runs on thereby stays open when the shorter one closes before
  * the whitespace, so the whitespace keeps it (`++*4* 6++`, not
- * `*++4++* ++6++`). Underline, which holds the whitespace at its own edges,
- * opens outside the marks that end with the unit when the unit's text starts
- * or ends with whitespace (`++*a* ++b`). Between letters the fixed order is
- * kept: there, opening a different mark outermost only moves where
- * delimiters meet mid-word.
+ * `*++4++* ++6++`). Between letters the fixed order is kept: there, opening
+ * a different mark outermost only moves where delimiters meet mid-word.
  *
  * @param units - The units at one group level.
  * @param index - The index of the unit about to be written.
@@ -5377,10 +5373,7 @@ function openingOrder(units: readonly Unit[], index: number): Mark[] {
             end += 1;
         }
 
-        const holdsEdgeWhitespace = mark === "underline" && end > index
-            && (unitEdge(units[index]!, "start") || unitEdge(units[index]!, "end"));
-
-        return acrossWhitespace ? end - index : holdsEdgeWhitespace ? 1 : 0;
+        return acrossWhitespace ? end - index : 0;
     };
 
     return MARK_ORDER.slice().sort((a, b) => rank(b) - rank(a));
@@ -5487,8 +5480,7 @@ function writeSegment(writer: InlineWriter, segment: Segment, inherited: readonl
  * the image's `)` (`~~, ![](g)~~`). Before text that starts with whitespace,
  * the marks that text carries stay open, or open before the image's `!` —
  * where an opening delimiter can stand, after whitespace, punctuation or a
- * line edge, or anywhere for underline, whose grammar has no flanking rule —
- * so that whitespace keeps them (`~~![](g) 2~~`).
+ * line edge — so that whitespace keeps them (`~~![](g) 2~~`).
  *
  * @param writer - The writer.
  * @param inherited - The marks open at enclosing group levels.
@@ -5502,8 +5494,8 @@ function imageMarks(writer: InlineWriter, inherited: readonly Mark[], next: Unit
     const staying = writer.stack.filter((mark) => kept.includes(mark) || carried.includes(mark));
     const closes = staying.length < writer.stack.length;
 
-    const opens = carried.filter((mark) => !writer.stack.includes(mark) && (mark === "underline"
-        || writer.pending.length > 0 || closes || opensBeforePunctuation(writer.pieces.at(-1), MARK_DELIMITERS[mark])));
+    const opens = carried.filter((mark) => !writer.stack.includes(mark)
+        && (writer.pending.length > 0 || closes || opensBeforePunctuation(writer.pieces.at(-1), MARK_DELIMITERS[mark])));
 
     return [...staying, ...opens];
 }
@@ -5524,9 +5516,9 @@ function imageMarks(writer: InlineWriter, inherited: readonly Mark[], next: Unit
  */
 function invisibleRunMarks(writer: InlineWriter, own: readonly Mark[], next: Unit | undefined): Mark[] {
     return own.filter((mark) => {
-        const opens = mark === "underline" || writer.stack.includes(mark) || writer.pending.length > 0
+        const opens = writer.stack.includes(mark) || writer.pending.length > 0
             || opensBeforePunctuation(writer.pieces.at(-1), MARK_DELIMITERS[mark]);
-        const closes = mark === "underline" || (next !== undefined && unitCarries(next, mark)) || closesAfterPunctuation(next);
+        const closes = (next !== undefined && unitCarries(next, mark)) || closesAfterPunctuation(next);
 
         return opens && closes;
     });
@@ -5579,10 +5571,8 @@ function closesAfterPunctuation(next: Unit | undefined): boolean {
 
 /**
  * Writes a text segment: a code span inside its marks, or text whose edge
- * whitespace sits outside the delimiters around it — except underline's,
- * whose grammar has no flanking rule, so it stays inside. Whitespace alone
- * opens no mark but underline — it keeps the open marks it carries and is
- * held back.
+ * whitespace sits outside the delimiters around it. Whitespace alone opens
+ * no mark — it keeps the open marks it carries and is held back.
  *
  * @param writer - The writer.
  * @param segment - The text segment.
@@ -5598,16 +5588,8 @@ function writeTextSegment(writer: InlineWriter, segment: TextSegment, marks: rea
 
     const [, leading, core, trailing] = /^(\s*)(.*?)(\s*)$/s.exec(segment.text)!;
 
-    const underlined = segment.marks.includes("underline");
-
     if (core === "") {
         keepCarriedMarks(writer, marks);
-
-        if (marks.includes("underline") && !writer.stack.includes("underline")) {
-            syncMarks(writer, [...writer.stack, "underline"], "");
-        }
-
-        writer.pendingUnderline = (writer.pending.length === 0 || writer.pendingUnderline) && underlined;
         writer.pending.push({ kind: "text", text: segment.text });
 
         return;
@@ -5616,7 +5598,6 @@ function writeTextSegment(writer: InlineWriter, segment: TextSegment, marks: rea
     syncMarks(writer, marks, leading!);
     writer.pieces.push({ kind: "text", text: core! });
     writer.pending = trailing === "" ? [] : [{ kind: "text", text: trailing! }];
-    writer.pendingUnderline = underlined;
 }
 
 /**
@@ -5658,8 +5639,8 @@ function isKeptShortcutReference(segment: SourceSegment): boolean {
  * a line end (a space where content cannot span lines), and each `|` in a
  * table cell is escaped. A whitespace-only source (a soft break) is held
  * back like trailing whitespace, so a delimiter closing next is written
- * before it, not at the start of the next line; it opens no mark but
- * underline, as whitespace text does.
+ * before it, not at the start of the next line; it opens no mark, as
+ * whitespace text does.
  *
  * @param writer - The writer.
  * @param segment - The source segment.
@@ -5679,13 +5660,6 @@ function writeSourceSegment(writer: InlineWriter, segment: SourceSegment, marks:
         writer.pieces.push(...pieces);
     } else {
         keepCarriedMarks(writer, marks);
-
-        // Underline, whose grammar has no flanking rule, holds a soft break alone (`++` newline `++`).
-        if (marks.includes("underline") && !writer.stack.includes("underline")) {
-            syncMarks(writer, [...writer.stack, "underline"], "");
-        }
-
-        writer.pendingUnderline = (writer.pending.length === 0 || writer.pendingUnderline) && segment.marks.includes("underline");
         writer.pending.push(...pieces);
     }
 }
@@ -5701,7 +5675,7 @@ function writeSourceSegment(writer: InlineWriter, segment: SourceSegment, marks:
  */
 function writeGroup(writer: InlineWriter, group: LinkGroup | StyleGroup, inherited: readonly Mark[]): void {
     if (group.kind === "style") {
-        writeBracketed(writer, group, inherited, "", `]{${group.style}}`);
+        writeBracketed(writer, group, inherited, `]{${group.style}}`);
 
         return;
     }
@@ -5718,11 +5692,11 @@ function writeGroup(writer: InlineWriter, group: LinkGroup | StyleGroup, inherit
     // `[…](…)` fallback; a link loaded from that fallback is no longer bare,
     // so where the marks go inside links it is written with them inside —
     // and so is this one, for a save loaded and saved again to be unchanged.
-    const marksInside = writer.policy.marksInsideGroups && commonMarks(group, inherited, "").length > 0;
+    const marksInside = writer.policy.marksInsideGroups && commonMarks(group, inherited).length > 0;
     const bare = marksInside ? null : writeBareAutolink(link, writer.context);
 
     if (bare !== null) {
-        syncMarks(writer, commonMarks(group, inherited, ""), "");
+        syncMarks(writer, commonMarks(group, inherited), "");
         writer.pieces.push(bare);
 
         return;
@@ -5731,7 +5705,7 @@ function writeGroup(writer: InlineWriter, group: LinkGroup | StyleGroup, inherit
     const autolink = writeAutolink(link, writer.context, true);
 
     if (autolink !== null) {
-        syncMarks(writer, commonMarks(group, inherited, ""), "");
+        syncMarks(writer, commonMarks(group, inherited), "");
         writer.pieces.push({ kind: "syntax", text: autolink });
 
         return;
@@ -5739,7 +5713,7 @@ function writeGroup(writer: InlineWriter, group: LinkGroup | StyleGroup, inherit
 
     const destination = writeLinkDestination(link, writer.context);
 
-    writeBracketed(writer, group, inherited, destination, `]${destination}`);
+    writeBracketed(writer, group, inherited, `]${destination}`);
 }
 
 /**
@@ -5750,15 +5724,12 @@ function writeGroup(writer: InlineWriter, group: LinkGroup | StyleGroup, inherit
  * @param writer - The writer.
  * @param group - The group.
  * @param inherited - The marks open at enclosing group levels.
- * @param after - What a link writes after its text (its destination, or its
- *   reference's label), whose `+` keeps underline from spanning it; `""` for
- *   a style group.
  * @param closing - The syntax that closes the group, from its `]` on.
  */
 function writeBracketed(
-    writer: InlineWriter, group: LinkGroup | StyleGroup, inherited: readonly Mark[], after: string, closing: string,
+    writer: InlineWriter, group: LinkGroup | StyleGroup, inherited: readonly Mark[], closing: string,
 ): void {
-    syncMarks(writer, writer.policy.marksInsideGroups ? [] : commonMarks(group, inherited, after), "");
+    syncMarks(writer, writer.policy.marksInsideGroups ? [] : commonMarks(group, inherited), "");
 
     const outer = writer.stack;
     const outerInLink = writer.inLink;
@@ -5836,13 +5807,13 @@ function writeReference(writer: InlineWriter, group: LinkGroup, link: ReferenceL
     const unchanged = $serializeLinkContent(link) === reference.importedContent;
 
     if (reference.form === "full" || !unchanged) {
-        writeBracketed(writer, group, inherited, `[${label}]`, `][${label}]`);
+        writeBracketed(writer, group, inherited, `][${label}]`);
 
         return;
     }
 
     const own = labelMarks(reference.label);
-    const marks = commonMarks(group, inherited, `[${label}]`).filter((mark) => !own.includes(mark) || writer.stack.includes(mark));
+    const marks = commonMarks(group, inherited).filter((mark) => !own.includes(mark) || writer.stack.includes(mark));
 
     syncMarks(writer, marks, "");
 
@@ -5962,21 +5933,17 @@ function holdsOddCodeSpan(pieces: readonly Piece[]): boolean {
 
 /**
  * The marks every text or source segment of a group carries beyond the
- * inherited ones. A break carries none. Underline is left out when
- * what the link writes after its text (its destination, or its reference's
- * label) holds a `+`, which the underline grammar cannot span.
+ * inherited ones. A break carries none.
  *
  * @param group - The group.
  * @param inherited - The marks open at enclosing group levels.
- * @param destination - The link's written destination or label, or `""` for a style group.
  * @returns The common marks, in the fixed order.
  */
-function commonMarks(group: LinkGroup | StyleGroup, inherited: readonly Mark[], destination: string): Mark[] {
+function commonMarks(group: LinkGroup | StyleGroup, inherited: readonly Mark[]): Mark[] {
     const segments = group.units.flatMap((unit) => (unit.kind === "style" ? unit.units : [unit]));
 
     return MARK_ORDER.filter((mark) =>
         !inherited.includes(mark)
-        && !(mark === "underline" && destination.includes("+"))
         && segments.every((segment) => (segment.kind === "text" || segment.kind === "source" || segment.kind === "image") && segment.marks.includes(mark)));
 }
 
@@ -5984,8 +5951,7 @@ function commonMarks(group: LinkGroup | StyleGroup, inherited: readonly Mark[], 
  * Brings the open marks to `target`: closes from the top of the stack down
  * to (and including) the lowest mark `target` lacks, writes the held-back
  * whitespace and `leading`, then opens `target`'s missing marks in the fixed
- * order. Whitespace thereby sits outside the delimiters it borders, except
- * an underline's: an underline opening here opens first and holds `leading`.
+ * order. Whitespace thereby sits outside the delimiters it borders.
  *
  * @param writer - The writer.
  * @param target - The marks the next output carries.
@@ -6013,16 +5979,11 @@ function syncMarks(writer: InlineWriter, target: readonly Mark[], leading: strin
 
     const missing = target.filter((mark) => !writer.stack.includes(mark));
     const order = missing.length > 0 ? writer.openOrder() : [];
-    const holdsLeading = leading !== "" && missing.includes("underline");
 
     const open = (mark: Mark): void => {
         writer.stack.push(mark);
         writer.pieces.push({ kind: "delimiter", text: MARK_DELIMITERS[mark], mark, opens: true });
     };
-
-    if (holdsLeading) {
-        open("underline");
-    }
 
     if (leading !== "") {
         writer.pieces.push({ kind: "text", text: leading });
@@ -6036,9 +5997,7 @@ function syncMarks(writer: InlineWriter, target: readonly Mark[], leading: strin
 }
 
 /**
- * Closes the open marks from the top of the stack down to `from`. Held-back
- * underlined whitespace is written before an underline's closing delimiter,
- * so it stays underlined.
+ * Closes the open marks from the top of the stack down to `from`.
  *
  * @param writer - The writer.
  * @param from - The stack index of the lowest mark to close.
@@ -6046,10 +6005,6 @@ function syncMarks(writer: InlineWriter, target: readonly Mark[], leading: strin
 function closeMarks(writer: InlineWriter, from: number): void {
     for (let index = writer.stack.length - 1; index >= from; index -= 1) {
         const mark = writer.stack[index]!;
-
-        if (mark === "underline" && writer.pendingUnderline) {
-            flushPending(writer);
-        }
 
         writer.pieces.push({ kind: "delimiter", text: MARK_DELIMITERS[mark], mark, opens: false });
     }
@@ -6065,7 +6020,6 @@ function closeMarks(writer: InlineWriter, from: number): void {
 function flushPending(writer: InlineWriter): void {
     writer.pieces.push(...writer.pending);
     writer.pending = [];
-    writer.pendingUnderline = false;
 }
 
 /**
@@ -6183,8 +6137,7 @@ function writeDestination(url: string, title: string | null, context: InlineCont
  * Reads the text of a link that can be written as an autolink: its only
  * child is one unstyled text, and it has no title. The text must be
  * unformatted, unless `marked`: its marks' delimiters are then written
- * around the autolink — though not underline when the text holds a `+`,
- * which the underline grammar cannot.
+ * around the autolink.
  *
  * @param link - The link.
  * @param context - Where it is written.
@@ -6203,7 +6156,7 @@ function autolinkText(link: LinkNode, context: InlineContext, marked = false): s
     const markFormat = marks.reduce((format, mark) => format | TEXT_TYPE_TO_FORMAT[MARK_FORMATS[mark]], 0);
     const text = child.getTextContent();
 
-    return child.getFormat() === markFormat && !(marks.includes("underline") && text.includes("+")) ? text : null;
+    return child.getFormat() === markFormat ? text : null;
 }
 
 /**
@@ -6878,11 +6831,11 @@ function lineBreakMarker(marker: string, content: string): string {
 }
 
 /**
- * Whether a text node is written after syntax of its own — the `++` of
- * underline, the `[` of a styled span — so that the spaces and tabs it opens
- * with are not at a line's start in the save: {@link trimLineEdges} trims only
- * a line whose first piece is text, and keeps these. Other marks (bold,
- * italic, strike) never carry edge whitespace, the writer puts it outside. A
+ * Whether a text node is written after syntax of its own — the `[` of a
+ * styled span — so that the spaces and tabs it opens with are not at a
+ * line's start in the save: {@link trimLineEdges} trims only a line whose
+ * first piece is text, and keeps these. Marks (bold, italic, strike,
+ * underline) never carry edge whitespace, the writer puts it outside. A
  * span is written when {@link spanAttributeText} gives its attributes, as the
  * writer decides: a span loaded with attributes the editor does not model
  * (`{foo=1}`) holds an unstyled node and is written all the same.
@@ -6891,7 +6844,7 @@ function lineBreakMarker(marker: string, content: string): string {
  * @returns `true` when its leading whitespace is written after syntax.
  */
 export function $writesSyntaxBeforeText(node: TextNode): boolean {
-    return node.hasFormat("underline") || spanAttributeText(node) !== "";
+    return spanAttributeText(node) !== "";
 }
 
 /**
@@ -7247,8 +7200,9 @@ interface LeanText {
 
 /**
  * Reads what the lean rules need off a block's assembled lines: the
- * delimiter characters it holds two or more runs of, which may pair, and,
- * for each piece, whether it stands inside a link's or styled span's
+ * delimiter characters it holds two or more runs of, which may pair — for
+ * `+`, a `++` that can open before one that can close ({@link plusRunsCanPair}) —
+ * and, for each piece, whether it stands inside a link's or styled span's
  * brackets, whose text keeps every escape. The pieces are joined with a
  * space, so a text run next to a delimiter counts as a run of its own.
  *
@@ -7257,7 +7211,8 @@ interface LeanText {
  */
 function leanBlock(lines: readonly LinePiece[][]): { pairable: ReadonlySet<string>; grouped: boolean[][] } {
     const text = lines.map((pieces) => pieces.map((piece) => piece.text).join(" ")).join("\n");
-    const pairable = new Set(PAIRING_DELIMITERS.filter((char) => (text.match(DELIMITER_RUN[char]!) ?? []).length > 1));
+    const pairs = (char: string): boolean => (char === "+" ? plusRunsCanPair(text) : (text.match(DELIMITER_RUN[char]!) ?? []).length > 1);
+    const pairable = new Set(PAIRING_DELIMITERS.filter(pairs));
     let depth = 0;
 
     const grouped = lines.map((pieces) => pieces.map((piece) => {
@@ -7267,6 +7222,41 @@ function leanBlock(lines: readonly LinePiece[][]): { pairable: ReadonlySet<strin
     }));
 
     return { pairable, grouped };
+}
+
+/**
+ * Tells whether a block's text holds a `++` that can open an underline
+ * before a `++` that can close one, by the flanking rules the underline
+ * grammar reads `++` with — the only way its `+` runs can pair. A run of
+ * one `+`, or of three or more, never pairs; `C++ and C++` holds two runs
+ * that can only close, so neither pairs.
+ *
+ * @param text - The block's text, its pieces joined with a space.
+ * @returns `true` when two of its `+` runs may pair.
+ */
+function plusRunsCanPair(text: string): boolean {
+    const space = (c: string): boolean => /\s/.test(c);
+    const punctuation = (c: string): boolean => isFlankingPunctuation(c, "+");
+    let opened = false;
+
+    for (const run of text.matchAll(PLUS_RUN)) {
+        if (run[0].length !== UNDERLINE_RUN_LENGTH) {
+            continue;
+        }
+
+        const before = text[run.index - 1] ?? "\n";
+        const after = text[run.index + UNDERLINE_RUN_LENGTH] ?? "\n";
+        const left = !space(after) && (!punctuation(after) || space(before) || punctuation(before));
+        const right = !space(before) && (!punctuation(before) || space(after) || punctuation(after));
+
+        if (opened && right) {
+            return true;
+        }
+
+        opened ||= left;
+    }
+
+    return false;
 }
 
 /**
@@ -7496,8 +7486,8 @@ function leanKeepsEscape(char: string, site: EscapeSite, lean: LeanText): boolea
  * (`*`, `_`, `~`, `` ` ``, `+`). Its run keeps it when it touches another
  * delimiter character, whose run it would join or change the flanking of;
  * otherwise it needs none when the block holds no other run of it, which it
- * could pair with, nor — for `*`, `_` and `~` — when whitespace stands on
- * both sides of it, so it can neither open nor close.
+ * could pair with, nor — for `*`, `_`, `~` and `+` — when whitespace stands
+ * on both sides of it, so it can neither open nor close.
  *
  * @param char - The character.
  * @param site - Its surroundings.
@@ -7520,7 +7510,7 @@ function delimiterKeepsEscape(char: string, site: EscapeSite, pairable: Readonly
         return false;
     }
 
-    if (char === "`" || char === "+") {
+    if (char === "`") {
         return true;
     }
 
