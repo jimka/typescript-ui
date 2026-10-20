@@ -32,7 +32,7 @@ import {
     $getChildCaret, $isSiblingCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection, COMMAND_PRIORITY_LOW,
     INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND, $getNodeByKey, $addUpdateTag, $setState,
     HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG, BEFORE_INPUT_COMMAND, INPUT_COMMAND, COMMAND_PRIORITY_EDITOR, COMPOSITION_END_TAG,
-    COMPOSITION_START_COMMAND, $getEditor, $insertNodeToNearestRootAtCaret, SKIP_DOM_SELECTION_TAG, COLLABORATION_TAG, HISTORIC_TAG,
+    COMPOSITION_START_COMMAND, $getEditor, SKIP_DOM_SELECTION_TAG, COLLABORATION_TAG, HISTORIC_TAG,
     $splitAtPointCaretNext, $getCaretInDirection, $isTextPointCaret, $getSiblingCaret, $isChildCaret,
     $isNodeSelection, $createRangeSelection, CLICK_COMMAND, IS_APPLE,
 } from "lexical";
@@ -90,7 +90,7 @@ import { imageMarksState, keptSourceState, listLooseState, nestedLinkState } fro
 import { EDITOR_NODES } from "~/component/editor/editorNodes.js";
 import {
     $createMarkdownListItemTextNode, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $liftItemOut, $movePointsBetween, $outdentItem,
-    $removeUnwalked, $splitItemAfterText, $splitItemBefore,
+    $removeUnwalked, $splitItemAfterText, $splitItemBefore, $insertAfterUnwalked,
 } from "~/component/editor/markdownListItemNode.js";
 import type { MarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
 import { $createMarkdownQuoteNode, $isMarkdownQuoteNode, $liftOutOfQuote, $nearestQuoteOf } from "~/component/editor/markdownQuoteNode.js";
@@ -1436,6 +1436,23 @@ function $isEmptiedItemTextOverBlocks(node: LexicalNode | null): boolean {
 }
 
 /**
+ * Tells whether a collapsed caret stands at the end of a list item's text,
+ * with nothing but blank text after it, and the item holds a nested list
+ * right after that text. Blocks pasted there go into the item, in front of
+ * its nested list, as a block inserted there does: split there, the item
+ * would leave its nested list in an item with no text (`- - b`).
+ *
+ * @param selection - The selection.
+ * @param block - The block the caret is in.
+ * @returns `true` for such a caret.
+ */
+function $isAtItemTextEndOverNestedList(selection: RangeSelection, block: LexicalNode | null): block is MarkdownListItemTextNode {
+    const isTextOverList = $isMarkdownListItemTextNode(block) && block.getTextContent().trim() !== "" && $isListNode(block.getNextSibling());
+
+    return isTextOverList && selection.isCollapsed() && !$holdsSomethingAfterCaret(selection, block);
+}
+
+/**
  * Tells whether a pasted node is a block: an element or a decorator that is
  * not inline, which is how Lexical's insert tells one.
  *
@@ -1499,6 +1516,13 @@ function $splitCaretBlockForPaste(selection: RangeSelection, caretBlock: Element
         return $splitItemAfterText(item, caretBlock);
     }
 
+    // Nothing follows the caret in the text, and the item's nested list stays where it is.
+    const isTextEndOverList = $isAtItemTextEndOverNestedList(selection, caretBlock);
+
+    if (isTextEndOverList) {
+        return null;
+    }
+
     const holdsNothing = caretBlock.isEmpty();
 
     return holdsNothing ? null : selection.insertParagraph();
@@ -1554,8 +1578,10 @@ function $pasteBlocksIntoHeldBlock(payload: CommandPayloadType<typeof SELECTION_
     // which Lexical's insert would do first as well.
     const startsInTextOverBlocks = $isMarkdownListItemTextNode(startBlock) && startBlock.getNextSibling() !== null;
     const mayEmptyText = startsInTextOverBlocks && (coversRange || $isEmptiedItemTextOverBlocks(startBlock));
+    // A pasted list joins the item's list instead ("A list pasted at an item's text"), as Lexical's insert does.
+    const endsTextOverList = $isAtItemTextEndOverNestedList(selection, startBlock) && !payload.nodes.some($isListNode);
 
-    if (!$isHeldBlockTakingText(startBlock) && !mayEmptyText) {
+    if (!$isHeldBlockTakingText(startBlock) && !mayEmptyText && !endsTextOverList) {
         return false;
     }
 
@@ -1567,7 +1593,7 @@ function $pasteBlocksIntoHeldBlock(payload: CommandPayloadType<typeof SELECTION_
     const isEmptiedText = $isEmptiedItemTextOverBlocks(caretBlock);
 
     // The removal of a range that ended elsewhere can leave the caret in another kind of block: Lexical's insert takes it.
-    if (caretBlock === null || (!$isHeldBlockTakingText(caretBlock) && !isEmptiedText)) {
+    if (caretBlock === null || (!$isHeldBlockTakingText(caretBlock) && !isEmptiedText && !endsTextOverList)) {
         return false;
     }
 
@@ -1616,7 +1642,10 @@ function $insertPastedBlocksAt(selection: RangeSelection, caretBlock: ElementNod
         head.append(...first.getChildren());
     }
 
-    if ($isMarkdownListItemTextNode(head)) {
+    // An item's text that its nested list still follows keeps the blocks in the item, in front of that list.
+    const goesAfterItem = $isMarkdownListItemTextNode(head) && !$isListNode(head.getNextSibling());
+
+    if (goesAfterItem) {
         // After an item's text a block goes after the item, the list split there (`insertAfter` of the text).
         rest.reduce<LexicalNode>((previous, block) => previous.insertAfter(block), head);
     } else {
@@ -1736,11 +1765,20 @@ function $holdsSomethingAfterCaret(selection: RangeSelection, block: ElementNode
  * insert splits the item with a decorator as the paste's last node, and
  * leaves an empty item after it. The listener inserts the nodes itself,
  * removes that item and handles the paste. A paste ending in a rule with text
- * after the caret is left to Lexical, which keeps that text an item of its
- * own, as after a pasted table.
+ * after the caret splits the item first, as for a table, and is then that
+ * case at the end of the first half.
+ *
+ * In a task item the text after the caret opens a task item of its own, with
+ * an unchecked checkbox, as Enter gives it ({@link $splitTaskItemAtCaret});
+ * the split is made here, not in the item text's `insertNewAfter`, which
+ * also splits for every newline of pasted plain text. A caret right after the
+ * checkbox, nothing else before it, is the start of the item's text: the
+ * checkbox goes with the text after the caret, so the pasted blocks go above
+ * the item, as they do at a plain item's start, and the caret a pasted rule
+ * leaves goes after the checkbox.
  *
  * @param payload - The pasted nodes and the selection they are inserted at.
- * @returns Whether the paste was a rule at the end of an item's text, now inserted; otherwise `false`, so the insertion still runs.
+ * @returns Whether the paste was a rule at the end of an item's text, now inserted; otherwise `false`, so the insertion still runs. A paste ending in a table, a `:::` block or a rule with text after the caret splits the item first.
  */
 function $settleItemTextBeforePasteEndingInBlock(
     payload: CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>,
@@ -1772,18 +1810,55 @@ function $settleItemTextBeforePasteEndingInBlock(
     }
 
     const holdsRestAfterCaret = $holdsSomethingAfterCaret(selection, caretBlock);
+    const box = $openingCheckbox(caretBlock);
+    const followsBoxAlone = box !== null && holdsRestAfterCaret && $onlyCheckboxBeforeCaret(caretBlock, selection);
+
+    if (followsBoxAlone) {
+        // As at a plain item's start: the split below leaves nothing before the caret, and the blocks go above the
+        // item. The checkbox goes with the text after the caret.
+        box.remove();
+
+        const textStart = $normalizeCaret($getChildCaret(caretBlock, "next"));
+
+        $setPointFromCaret(selection.anchor, textStart);
+        $setPointFromCaret(selection.focus, textStart);
+    }
 
     if (endsInRule && !holdsRestAfterCaret) {
         return $insertPastedNodesAtItemEnd(selection, caretBlock, payload.nodes);
     }
 
-    if (holdsRestAfterCaret && endsInTableOrFence) {
+    if (holdsRestAfterCaret) {
         selection.insertParagraph();
+
+        // The text after the caret opens a task item of its own, as after Enter, when its item was one.
+        const secondHalf = $findEnclosingBlock(selection.anchor.getNode());
+        const opensTaskItem = box !== null && $isMarkdownListItemTextNode(secondHalf) && !secondHalf.is(caretBlock);
+
+        if (opensTaskItem) {
+            secondHalf.splice(0, 0, [followsBoxAlone ? box : $createMarkdownTaskCheckboxNode(false)]);
+        }
 
         const endOfFirstHalf = $normalizeCaret($getChildCaret(caretBlock, "previous"));
 
         $setPointFromCaret(selection.anchor, endOfFirstHalf);
         $setPointFromCaret(selection.focus, endOfFirstHalf);
+    }
+
+    // At the end of the first half now, a pasted rule is the case above: Lexical would leave an empty item after it.
+    if (holdsRestAfterCaret && endsInRule) {
+        $insertPastedNodesAtItemEnd(selection, caretBlock, payload.nodes);
+
+        // The caret it leaves at the start of the item below would type before the checkbox there: it goes after it.
+        const boxText = followsBoxAlone ? box.getParent() : null;
+        const after = $getSelection();
+
+        if ($isMarkdownListItemTextNode(boxText) && $isRangeSelection(after)) {
+            after.anchor.set(boxText.getKey(), 1, "element");
+            after.focus.set(boxText.getKey(), 1, "element");
+        }
+
+        return true;
     }
 
     return false;
@@ -6398,7 +6473,9 @@ function $onlyCheckboxBeforeCaret(text: MarkdownListItemTextNode, selection: Ran
  * The split is made in this listener, as `@lexical/list` keeps its rule for
  * an empty item, because the item's `insertNewAfter` also splits for every
  * newline of pasted plain text and before pasted blocks, which must not each
- * make a checkbox.
+ * make a checkbox. The paste listener gives the text after a pasted table,
+ * `:::` block or rule its own unchecked checkbox, as this listener does for
+ * Enter, since a paste makes its split itself and never reaches this one.
  *
  * @returns `true` when it split the item. `false` otherwise, so the key goes on to the other listeners; for a
  *   range it has then already removed the range's text, and the other listeners meet a caret.
@@ -7147,13 +7224,21 @@ function $makesNoEmptyHalf(): boolean {
  * Inserts a block at a caret, splitting the blocks around the caret up to the
  * nearest quote, or to the document or a shadow root where no quote stands
  * nearer, each only where the caret is inside its content
- * ({@link $makesNoEmptyHalf}).
+ * ({@link $makesNoEmptyHalf}). The splits stop early at a list item whose
+ * second half would hold no text and open with its nested list
+ * ({@link $splitLeavesItemOpeningWithList}): the block goes into that item,
+ * in front of the nested list, as a block pasted into a nested item goes
+ * into the outer item. A task item split in its text gives its second half
+ * an unchecked checkbox, as Enter does ({@link $splitTaskItemAtCaret}); a
+ * caret right after a checkbox is the start of its item's text, so the item
+ * is not split there.
  *
  * @remarks
- * Lexical's own insert splits every ancestor up to the root or a shadow
- * root, which splits a quote in two around the block. A quote holds the
- * block, so this stops at the quote; with no quote, or a shadow root (a
- * column or a table cell) between the caret and the quote, it is Lexical's.
+ * Lexical's own insert (`$insertNodeToNearestRootAtCaret`) splits every
+ * ancestor up to the root or a shadow root, which splits a quote in two
+ * around the block, and an item between its text and its nested list,
+ * which leaves an item that saves as `- - b`. This is its loop with those
+ * stops.
  *
  * @param node - The block to insert.
  * @param caret - Where it goes.
@@ -7164,12 +7249,7 @@ function $insertBlockToNearestHolderAtCaret(node: LexicalNode, caret: PointCaret
     const quote = $isMarkdownQuoteNode(anchor) ? anchor : $nearestQuoteOf(anchor);
     const region = $findMatchingParent(anchor, $isRootOrShadowRoot);
     const isRegionNearer = quote === null || (region !== null && quote.isParentOf(region));
-
-    if (isRegionNearer) {
-        $insertNodeToNearestRootAtCaret(node, caret, { $shouldSplit: $makesNoEmptyHalf });
-
-        return;
-    }
+    const holder = isRegionNearer ? null : quote;
 
     // The same boundary normalisation of a text point caret as Lexical's insert makes.
     let insertCaret = $getCaretInDirection(caret, "next");
@@ -7184,17 +7264,83 @@ function $insertBlockToNearestHolderAtCaret(node: LexicalNode, caret: PointCaret
 
     const parentOf = (at: PointCaret<CaretDirection>): LexicalNode | null => ($isChildCaret(at) ? at.origin : at.origin.getParent());
 
-    while (!quote.is(parentOf(insertCaret))) {
+    for (;;) {
+        insertCaret = $itemTextStartPastCheckbox(insertCaret);
+
+        const parent = parentOf(insertCaret);
+        const staysInItem = $splitLeavesItemOpeningWithList(insertCaret);
+
+        if (staysInItem) {
+            // Straight after the block before it: the item text's own `insertAfter` would send the block after the item.
+            $insertAfterUnwalked(insertCaret.origin, [node]);
+
+            return;
+        }
+
+        if (holder !== null && holder.is(parent)) {
+            break;
+        }
+
+        const box = $isMarkdownListItemTextNode(parent) ? $openingCheckbox(parent) : null;
         const next = $splitAtPointCaretNext(insertCaret, { $shouldSplit: $makesNoEmptyHalf });
 
         if (next === null) {
             break;
         }
 
+        // The second half of a task item's text, split off it: it opens a task item of its own.
+        const secondHalf = next.getNodeAtCaret();
+        const opensTaskItem = box !== null && $isMarkdownListItemTextNode(secondHalf) && !secondHalf.is(parent);
+
+        if (opensTaskItem) {
+            secondHalf.splice(0, 0, [$createMarkdownTaskCheckboxNode(false)]);
+        }
+
         insertCaret = next;
     }
 
     insertCaret.insert(node);
+}
+
+/**
+ * The caret a block insert splits at, for a caret right after the checkbox
+ * that opens a task item's text: the start of that text, before the
+ * checkbox. Nothing but the checkbox stands before it, so the item is not
+ * split there and the block goes above the item, which keeps its checkbox,
+ * as it does for a caret before the checkbox and at the start of a plain
+ * item's text.
+ *
+ * @param caret - A caret of the insert's walk up the document.
+ * @returns The caret at the start of the item's text, or `caret` itself.
+ */
+function $itemTextStartPastCheckbox(caret: PointCaret<"next">): PointCaret<"next"> {
+    if (!$isSiblingCaret(caret)) {
+        return caret;
+    }
+
+    const text = caret.origin.getParent();
+    const isAfterBox = $isMarkdownListItemTextNode(text) && $isMarkdownListItemNode(text.getParent()) && caret.origin.is($openingCheckbox(text));
+
+    return isAfterBox ? $getChildCaret(text, "next") : caret;
+}
+
+/**
+ * Whether splitting a list item at a caret between its blocks would leave
+ * its second half holding no text and opening with a nested list: the caret
+ * stands after one of the item's blocks (its text, or the first half of a
+ * nested list split before), and the next block is a nested list. Such a
+ * half saves as an item whose first line is another item's (`- - b`), an
+ * empty bullet holding the nested list.
+ *
+ * @param caret - A caret of the insert's walk up the document.
+ * @returns `true` when the caret is such a place in a list item.
+ */
+function $splitLeavesItemOpeningWithList(caret: PointCaret<CaretDirection>): boolean {
+    if (!$isSiblingCaret(caret) || !$isMarkdownListItemNode(caret.origin.getParent())) {
+        return false;
+    }
+
+    return $isListNode(caret.origin.getNextSibling());
 }
 
 /**
@@ -10985,8 +11131,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * of one. When every selected block is the text an item of a bulleted
      * list opens with, those items leave the list: each text becomes a
      * paragraph, the blocks its item holds up to its first nested list follow
-     * it, and the list is split around them; a task item's checkbox stays as
-     * the text it shows. Otherwise every other selected
+     * it, and the list is split around them; the nested list's items stay in
+     * the list in the item's place, as siblings, at the level where the
+     * item's outermost list stood; a task item's checkbox stays as the text
+     * it shows. Otherwise every other selected
      * block becomes a bulleted item where the block stands: at the top
      * level, in its `:::` column or in its quote. An item of a numbered list changes alone, its list split
      * around it and the blocks it holds up to its first nested list kept in
@@ -11020,8 +11168,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * of one. When every selected block is the text an item of a numbered
      * list opens with, those items leave the list: each text becomes a
      * paragraph, the blocks its item holds up to its first nested list follow
-     * it, and the list is split around them; a task item's checkbox stays as
-     * the text it shows. Otherwise every other selected
+     * it, and the list is split around them; the nested list's items stay in
+     * the list in the item's place, as siblings, at the level where the
+     * item's outermost list stood; a task item's checkbox stays as the text
+     * it shows. Otherwise every other selected
      * block becomes a numbered item where the block stands: at the top
      * level, in its `:::` column or in its quote. An item of a bulleted list changes alone, its list split
      * around it and the blocks it holds up to its first nested list kept in
@@ -11439,8 +11589,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * code) in place, a block in a quote included, or, with `"quote"`, puts
      * them into a quote or takes them out of it. A list item's text is taken
      * out of its lists, and the blocks the item holds up to its first nested
-     * list follow it; a task item's checkbox stays as the text it shows, and in
-     * a code block as it was written. No-op without a range selection, and
+     * list follow it; the nested list's items stay in the list in the item's
+     * place, as siblings, at the level where the item's outermost list stood.
+     * A task item's checkbox stays as the text it shows, and in a code block
+     * as it was written. No-op without a range selection, and
      * when the selection touches a table cell (whole cells selected
      * included), which holds text only.
      *
@@ -11719,8 +11871,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * the table would go in. The block holding the caret is split only where
      * the caret is inside its content, so no empty quote, heading or list
      * item is left beside the table; in a quote the table goes into the
-     * quote, the block split around it; a table that ends its container is
-     * followed by an empty paragraph.
+     * quote, the block split around it; a list item is not split between its
+     * text and its nested list: the block goes into the item, in front of that
+     * list. A table that ends its container is followed by an empty paragraph.
      *
      * In `"source"` mode, inserts the raw-Markdown GFM table skeleton above
      * the block holding the caret instead, and does nothing on a blank line
@@ -11793,8 +11946,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * places a table: the block holding the caret is split only where the
      * caret is inside its content, so no empty quote, heading or list item is
      * left beside the rule; in a quote the rule goes into the quote, the block
-     * split around it; a rule that ends its container is followed by an empty
-     * paragraph, and the caret lands at the start of the block after the rule.
+     * split around it; a list item is not split between its text and its nested
+     * list: the rule goes into the item, in front of that list. A rule that
+     * ends its container is followed by an empty paragraph, and the caret lands
+     * at the start of the block after the rule.
      * A range is removed first, as a typed character would. With a rule
      * selected, the new rule goes after it. Without a text selection — none at
      * all, or table cells selected — the rule goes in at the document's end.

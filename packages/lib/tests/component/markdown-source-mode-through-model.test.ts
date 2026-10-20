@@ -560,6 +560,17 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         ['a range starting on a blank line before an image item', '- a\n\n- ![i](u)', 4, 13, 'h2', '- a\n\n## ![i](u)', null],
         ['a range ending on a top-level blank line after an image', '![i](u)\n\nb', 0, 8, 'h2', '## ![i](u)\n\nb', null],
         ['a code block\'s empty line in an item is the code block\'s', '- a\n\n  ```\n  x\n\n  y\n  ```', 15, 15, 'h2', '- a\n\n  x\\\n  \\\n  y\n  ---', at(16)],
+        // An item taken out of its lists leaves its nested items in the list, one level out, as on the WYSIWYG surface:
+        // never an item with no text holding them (`- - b`).
+        ['a heading on an item over a nested task item', '- a\n  - [x] b', 0, 0, 'h2', '## a\n\n- [x] b', null],
+        ['a heading on an item over a nested task item, the caret after the marker', '- a\n  - [x] b', 2, 2, 'h2', '## a\n\n- [x] b', null],
+        ['a heading on a nested item, a task item after it', '- x\n  - a\n  - [x] b', 4, 4, 'h2', '- x\n\n## a\n\n- [x] b', null],
+        ['a heading on an item over a nested list, an item after it', '- a\n  - b\n- z', 0, 0, 'h2', '## a\n\n- b\n- z', null],
+        ['a paragraph from an item over a nested list', '- a\n  - b\n- z', 0, 0, 'paragraph', 'a\n\n- b\n- z', null],
+        ['a quote from an item over a nested list', '- a\n  - b\n- z', 0, 0, 'quote', '> a\n\n- b\n- z', null],
+        ['the list toggled off on an item over a nested list', '- a\n  - b\n- z', 0, 0, 'bulleted', 'a\n\n- b\n- z', null],
+        ['a heading on an item over a numbered nested list keeps it numbered', '- a\n  1. b', 0, 0, 'h2', '## a\n\n1. b', null],
+        ['a heading on a nested item with nothing after it', '- a\n  - b', 4, 4, 'h2', '- a\n\n## b', null],
     ];
 
     it.each(ROWS.map((row) => [`${row[0]} ${row[4]}`, row] as const))('%s: gives the text, and the caret where the WYSIWYG command leaves it', (_title, [, doc, from, to, command, text, caret]) => {

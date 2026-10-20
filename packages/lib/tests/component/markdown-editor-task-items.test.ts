@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-    $createRangeSelection, $getRoot, $getSelection, $selectAll, $isElementNode, $isRangeSelection, $isTextNode, $setSelection,
+    $createNodeSelection, $createRangeSelection, $getRoot, $getSelection, $selectAll, $isElementNode, $isRangeSelection, $isTextNode, $setSelection,
     CONTROLLED_TEXT_INSERTION_COMMAND, DELETE_CHARACTER_COMMAND, INDENT_CONTENT_COMMAND, INSERT_LINE_BREAK_COMMAND,
     KEY_BACKSPACE_COMMAND, KEY_ENTER_COMMAND, OUTDENT_CONTENT_COMMAND, PASTE_COMMAND, UNDO_COMMAND,
 } from 'lexical';
@@ -1340,6 +1340,135 @@ describe('a block insert with the caret before a task item\'s checkbox goes abov
 
         expect(WITHOUT_CHECKBOXES(editor.getValue())).toBe(model.getValue());
         expect(editor.getValue().match(/\[[ x]\] /g)).toHaveLength(2);
+    });
+});
+
+/**
+ * Copies one block of a document as Lexical's clipboard copies a selected block.
+ *
+ * @param source - The document.
+ * @param type - The Lexical type of the block: the first one of that type in the document.
+ * @returns The copied nodes.
+ */
+function copiedBlock(source: string, type: string): ReturnType<typeof copied> {
+    const editor = load(source);
+    const lexical = lexicalOf(editor);
+
+    lexical.update(() => {
+        const block = $dfs($getRoot()).map(({ node }) => node).find((node) => node.getType() === type)!;
+        const selection = $createNodeSelection();
+
+        selection.add(block.getKey());
+        $setSelection(selection);
+    }, { discrete: true });
+
+    return lexical.read(() => $generateJSONFromSelectedNodes(lexical, $getSelection()).nodes);
+}
+
+/**
+ * Copies a whole document as Lexical's clipboard copies it.
+ *
+ * @param source - The document.
+ * @returns The copied nodes.
+ */
+function copiedDocument(source: string): ReturnType<typeof copied> {
+    const editor = load(source);
+    const lexical = lexicalOf(editor);
+
+    lexical.update(() => { $selectAll(); }, { discrete: true });
+
+    return lexical.read(() => $generateJSONFromSelectedNodes(lexical, $getSelection()).nodes);
+}
+
+/** The ways a block goes in at the caret: the two insert commands, and a pasted rule or table. */
+const BLOCK_INSERTS: ReadonlyArray<readonly [name: string, insert: (editor: MarkdownEditor) => void]> = [
+    ['insertHorizontalRule', (editor) => { editor.insertHorizontalRule(); }],
+    ['insertTable', (editor) => { editor.insertTable(2, 2); }],
+    ['a pasted rule', (editor) => { pasteNodes(editor, copiedBlock('a\n\n---\n\nb', 'markdown-horizontal-rule')); }],
+    ['a pasted table', (editor) => { pasteNodes(editor, copiedBlock('| h |\n| --- |\n| c |', 'table')); }],
+];
+
+describe('a block insert or paste with the caret right after a task item\'s checkbox goes above the item', () => {
+    // The caret a click on the item's text gives. The plain item is the model, as for the caret before the checkbox:
+    // the block goes where it goes at the start of a plain item's text, and the task item keeps its checkbox.
+    const WITHOUT_CHECKBOXES = (saved: string): string => saved.replace(/\[[ xX]\] /g, '');
+    const CHECKBOXES = (saved: string): number => saved.match(/\[[ x]\] /g)?.length ?? 0;
+
+    const DOCUMENTS: ReadonlyArray<readonly [name: string, task: string, plain: string, text: string]> = [
+        ['a first item', '- [ ] one\n- [x] two', '- one\n- two', 'one'],
+        ['a later item', '- [ ] one\n- [x] two', '- one\n- two', 'two'],
+        ['an item holding a nested task item', '- [ ] one\n  - [x] two', '- one\n  - two', 'one'],
+        ['a nested item', '- [ ] one\n  - [x] two', '- one\n  - two', 'two'],
+        ['a nested item under a plain item', '- a\n  - [x] bc', '- a\n  - bc', 'bc'],
+    ];
+
+    it.each(DOCUMENTS.flatMap(([name, task, plain, text]) => BLOCK_INSERTS.map(([how, insert]) => [`${how}, ${name}`, task, plain, text, insert] as const)))(
+        '%s', (_name, task, plain, text, insert) => {
+            const model = load(plain);
+
+            press(model, caretAtStartOf(text));
+            press(model, command(insert));
+
+            const editor = load(task);
+
+            press(editor, caretAtStartOf(text));
+            press(editor, command(insert));
+
+            expect(WITHOUT_CHECKBOXES(editor.getValue())).toBe(model.getValue());
+            expect(CHECKBOXES(editor.getValue())).toBe(CHECKBOXES(task));
+            expect(holdsMarkerText(editor)).toBe(false);
+            expectSaveKeepsDocument(editor, 'the insert');
+        },
+    );
+
+    it.each([
+        ['a rule inserted', (editor: MarkdownEditor) => { editor.insertHorizontalRule(); }],
+        ['a rule pasted', (editor: MarkdownEditor) => { pasteNodes(editor, copiedBlock('a\n\n---\n\nb', 'markdown-horizontal-rule')); }],
+    ])('%s there leaves the caret after the checkbox, where typing goes', (_name, insert) => {
+        const editor = load('- [x] one');
+
+        press(editor, caretAtStartOf('one'));
+        press(editor, command(insert));
+        press(editor, typeText('Q'));
+
+        expect(editor.getValue()).toBe('---\n\n- [x] Qone');
+    });
+});
+
+describe('a block insert or paste inside a task item\'s text makes the text after the caret an unchecked task item, as Enter does', () => {
+    const PASTED_RULE = (editor: MarkdownEditor): void => { pasteNodes(editor, copiedBlock('a\n\n---\n\nb', 'markdown-horizontal-rule')); };
+    const PASTED_TABLE = (editor: MarkdownEditor): void => { pasteNodes(editor, copiedBlock('| h |\n| --- |\n| c |', 'table')); };
+    const PASTED_PARAGRAPH_AND_RULE = (editor: MarkdownEditor): void => { pasteNodes(editor, copiedDocument('P\n\n---')); };
+    const RULE = (editor: MarkdownEditor): void => { editor.insertHorizontalRule(); };
+    const TABLE = (editor: MarkdownEditor): void => { editor.insertTable(2, 2); };
+    const EMPTY_TABLE = '|  |  |\n| --- | --- |\n|  |  |';
+
+    it.each<[string, string, (editor: MarkdownEditor) => void, string]>([
+        ['a rule inserted in a checked item', '- [x] bc', RULE, '- [x] b\n\n---\n\n- [ ] c'],
+        ['a table inserted in an unchecked item', '- [ ] bc', TABLE, `- [ ] b\n\n${EMPTY_TABLE}\n\n- [ ] c`],
+        ['a rule inserted in a nested item', '- a\n  - [ ] bc', RULE, '- a\n\n  - [ ] b\n\n  ---\n\n  - [ ] c'],
+        ['a rule pasted in an unchecked item', '- [ ] bc', PASTED_RULE, '- [ ] b\n\n  ---\n\n- [ ] c'],
+        ['a rule pasted in a checked item', '- [x] bc', PASTED_RULE, '- [x] b\n\n  ---\n\n- [ ] c'],
+        ['a table pasted in a checked item', '- [x] bc', PASTED_TABLE, '- [x] b\n\n| h |\n| --- |\n| c |\n\n- [ ] c'],
+        ['a paragraph and a rule pasted in an unchecked item', '- [ ] bc', PASTED_PARAGRAPH_AND_RULE, '- [ ] bP\n\n  ---\n\n- [ ] c'],
+        ['a rule pasted in a nested item', '- a\n  - [ ] bc', PASTED_RULE, '- a\n  - [ ] b\n\n    ---\n\n  - [ ] c'],
+        ['a table pasted in a nested item', '- a\n  - [ ] bc', PASTED_TABLE, '- a\n\n  - [ ] b\n\n  | h |\n  | --- |\n  | c |\n\n  - [ ] c'],
+    ])('%s', (_name, source, insert, saved) => {
+        const editor = load(source);
+
+        press(editor, command(insert, ['bc', 1]));
+
+        expect(editor.getValue()).toBe(saved);
+        expect(holdsMarkerText(editor)).toBe(false);
+        expectSaveKeepsDocument(editor, 'the insert');
+    });
+
+    it('leaves Enter there making one unchecked task item, as before', () => {
+        const editor = load('- [x] bc');
+
+        press(editor, { key: 'Enter', at: ['bc', 1] });
+
+        expect(editor.getValue()).toBe('- [x] b\n- [ ] c');
     });
 });
 

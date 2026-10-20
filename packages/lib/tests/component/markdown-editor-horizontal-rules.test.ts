@@ -1122,6 +1122,14 @@ describe('insertHorizontalRule places a rule as insertTable places a table', () 
         ['inside a list item', '- ab\n- z', ['ab', 1], '- a\n\n---\n\n- b\n- z', '"b"@0'],
         ['at the end of a column', '::: columns\nab\n|||\nx\n:::', ['ab', 2], '::: columns\nab\n\n---\n|||\nx\n:::', '""@0'],
         ['inside a heading', '# ab', ['ab', 1], '# a\n\n---\n\n# b', '"b"@0'],
+        // A nested list stays in its item: the rule goes into the item that holds it, the nested list split around the rule,
+        // and never leaves an item with no text holding the rest of the nested list (`- - c`).
+        ['inside a nested item\'s text, into the outer item', '- a\n  - bc', ['bc', 1], '- a\n\n  - b\n\n  ---\n\n  - c', '"c"@0'],
+        ['inside a nested item that holds a nested list', '- a\n  - bc\n    - d', ['bc', 1], '- a\n\n  - b\n\n  ---\n\n  - c\n    - d', '"c"@0'],
+        ['inside a nested item of a quote', '> - a\n>   - bc', ['bc', 1], '> - a\n>\n>   - b\n>\n>   ---\n>\n>   - c', '"c"@0'],
+        ['at the start of a nested item\'s text, into the outer item', '- a\n  - bc', ['bc', 0], '- a\n\n  ---\n\n  - bc', '"bc"@0'],
+        ['at the end of an item\'s text, in front of its nested list', '- a\n  - b\n- z', ['a', 1], '- a\n\n  ---\n\n  - b\n\n- z', '"b"@0'],
+        ['at the end of an item\'s text with no nested list, splitting the list', '- a\n- z', ['a', 1], '- a\n\n---\n\n- z', '"z"@0'],
     ])('%s', (_name, source, at, saved, caret) => {
         walk(source, [[insertRule(at), saved, caret]]);
     });
@@ -1383,6 +1391,8 @@ describe('a rule pastes where a block goes', () => {
         ['into a paragraph', 'bc', ['bc', 1], 'b\n\n---\n\nc'],
         ['at the end of an item\'s text, leaving no empty item', '- a\n- b', ['a', 1], '- a\n\n  ---\n\n- b'],
         ['inside an item\'s text, keeping the rest an item', '- ab\n- z', ['ab', 1], '- a\n\n  ---\n\n- b\n\n- z'],
+        ['at the end of an item\'s text, in front of its nested list', '- a\n  - b\n- z', ['a', 1], '- a\n\n  ---\n\n  - b\n\n- z'],
+        ['inside a nested item\'s text, into that item, the rest a nested item', '- a\n  - bc', ['bc', 1], '- a\n  - b\n\n    ---\n\n  - c'],
         ['at the end of a quote\'s paragraph', '> a', ['a', 1], '> a\n>\n> ---'],
     ])('%s', (_name, source, at, saved) => {
         const editor = load(source);

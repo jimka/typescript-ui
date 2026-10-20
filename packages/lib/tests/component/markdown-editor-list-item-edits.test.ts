@@ -6,13 +6,15 @@
 // every step the save loads as the document the editor shows, and the viewer
 // reads it the same way.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     $createRangeSelection, $createTextNode, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isTextNode, $setSelection,
     CONTROLLED_TEXT_INSERTION_COMMAND, DELETE_CHARACTER_COMMAND, DELETE_LINE_COMMAND, DELETE_WORD_COMMAND, INDENT_CONTENT_COMMAND, INSERT_LINE_BREAK_COMMAND, REMOVE_TEXT_COMMAND,
     $getNodeByKey, INSERT_TAB_COMMAND, KEY_BACKSPACE_COMMAND, KEY_ENTER_COMMAND, OUTDENT_CONTENT_COMMAND, UNDO_COMMAND,
+    $createNodeSelection, PASTE_COMMAND,
 } from 'lexical';
 import type { ElementNode, LexicalEditor, LexicalNode, PointType, RangeSelection, TextNode } from 'lexical';
+import { $generateJSONFromSelectedNodes } from '@lexical/clipboard';
 import { $isListNode } from '@lexical/list';
 import { $createQuoteNode, $isHeadingNode } from '@lexical/rich-text';
 import { $dfs } from '@lexical/utils';
@@ -21,6 +23,8 @@ import type { MarkdownBlockType } from '~/component/editor/MarkdownEditor';
 import { rawBlockInBlockList } from '~/component/editor/markdownSerializer';
 import { $createMarkdownRawBlockNode, $isMarkdownRawBlockNode } from '~/component/editor/markdownSourceNodes';
 import { $createMarkdownHorizontalRuleNode } from '~/component/editor/markdownHorizontalRuleNode';
+import { $isMarkdownListItemNode, $isMarkdownListItemTextNode } from '~/component/editor/markdownListItemNode';
+import { $isMarkdownTaskCheckboxNode } from '~/component/editor/markdownTaskCheckboxNode';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -1713,10 +1717,10 @@ describe('a block type or a list toggle in a list item acts on the block the car
             saved:  '- a\n\n  ## p\n\n- z',
         },
         {
-            name:   'H2: the list toggled off on the text of an item holding a nested list leaves the nested list in an item',
+            name:   'H2: the list toggled off on the text of an item holding a nested list leaves the nested items in the list, one level out',
             source: '- one\n  - inner\n- three',
             steps:  [{ key: 'command', run: (editor) => editor.toggleUnorderedList(), at: ['one', 1] }],
-            saved:  'one\n\n- - inner\n- three',
+            saved:  'one\n\n- inner\n- three',
         },
         {
             name:   'H3: the list toggled off on the text of an item holding a paragraph takes both out of the list',
@@ -1779,11 +1783,11 @@ describe('a block type or a list toggle in a list item acts on the block the car
             shape:  'list(markdown-list-item(markdown-list-item-text("one"), markdown-quote(paragraph("q")), table(tablerow(tablecell(paragraph("h"))), tablerow(tablecell(paragraph("c")))), markdown-block(markdown-column(paragraph("f"))), markdown-raw-block("<div>x</div>"))) | list(markdown-list-item(markdown-list-item-text("two")))',
         },
         {
-            name:   'H12: the blocks after the item\'s first nested list stay in the list, in an item with no text',
+            name:   'H12: the blocks after the item\'s first nested list go with the last nested item, which stays in the list',
             source: '- one\n\n  second\n\n  - inner\n\n  after\n\n- two',
             steps:  [{ key: 'command', run: (editor) => editor.toggleUnorderedList(), at: ['one', 1] }],
-            saved:  'one\n\nsecond\n\n- - inner\n\n  after\n\n- two',
-            shape:  'paragraph("one") | paragraph("second") | list(markdown-list-item(list(markdown-list-item(markdown-list-item-text("inner"))), paragraph("after")), markdown-list-item(markdown-list-item-text("two")))',
+            saved:  'one\n\nsecond\n\n- inner\n\n  after\n\n- two',
+            shape:  'paragraph("one") | paragraph("second") | list(markdown-list-item(markdown-list-item-text("inner"), paragraph("after")), markdown-list-item(markdown-list-item-text("two")))',
         },
         {
             name:   'H13: the list toggled on a later paragraph of an item gives the new item the blocks after it',
@@ -1805,11 +1809,66 @@ describe('a block type or a list toggle in a list item acts on the block the car
             saved:  'Foo\n\npara\n\n- bar',
         },
         {
-            name:   'H16: a nested item taken out leaves its own nested list one level up, beside the items that followed it',
+            name:   'H16: a nested item taken out leaves its own nested items and the items that followed it in one list at the top level',
             source: '- o\n  - x\n    - n\n  - y\n- z',
             steps:  [{ key: 'command', run: (editor) => editor.toggleUnorderedList(), at: ['x', 1] }],
-            saved:  '- o\n\nx\n\n- - n\n  - y\n- z',
-            shape:  'list(markdown-list-item(markdown-list-item-text("o"))) | paragraph("x") | list(markdown-list-item(list(markdown-list-item(markdown-list-item-text("n")), markdown-list-item(markdown-list-item-text("y")))), markdown-list-item(markdown-list-item-text("z")))',
+            saved:  '- o\n\nx\n\n- n\n- y\n- z',
+            shape:  'list(markdown-list-item(markdown-list-item-text("o"))) | paragraph("x") | list(markdown-list-item(markdown-list-item-text("n")), markdown-list-item(markdown-list-item-text("y")), markdown-list-item(markdown-list-item-text("z")))',
+        },
+        // An item taken out of its lists leaves no item with no text: its nested items stay in the list, one level out.
+        {
+            name:   'a heading set on the text of an item holding two nested items leaves both in the list, one level out',
+            source: '- a\n  - b1\n  - b2\n- z',
+            steps:  [{ key: 'command', run: (editor) => editor.setBlockType('h2'), at: ['a', 0] }],
+            saved:  '## a\n\n- b1\n- b2\n- z',
+        },
+        {
+            name:   'a heading set on the text of an item holding a numbered nested list leaves that list numbered, a list of its own',
+            source: '- a\n  1. b\n- z',
+            steps:  [{ key: 'command', run: (editor) => editor.setBlockType('h2'), at: ['a', 0] }],
+            saved:  '## a\n\n1. b\n\n- z',
+        },
+        {
+            name:   'a heading set on the text of an item: the paragraph after its nested list goes with the last nested item',
+            source: '- a\n  - b\n\n  p\n- z',
+            steps:  [{ key: 'command', run: (editor) => editor.setBlockType('h2'), at: ['a', 0] }],
+            saved:  '## a\n\n- b\n\n  p\n\n- z',
+        },
+        {
+            name:   'a heading set on the text of an item holding a nested task item leaves that task item in the list, one level out',
+            source: '- a\n  - [x] b',
+            steps:  [{ key: 'command', run: (editor) => editor.setBlockType('h2'), at: ['a', 0] }],
+            saved:  '## a\n\n- [x] b',
+        },
+        {
+            name:   'a heading set on a nested item leaves the task item after it in the list, one level out',
+            source: '- x\n  - a\n  - [x] b',
+            steps:  [{ key: 'command', run: (editor) => editor.setBlockType('h2'), at: ['a', 0] }],
+            saved:  '- x\n\n## a\n\n- [x] b',
+        },
+        {
+            name:   'a paragraph set on the text of an item holding a nested list does the same',
+            source: '- a\n  - b\n- z',
+            steps:  [{ key: 'command', run: (editor) => editor.setBlockType('paragraph'), at: ['a', 0] }],
+            saved:  'a\n\n- b\n- z',
+        },
+        {
+            name:   'a code block set on the text of an item holding a nested list does the same',
+            source: '- a\n  - b\n- z',
+            steps:  [{ key: 'command', run: (editor) => editor.setBlockType('code'), at: ['a', 0] }],
+            saved:  '```\na\n```\n\n- b\n- z',
+        },
+        {
+            name:   'Backspace at the start of an item holding a nested list leaves the nested items in the list, one level out',
+            source: '- a\n  - b',
+            steps:  [{ key: 'Backspace key', at: ['a', 0] }],
+            saved:  'a\n\n- b',
+        },
+        {
+            name:   'a heading set on a nested item with nothing after it',
+            source: '- a\n  - b',
+            steps:  [{ key: 'command', run: (editor) => editor.setBlockType('h2'), at: ['b', 0] }],
+            saved:  '- a\n\n## b',
         },
         {
             name:   'H17: the caret stays in the text of an item that changes kind',
@@ -2505,6 +2564,146 @@ describe('a block type or a list toggle acts on blocks of text, wherever the end
     }, SWEEP_TIMEOUT_MS);
 });
 
+describe('no block insert, paste or conversion at a caret in an item\'s text leaves an item opening with a nested list', () => {
+    /** The nodes Lexical's clipboard copies from a document with one block of `type` selected: the first such block. */
+    const copiedBlock = (source: string, type: string): ReturnType<typeof $generateJSONFromSelectedNodes>['nodes'] => {
+        const origin = load(source);
+        const lexical = lexicalOf(origin);
+
+        lexical.update(() => {
+            const block = $dfs($getRoot()).map(({ node }) => node).find((node) => node.getType() === type)!;
+            const selection = $createNodeSelection();
+
+            selection.add(block.getKey());
+            $setSelection(selection);
+        }, { discrete: true });
+
+        return lexical.read(() => $generateJSONFromSelectedNodes(lexical, $getSelection()).nodes);
+    };
+
+    /** Pastes copied nodes at the selection as Ctrl/Cmd+V does. */
+    const pasteNodes = (editor: MarkdownEditor, nodes: ReturnType<typeof copiedBlock>): void => {
+        const lexical = lexicalOf(editor);
+        const data: Record<string, string> = {
+            'application/x-lexical-editor': JSON.stringify({ namespace: (lexical as unknown as { _config: { namespace: string } })._config.namespace, nodes }),
+        };
+        const event = Object.assign(new ClipboardEvent('paste'), {
+            clipboardData: { types: Object.keys(data), files: [], getData: (type: string) => data[type] ?? '' }, preventDefault: () => {},
+        });
+
+        lexical.update(() => { lexical.dispatchCommand(PASTE_COMMAND, event); }, { discrete: true });
+        lexical.read(() => null);
+    };
+
+    beforeEach(() => {
+        // `registerRichText`'s paste handler tells clipboard, drag, input and key events apart by class name.
+        vi.stubGlobal('ClipboardEvent', class ClipboardEvent {});
+        vi.stubGlobal('DragEvent', class DragEvent {});
+        vi.stubGlobal('InputEvent', class InputEvent {});
+        vi.stubGlobal('KeyboardEvent', class KeyboardEvent {});
+    });
+
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    /** The documents: none holds an item that opens with a nested list. */
+    const DOCUMENTS: readonly string[] = [
+        '- ab\n  - cd\n- z',
+        '- [ ] ab\n  - [x] cd\n    - ef\n- [ ] z',
+        '1. ab\n   - cd\n   - gh\n2. z',
+        '> - ab\n>   - cd',
+        '- ab\n\n  pq\n  - cd\n- z',
+        '- x\n  - ab\n  - [x] cd\n- z',
+    ];
+
+    // A paste at the end of `ab` there joins the text after the caret away by the join rule, which still leaves the
+    // nested list in an item with no text (`- - cd`): the join is not changed here, so the pastes skip that document.
+    const JOIN_RULE_DOCUMENT = '- ab\n\n  pq\n  - cd\n- z';
+
+    /** The edits that put a block in at the caret, which also must keep every checkbox a checkbox. */
+    const BLOCK_EDITS: ReadonlyArray<[string, (editor: MarkdownEditor) => void]> = [
+        ['insertHorizontalRule', (editor) => editor.insertHorizontalRule()],
+        ['insertTable', (editor) => editor.insertTable(2, 2)],
+        ['a pasted rule', (editor) => pasteNodes(editor, copiedBlock('a\n\n---\n\nb', 'markdown-horizontal-rule'))],
+        ['a pasted table', (editor) => pasteNodes(editor, copiedBlock('| h |\n| --- |\n| c |', 'table'))],
+    ];
+
+    /** The block conversions, which take the item's text out of its lists. */
+    const CONVERSIONS: ReadonlyArray<[string, (editor: MarkdownEditor) => void]> = [
+        ['a heading', (editor) => editor.setBlockType('h2')],
+        ['a paragraph', (editor) => editor.setBlockType('paragraph')],
+        ['a quote', (editor) => editor.setBlockType('quote')],
+        ['a code block', (editor) => editor.setBlockType('code')],
+        ['the bulleted list toggle', (editor) => editor.toggleUnorderedList()],
+        ['the numbered list toggle', (editor) => editor.toggleOrderedList()],
+    ];
+
+    /** Every caret in the text of an item: the text node's index among such nodes, the offset, and whether it splits a task item's text. */
+    const caretsOf = (source: string): Array<[number, number, boolean]> => lexicalOf(load(source)).read(() => $dfs($getRoot())
+        .map(({ node }) => node)
+        .filter((node) => $isTextNode(node) && $isMarkdownListItemTextNode(node.getParent()))
+        .flatMap((node, index) => {
+            const isTask = $isMarkdownTaskCheckboxNode(node.getParentOrThrow().getFirstChild());
+            const size = node.getTextContentSize();
+
+            return Array.from({ length: size + 1 }, (_, offset): [number, number, boolean] => [index, offset, isTask && offset > 0 && offset < size]);
+        }));
+
+    /** Puts the caret at an offset of the `index`th text node of an item's text. */
+    const placeCaret = (editor: MarkdownEditor, index: number, offset: number): void => {
+        lexicalOf(editor).update(() => {
+            const node = $dfs($getRoot()).map(({ node: each }) => each)
+                .filter((each): each is TextNode => $isTextNode(each) && $isMarkdownListItemTextNode(each.getParent()))[index]!;
+
+            node.select(offset, offset);
+        }, { discrete: true });
+    };
+
+    /** How many of a save's items open with a nested list, and how many checkboxes it holds, as it reloads. */
+    const countsOf = (saved: string): { opensWithList: number; checkboxes: number } => lexicalOf(load(saved)).read(() => {
+        const nodes = $dfs($getRoot()).map(({ node }) => node);
+
+        return {
+            opensWithList: nodes.filter((node) => $isMarkdownListItemNode(node) && $isListNode(node.getFirstChild())).length,
+            checkboxes:    nodes.filter($isMarkdownTaskCheckboxNode).length,
+        };
+    });
+
+    // Vitest's default per-test timeout is 5s. The sweep loads some thousand editors (540 edits, each reloaded and
+    // measured), about three seconds alone and several times that with the whole suite running beside it.
+    const SWEEP_TIMEOUT_MS = 60_000;
+
+    it.each(DOCUMENTS)('%j', (source) => {
+        const before = countsOf(source);
+
+        expect(before.opensWithList).toBe(0);
+
+        for (const [index, offset, splitsTask] of caretsOf(source)) {
+            const blockEdits = source === JOIN_RULE_DOCUMENT ? BLOCK_EDITS.filter(([name]) => !name.startsWith('a pasted')) : BLOCK_EDITS;
+
+            for (const [name, edit] of [...blockEdits, ...CONVERSIONS]) {
+                const editor = load(source);
+                const context = `${name} at offset ${offset} of item text ${index}`;
+
+                placeCaret(editor, index, offset);
+                edit(editor);
+
+                const saved = editor.getValue();
+                const after = countsOf(saved);
+
+                expect(after.opensWithList, `${context}: ${JSON.stringify(saved)}`).toBe(0);
+
+                if (blockEdits.some(([blockEdit]) => blockEdit === name)) {
+                    // A block put in inside a task item's text gives the text after it a checkbox of its own.
+                    expect(after.checkboxes, `${context}: ${JSON.stringify(saved)}`).toBe(before.checkboxes + (splitsTask ? 1 : 0));
+                    expect(saved, `${context}: a checkbox left as its text`).not.toMatch(/\\\[[ x]\\\]/);
+                }
+            }
+        }
+    }, SWEEP_TIMEOUT_MS);
+});
+
 describe('a list whose every item a removal takes is left with an empty item holding the caret, or goes', () => {
     /**
      * Selects from a point between the root's blocks to the end of a text node: a range only a selection made in
@@ -2716,10 +2915,34 @@ describe('an edit in a list item never leaves the caret, or what is typed, where
             saved:  '- a\n\n- bc\n\nQ\n\n| t |\n| --- |\n| c |\n\n- z',
         },
         {
-            name:   'Z9: Enter in an emptied text over a nested list leaves an empty paragraph, the nested list in an item',
+            name:   'Z9: Enter in an emptied text over a nested list leaves an empty paragraph, the nested items in the list, one level out',
             source: '- a\n  - n\n- z',
             steps:  [{ key: 'Backspace', at: ['a', 0], to: ['a', 1] }, { key: 'Enter' }, { key: 'type', text: 'Q' }],
-            saved:  'Q\n\n- - n\n- z',
+            saved:  'Q\n\n- n\n- z',
+        },
+        {
+            name:   'Enter in the emptied text of an item alone in its list over a nested list',
+            source: '- a\n  - b',
+            steps:  [{ key: 'Backspace', at: ['a', 0], to: ['a', 1] }, { key: 'Enter' }, { key: 'type', text: 'Q' }],
+            saved:  'Q\n\n- b',
+        },
+        {
+            name:   'Enter in the emptied text of a numbered item over a bulleted nested list leaves the bulleted list',
+            source: '1. a\n   - b',
+            steps:  [{ key: 'Backspace', at: ['a', 0], to: ['a', 1] }, { key: 'Enter' }, { key: 'type', text: 'Q' }],
+            saved:  'Q\n\n- b',
+        },
+        {
+            name:   'Enter in the emptied text of a nested item over its nested list moves it out one level, the caret still in it',
+            source: '- x\n  - a\n    - b',
+            steps:  [{ key: 'Backspace', at: ['a', 0], to: ['a', 1] }, { key: 'Enter' }, { key: 'type', text: 'Q' }],
+            saved:  '- x\n- Q\n  - b',
+        },
+        {
+            name:   'a second Enter there takes it out of the list, its nested items one level out',
+            source: '- x\n  - a\n    - b',
+            steps:  [{ key: 'Backspace', at: ['a', 0], to: ['a', 1] }, { key: 'Enter' }, { key: 'Enter' }, { key: 'type', text: 'Q' }],
+            saved:  '- x\n\nQ\n\n- b',
         },
         {
             name:   'Z10: Enter over all of a text above a paragraph: the paragraph is the item\'s text and takes the caret',
@@ -3807,7 +4030,7 @@ describe('a range that takes a list item\'s text whole joins that item away (CI 
         { name: 'CI48: the same, nothing left', source: '- ab\n- cd\n\n  pq\n- z',
             steps: [{ key: 'Enter', at: ['ab', 0], to: ['pq', 2] }, { key: 'type', text: 'Q' }], saved: 'Q\n\n- z' },
         { name: 'CI49: the same, a nested list left', source: A,
-            steps: [{ key: 'Enter', at: ['ab', 0], to: ['pq', 2] }, { key: 'type', text: 'Q' }], saved: 'Q\n\n- - nn\n\n  rr\n\n- z' },
+            steps: [{ key: 'Enter', at: ['ab', 0], to: ['pq', 2] }, { key: 'type', text: 'Q' }], saved: 'Q\n\n- nn\n\n  rr\n\n- z' },
         { name: 'CI50: Backspace over all of a text and a paragraph, then type', source: B,
             steps: [back(['ab', 0], ['pq', 2]), { key: 'type', text: 'Q' }], saved: '- Qrr\n\n- z' },
         { name: 'CI51: the same, a nested list left', source: A,
