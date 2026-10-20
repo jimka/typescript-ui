@@ -412,6 +412,21 @@ page resets to empty.
   an image with no address; the command now declines it, as a pasted `<img>`
   with no `src` pastes as nothing. The `Markdown` viewer still draws
   `![a]()` as an `<img src="">`, as CommonMark reads it.
+- **`++` underlines only where it can open and close, as `~~` strikes.**
+  `C++ and C++` showed `C` and an underlined ` and C`, in the viewer, the
+  editor and source mode. A `++` now opens only when no space follows it
+  and closes only when no space precedes it, by GFM's rule for `~~`, whose
+  punctuation half applies too: a `++` followed by punctuation opens only
+  after whitespace or punctuation, and one preceded by punctuation closes
+  only before whitespace or punctuation, so `x++(a)++y` is now text. Code
+  spans and links inside an underline are kept whole, underline may hold a
+  `+`, and a run of three or more `+` is text. The editor no longer
+  underlines a selection's edge spaces, as for bold, and saves
+  `C++ and C++` without backslashes. A document with spaces just inside the
+  marks (`++ a ++`) now shows the marks as text. Underlined text at a
+  line's start no longer keeps its leading whitespace, which Markdown drops
+  there: the editor writes it outside the marks, as for bold, so underlined
+  ` a` saves as `++a++`. No consumer action is needed.
 - **`MarkdownEditor` moves a list item's nested items into the item's place
   when the item leaves its list.** Making a list item's text a heading, a
   paragraph, a quote or a code block, toggling its list off, Enter on its
@@ -586,24 +601,25 @@ page resets to empty.
   two raw list blocks an edit brings together save with a `[//]: #` line
   between them, which shows nothing. No consumer action is needed.
 
-- **`MarkdownEditor` makes nothing a save cannot write as shown.** Shift+Enter
-  does nothing at the end of a block or in a level 3–6 heading, and a break an
-  edit leaves there is removed (or, in such a heading — or a level 1 or 2
-  heading saved on one line, when a line of its setext form would end it —
-  shows as the space it saves as). Bold, italic and strikethrough applied over
-  edge spaces cover the text only — the toolbar, the context menu and the next
-  toggle then read the selection as formatted, so a second press takes the
-  format off — and a format, style or link whose result Markdown could not hold
-  as shown — emphasis opening with punctuation after a letter (`x**(a)**b`),
-  underline over a `+`, a colour over a bracket — is declined, from the
-  toggles, the keyboard and the typing shortcuts alike; after a paste, a
-  deletion or typing such edges lose the format instead, so a space typed
-  after bold text shows plain until the next word joins the bold. Lists of different bullet
-  characters or delimiters stay two lists, as the viewer reads them, and a
-  list's looseness follows its save; a table stays rectangular with every
-  cell aligned by its column, and a heading or list pasted into a cell becomes
-  its lines of text; an HTML block left open before other blocks shows as the
-  paragraph it saves as. No consumer action is needed.
+- **`MarkdownEditor` makes nothing a save cannot write as shown.**
+  Shift+Enter does nothing at the end of a block or in a level 3–6 heading,
+  and a break an edit leaves there is removed (or, in such a heading — or a
+  level 1 or 2 heading saved on one line, when a line of its setext form
+  would end it — shows as the space it saves as). Bold, italic,
+  strikethrough and underline applied over edge spaces cover the text only
+  — the toolbar, the context menu and the next toggle then read the
+  selection as formatted, so a second press takes the format off — and a
+  format, style or link whose result Markdown could not hold as shown —
+  emphasis opening with punctuation after a letter (`x**(a)**b`), a colour
+  over a bracket — is declined, from the toggles, the keyboard and the
+  typing shortcuts alike; after a paste, a deletion or typing such edges
+  lose the format instead, so a space typed after bold text shows plain
+  until the next word joins the bold. Lists of different bullet characters
+  or delimiters stay two lists, as the viewer reads them, and a list's
+  looseness follows its save; a table stays rectangular with every cell
+  aligned by its column, and a heading or list pasted into a cell becomes
+  its lines of text; an HTML block left open before other blocks shows as
+  the paragraph it saves as. No consumer action is needed.
 
 - **`Markdown` merges a table cell only into a whole rectangle.** A `<<`
   extends only a cell begun in its own row, and a `^^` extends the cell
