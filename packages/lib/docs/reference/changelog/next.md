@@ -2220,18 +2220,23 @@ page resets to empty.
   `Markdown` and `MarkdownEditor` read a tab that starts a later line of a
   list item as four columns wherever it started, read the rest of a line
   after `>` and a tab from column zero, and took characters, not columns,
-  off the lines under a fenced code block indented by one to three spaces. A
-  line indented by two spaces and a tab under `- a` was a code block, an
+  off the lines under a fenced code block indented by one to three spaces.
+  A line indented by two spaces and a tab under `- a` was a code block, an
   item nested by a space and a tab put its text one column too far right,
   `>`, a space and a tab made the rest of the line code, and a fence
   indented by one space dropped a line's leading tab. A tab now reaches the
-  next multiple of four columns from the start of its line. One reading
-  still differs from CommonMark: inside a list item or blockquote, a tab in
-  the indentation of a code or HTML line, or right after a marker character
-  that starts such a line, is read as the spaces that reach its tab stop. So
-  is a tab after a marker character that starts a paragraph continuation
-  line, which changes only the whitespace the tab stands for in that
-  paragraph. No consumer action is needed.
+  next multiple of four columns from the start of its line, and a code line
+  inside a list item or blockquote keeps a tab its container leaves whole,
+  so an edit elsewhere in the item no longer saves that tab as spaces, and
+  source-mode commands act beside such a line. One reading still differs
+  from CommonMark: a line without `>` indented as code after a heading in a
+  quote is read into the quote as its code, and its tabs show as the spaces
+  that reach their tab stops. A tab in the indentation of an HTML line
+  inside a list item or blockquote, or right after a marker character that
+  starts such a line, is read as the spaces that reach its tab stop. So is
+  a tab after a marker character that starts a paragraph continuation line,
+  which changes only the whitespace the tab stands for in that paragraph.
+  No consumer action is needed.
 
 - **`MarkdownEditor`'s WYSIWYG surface no longer shows the blanks a
   paragraph line opens with.** CommonMark strips the whitespace a paragraph

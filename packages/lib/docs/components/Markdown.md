@@ -95,7 +95,9 @@ A tab in a line's indentation counts as CommonMark counts it: it reaches the nex
 
 A tab after the first character of a line's text is kept as a tab: in a paragraph, a code span, a code block and an HTML block, inside a list item as well. A marker character that starts a line counts as a marker when tabs are counted, wherever the line stands: on a paragraph continuation line such as `-→-→b c` the tabs are read as the spaces to their stop, which changes only the whitespace they stand for in that paragraph.
 
-One reading differs from CommonMark. Inside a list item or a blockquote, a tab in the leading run of spaces, tabs, `>` markers and list markers of a code or HTML line is shown as the spaces that reach its tab stop. `··→bb` in a fenced code block of a `- ` item shows as `··bb`, and `··-→old` shows as `-·old`. CommonMark keeps both tabs.
+A code line inside a list item or a blockquote reads from the column the container's content starts at, as CommonMark reads it. A tab the container leaves whole stays a tab in the code, and a tab the container cuts across reads as the columns left of it, as spaces. `··→bb` in a fenced code block of a `- ` item is the code line `→bb`, `··-→old` is `-→old`, and `·→bb` is `··bb`.
+
+One reading differs from CommonMark. A line without `>` indented as code after a heading in a quote is read into the quote as its code, where CommonMark ends the quote before it; the tabs of such a line show as the spaces that reach their tab stops. A tab in the leading run of an HTML line inside a list item or a blockquote is likewise shown as the spaces that reach its tab stop.
 
 ### Link resolution
 
