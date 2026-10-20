@@ -1920,7 +1920,21 @@ page resets to empty.
   code block still moves the closing bracket to its own line, now with the
   prefix on both new lines, and does so inside `<script>` and `<style>` in a
   blockquote or list item as well. Markdown's own list and blockquote
-  continuation is unchanged. No consumer action is needed.
+  continuation is unchanged. Enter in the indentation of an indented code
+  block's first line, where Home puts the caret, turned the line into a
+  paragraph or changed its indentation; it now moves the whole line down, as
+  on the block's other lines. No consumer action is needed.
+
+- **Enter that renumbers a Markdown list keeps each item's later lines in
+  the item.** In `MarkdownEditor`'s `"source"` mode and any `CodeEditor`
+  with `language: "markdown"`, Enter that added an item renumbered the items
+  below it, and an item going from 9 to 10 (or 99 to 100) left its later
+  paragraphs, nested lists and code one column short, so they read outside
+  the list or as code. They now move with the item's text, in the same undo
+  step: the lines the viewer reads as part of the item move, so an item with
+  nothing after its marker ends at a blank line right after the marker line,
+  and a later blank line does not end an item that has content. No consumer
+  action is needed.
 
 - **A read-only `CodeEditor` can no longer be edited from the keyboard or
   the completion list.** `readOnly` relied on each editing command checking
