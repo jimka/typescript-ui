@@ -1388,6 +1388,70 @@ describe('an edit of a list item\'s text leaves the blocks the item holds as blo
     ])('$name', runRow);
 });
 
+describe('a tab that starts a code line in a list item or a quote is kept by a save after an edit', () => {
+    // The code reads such a tab as CommonMark does: a tab the container leaves whole is a tab in the code, and a save
+    // writes it after the container's prefix, where it is whole again. One the container cuts across reads as the
+    // columns left of it, which a save writes as spaces.
+    const bold = (editor: MarkdownEditor): void => {
+        editor.toggleBold();
+    };
+
+    it.each<Row>([
+        {
+            name:   'bold on the item\'s text keeps the tab of a fenced code line',
+            source: '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two',
+            steps:  [{ key: 'command', run: bold, at: ['one', 0], to: ['one', 3] }],
+            saved:  '- **one**\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two',
+        },
+        {
+            name:   'bold on the item\'s text keeps the tab after a marker character of a fenced code line',
+            source: '- a\n\n  ```\n  -\told\n  +\tnew\n  ```',
+            steps:  [{ key: 'command', run: bold, at: ['a', 0], to: ['a', 1] }],
+            saved:  '- **a**\n\n  ```\n  -\told\n  +\tnew\n  ```',
+        },
+        {
+            name:   'bold in a nested item keeps the tab of its fenced code line',
+            source: '- a\n  - b\n\n    ```\n    \tbb\n    ```',
+            steps:  [{ key: 'command', run: bold, at: ['b', 0], to: ['b', 1] }],
+            saved:  '- a\n  - **b**\n\n    ```\n    \tbb\n    ```',
+        },
+        {
+            name:   'bold in a quote keeps the tab of its fenced code line',
+            source: '> a\n>\n> ```\n> \tbb\n> ```',
+            steps:  [{ key: 'command', run: bold, at: ['a', 0], to: ['a', 1] }],
+            saved:  '> **a**\n>\n> ```\n> \tbb\n> ```',
+        },
+        {
+            name:   'bold on the item\'s text writes a fenced code line\'s cut tab as the spaces it reads as',
+            source: '- one\n\n  ```\n \tbb\n  ```',
+            steps:  [{ key: 'command', run: bold, at: ['one', 0], to: ['one', 3] }],
+            saved:  '- **one**\n\n  ```\n    bb\n  ```',
+        },
+        {
+            name:   'bold on the item\'s text keeps a tab past the four columns of an indented code line',
+            source: '- a\n\n      \tcode',
+            steps:  [{ key: 'command', run: bold, at: ['a', 0], to: ['a', 1] }],
+            saved:  '- **a**\n\n  ```\n  \tcode\n  ```',
+        },
+        {
+            // `marked` reads the line without `>` into the inner quote as code, where CommonMark ends the quotes; the
+            // editor keeps the quote as a raw block, which writes the spaces the line's tabs stand for, and the code
+            // keeps them too, so the standard form reads as the document does.
+            name:       'a lazy code line holding tabs in a nested quote reads as the spaces they stand for',
+            source:     '>>\t#\th\n      -\t>\ta\tb',
+            steps:      [],
+            saved:      '>>\t#\th\n      -\t>\ta\tb',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'a tab typed at the start of a code line in an item is saved as a tab',
+            source: '- a\n\n  ```\n  bb\n  ```',
+            steps:  [{ key: 'type', text: '\t', at: ['bb', 0] }],
+            saved:  '- a\n\n  ```\n  \tbb\n  ```',
+        },
+    ])('$name', runRow);
+});
+
 describe('a range that takes everything a list item holds leaves no list without an item', () => {
     // A range from an item's text to the end of a block the item holds leaves the item, emptied, holding the caret,
     // as a range over two items of text does (X8): the text the range started in stays. A list left with no item is

@@ -1038,7 +1038,9 @@ function restoreListSource(list: Tokens.List, src: string): void {
  * so reads `- a` / (blank) / two spaces, a tab, `b` as code where CommonMark
  * reads a paragraph. Here each tab of a line's container prefix is written as
  * the spaces that reach its tab stop; every other tab is left to `marked`,
- * which keeps it. The `raw` of the list, its items and the containers and raw
+ * which keeps it, and a code line's text is read again from the source at
+ * the column the item's content starts at, which keeps a tab the item leaves
+ * whole. The `raw` of the list, its items and the containers and raw
  * blocks inside them are set back to the source ({@link restoreTokenSources}),
  * which the lexer and the editor's import measure with.
  *

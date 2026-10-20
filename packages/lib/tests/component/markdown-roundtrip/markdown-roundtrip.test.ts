@@ -5,6 +5,7 @@ import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { assertCheck, canonicalSave, checkTitle, editorDefinitions, loadAndSave, viewerDefinitions } from './harness';
 import { blockOutline, editorSurfaceModel, linkTargets, viewerModel } from './viewModel';
 import { CORPUS } from './corpus';
+import { TAB_CODE_CASES } from './corpus/tabs';
 import { tabDocuments } from './tabDocuments';
 import { expandPrefixTabs } from '~/component/display/markdownTabs';
 import { DIVERGENCES } from './corpus/divergences';
@@ -50,7 +51,7 @@ describe('harness assertions', () => {
 // One describe per corpus document. Load-and-save runs inside every check, so a
 // throw in either fails the case; the expected value is always what the viewer
 // shows, never what the current editor produces.
-for (const testCase of CORPUS) {
+for (const testCase of [...CORPUS, ...TAB_CODE_CASES]) {
     describe(testCase.name, () => {
         const links = testCase.links;
 

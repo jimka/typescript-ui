@@ -1,6 +1,6 @@
 import type { CorpusCase } from './types';
 
-/** Documents with a tab in a line's indentation, after a list marker or after a quote marker. Each declares the blocks the viewer reads; T30 to T33 hold the one reading that differs from CommonMark, a tab in the container prefix of a code line inside a list item or quote. */
+/** Documents with a tab in a line's indentation, after a list marker or after a quote marker. Each declares the blocks the viewer reads; T30 to T33 hold code lines inside a list item or quote that start with a tab: a tab the container leaves whole stays a tab in the code, as CommonMark reads it. */
 export const TAB_CASES: readonly CorpusCase[] = [
     { name: 'T1: a tab after one space indents a code line', source: ' \tfoo\n', blocks: 'code"foo"' },
     { name: 'T2: a tab after three spaces indents a code line', source: '   \tfoo\n', blocks: 'code"foo"' },
@@ -31,10 +31,10 @@ export const TAB_CASES: readonly CorpusCase[] = [
     { name: 'T27: a tab inside a line of tab-indented fenced code in an item', source: '- a\n\n\t```\n\tcode\ttab\n\t```\n', blocks: 'ul![li[p"a" code"code→tab"]]' },
     { name: 'T28: a tab after a task marker', source: '- [ ]\ttask\n- [x]\tdone\n', blocks: 'ul[li[p"[ ] task"] li[p"[x] done"]]' },
     { name: 'T29: a tab before a task marker', source: '-\t[ ]\ttask\n', blocks: 'ul[li[p"[ ] task"]]' },
-    { name: 'T30: a tab that starts a code line in an item reads as spaces to its stop (E18)', source: '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two\n', blocks: 'ul![li[p"one" code"aa⏎  bb"] li[p"two"]]' },
-    { name: 'T31: a tab after a marker character that starts a code line in an item reads as spaces to its stop', source: '- a\n\n  ```\n  -\told\n  +\tnew\n  ```\n', blocks: 'ul![li[p"a" code"- old⏎+ new"]]' },
-    { name: 'T32: three tabs after a quote marker are code indented by six spaces', source: '>\t\t\tfoo\n', blocks: 'quote[code"      foo"]' },
-    { name: 'T33: a tab that starts a code line in a quote reads as spaces to its stop', source: '> ```\n> \tx\n> ```\n', blocks: 'quote[code"  x"]' },
+    { name: 'T30: a tab that starts a code line in an item stays a tab in the code (E18)', source: '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two\n', blocks: 'ul![li[p"one" code"aa⏎→bb"] li[p"two"]]' },
+    { name: 'T31: a tab after a marker character that starts a code line in an item stays a tab in the code', source: '- a\n\n  ```\n  -\told\n  +\tnew\n  ```\n', blocks: 'ul![li[p"a" code"-→old⏎+→new"]]' },
+    { name: 'T32: three tabs after a quote marker are code holding two spaces and a tab', source: '>\t\t\tfoo\n', blocks: 'quote[code"  →foo"]' },
+    { name: 'T33: a tab that starts a code line in a quote stays a tab in the code', source: '> ```\n> \tx\n> ```\n', blocks: 'quote[code"→x"]' },
     { name: 'T34: a tab after a quote marker', source: '>\tfoo\n>\tbar\n', blocks: 'quote[p"foo bar"]' },
     { name: 'T35: a tab after a quote marker and a space is not code', source: '> \tfoo\n', blocks: 'quote[p"foo"]' },
     { name: 'T36: a tab after a quote marker and two spaces is not code', source: '>  \tfoo\n', blocks: 'quote[p"foo"]' },
@@ -44,4 +44,28 @@ export const TAB_CASES: readonly CorpusCase[] = [
     { name: 'T40: a list in a quote with a tab after each quote marker', source: '>\t- a\n>\t- b\n', blocks: 'quote[ul[li[p"a"] li[p"b"]]]' },
     { name: 'T41: an indented quote holding a tab keeps its indentation when written again', source: '  > \t```\n', blocks: 'quote[code"```"]' },
     { name: 'T42: whitespace that holds a tab and ends a line after a marker is one space', source: '> a\n\t-\t-\t\nb\n', blocks: 'quote[p"a - - b"]' },
+];
+
+/**
+ * More code lines inside a list item or quote that start with a tab: a tab the container leaves whole stays a tab in
+ * the code, and one it cuts across reads as the columns left of it, as CommonMark reads them. Kept out of the corpus
+ * that the source-mode differential walks, which picks each document's commands by its place in that list; the
+ * round-trip harness runs them as it runs the corpus.
+ */
+export const TAB_CODE_CASES: readonly CorpusCase[] = [
+    { name: 'a tab that an item\'s content column cuts across reads in fenced code as the columns left of it', source: '- one\n\n  ```\n  aa\n \tbb\n  ```\n', blocks: 'ul![li[p"one" code"aa⏎  bb"]]' },
+    { name: 'a tab at the margin of a fenced code line in an item reads as the columns past the item\'s content column', source: '- one\n\n  ```\n\tbb\n  ```\n', blocks: 'ul![li[p"one" code"  bb"]]' },
+    { name: 'two tabs that start a fenced code line in an item stay tabs', source: '- one\n\n  ```\n  \t\tbb\n  ```\n', blocks: 'ul![li[p"one" code"→→bb"]]' },
+    { name: 'a tab that starts a fenced code line in a tilde fence in an item stays a tab', source: '- a\n\n  ~~~\n  \tbb\n  ~~~\n', blocks: 'ul![li[p"a" code"→bb"]]' },
+    { name: 'a tab that starts a fenced code line in an ordered item stays a tab', source: '1. a\n\n   ```\n   \tbb\n   ```\n', blocks: 'ol![li[p"a" code"→bb"]]' },
+    { name: 'a tab that an ordered item\'s content column cuts across reads in fenced code as the column left of it', source: '1. a\n\n   ```\n  \tbb\n   ```\n', blocks: 'ol![li[p"a" code" bb"]]' },
+    { name: 'a tab that starts a fenced code line in a nested item stays a tab', source: '- a\n  - b\n\n    ```\n    \tbb\n    ```\n', blocks: 'ul[li[p"a" ul![li[p"b" code"→bb"]]]]' },
+    { name: 'a tab that starts a fenced code line under a fence indented by one column in an item stays a tab', source: '- a\n\n   ```\n   \tbb\n   ```\n', blocks: 'ul![li[p"a" code"→bb"]]' },
+    { name: 'a tab that starts a fenced code line in a quote in an item stays a tab', source: '- a\n\n  > ```\n  > \tbb\n  > ```\n', blocks: 'ul![li[p"a" quote[code"→bb"]]]' },
+    { name: 'a tab that starts a fenced code line in an item in a quote stays a tab', source: '> - a\n>\n>   ```\n>   \tbb\n>   ```\n', blocks: 'quote[ul![li[p"a" code"→bb"]]]' },
+    { name: 'a tab right after a quote marker that starts a fenced code line reads as the two columns past the marker\'s space', source: '> ```\n>\tbb\n> ```\n', blocks: 'quote[code"  bb"]' },
+    { name: 'a whitespace line of fenced code in an item keeps its tab past the item\'s content column', source: '- a\n\n  ```\n  \t\n  bb\n  ```\n', blocks: 'ul![li[p"a" code"→⏎bb"]]' },
+    { name: 'a tab past the four columns of indented code in an item stays a tab', source: '- a\n\n      \tcode\n', blocks: 'ul![li[p"a" code"→code"]]' },
+    { name: 'three tabs that indent code in an item are two spaces and a tab in the code', source: '- a\n\n\t\t\tcode\n', blocks: 'ul![li[p"a" code"  →code"]]' },
+    { name: 'two tabs that indent code in an item are two spaces in the code', source: '- a\n\n\t\tcode\n', blocks: 'ul![li[p"a" code"  code"]]' },
 ];

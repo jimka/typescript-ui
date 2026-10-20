@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import type { Token } from "marked";
+import type { Token, Tokens } from "marked";
 
 /**
  * The width of Markdown's tab stops, in columns: a tab advances to the next
@@ -307,7 +307,8 @@ function fenceRanges(fence: { columns: Token[][] }, source: string, start: numbe
  * which a raw block shows and a save writes as they are, the blocks that are
  * raw blocks themselves, and the thematic break, whose line a horizontal rule
  * keeps as its state (a rule in a list item keeps the tabs it was written
- * with). The others keep the expanded form their text is read from.
+ * with). The others keep the expanded form their text is read from; a code
+ * block's `text` is set back on its own ({@link restoreCodeTexts}).
  */
 const SOURCE_KEPT_TYPES: ReadonlySet<string> = new Set(["blockquote", "list", "list_item", "html", "def", "hr"]);
 
@@ -344,10 +345,11 @@ function rawStartInLine(line: string, raw: string): number {
  * @param context - The expanded text and its source.
  * @param raw - The token's `raw` lines.
  * @param from - The first line to try.
+ * @param to - The line past the last one the token may end on; left out, the end of the text.
  * @returns The line index, or `-1`.
  */
-function findRawLine(context: RawContext, raw: readonly string[], from: number): number {
-    for (let line = from; line + raw.length <= context.lines.length; line += 1) {
+function findRawLine(context: RawContext, raw: readonly string[], from: number, to: number = context.lines.length): number {
+    for (let line = from; line + raw.length <= to; line += 1) {
         const holds = raw.every((part, at) => rawStartInLine(context.lines[line + at]!, part) !== -1);
 
         if (holds) {
@@ -417,11 +419,12 @@ function nestedBlocks(token: Token): Token[] {
  * lexer read an expanded copy of the lines, so a nested token's `raw` holds
  * the spaces a tab stood for; a raw block shows that text, and a save writes
  * it. Each token's lines are found in the expanded text and written as the
- * source wrote them ({@link sourceOfSlice}).
+ * source wrote them ({@link sourceOfSlice}). The `text` of each code block is
+ * set back to what CommonMark reads from the source ({@link restoreCodeTexts}).
  *
  * @internal Shared with the list and blockquote tokenizers, not part of the public API surface.
  *
- * @param tokens - Block tokens read from `expansion`, in order; their `raw` are changed.
+ * @param tokens - Block tokens read from `expansion`, in order; their `raw`, and the `text` of their code blocks, are changed.
  * @param expansion - The expanded text they were lexed from.
  * @param source - The source it was expanded from.
  */
@@ -435,7 +438,114 @@ export function restoreTokenSources(tokens: readonly Token[], expansion: TabExpa
         offset += line.length + 1;
     }
 
-    restoreFrom({ lines, starts, source, offsets: expansion.offsets, restored: new Set() }, tokens, 0, "walk");
+    const context: RawContext = { lines, starts, source, offsets: expansion.offsets, restored: new Set() };
+
+    // Before restoreFrom, which sets the containers' `raw` back to the source: the code walk finds them by their expanded lines.
+    restoreCodeTexts(context, tokens, 0, lines.length, 0);
+    restoreFrom(context, tokens, 0, "walk");
+}
+
+/**
+ * Sets the `text` of each code block, at any depth, back to what CommonMark
+ * reads from the source: the lexer read the expanded copy, in which a tab of
+ * a code line's leading whitespace is already the spaces to its stop. Each
+ * block is found by its `raw` lines, inside the lines of the container found
+ * around it ({@link findRawLine}); a block that is not found keeps the text the
+ * lexer read.
+ *
+ * @param context - The expanded text and its source.
+ * @param tokens - Block tokens that follow one another; the `text` of their code blocks is changed.
+ * @param from - The line the first starts at, or after.
+ * @param to - The line past the last one they may end on.
+ * @param quotes - How many quotes hold the tokens.
+ */
+function restoreCodeTexts(context: RawContext, tokens: readonly Token[], from: number, to: number, quotes: number): void {
+    let line = from;
+
+    for (const token of tokens) {
+        const raw = token.raw.replace(/\n+$/, "").split("\n");
+        const found = token.raw.trim() === "" ? -1 : findRawLine(context, raw, line, to);
+
+        if (found === -1) {
+            continue;
+        }
+
+        if (token.type === "code") {
+            restoreCodeText(context, token as Tokens.Code, found, quotes);
+        } else {
+            restoreCodeTexts(context, nestedBlocks(token), found, found + raw.length, token.type === "blockquote" ? quotes + 1 : quotes);
+        }
+
+        line = found + raw.length;
+    }
+}
+
+/**
+ * Sets one code block's `text` back to what CommonMark reads from the source.
+ * Each line of the text ends the expanded line it was read from; it is read
+ * again from the source at the same column ({@link sourceFromColumn}). A line
+ * that does not end its expanded line, or that misses a `>` of the quotes
+ * around the block (a lazy line, which `marked` reads into a quote's code
+ * where CommonMark ends the quote), leaves the whole text as the lexer read it.
+ *
+ * @param context - The expanded text and its source.
+ * @param code - The code token; its `text` is changed.
+ * @param first - The line its `raw` starts at.
+ * @param quotes - How many quotes hold the block.
+ */
+function restoreCodeText(context: RawContext, code: Tokens.Code, first: number, quotes: number): void {
+    // A fence's text starts on the line after its opening fence; an indented block's on its first line.
+    const textStart = code.codeBlockStyle === "indented" ? first : first + 1;
+    const parts = code.text.split("\n");
+    const restored: string[] = [];
+
+    for (const [at, part] of parts.entries()) {
+        const index = textStart + at;
+        const line = context.lines[index] ?? "";
+        const start = line.length - part.length;
+        const endsLine = index < context.lines.length && start >= 0 && line.endsWith(part);
+        const markers = endsLine ? line.slice(0, start).split(">").length - 1 : 0;
+
+        if (!endsLine || markers < quotes) {
+            return;
+        }
+
+        restored.push(sourceFromColumn(context, index, start));
+    }
+
+    code.text = restored.join("\n");
+}
+
+/**
+ * Reads the rest of an expanded line from the source, from one of its
+ * characters on, as CommonMark reads a code line from a column: a tab that
+ * the column cuts across (the container and the block took some of its
+ * columns) is the spaces of the columns left of it, and the rest of the line
+ * is the source's, every tab kept. `- one`, a blank line, a fence and the
+ * code line two spaces, a tab, `bb`, read from column 2, is a tab and `bb`;
+ * the line a space, a tab, `bb` is two spaces and `bb`.
+ *
+ * @param context - The expanded text and its source.
+ * @param line - The expanded line's index.
+ * @param start - The index of the first character to read, in the line.
+ * @returns The rest of the source line, from that column.
+ */
+function sourceFromColumn(context: RawContext, line: number, start: number): string {
+    const first = context.starts[line]! + start;
+    const lineEnd = context.offsets[context.starts[line]! + context.lines[line]!.length]!;
+    let from = context.offsets[first]!;
+    let spaces = "";
+    const isCut = context.source[from] === "\t" && first > 0 && context.offsets[first - 1] === from;
+
+    if (isCut) {
+        while (context.offsets[first + spaces.length] === from) {
+            spaces += " ";
+        }
+
+        from += 1;
+    }
+
+    return spaces + context.source.slice(from, lineEnd);
 }
 
 /**

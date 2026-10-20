@@ -10,6 +10,7 @@ import type { TableNode } from "@lexical/table";
 import { $dfs } from "@lexical/utils";
 import { COLUMN_SEPARATOR, lineEndAt } from "~/component/display/markdownAttributes.js";
 import { lexMarkdownLinkDefinitions } from "~/component/display/markdownExtensions.js";
+import { MARKDOWN_TAB_STOP, tabWidthAt } from "~/component/display/markdownTabs.js";
 import { $isMarkdownTaskCheckboxNode } from "~/component/editor/markdownTaskCheckboxNode.js";
 import { $isMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
 import type { MarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
@@ -155,9 +156,9 @@ export type BetweenBlocksPlace = "next" | "previous" | "none";
  * nothing, and where the block holds, beside the offset or after it,
  * something whose source is not found ({@link $placeAmongUnits}): what
  * the lexer hands back otherwise than the source holds it. Those are a
- * tab in the container prefix of a code line or an HTML line, or of a
- * paragraph line made of list markers and tabs, which shows as the spaces the
- * tab stands for; a task item's checkbox written with more than one space
+ * tab in the container prefix of an HTML line, of a code line `marked` reads
+ * into a quote that CommonMark ends (a lazy line), or of a paragraph line made
+ * of list markers and tabs, which shows as the spaces the tab stands for; a task item's checkbox written with more than one space
  * after it in a list whose items stand apart, whose blanks the lexer drops; a list item's text that begins as a link reference definition
  * repeating a label, which the lexer drops.
  *
@@ -844,11 +845,10 @@ function locateVerbatim(walk: UnitWalk, from: number, skipsFirstLine: boolean): 
 
     for (const line of units.map((unit) => unit.char).join("").split("\n")) {
         const lineEnd = lineEndAt(walk.text, lineStart);
-        const written = walk.text.slice(lineStart, lineEnd);
-        const textEnd = written.endsWith(line) ? lineEnd : lineStart + written.trimEnd().length;
+        const offsets = offsetsOfVerbatimLine(walk.text.slice(lineStart, lineEnd), line);
 
-        isShown = isShown && written.slice(0, textEnd - lineStart).endsWith(line);
-        found.push(...line.split("").map((_, column) => textEnd - line.length + column), lineEnd);
+        isShown = isShown && offsets !== null;
+        found.push(...(offsets ?? []).map((offset) => lineStart + offset), lineEnd);
         lineStart = lineEnd + 1;
     }
 
@@ -861,6 +861,76 @@ function locateVerbatim(walk: UnitWalk, from: number, skipsFirstLine: boolean): 
     }
 
     return isShown;
+}
+
+/**
+ * Where each character of a shown line of a code block or raw block stands in
+ * the written line it ends (before the blanks that end that line, which a load
+ * drops from the last line of a fence left open). A code line that starts in
+ * the middle of a tab (the container and the block took some of its columns)
+ * shows the columns left of that tab as spaces ({@link offsetsAfterCutTab}).
+ *
+ * @param written - The source line, without its line end.
+ * @param line - The shown line.
+ * @returns The offset in `written` of each character of `line`, or `null` when `line` does not end `written`.
+ */
+function offsetsOfVerbatimLine(written: string, line: string): number[] | null {
+    const textEnd = written.endsWith(line) ? written.length : written.trimEnd().length;
+    const endsWritten = written.slice(0, textEnd).endsWith(line);
+
+    if (!endsWritten) {
+        return offsetsAfterCutTab(written, line);
+    }
+
+    return line.split("").map((_, column) => textEnd - line.length + column);
+}
+
+/**
+ * Where each character of a shown code line that starts in the middle of a tab
+ * stands in its written line: the one to three spaces it starts with that are
+ * the columns left of the tab stand at the tab, and the rest ends the written
+ * line. In `- one`, a blank line, a fence and the code line a space, a tab,
+ * `bb`, the code line shows two spaces and `bb`, and both spaces stand at the
+ * tab.
+ *
+ * @param written - The source line, without its line end.
+ * @param line - The shown line.
+ * @returns The offset in `written` of each character of `line`, or `null` when no tab is cut so.
+ */
+function offsetsAfterCutTab(written: string, line: string): number[] | null {
+    const spaces = /^ */.exec(line)![0].length;
+
+    // A cut tab leaves one to three of its columns: a whole one would be a tab in the code.
+    for (let cut = 1; cut < MARKDOWN_TAB_STOP && cut <= spaces; cut += 1) {
+        const rest = line.slice(cut);
+        const tab = written.length - rest.length - 1;
+        const isAfterTab = tab >= 0 && written.charAt(tab) === "\t" && written.endsWith(rest);
+        const isCut = isAfterTab && cut < tabWidthAt(columnOf(written, tab));
+
+        if (isCut) {
+            return [...Array<number>(cut).fill(tab), ...rest.split("").map((_, at) => tab + 1 + at)];
+        }
+    }
+
+    return null;
+}
+
+/**
+ * The column a character of a line stands at, a tab reaching the next tab stop.
+ *
+ * @param line - The line.
+ * @param index - The character's index.
+ * @returns Its column.
+ */
+function columnOf(line: string, index: number): number {
+    // Not CodeMirror's `countColumn`: this module, on the Lexical side, takes no CodeMirror import.
+    let column = 0;
+
+    for (const char of line.slice(0, index)) {
+        column += char === "\t" ? tabWidthAt(column) : 1;
+    }
+
+    return column;
 }
 
 /**
