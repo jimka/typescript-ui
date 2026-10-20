@@ -290,6 +290,23 @@ page resets to empty.
 
 ### Components
 
+- **`MarkdownEditor`'s source mode, and `CodeEditor`'s `markdown`
+  language, show Markdown as text.** A link no longer looks like a
+  hyperlink: its text, URL, reference label and title are all in the text
+  colour, with its brackets grey and no underline — in an inline link, an
+  image, an autolink, a reference link and a link reference definition.
+  Headings and `**bold**` are no longer bold, and `*italic*` is no longer
+  italic: their marks stay grey, and heading text stays blue. A styled span
+  such as `[coloured]{color=#cc0000}` no longer looks like a link. A
+  `markdown` fenced code block in the `Markdown` viewer changes the same way.
+  Every other built-in language is highlighted as before. A grammar you
+  register through `registerLanguage` that emits the heading, strong,
+  emphasis, link or url tags (for example your own `markdown`) changes too: it
+  no longer gets bold, italics or underline from the shared style; a range
+  tagged url loses its accent blue and takes the text colour, as there is no
+  rule for that tag any more; and everything inside a node tagged link takes
+  the text colour, overriding any earlier colour rule, so your links and URLs
+  lose the blue.
 - **`MarkdownEditor`'s context menu opens clear of the text it acts on, and
   its Text style presets keep it open.** The menu opens below the selection,
   the word or formatted run under the caret, or the caret's line (above it

@@ -299,7 +299,7 @@ The editor has two surfaces, selected by its `mode`:
 - `"wysiwyg"` (default) — the Lexical rich-text surface described above.
 - `"source"` — a raw-Markdown [`CodeEditor`](/components/CodeEditor), for editing the Markdown text directly.
 
-Both surfaces are bound to the **same Markdown value**, so `getValue()` / `setValue()` and the `"change"` event behave identically whichever mode is active, and switching modes **preserves the document** (the text is converted across on each switch). `setReadOnly` applies to both surfaces. In `"source"` mode, HTML is typed literally, with no close tags added, and Enter in a code block or in HTML keeps the new line in the blockquote or list item it was pressed in; see [CodeEditor's built-in languages](/components/CodeEditor#built-in-languages).
+Both surfaces are bound to the **same Markdown value**, so `getValue()` / `setValue()` and the `"change"` event behave identically whichever mode is active, and switching modes **preserves the document** (the text is converted across on each switch). `setReadOnly` applies to both surfaces. In `"source"` mode, HTML is typed literally, with no close tags added, and Enter in a code block or in HTML keeps the new line in the blockquote or list item it was pressed in; see [CodeEditor's built-in languages](/components/CodeEditor#built-in-languages). The source surface shows the Markdown as text, with colours that hint at its syntax and no bold, italic or underline; the same section lists the colours.
 
 ```typescript
 const editor = new MarkdownEditor('# Title', { mode: 'source' });
