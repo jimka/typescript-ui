@@ -30,6 +30,7 @@ import { json } from '@codemirror/lang-json';
 import { commonmarkLanguage, deleteMarkupBackward } from '@codemirror/lang-markdown';
 import { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics';
 import { tabDocuments } from './markdown-roundtrip/tabDocuments';
+import { viewerModel } from './markdown-roundtrip/viewModel';
 import { expandPrefixTabs } from '~/component/display/markdownTabs';
 import type { SqlLanguageOptions } from '~/component/editor/languages';
 import type { MenuItemConfig } from '~/component/container/MenuItem';
@@ -4567,8 +4568,56 @@ describe('built-in markdown language typing', () => {
         expect(await typed('markdown', '>     code', '\n\n\n')).toBe('>     code\n\n|');
     });
 
-    it('F23: Enter in front of the first character of an indented code block in an item is not this command\'s', async () => {
-        expect(await typed('markdown', '- a\n\n      |code', '\n')).toBe('- a\n\n\n  |code');
+    it('F23: Enter in front of the first character of an indented code block in an item keeps the line in the code block', async () => {
+        expect(await typed('markdown', '- a\n\n      |code', '\n')).toBe('- a\n\n      \n      |code');
+    });
+
+    // Enter in the indentation of an indented code block's first line moves the whole line down, as on the block's
+    // later lines, so the line stays code with the same text. The block's syntax node starts after the indentation,
+    // or after a tab that crosses the code's column, so the caret is in front of the node.
+
+    it('Enter in front of the text of a tab-indented code line in an item keeps the line in the code block', async () => {
+        expect(await typed('markdown', '- a\n\n\t\t|x', '\n')).toBe('- a\n\n\t\t\n\t\t|x');
+    });
+
+    it('Enter in front of the text of a tab-indented code line in a quote keeps the line in the code block', async () => {
+        expect(await typed('markdown', '> \t\t|x', '\n')).toBe('> \t\t\n> \t\t|x');
+    });
+
+    it('Enter between the tabs of a code line in an item keeps the code\'s text', async () => {
+        expect(await typed('markdown', '- a\n\n\t|\tx', '\n')).toBe('- a\n\n\t\n\t\t|x');
+    });
+
+    it('Enter between the tabs of a top-level code line keeps the tab in the code\'s text', async () => {
+        expect(await typed('markdown', '\t|\tx', '\n')).toBe('\t\n\t\t|x');
+    });
+
+    it('Enter in the item indentation of a code line keeps the line in the code block', async () => {
+        expect(await typed('markdown', '- a\n\n   |   code', '\n')).toBe('- a\n\n   \n      |code');
+    });
+
+    it('Enter after the list marker of an item that opens with a code block keeps the code in the item', async () => {
+        expect(await typed('markdown', '-     |x', '\n')).toBe('-     \n      |x');
+    });
+
+    it('Enter after the quote marker of a quoted code line keeps the code\'s indentation', async () => {
+        expect(await typed('markdown', '>|      x', '\n')).toBe('>\n>      |x');
+    });
+
+    it('Enter in front of the text of a top-level code line keeps its indentation on both lines', async () => {
+        expect(await typed('markdown', '    |x', '\n')).toBe('    \n    |x');
+    });
+
+    it('Enter in front of the quote marker of a quoted code line leaves the line as it is', async () => {
+        expect(await typed('markdown', '|>      x', '\n')).toBe('\n|>      x');
+    });
+
+    it('Enter in the indentation of a fence line in an item is not the code block\'s', async () => {
+        expect(await typed('markdown', '- a\n\n  |```\n  x\n  ```', '\n')).toBe('- a\n\n\n  |```\n  x\n  ```');
+    });
+
+    it('Enter in the indentation of a paragraph line in an item is Markdown\'s own', async () => {
+        expect(await typed('markdown', '- a\n\n  |b', '\n')).toBe('- a\n\n\n  |b');
     });
 
     it('F24: Enter between brackets in a fenced code block in a blockquote gives both new lines the quote marker', async () => {
@@ -4929,43 +4978,13 @@ describe('built-in markdown language typing', () => {
     }, TAB_SWEEP_TIMEOUT_MS);
 
     // 150 draws, the caret at every position of every line that does not end in whitespace, Enter and Backspace.
-    // Two kinds of press are left out, because the two forms differ there whatever this module does:
-    // Backspace where Markdown's own Backspace declines on the spaces form (the editor's plain one then deletes a
-    // tab as one character), and Enter where the library's prefix-copying Enter handles the spaces form but not the
-    // tab form (it starts from whole characters, and a caret in a tab's columns has none).
-
-    /**
-     * Finds which key binding handles a key, without running its effect on the document.
-     *
-     * @param state - The state the key is pressed in.
-     * @param key - The key.
-     * @returns The binding group and the binding's place in it, such as `0:1`, or `none`.
-     */
-    function handlerOf(state: EditorState, key: 'Enter' | 'Backspace'): string {
-        const view = { state, dispatch: (): void => undefined } as unknown as EditorView;
-        let group = 0;
-
-        for (const bindings of state.facet(keymap)) {
-            for (let index = 0; index < bindings.length; index++) {
-                const binding = bindings[index]!;
-                const handled = binding.key === key && binding.run !== undefined && binding.run(view);
-
-                if (handled) {
-                    return `${group}:${index}`;
-                }
-            }
-
-            group++;
-        }
-
-        return 'none';
-    }
+    // One kind of press is left out, because the two forms differ there whatever this module does: Backspace where
+    // Markdown's own Backspace declines on the spaces form (the editor's plain one then deletes a tab as one
+    // character).
 
     // A tab whose column an edit moved is written as spaces, so the result keeps the blocks the spaces form has.
     it('TS20: with the caret at any position of a drawn tab document, Enter and Backspace give the blocks of the spaces form', async () => {
         const differing: string[] = [];
-        // The binding that copies the prefix of an indented code line is the library's prefix-copying Enter.
-        const prefixCopyingEnter = handlerOf(settle(await buildTypingState('markdown', '    code|')), 'Enter');
 
         for (const doc of tabDocuments(150)) {
             const lines = doc.split('\n');
@@ -4978,12 +4997,10 @@ describe('built-in markdown language typing', () => {
 
                     for (const key of ['\n', '\b']) {
                         const spacedStart = expansion.text.slice(0, spacedCaret) + '|' + expansion.text.slice(spacedCaret);
-                        const tabState = settle(await buildTypingState('markdown', doc.slice(0, lineStart + column) + '|' + doc.slice(lineStart + column)));
                         const spacedState = settle(await buildTypingState('markdown', spacedStart));
                         const markdownBackspaceDeclines = key === '\b' && !deleteMarkupBackward({ state: spacedState, dispatch: () => undefined });
-                        const copiesPrefix = key === '\n' && handlerOf(spacedState, 'Enter') === prefixCopyingEnter && handlerOf(tabState, 'Enter') !== prefixCopyingEnter;
 
-                        if (markdownBackspaceDeclines || copiesPrefix) {
+                        if (markdownBackspaceDeclines) {
                             continue;
                         }
 
@@ -5079,6 +5096,240 @@ describe('built-in markdown language typing', () => {
 
         expect(await typedWith('-\ta|', bang, '\n')).toBe('-\ta\n-   |!');
         expect(await typedWith('- a|', bang, '\n')).toBe('- a\n- |!');
+    });
+
+    // Enter that renumbers the items below it, from 9 to 10, moves each renumbered item's later lines with its content
+    // column, so they stay in the item.
+
+    it('Enter that renumbers an item from 9 to 10 moves its later paragraph with its content', async () => {
+        expect(await typed('markdown', '8. a|\n9. i\n\n   j', '\n')).toBe('8. a\n9. |\n10. i\n\n    j');
+    });
+
+    it('Enter that renumbers an item written with two spaces after its marker keeps its later paragraph a paragraph', async () => {
+        expect(await typed('markdown', '8. a|\n9.  i\n\n    j', '\n')).toBe('8. a\n9. |\n10.  i\n\n     j');
+    });
+
+    it('Enter that renumbers an item whose marker a tab follows leaves its later lines where they are', async () => {
+        expect(await typed('markdown', '8. a|\n9.\ti\n\n    j', '\n')).toBe('8. a\n9. |\n10.\ti\n\n    j');
+    });
+
+    it('Enter that renumbers an item from 99 to 100 moves its later paragraph with its content', async () => {
+        expect(await typed('markdown', '98. a|\n99. i\n\n    j', '\n')).toBe('98. a\n99. |\n100. i\n\n     j');
+    });
+
+    it('Enter that renumbers an item from 99 to 100 whose marker a tab follows moves its later lines to the tab\'s new stop', async () => {
+        expect(await typed('markdown', '98. a|\n99.\ti\n\n    j', '\n')).toBe('98. a\n99. |\n100.\ti\n\n        j');
+    });
+
+    it('Enter that renumbers an item with a parenthesis delimiter moves its later paragraph with its content', async () => {
+        expect(await typed('markdown', '8) a|\n9) i\n\n   j', '\n')).toBe('8) a\n9) |\n10) i\n\n    j');
+    });
+
+    it('Enter that renumbers an item in a quote moves its later paragraph after the quote marker', async () => {
+        expect(await typed('markdown', '> 8. a|\n> 9. i\n>\n>    j', '\n')).toBe('> 8. a\n> 9. |\n> 10. i\n>\n>     j');
+    });
+
+    it('Enter that renumbers an item of a list nested in an item moves its later paragraph with its content', async () => {
+        expect(await typed('markdown', '- x\n\n  8. a|\n  9. i\n\n     j', '\n')).toBe('- x\n\n  8. a\n  9. |\n  10. i\n\n      j');
+    });
+
+    it('Enter that renumbers an item moves the list nested in it', async () => {
+        expect(await typed('markdown', '8. a|\n9. i\n   - n\n   - m', '\n')).toBe('8. a\n9. |\n10. i\n    - n\n    - m');
+    });
+
+    it('Enter that renumbers an item moves its fenced code block and keeps the code\'s text', async () => {
+        expect(await typed('markdown', '8. a|\n9. i\n\n   ```\n   code\n     more\n   ```', '\n'))
+            .toBe('8. a\n9. |\n10. i\n\n    ```\n    code\n      more\n    ```');
+    });
+
+    it('Enter that renumbers an item keeps its indented code block code', async () => {
+        expect(await typed('markdown', '8. a|\n9. i\n\n       code', '\n')).toBe('8. a\n9. |\n10. i\n\n        code');
+    });
+
+    it('Enter that renumbers an item leaves a lazy continuation line where it is', async () => {
+        expect(await typed('markdown', '8. a|\n9. i\nlazy', '\n')).toBe('8. a\n9. |\n10. i\nlazy');
+    });
+
+    it('Enter that renumbers an empty item leaves the paragraph after its blank line outside the item, as the viewer reads it', async () => {
+        const start = '8. a\n9.\n\n   j';
+        const result = (await typed('markdown', start.replace('8. a', '8. a|'), '\n')).replace('|', '');
+
+        expect(result).toBe('8. a\n9. \n10.\n\n   j');
+        expect(JSON.stringify(viewerModel(start).blocks)).not.toContain('"code"');
+        expect(JSON.stringify(viewerModel(result).blocks)).not.toContain('"code"');
+    });
+
+    it('Enter in a bullet list never renumbers, so the paragraph after an empty item\'s blank line stays outside it (guard)', async () => {
+        const result = (await typed('markdown', '- a|\n-\n\n  j', '\n')).replace('|', '');
+
+        expect(result).toBe('- a\n- \n-\n\n  j');
+        expect(JSON.stringify(viewerModel(result).blocks)).not.toContain('"code"');
+    });
+
+    /**
+     * Presses Enter at the caret marked in `start` and reports whether the viewer reads the result as it read
+     * `start`, with one empty item added after the first item of its list.
+     *
+     * @param start - A document with a caret in the first item of an ordered list.
+     * @returns `true` when only that empty item differs.
+     */
+    async function renumberingKeepsReading(start: string): Promise<boolean> {
+        const plain = start.replace('|', '');
+        const after = viewerModel((await typed('markdown', start, '\n')).replace('|', '')).blocks as unknown as Array<{ kind: string; items: unknown[]; blocks: Array<{ kind: string; items: unknown[] }> }>;
+        const list = after[0]?.kind === 'quote' ? after[0].blocks[0] : after[0];
+
+        if (list?.kind !== 'list') {
+            return false;
+        }
+
+        const removed = list.items.splice(1, 1)[0] as unknown[] | undefined;
+        const withoutLooseness = (blocks: unknown): string => JSON.stringify(blocks, (key, value) => (key === 'loose' ? undefined : value));
+
+        return removed !== undefined && removed.length === 0 && withoutLooseness(after) === withoutLooseness(viewerModel(plain).blocks);
+    }
+
+    it('Enter that renumbers an item whose first line is empty keeps the content after its first paragraph, blank lines included', async () => {
+        expect(await typed('markdown', '8. a|\n9.\n   x\n\n   y', '\n')).toBe('8. a\n9. |\n10.\n    x\n\n    y');
+        expect(await renumberingKeepsReading('8. a|\n9.\n   x\n\n   y')).toBe(true);
+    });
+
+    it('Enter that renumbers an item whose first line is empty keeps a quote the item holds whole', async () => {
+        expect(await renumberingKeepsReading('8. a|\n9.\n   > q\n   >\n   > r')).toBe(true);
+    });
+
+    it('Enter that renumbers an item whose first line is empty keeps a fence with a blank line inside it whole', async () => {
+        expect(await renumberingKeepsReading('8. a|\n9.\n   ```\n   x\n\n   y\n   ```')).toBe(true);
+    });
+
+    it('Enter that renumbers an item in a quote, whose first line is empty, leaves the paragraph after a blank quote line outside it', async () => {
+        expect(await renumberingKeepsReading('> 8. a|\n> 9.\n>\n>    j')).toBe(true);
+    });
+
+    it('Enter that renumbers an item in a quote, whose first line is empty, keeps a quote line the item itself holds', async () => {
+        expect(await renumberingKeepsReading('> 8. a|\n> 9.\n>    > q\n>    >\n>    > r')).toBe(true);
+    });
+
+    describe('Enter that renumbers an item keeps the viewer\'s reading', () => {
+        // 10,648 documents take about 5 s alone; the named timeout holds under the load of a full run.
+        const RENUMBER_SWEEP_TIMEOUT_MS = 60_000;
+
+        it('whatever follows the item, in the shapes of a list item', async () => {
+            const firsts = ['', '  i', '\ti', 'i'];
+            const laters = ['', 'j', '> q', '>', '- n', '```', 'p', '    code', '  m', '\tt', '    \tt'];
+            const failures: string[] = [];
+
+            for (const [left, right] of [['8', '9'], ['98', '99']]) {
+                for (const first of firsts) {
+                    const markEnd = right.length + 1;
+                    const head = `${right}.${first === '' || first.startsWith('\t') || first.startsWith(' ') ? first : ' ' + first}`;
+                    const column = first.startsWith('  ') ? markEnd + 2 : first.startsWith('\t') ? 4 * Math.ceil((markEnd + 1) / 4) : markEnd + 1;
+                    const pad = ' '.repeat(column);
+
+                    for (let mask = 0; mask < laters.length ** 3; mask++) {
+                        const picks = [mask % laters.length, Math.floor(mask / laters.length) % laters.length, Math.floor(mask / laters.length ** 2)];
+                        const lines = picks.map((pick) => (laters[pick] === '' ? '' : pad + laters[pick]));
+                        const start = `${left}. a|\n${head}\n${lines.join('\n')}`;
+
+                        if (!await renumberingKeepsReading(start)) {
+                            failures.push(JSON.stringify(start));
+                        }
+                    }
+                }
+            }
+
+            expect(failures).toEqual([]);
+        }, RENUMBER_SWEEP_TIMEOUT_MS);
+    });
+
+    it('Enter that renumbers an empty item moves the indented line right after it, which CommonMark keeps in the item', async () => {
+        const start = '8. a\n9.\n   j';
+        const result = (await typed('markdown', start.replace('8. a', '8. a|'), '\n')).replace('|', '');
+
+        expect(result).toBe('8. a\n9. \n10.\n    j');
+        expect(JSON.stringify(viewerModel(result).blocks)).not.toContain('"code"');
+        expect(JSON.stringify(viewerModel(result).blocks)).toContain('"j"');
+    });
+
+    it('Enter that renumbers an item adds a column after a tab that crosses its content column', async () => {
+        expect(await typed('markdown', '8. a|\n9. i\n\n\tj', '\n')).toBe('8. a\n9. |\n10. i\n\n\t j');
+    });
+
+    it('Enter that renumbers an item keeps a tab in a fenced code line a tab', async () => {
+        expect(await typed('markdown', '8. a|\n9. i\n\n   ```\n   \tt\n   ```', '\n')).toBe('8. a\n9. |\n10. i\n\n    ```\n    \tt\n    ```');
+        expect(await renumberingKeepsReading('8. a|\n9. i\n\n   ```\n   \tt\n   ```')).toBe(true);
+    });
+
+    it('Enter that renumbers an item keeps a tab in an indented code line a tab', async () => {
+        expect(await typed('markdown', '8. a|\n9. i\n\n       \tt', '\n')).toBe('8. a\n9. |\n10. i\n\n        \tt');
+        expect(await renumberingKeepsReading('8. a|\n9. i\n\n       \tt')).toBe(true);
+    });
+
+    it('Enter that renumbers an item in a quote keeps a tab in its fenced code line a tab', async () => {
+        expect(await typed('markdown', '> 8. a|\n> 9. i\n>\n>    ```\n>    \tt\n>    ```', '\n')).toBe('> 8. a\n> 9. |\n> 10. i\n>\n>     ```\n>     \tt\n>     ```');
+        expect(await renumberingKeepsReading('> 8. a|\n> 9. i\n>\n>    ```\n>    \tt\n>    ```')).toBe(true);
+    });
+
+    it('Enter that lifts an empty item and renumbers the next from 10 to 9 keeps a tab in its fenced code line a tab', async () => {
+        expect(await typed('markdown', '7. x\n8. y\n9. |\n10. b\n\n    ```\n    \tt\n    ```', '\n')).toBe('7. x\n8. y\n|\n9. b\n\n   ```\n   \tt\n   ```');
+    });
+
+    it('Enter that lifts an empty item and renumbers the next from 10 to 9 keeps a tab in its indented code line a tab', async () => {
+        expect(await typed('markdown', '7. x\n8. y\n9. |\n10. b\n\n        \tt', '\n')).toBe('7. x\n8. y\n|\n9. b\n\n       \tt');
+    });
+
+    it('Enter that renumbers an item with a fence indented in the item moves the fence\'s indentation and keeps a tab after it', async () => {
+        expect(await typed('markdown', '8. a|\n9. i\n\n     ```\n     \t\tt\n     ```', '\n')).toBe('8. a\n9. |\n10. i\n\n      ```\n      \t\tt\n      ```');
+    });
+
+    it('Enter that renumbers an item writes a tab past its content column as spaces when its width would change', async () => {
+        expect(await typed('markdown', '8. a|\n9. i\n\n   \t    x', '\n')).toBe('8. a\n9. |\n10. i\n\n         x');
+    });
+
+    it('Enter that lifts an empty item out of its list moves the later lines of the item it renumbers from 10 to 9', async () => {
+        expect(await typed('markdown', '7. x\n8. y\n9. |\n10. b\n\n        c', '\n')).toBe('7. x\n8. y\n|\n9. b\n\n       c');
+    });
+
+    it('Enter that lifts an empty nested item into an ordered list moves the later lines of the outer item it renumbers', async () => {
+        expect(await typed('markdown', '8. a\n   - b\n   - c\n   - |\n9. d\n\n   e', '\n')).toBe('8. a\n   - b\n   - c\n9. |\n10. d\n\n    e');
+    });
+
+    it('Enter that renumbers an item and moves its later lines is one undo step', async () => {
+        const start = (await buildTypingState('markdown', '8. a|\n9. i\n\n   j')).update({ effects: StateEffect.appendConfig.of(history()) }).state;
+        const pressed = pressKey(settle(start), 'Enter');
+        let undone = pressed;
+
+        undo({ state: pressed, dispatch: (transaction) => { undone = transaction.state; } });
+
+        expect(undoDepth(pressed)).toBe(1);
+        expect(undone.doc.toString()).toBe('8. a\n9. i\n\n   j');
+    });
+
+    it('Enter that renumbers an item and moves its later lines keeps the key press as the user event', async () => {
+        const events: (string | undefined)[] = [];
+        const record = EditorState.transactionFilter.of((transaction) => {
+            events.push(transaction.annotation(Transaction.userEvent));
+
+            return transaction;
+        });
+        const settled = settle((await buildTypingState('markdown', '8. a|\n9. i\n\n   j')).update({ effects: StateEffect.appendConfig.of(record) }).state);
+
+        events.length = 0;
+        pressKey(settled, 'Enter');
+
+        expect(events).toEqual(['input']);
+    });
+
+    it('Enter that renumbers an item keeps the blocks the list read before, with the new item', async () => {
+        for (const [start, outline] of [
+            ['8. a|\n9. i\n\n   j', 'ol[li[p] li[] li[p p]]'],
+            ['8. a|\n9.  i\n\n    j', 'ol[li[p] li[] li[p p]]'],
+            ['> 8. a|\n> 9. i\n>\n>    j', 'quote[ol[li[p] li[] li[p p]]]'],
+            ['8. a|\n9. i\n\n       code', 'ol[li[p] li[] li[p code]]'],
+        ]) {
+            const result = await typed('markdown', start, '\n');
+
+            expect(await languageOutline(result.replace('|', ''))).toBe(outline);
+        }
     });
 });
 

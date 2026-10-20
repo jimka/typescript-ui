@@ -2568,6 +2568,21 @@ describe('an ordered list numbers each of its items', () => {
         expect(values).toEqual([3, 4, 5]);
         expect(editor.getValue()).toBe('3. a\n   1. n\n4. 1. m\n5. c');
     });
+
+    it('Enter that renumbers an item from 9 to 10 writes its later paragraph at the item\'s new content column', () => {
+        for (const [source, saved] of [
+            ['8. a\n9. i\n\n   j', '8. a\n\n9.\n\n10. i\n\n    j'],
+            ['8. a\n9. i\n\n       code', '8. a\n\n9.\n\n10. i\n\n    ```\n    code\n    ```'],
+            ['> 8. a\n> 9. i\n>\n>    j', '> 8. a\n>\n> 9.\n>\n> 10. i\n>\n>     j'],
+        ]) {
+            const editor = load(source);
+
+            press(editor, { key: 'Enter', at: ['a', 1] });
+
+            expect(editor.getValue()).toBe(saved);
+            expectSaveKeepsDocument(editor, `Enter after a in ${JSON.stringify(source)}`);
+        }
+    });
 });
 
 describe('an edit in a list item never leaves the caret, or what is typed, where no save writes it (Z rows)', () => {

@@ -203,11 +203,13 @@ function withoutFilters(state: EditorState): EditorState {
  * dispatches. The state's transaction filters do not run on it (see
  * withoutFilters).
  *
+ * @internal Shared with `markdownItemRenumbering.ts`, not part of the public API surface.
+ *
  * @param command - The command.
  * @param state - The state.
  * @returns The transaction, or `null` when the command did not act.
  */
-function transactionOf(command: StateCommand, state: EditorState): Transaction | null {
+export function transactionOf(command: StateCommand, state: EditorState): Transaction | null {
     const dispatched: Transaction[] = [];
     const handled = command({ state: withoutFilters(state), dispatch: (transaction) => { dispatched.push(transaction); } });
 
