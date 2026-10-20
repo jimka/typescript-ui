@@ -5775,7 +5775,6 @@ function writeBracketed(
 
     if (group.kind === "link") {
         unescapeCodeSpanBrackets(writer.pieces, textStart);
-        protectLabelBrackets(writer.pieces, textStart);
     }
 
     writer.stack = outer;
@@ -5938,58 +5937,6 @@ function unescapeCodeSpanBrackets(pieces: Piece[], from: number): void {
 }
 
 /**
- * Writes each bracket pair of a link's text that holds no other bracket as
- * `\\[` … `\\]`, so it stays text whatever the document defines. `marked`
- * unescapes the brackets of link text before reading it, so a pair written
- * `\[r\]` reads there as `[r]` — a reference whenever `r` is defined, and
- * with the next pair a full reference (`[x][r]`). Written `\\[r\\]`, the
- * pair is unescaped to `\[r\]`, which reads as the text `[r]`; to `marked`'s
- * link pattern its brackets are a bracket pair, which link text may hold
- * one level deep — so a pair holding a pair keeps its single escapes (it
- * reads as a reference only to a label holding escaped brackets), and a
- * bracket without a partner, which no reference can be made of, keeps its
- * own. Left as it is when the text's syntax or source holds a bracket of its
- * own, which the pattern pairs too.
- *
- * @param pieces - The written pieces. Updated in place.
- * @param from - The index of the link text's first piece.
- */
-function protectLabelBrackets(pieces: Piece[], from: number): void {
-    const text = pieces.slice(from);
-    const pairedElsewhere = text.some((piece) => piece.kind !== "text" && "text" in piece && /[[\]]/.test(piece.text));
-
-    if (pairedElsewhere) {
-        return;
-    }
-
-    const brackets: Array<{ piece: number; offset: number; char: string }> = [];
-
-    text.forEach((piece, index) => {
-        if (piece.kind === "text") {
-            [...piece.text].forEach((char, offset) => {
-                if (char === "[" || char === "]") {
-                    brackets.push({ piece: from + index, offset, char });
-                }
-            });
-        }
-    });
-
-    const paired = brackets.filter((bracket, index) => (bracket.char === "["
-        ? brackets[index + 1]?.char === "]"
-        : brackets[index - 1]?.char === "["));
-
-    for (const bracket of paired.reverse()) {
-        const piece = pieces[bracket.piece] as { text: string };
-
-        pieces.splice(bracket.piece, 1, ...[
-            { kind: "text", text: piece.text.slice(0, bracket.offset) } as const,
-            { kind: "syntax", text: "\\\\" + bracket.char } as const,
-            { kind: "text", text: piece.text.slice(bracket.offset + 1) } as const,
-        ].filter((part) => part.text !== ""));
-    }
-}
-
-/**
  * Tells whether the pieces between a bracket pair hold a code span with an
  * odd number of backticks in its content, and no bracket in any syntax or
  * source.
@@ -6146,11 +6093,9 @@ function writeBreak(marker: string, context: InlineContext): Piece {
  * fence when the content would otherwise merge with the fence, lose an edge
  * space, or end in a backslash (`marked` masks a backslash with the
  * character after it before pairing backticks, so `\` before the closing
- * fence would hide it). Inside a link, `marked` strips one backslash before each `[` /
- * `]` of the link text before lexing it, so a backslash there is doubled to
- * survive; and its link-text scan reads from one backtick run to the next as
- * a code span, which an inner run longer than the fence ends early, so the
- * fence there is one longer than the longest run.
+ * fence would hide it). Inside a link, `marked`'s link-text scan reads from
+ * one backtick run to the next as a code span, which an inner run longer than
+ * the fence ends early, so the fence there is one longer than the longest run.
  *
  * @param code - The code text.
  * @param context - Where it is written.
@@ -6167,8 +6112,7 @@ function writeCodeSpan(code: string, context: InlineContext, inLink: boolean): s
 
     const fence = "`".repeat(fenceLength);
     const padded = code.startsWith("`") || code.endsWith("`") || code.endsWith("\\") || (/^ .* $/s.test(code) && /[^ ]/.test(code));
-    const linkSafe = inLink ? code.replace(/\\(?=[[\]])/g, "\\\\") : code;
-    const content = padded ? ` ${linkSafe} ` : linkSafe;
+    const content = padded ? ` ${code} ` : code;
 
     return fence + (context.inTableCell ? content.replace(/\|/g, "\\|") : content) + fence;
 }
@@ -6353,9 +6297,6 @@ function writeImage(writer: InlineWriter, node: MarkdownImageNode): void {
     }
 
     writer.pieces.push({ kind: "syntax", text: "!" }, { kind: "syntax", text: "[" });
-
-    const altStart = writer.pieces.length;
-
     node.getAlt().split("\n").forEach((line, index) => {
         if (index > 0) {
             writer.pieces.push({ kind: "syntax", text: "&#10;" });
@@ -6365,8 +6306,6 @@ function writeImage(writer: InlineWriter, node: MarkdownImageNode): void {
             writer.pieces.push({ kind: "text", text: line });
         }
     });
-
-    protectLabelBrackets(writer.pieces, altStart);
     writer.pieces.push({ kind: "syntax", text: `]${writeDestination(node.getSrc(), node.getTitle(), writer.context)}${attributes}` });
 }
 
@@ -7619,9 +7558,8 @@ function runEdges(text: string, index: number): { start: number; end: number } {
  * (underline); a `|` in a table cell; the `:` of a bare URL scheme, the `.`
  * of `www.` and the `@` of an email address (GFM autolinks); an `&` that
  * starts a character reference (`&copy;`, `&#35;`); a `!` just before a link (an image); and a
- * `(` or `{` after a `]` or an image's `)`
- * — `marked` unescapes the brackets of link text before reading it, so
- * `\]` followed by `(` or `{` would otherwise become a link or span there.
+ * `(` or `{` after a `]` or an image's `)`, which would otherwise extend
+ * the link, image or span that `]` or `)` closes.
  *
  * @param char - The character.
  * @param site - Its surroundings.

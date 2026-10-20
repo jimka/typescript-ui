@@ -329,7 +329,7 @@ describe('an image keeps the emphasis it was read inside', () => {
 
 describe('insertImage', () => {
     it.each([
-        ['brackets, emphasis marks and quotes', '/i.png', { alt: 'a [b] *c*', title: 'T "q"' }, '![a \\\\[b\\\\] \\*c\\*](/i.png "T \\"q\\"")'],
+        ['brackets, emphasis marks and quotes', '/i.png', { alt: 'a [b] *c*', title: 'T "q"' }, '![a \\[b\\] \\*c\\*](/i.png "T \\"q\\"")'],
         ['a source with a space', '/a b.png', { alt: 'x' }, '![x](</a b.png>)'],
         ['a title ending in a backslash', '/i.png', { alt: 'a', title: 'x\\' }, '![a](/i.png "x&#92;")'],
         ['an empty title', '/i.png', { alt: 'a', title: '' }, '![a](/i.png)'],
@@ -442,6 +442,76 @@ describe('a reference image whose label holds brackets keeps its meaning when te
 
         expect(expectShownAsSaved(editor)).toBe('![a\\[][](x)\n\n[a\\[]: /i.png');
     });
+});
+
+describe('brackets typed right after an image inside a link\'s text stay text', () => {
+    const DEFINITIONS = '[x]: /x\n[r]: /r.png\n[a]: /a.png\n[a\\]]: /d.png\n[a&#91;]: /f.png';
+    const FORMS = ['![a](/i.png)', '![a][r]', '![a]', '![a\\]]', '![ a ]', '![a&#91;]'];
+    const TYPED = ['[x]', '[]', '[x](y)'];
+
+    /**
+     * Puts a text right after the document's first image.
+     *
+     * @param editor - The editor.
+     * @param text - The text.
+     */
+    function typeAfterImage(editor: MarkdownEditor, text: string): void {
+        update(editor, () => {
+            $dfs().map(({ node }) => node).find($isMarkdownImageNode)!.insertAfter($createTextNode(text));
+        });
+    }
+
+    /**
+     * The links of the document's first block, each as the types of its children.
+     *
+     * @param editor - The editor.
+     * @returns The links.
+     */
+    function linkShapes(editor: MarkdownEditor): string[][] {
+        return lexicalOf(editor).read(() => $dfs().map(({ node }) => node).filter($isLinkNode).map((link) => link.getChildren().map((child) => child.getType())));
+    }
+
+    it('saves the typed brackets escaped, and the save reloads as the link holding the image and the text', () => {
+        const editor = load('[![a](/i.png)z](/u)\n\n[x]: /d');
+
+        typeAfterImage(editor, '[x]');
+
+        const saved = expectShownAsSaved(editor);
+        const reloaded = load(saved);
+
+        expect(saved).toBe('[![a](/i.png)\\[x\\]z](/u)\n\n[x]: /d');
+        expect(viewerModel(saved).blocks[0]).toEqual({
+            kind: 'paragraph',
+            runs: [
+                { kind: 'image', src: '/i.png', alt: 'a', title: null, width: null, height: null, link: { href: '/u', title: null } },
+                { kind: 'text', text: '[x]z', marks: [], link: { href: '/u', title: null }, style: null },
+            ],
+        });
+        expect(linkShapes(reloaded)).toEqual([['markdown-image', 'text']]);
+        expect(reloaded.getValue()).toBe(saved);
+    });
+
+    it('saves the same without a definition for the label', () => {
+        const editor = load('[![a](/i.png)z](/u)');
+
+        typeAfterImage(editor, '[x]');
+
+        expect(expectShownAsSaved(editor)).toBe('[![a](/i.png)\\[x\\]z](/u)');
+    });
+
+    for (const form of FORMS) {
+        it.each(TYPED)(`after ${form}: %s`, (typed) => {
+            const editor = load(`[${form}](/u)\n\n${DEFINITIONS}`);
+
+            typeAfterImage(editor, typed);
+
+            const saved = expectShownAsSaved(editor);
+            const reloaded = load(saved);
+
+            expect(linkShapes(reloaded)).toEqual([['markdown-image', 'text']]);
+            expect(reloaded.getValue()).toBe(saved);
+        });
+    }
 });
 
 describe('a title holding a line feed is written on one line where its block holds one line', () => {

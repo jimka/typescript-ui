@@ -496,6 +496,9 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         ['5.16', '>\tfoo bar\n>\tbaz', 3, 3, 'bold', '> **foo** bar\n> baz', null],
         ['5.17', 'a &#35; b and more', 16, 16, 'bold', 'a # b and **more**', at(12, 16)],
         ['5.18', 'see [a][1] here\n\nmid\n\nmore\n\nend\n\n[1]: /one', 12, 12, 'bold', 'see [a][1] **here**\n\nmid\n\nmore\n\nend\n\n[1]: /one', at(13, 17)],
+        ['link text holding escaped brackets keeps them as written, bold', '[a \\[b\\] word](/u)', 10, 10, 'bold', '[a \\[b\\] **word**](/u)', null],
+        ['link text holding escaped brackets that name a defined label stays a link, bold', '[a \\[b\\] word](/u)\n\n[b]: /d', 10, 10, 'bold', '[a \\[b\\] **word**](/u)\n\n[b]: /d', null],
+        ['link text holding an image and escaped brackets that name a defined label stays a link, bold', '[![i](/i.png)\\[x\\] word](/u)\n\n[x]: /d', 20, 20, 'bold', '[![i](/i.png)\\[x\\] **word**](/u)\n\n[x]: /d', null],
         ['5.19', '- one\n\ttwo', 8, 8, 'bulleted', 'one\ntwo', null],
         ['5.20', '- a\n\t- b c', 7, 7, 'bold', '- a\n  - **b** c', null],
         // A quote is a quote node in the model, so a command acts in it as it acts on the WYSIWYG surface.

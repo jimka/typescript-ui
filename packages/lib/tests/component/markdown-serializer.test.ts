@@ -1024,17 +1024,17 @@ describe('$serializeMarkdown — constructs the viewer would read into the text'
         expect(viewerModel(output).blocks).toEqual([para(run('Wow!'), run('t', [], { href: '/u', title: null }))]);
     });
 
-    it('a ( or { after a ] is escaped and a bracket pair is written \\\\[…\\\\]: marked unescapes brackets in link text before reading it', () => {
+    it('a ( or { after a ] is escaped and a bracket pair keeps its escapes, which read as text', () => {
         const output = serialize(() => [p(fill($createLinkNode('/u'), ['[a](b) [c]{color=red}']))]);
 
-        expect(output).toBe('[\\\\[a\\\\]\\(b) \\\\[c\\\\]\\{color=red}](/u)');
+        expect(output).toBe('[\\[a\\]\\(b) \\[c\\]\\{color=red}](/u)');
         expect(viewerModel(output).blocks).toEqual([para(run('[a](b) [c]{color=red}', [], { href: '/u', title: null }))]);
     });
 
-    it('a backslash before a bracket in a code span inside a link is doubled', () => {
+    it('a backslash before a bracket in a code span inside a link is written as it is', () => {
         const output = serialize(() => [p(fill($createLinkNode('/u'), [text('\\[', ['code'])]))]);
 
-        expect(output).toBe('[`\\\\[`](/u)');
+        expect(output).toBe('[`\\[`](/u)');
         expect(viewerModel(output).blocks).toEqual([para(run('\\[', ['code'], { href: '/u', title: null }))]);
     });
 
@@ -1439,7 +1439,7 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
         });
 
         it('stays escaped otherwise', () => {
-            expect(serialize(() => [p(fill($createLinkNode('/u'), ['[', text('a', ['code']), ']']))])).toBe('[\\\\[`a`\\\\]](/u)');
+            expect(serialize(() => [p(fill($createLinkNode('/u'), ['[', text('a', ['code']), ']']))])).toBe('[\\[`a`\\]](/u)');
         });
     });
 
@@ -2245,7 +2245,7 @@ describe('$serializeMarkdown — lean escapes', () => {
     });
 
     it('J14: brackets in link text keep their escapes', () => {
-        expectSave(() => [p($createLinkNode('/u').append($createTextNode('[a]')))], '[\\\\[a\\\\]](/u)');
+        expectSave(() => [p($createLinkNode('/u').append($createTextNode('[a]')))], '[\\[a\\]](/u)');
     });
 
     it('J15: a "]" after a link keeps its escape', () => {

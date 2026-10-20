@@ -2142,7 +2142,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             ['**[[a](/in)](/out)** y', '**\\[[a](/in)\\]\\(/out)** y q'],
             ['[[a](/1)[b](/2)](/o)', '\\[[a](/1)[b](/2)\\]\\(/o) q'],
             ['[**[a](/1)**[b](/2)](/o) z', '\\[**[a](/1)**[b](/2)\\]\\(/o) z q'],
-            ['x [[\\[a \\]b](/p)](/q)', 'x \\[[\\\\[a \\\\]b](/p)\\]\\(/q) q'],
+            ['x [[\\[a \\]b](/p)](/q)', 'x \\[[\\[a \\]b](/p)\\]\\(/q) q'],
         ];
 
         for (const [source, saved] of around) {

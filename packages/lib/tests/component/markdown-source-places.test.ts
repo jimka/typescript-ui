@@ -452,7 +452,7 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
         ['> x [a \\]¦ b](/u) y', '[[x ‹a ]¦ b› y]]'],
         ['> x [**a** \\] `c¦d` e](/u) y', '[[x ‹{1:a} ] {16:c¦d} e› y]]'],
         ['> [![i](u.png) \\[¦b](/u) c', '[[‹<markdown-image> [¦b› c]]'],
-    ])('SP11: a link text that holds an escaped bracket, which `marked` reads without its backslash, has its source found: %j', (marked, expected) => {
+    ])('SP11: a link text that holds an escaped bracket has its source found: %j', (marked, expected) => {
         expect(placeOf(marked)).toBe(expected);
     });
 

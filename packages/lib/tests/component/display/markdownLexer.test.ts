@@ -1072,3 +1072,61 @@ describe('every image form arrives as one mdimage token', () => {
         expect(tokens[1]).toMatchObject({ type: 'styledspan' });
     });
 });
+
+describe('an escaped bracket in a link\'s or image\'s text reads as a bracket, as CommonMark reads it', () => {
+    /** The inline tokens of the first block, checked to lex the same through the unbounded twin. */
+    function inlines(source: string): Tokens.Generic[] {
+        const lexed = lexMarkdown(source);
+
+        expect(lexMarkdownUnbounded(source)).toEqual(lexed);
+
+        return (lexed[0] as Tokens.Generic).tokens as Tokens.Generic[];
+    }
+
+    /** The token types of a run of inline tokens, a container's own tokens in parentheses after it. */
+    function shape(tokens: readonly Tokens.Generic[]): string {
+        return tokens.map((token) => {
+            const children = token.tokens as Tokens.Generic[] | undefined;
+
+            return children === undefined || children.length === 0 ? token.type : `${token.type}(${shape(children)})`;
+        }).join(' ');
+    }
+
+    it.each([
+        ['a pair naming a defined label', '[a \\[x\\] b](/u)\n\n[x]: /d', 'link(text escape text escape text)', '/u'],
+        ['a pair after an image', '[![a](/i.png)\\[x\\]z](/u)\n\n[x]: /d', 'link(mdimage escape text escape text)', '/u'],
+        ['two pairs that would make a full reference', '[\\[x\\]\\[r\\]](/u)\n\n[r]: /r', 'link(escape text escape escape text escape)', '/u'],
+        ['a pair in a full reference link\'s text', '[a \\[x\\] b][r]\n\n[x]: /d\n[r]: /r', 'link(text escape text escape text)', '/r'],
+        ['a pair naming no definition', '[a \\[x\\] b](/u)', 'link(text escape text escape text)', '/u'],
+    ])('keeps the link around %s', (_name, source, expected, href) => {
+        const tokens = inlines(source);
+
+        expect(shape(tokens)).toBe(expected);
+        expect(tokens[0]).toMatchObject({ type: 'link', href, raw: source.split('\n')[0] });
+    });
+
+    it('reads the alt text of an image whose description holds a pair naming a defined label with its brackets', () => {
+        expect(inlines('![a \\[x\\] b](/i.png)\n\n[x]: /d')[0]).toMatchObject({ type: 'mdimage', alt: 'a [x] b', src: '/i.png' });
+    });
+
+    it('keeps a backslash before a bracket in a code span inside link text, as code keeps every backslash', () => {
+        const link = inlines('[`\\[`](/u)')[0]!;
+
+        expect(link).toMatchObject({ type: 'link', href: '/u' });
+        expect((link.tokens as Tokens.Generic[])[0]).toMatchObject({ type: 'codespan', text: '\\[' });
+    });
+
+    it('reads an escaped backslash before a bracket in link text as a backslash, the bracket then being a bracket', () => {
+        const tokens = inlines('[\\\\[x\\\\]](/u)');
+
+        expect(shape(tokens)).toBe('link(escape text escape text)');
+        expect((tokens[0]!.tokens as Tokens.Generic[]).map((token) => token.text).join('')).toBe('\\[x\\]');
+    });
+
+    it('lets a defined reference written with bare brackets in link text win over the link around it', () => {
+        const tokens = inlines('[[x]z](/u)\n\n[x]: /d');
+
+        expect(shape(tokens)).toBe('text link(text) text');
+        expect(tokens[1]).toMatchObject({ type: 'link', href: '/d' });
+    });
+});

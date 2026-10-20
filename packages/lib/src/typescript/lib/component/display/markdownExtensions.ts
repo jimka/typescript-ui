@@ -532,7 +532,7 @@ function htmlWithInputEndAsLineEnd(this: Tokenizer, src: string): Tokens.HTML | 
     return ended;
 }
 
-/** A pattern that matches nothing: `marked`'s unescape rule, switched off. */
+/** A pattern that matches nothing: `marked`'s unescape rules, switched off. */
 const MATCHES_NOTHING = /(?!)/gu;
 
 /**
@@ -543,10 +543,16 @@ const MATCHES_NOTHING = /(?!)/gu;
 const VIEWS_KEEPING_ESCAPES = new WeakMap<Tokenizer["rules"], Tokenizer>();
 
 /**
- * A view of the tokenizer whose `anyPunctuation` rule matches nothing, so the
- * destination, title and info string `marked` builds keep their backslash
- * escapes as written. The view shares everything else with the tokenizer,
- * through its prototype: its lexer, options and state.
+ * A view of the tokenizer whose two unescape rules match nothing, so what
+ * `marked` builds keeps its backslash escapes as written: `anyPunctuation`
+ * for a destination, title and info string, and `outputLinkReplace` for a
+ * link's or image's text. `marked` takes the backslash off each `\[` and
+ * `\]` of that text before lexing it, so an escaped pair read as a live one
+ * (`[\[x\]](/u)` held a reference `[x]` wherever `x` was defined, and the
+ * link was lost to it); kept, each escape is read by the inline lexer as
+ * CommonMark reads it, as a literal bracket. The view shares everything
+ * else with the tokenizer, through its prototype: its lexer, options and
+ * state.
  *
  * @param tokenizer - The tokenizer `marked` called.
  * @returns The view.
@@ -555,7 +561,11 @@ function keepingEscapes(tokenizer: Tokenizer): Tokenizer {
     let view = VIEWS_KEEPING_ESCAPES.get(tokenizer.rules);
 
     if (view === undefined) {
-        const rules = { ...tokenizer.rules, inline: { ...tokenizer.rules.inline, anyPunctuation: MATCHES_NOTHING } };
+        const rules = {
+            ...tokenizer.rules,
+            inline: { ...tokenizer.rules.inline, anyPunctuation: MATCHES_NOTHING },
+            other:  { ...tokenizer.rules.other, outputLinkReplace: MATCHES_NOTHING },
+        };
 
         view = Object.create(tokenizer, { rules: { value: rules } }) as Tokenizer;
         VIEWS_KEEPING_ESCAPES.set(tokenizer.rules, view);
@@ -723,7 +733,9 @@ function dialectImage(image: Tokens.Image, src: string): MdImageToken {
 /**
  * Reads every image form through `marked`'s own `link` and `reflink`
  * tokenizers: each runs `marked`'s method (the `link` slot through
- * {@link linkReadingReferences}) and, when the token it returns is an image,
+ * {@link linkReadingReferences}, the `reflink` slot on
+ * {@link keepingEscapes}'s view, so the text of either keeps its bracket
+ * escapes) and, when the token it returns is an image,
  * turns it into the dialect's `mdimage` token with any `{…}` group that
  * follows. A link, or a reference that names no definition, is returned as
  * `marked` read it.
@@ -735,7 +747,7 @@ const DIALECT_IMAGE_TOKENIZERS: TokenizerObject = {
         return token?.type === "image" ? dialectImage(token, src) as unknown as Tokens.Image : token;
     },
     reflink(src, links) {
-        const token = Tokenizer.prototype.reflink.call(this, src, links);
+        const token = Tokenizer.prototype.reflink.call(keepingEscapes(this), src, links);
 
         return token?.type === "image" ? dialectImage(token, src) as unknown as Tokens.Image : token;
     },
