@@ -992,6 +992,17 @@ page resets to empty.
   nothing. An `<img>` pasted from another application becomes an image,
   with its alt text, title and size.
 
+- **The `Markdown` and `MarkdownEditor` pages describe the dialect and its
+  known limitations.** The `Markdown` page now opens with what the dialect
+  is: CommonMark read by `marked`, the parts of GFM it takes, its own
+  extension syntax, how it reads against the CommonMark specification, and
+  how it differs from CommonMark. Both pages gain a *Known limitations*
+  section listing the defects still open, each with an example and, where
+  there is one, what to do instead. The *Supported syntax (v1)* heading is
+  now *Supported syntax*: nothing redirects the old fragment, so a link to
+  `/components/Markdown#supported-syntax-v1` must be changed to
+  `#supported-syntax`.
+
 ### Core
 
 - **`Body.init({ strings })`, `Body.setStrings`, `Body.getStrings` and the

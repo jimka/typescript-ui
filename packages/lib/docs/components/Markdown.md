@@ -14,6 +14,25 @@ Rendered prose is selectable and copyable, like any other read-only text a reade
 > [Open the Markdown page](https://jimka.github.io/typescript-ui/components/Markdown)
 <!-- /demo -->
 
+## Dialect
+
+`Markdown` reads [CommonMark](https://spec.commonmark.org/0.31.2/), through `marked`, with the parts of [GitHub Flavored Markdown](https://github.github.com/gfm/) that add pipe tables, strikethrough (`~~struck~~`, or one `~` on each side, as GFM allows), task list items (`- [ ] task`) and links for a bare URL (`https://example.com`), a `www.` address and an email address. GFM's footnotes are not part of it: `[^1]` is a link label like any other, so it shows as text, or as a link where a `[^1]: …` definition gives it a URL. On top of these the dialect adds its own [extension syntax](#extension-syntax): underline, coloured, sized and font-styled spans, table column widths and merged cells, and `:::` alignment and column regions.
+
+[`MarkdownEditor`](/components/MarkdownEditor) reads Markdown with this viewer's parser, on its WYSIWYG surface and in the commands of its source mode, so the viewer, the editor and source mode read the same syntax the same way. There are exceptions, all listed under the editor's [Known limitations](/components/MarkdownEditor#known-limitations): source mode's colours come from CodeMirror's Markdown grammar, which reads a few rare constructs otherwise, and a few constructs show otherwise on the WYSIWYG surface than in the viewer, such as a list the editor keeps as a raw Markdown block where the viewer shows a list.
+
+Checked against the 652 examples of the CommonMark 0.31.2 specification, the viewer reads 651 as a reference parser (micromark, with its GFM extensions) reads them. The comparison is of the document's structure, blocks and their text and formatting, not of rendered HTML: raw HTML counts as text on both sides, and an image counts as the viewer's allow-list admits it, so the examples whose raw HTML a CommonMark renderer passes through as markup still render differently here, by design (see the next section). The one difference is example 606, `<foo\+@bar.example.com>`, and it lies on the reference's side: the viewer shows the text `<foo+@bar.example.com>`, which is what the specification expects, while the reference's GFM email autolinking makes `foo+@bar.example.com` a link.
+
+### Differences from CommonMark
+
+- **Raw HTML shows as text.** An inline tag such as `<b>x</b>` and an HTML block such as a `<div>` … `</div>` run show the characters as written, and a character reference in an HTML block, inside a tag, or between an inline `<code>`, `<pre>`, `<kbd>` or `<script>` tag and its end tag stays as typed; nothing reaches the page as markup (see [Fallback for unsupported tokens](#fallback-for-unsupported-tokens)). The one exception is `<br>` in a table cell, which breaks the line.
+- **GFM's additions.** A pipe table, `~~struck~~` or `~struck~`, a task list item and a bare URL, `www.` address or email address render as a table, struck text, a checkbox and a link, where CommonMark shows their characters.
+- **The extension syntax.** `++underlined++`, `[text]{color=…}`, a `{width=…}` after a delimiter cell or an image, a body cell's `<<` or `^^`, a `\n\n` in a table cell, and `:::` and `|||` lines are read as the [extension syntax](#extension-syntax), where CommonMark shows them as text.
+- **Images are checked.** An image whose source is not a relative path, an `http:` or `https:` URL or an allow-listed `data:image/…` URI renders nothing at all, where CommonMark renders an `<img>` for any source.
+- **A code line after a heading in a quote.** A line without `>`, indented as code, after a heading in a quote is read into the quote as its code, where CommonMark ends the quote before it: `> # h` over `····code` (`·` is a space) is one quote holding the heading and the code. See [Tabs](#tabs).
+- **A tab in an HTML line's indentation.** In a list item or a blockquote, a tab in the leading run of an HTML line shows as the spaces that reach its tab stop.
+
+These are deliberate. The places where the viewer reads a document otherwise than CommonMark, GFM or the dialect's own rules by mistake are listed under [Known limitations](#known-limitations).
+
 ## Usage
 
 ```typescript
@@ -41,7 +60,7 @@ Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) 
 
 Rendered prose is selectable, and a right-click offers a Copy row for whatever is currently selected — dimmed when nothing is selected.
 
-## Supported syntax (v1)
+## Supported syntax
 
 | Markdown | Renders as |
 | --- | --- |
@@ -78,7 +97,7 @@ A table is a header row followed directly by a delimiter row with the same numbe
 
 Every rendered heading carries a slugified `id` (lowercase, non-alphanumerics collapsed to single hyphens, ends trimmed), so a `#fragment` link can target it — `## Some Heading` renders `<h2 id="some-heading">`. Backslash escapes and character references in the heading are read first, exactly where the viewer reads them, so `# Terms &amp; Conditions` and `# Terms & Conditions` both render `id="terms-conditions"` and an editor save never moves an id. Two headings with identical text get `-N` suffixes (`id="dup"`, `id="dup-1"`, …) so ids stay unique within one render; the counter resets on every `setMarkdown` re-render. Uniqueness is per render, not per page, so two `Markdown` instances on one page can render the same id — anything resolving a heading element should scope the lookup to that instance's own subtree rather than searching the whole document. A heading nested inside a `:::` fence is still found, so it still appears in a heading outline built from [`extractMarkdownHeadings`](#extension-syntax).
 
-A `::: {…}` fence opens on a line whose trimmed form starts with `:::` and has more after it, and closes on a line whose trimmed form is exactly `:::`; fences nest, tracked by depth. A fenced code block inside a fence is code: a `:::` or `|||` line in it neither opens, closes nor splits anything. The code block ends only at a line holding a run of its own fence character at least as long as its opening run and nothing else but fence characters, as `marked` reads it; like the `:::` and `|||` lines, a code-fence line counts at any indentation, and a code fence or nested `:::` fence opened on a list item's marker line (`- ~~~`, `- ::: {align=right}`) counts too, since the line closing it is indented under the item. A fence in a list item holds blocks like a fence anywhere else: its paragraphs render as paragraphs, with their inline formatting. A code block left open inside a fence hides the fence's closing line, so that fence is unclosed and renders as ordinary paragraphs. An HTML block is not tracked: a `:::` or `|||` line inside one still closes or splits the fence. An unclosed fence (no matching `:::`) renders as ordinary paragraphs — no `<div>` at all. Inside the fence, a line whose trimmed form is exactly `|||` starts a new column; see [Extension syntax](#extension-syntax) for the full column-splitting rule.
+A `::: {…}` fence opens on a line whose trimmed form starts with `:::` and has more after it, and closes on a line whose trimmed form is exactly `:::`; fences nest, tracked by depth. A fenced code block inside a fence is code: a `:::` or `|||` line in it neither opens, closes nor splits anything. The code block ends only at a line holding a run of its own fence character at least as long as its opening run and nothing else but fence characters, as `marked` reads it; like the `:::` and `|||` lines, a code-fence line currently counts at any indentation, even at four or more spaces, where CommonMark reads it as indented code instead (a defect: see [Known limitations](#known-limitations)), and a code fence or nested `:::` fence opened on a list item's marker line (`- ~~~`, `- ::: {align=right}`) counts too, since the line closing it is indented under the item. A fence in a list item holds blocks like a fence anywhere else: its paragraphs render as paragraphs, with their inline formatting. A code block left open inside a fence hides the fence's closing line, so that fence is unclosed and renders as ordinary paragraphs. An HTML block is not tracked: a `:::` or `|||` line inside one still closes or splits the fence. An unclosed fence (no matching `:::`) renders as ordinary paragraphs — no `<div>` at all. Inside the fence, a line whose trimmed form is exactly `|||` starts a new column; see [Extension syntax](#extension-syntax) for the full column-splitting rule.
 
 ### Tabs
 
@@ -168,7 +187,7 @@ Every attribute value is validated against a per-key allow-list before it is app
 
 ### Fallback for unsupported tokens
 
-Any token type not in the v1 set — raw HTML alone — falls through to a **defined fallback** that renders the token's plain text. It never crashes and never emits the corresponding element. Support for a new token type is added by extending the internal token switch, with no structural rewrite.
+Any token type not in the [Supported syntax](#supported-syntax) table — raw HTML alone — falls through to a **defined fallback** that renders the token's plain text. It never crashes and never emits the corresponding element. Support for a new token type is added by extending the internal token switch, with no structural rewrite.
 
 ### Sizing
 
@@ -195,6 +214,15 @@ Because prose reflows, `Markdown` measures its rendered content **height** at th
 | `getMaxMeasure()` / `setMaxMeasure(value)` | Read or override the prose column's max width — see [Reading width and font scale](#reading-width-and-font-scale). |
 | `getFontScale()` / `setFontScale(value)` | Read or override the prose's base font-size multiplier — see [Reading width and font scale](#reading-width-and-font-scale). |
 | `dispose()` | Detach the theme-change listener — call this before removing a dynamically-built `Markdown` from the page so the listener doesn't leak. |
+
+## Known limitations
+
+These are defects: places where the viewer reads a document otherwise than CommonMark and GFM do, or otherwise than the dialect's own rules say. [`MarkdownEditor`](/components/MarkdownEditor) reads with the same parser, so its WYSIWYG surface shows the same; its own defects are listed under the editor's [Known limitations](/components/MarkdownEditor#known-limitations). The [Differences from CommonMark](#differences-from-commonmark) above are deliberate and are not repeated here.
+
+- **Formatting across a code span that ends in a backslash.** A code span whose text ends in a backslash, such as `` `C:\` ``, ends at the backtick after the backslash, as CommonMark reads it. A `*`, `_`, `~~` or `++` run before the code span still pairs with the same run inside it: `` a ~~b `c~~\` d `` shows `` b `c `` struck through and then `` ` d ``, where CommonMark shows `~~b` and then the code `c~~\`. Escape the run before the code span (`` a \~~b `c~~\` d ``), or close the formatting before the code span starts.
+- **A blank code line holding a tab, in a fenced code block in a quote.** In a quote, a line of a fenced code block that holds only spaces and tabs, a tab among them, shows as an empty line: `` > ``` `` over `> →` over `` > ``` `` (`→` is a tab) shows an empty code block, where CommonMark keeps the tab. Outside a quote, and with spaces alone, the line keeps its whitespace.
+- **A line of backticks in an indented code block inside a `:::` fence.** The fence's column splitter takes a ```` ``` ```` line at any indentation for a code fence, where CommonMark takes one only at up to three spaces of indentation. A `::: columns` fence whose first column holds an indented code block (four spaces) of the line ```` ``` ```` never sees its `|||` and closing lines, so it is unclosed and renders as ordinary blocks: the paragraph `::: columns left`, the code block, and `|||` and `right :::` as paragraphs. Write that code as a fenced block with `~~~` fences instead, and the fence shows its two columns.
+- **Where an HTML block starts.** A `<meta …>` line ends the paragraph above it and starts an HTML block, so `a` over `<meta x="y">` over `b` shows `a` and then, as a block of its own, `<meta x="y"> b`, where CommonMark reads one paragraph. And a tag name followed by a tab (`<div→class="x">`) starts no HTML block: the line is paragraph text, where CommonMark starts an HTML block there. Raw HTML shows as text either way, so only where the text breaks into blocks changes; with a space after the tag name the line reads as CommonMark reads it.
 
 ## See also
 
