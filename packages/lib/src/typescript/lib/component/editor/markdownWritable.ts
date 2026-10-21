@@ -2184,7 +2184,9 @@ function $dropLeadingCharacters(node: TextNode, length: number): void {
  * `INSERT_LINE_BREAK_COMMAND` handler declining a break a save could not
  * write: in a level 3–6 heading, where nothing with content follows the
  * selection's end in its block, or over a selection that covers all the
- * text one raw block holds ({@link $coversAllOfRawBlock}).
+ * text one raw block holds ({@link $coversAllOfRawBlock}). A selection is
+ * removed all the same, as Delete removes it: only the break, which would
+ * have no place where that leaves the caret, is declined.
  *
  * @returns Whether the break was declined.
  */
@@ -2196,8 +2198,13 @@ function $declinesLineBreak(): boolean {
     }
 
     const end = selection.isBackward() ? selection.anchor : selection.focus;
+    const declined = $lineBreakUnwritableAt(end) || $coversAllOfRawBlock(selection);
 
-    return $lineBreakUnwritableAt(end) || $coversAllOfRawBlock(selection);
+    if (declined && !selection.isCollapsed()) {
+        selection.removeText();
+    }
+
+    return declined;
 }
 
 /**
@@ -2224,21 +2231,17 @@ function $coversAllOfRawBlock(selection: RangeSelection): boolean {
  * is declined by the command's handler ({@link $declinesLineBreak}).
  *
  * @param point - The point the break would go in at.
- * @param rest - For a break that follows an edit joining another block's
- *   rest after `point`: the point of the document as it stands whose block
- *   holds, after it, what will follow the break — or `null` when nothing
- *   will. `point` itself when omitted, for a break put in as things stand.
  * @returns `true` when the save could not write the break.
  */
-export function $lineBreakUnwritableAt(point: PointType, rest: PointType | null = point): boolean {
+function $lineBreakUnwritableAt(point: PointType): boolean {
     const container = $breakRuleContainerOf(point.getNode());
 
     if (container === null) {
         return false;
     }
 
-    const restBlock = rest === null ? null : $findEnclosingBlock(rest.getNode());
-    const isFollowed = rest !== null && restBlock !== null && $contentFollows(rest, restBlock);
+    const block = $findEnclosingBlock(point.getNode());
+    const isFollowed = block !== null && $contentFollows(point, block);
 
     return $isOneLineHeading(container) || !isFollowed;
 }
@@ -2267,7 +2270,7 @@ function $isBreakRuleContainer(node: LexicalNode | null): node is ElementNode {
  * @returns The block, or `null` when the node sits elsewhere (a table cell,
  *   a code block, a raw block).
  */
-export function $breakRuleContainerOf(node: LexicalNode): ElementNode | null {
+function $breakRuleContainerOf(node: LexicalNode): ElementNode | null {
     const block = $findEnclosingBlock(node);
 
     return $isBreakRuleContainer(block) ? block : null;
@@ -2349,7 +2352,7 @@ function $holdsContent(node: LexicalNode, text?: string): boolean {
  * @param container - The block it sits in.
  * @returns `true` when a leaf after the point, before the run ends, holds content.
  */
-export function $contentFollows(point: PointType, container: ElementNode): boolean {
+function $contentFollows(point: PointType, container: ElementNode): boolean {
     const leaves = $inlineLeaves(container);
     const node = point.getNode();
     let start: number;

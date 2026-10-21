@@ -3021,6 +3021,54 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             });
         }
 
+        // A selection goes all the same, as Delete takes it: only the break, which would have no place, is not added.
+        const removed: Array<[string, string, [string, number], [string, number], string]> = [
+            ['a selection to the end of a paragraph', 'ab', ['b', 0], ['b', 1], 'a'],
+            ['a selection of all of a paragraph', 'ab', ['ab', 0], ['ab', 2], ''],
+            ['a selection from a paragraph to the end of a list item\'s text', 'p\n\n- ab\n- cd', ['p', 0], ['ab', 2], '- cd'],
+            ['a selection to the end of a list item\'s text', '- ab\n- cd', ['ab', 1], ['ab', 2], '- a\n- cd'],
+            ['a selection to the end of a quote\'s block', '> a\n>\n> bc\n\nz', ['bc', 1], ['bc', 2], '> a\n>\n> b\n\nz'],
+            ['a selection inside a level 3 heading', '### abc', ['abc', 1], ['abc', 2], '### ac'],
+            ['a selection of the whole document', 'ab\n\ncd', ['ab', 0], ['cd', 2], ''],
+        ];
+
+        for (const [name, source, from, to, saved] of removed) {
+            it(`Shift+Enter over ${name} removes it, as Delete does, and adds no break`, () => {
+                const editor = load(source);
+                const deleted = load(source);
+
+                select(editor, from, to);
+                select(deleted, from, to);
+                shiftEnter(editor);
+                edit(deleted, () => {
+                    lexicalOf(deleted).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
+                });
+
+                expect(holdsBreak(editor)).toBe(false);
+                expect(editor.getValue()).toBe(saved);
+                expect(editor.getValue()).toBe(deleted.getValue());
+                expectSaveShowsSurface(editor);
+            });
+        }
+
+        const replaced: Array<[string, string, [string, number], [string, number], string]> = [
+            ['a selection inside a paragraph', 'abc', ['abc', 1], ['abc', 2], 'a\\\nc'],
+            ['a selection to the end of a table cell, which keeps every break', '| ab | c |\n| --- | --- |', ['ab', 1], ['ab', 2], '| a<br> | c |\n| --- | --- |'],
+        ];
+
+        for (const [name, source, from, to, saved] of replaced) {
+            it(`Shift+Enter over ${name} replaces it with a break (control)`, () => {
+                const editor = load(source);
+
+                select(editor, from, to);
+                shiftEnter(editor);
+
+                expect(holdsBreak(editor)).toBe(true);
+                expect(editor.getValue()).toBe(saved);
+                expectSaveShowsSurface(editor);
+            });
+        }
+
         it('deleting the text after a break leaves no break at the end of the block', () => {
             const editor = load('a\\\nbc');
 

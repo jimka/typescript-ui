@@ -1365,41 +1365,46 @@ describe('every route removing a range across a table\'s edge takes the whole ta
         expect(caretBlockIndex(editor)).toBe(1);
     });
 
-    // Markdown has no line break at a block's end, so Shift+Enter is declined where nothing would follow the
-    // break — and a declined Shift+Enter changes nothing, over this range as over any other.
-    describe('R33: Shift+Enter (INSERT_LINE_BREAK_COMMAND) the removal would leave at a block\'s end is declined, range and all', () => {
-        const declined: Array<[string, string, End, End, string]> = [
-            ['from a paragraph to the end of the last cell', DOC, ['Above para', 4], 'last-cell-end', '"Above para"@4 -> tablecell@1'],
-            ['the same range dragged backward', DOC, 'last-cell-end', ['Above para', 4], 'tablecell@1 -> "Above para"@4'],
-            ['from a paragraph into a cell\'s word', DOC, ['Above para', 4], ['c1', 1], '"Above para"@4 -> "c1"@1'],
-            ['from a cell to the end of the paragraph after', DOC, 'first-cell-start', ['after', 5], 'tablecell@0 -> "after"@5'],
-            ['from a table closing a column out of the fence', COLUMN_BEFORE_TABLE, 'first-cell-start', ['after', 2], 'tablecell@0 -> "after"@2'],
-            ['from a cell into a level 3 heading', TABLE_THEN_DEEP_HEADING, 'first-cell-start', ['head ing', 3], 'tablecell@0 -> "head ing"@3'],
-            ['from a paragraph into the document\'s last table', TABLE_LAST, ['Above para', 4], 'last-cell-end', '"Above para"@4 -> tablecell@1'],
+    // Markdown has no line break at a block's end, so Shift+Enter over a range removes it as Delete does and adds
+    // no break where nothing would follow the break.
+    describe('R33: Shift+Enter (INSERT_LINE_BREAK_COMMAND) where the removal would leave the caret at a block\'s end removes the range as Delete does, and adds no break', () => {
+        const removedWithoutBreak: Array<[string, string, End, End, string]> = [
+            ['from a paragraph to the end of the last cell', DOC, ['Above para', 4], 'last-cell-end', 'Abov\n\nafter'],
+            ['the same range dragged backward', DOC, 'last-cell-end', ['Above para', 4], 'Abov\n\nafter'],
+            ['from a paragraph into a cell\'s word', DOC, ['Above para', 4], ['c1', 1], 'Abov\n\nafter'],
+            ['from a cell to the end of the paragraph after', DOC, 'first-cell-start', ['after', 5], 'Above para'],
+            ['from a table closing a column out of the fence', COLUMN_BEFORE_TABLE, 'first-cell-start', ['after', 2], '::: columns\nA\n|||\nbefore\n:::\n\nter'],
+            ['from a cell into a level 3 heading', TABLE_THEN_DEEP_HEADING, 'first-cell-start', ['head ing', 3], '### d ing'],
+            ['from a paragraph into the document\'s last table', TABLE_LAST, ['Above para', 4], 'last-cell-end', 'Abov'],
         ];
 
-        for (const [name, source, anchor, focus, range] of declined) {
+        for (const [name, source, anchor, focus, saved] of removedWithoutBreak) {
             it(name, () => {
                 const editor = load(source);
-                const before = rootChildren(editor);
+                const deleted = load(source);
 
                 select(editor, anchor, focus);
+                select(deleted, anchor, focus);
                 lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+                lexicalOf(deleted).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
 
-                expect(editor.getValue()).toBe(source);
-                expect(rootChildren(editor)).toEqual(before);
-                expect(rangeOf(editor)).toBe(range);
+                expect(editor.getValue()).toBe(saved);
+                expect(editor.getValue()).toBe(deleted.getValue());
+                expect(rootChildren(editor)).toEqual(rootChildren(deleted));
             });
         }
 
-        it('an ordinary range ending at a block\'s end is declined the same way (control)', () => {
+        it('an ordinary range ending at a block\'s end is removed the same way (control)', () => {
             const editor = load(DOC);
+            const deleted = load(DOC);
 
             select(editor, ['Above para', 4], ['after', 5]);
+            select(deleted, ['Above para', 4], ['after', 5]);
             lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+            lexicalOf(deleted).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
 
-            expect(editor.getValue()).toBe(DOC);
-            expect(rangeOf(editor)).toBe('"Above para"@4 -> "after"@5');
+            expect(editor.getValue()).toBe('Abov');
+            expect(editor.getValue()).toBe(deleted.getValue());
         });
 
         // Kept, each the value Shift+Enter gives at the caret the removal leaves.

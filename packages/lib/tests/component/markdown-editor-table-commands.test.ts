@@ -636,14 +636,17 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
         expect(() => lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false)).not.toThrow();
     });
 
-    it('P11b: a line break over a range that ends on a list is declined, and nothing changes', () => {
+    it('P11b: a line break over a range that ends on a list removes the range, as Delete does, and adds no break', () => {
         const editor = load(LIST);
-        const loaded = editor.getValue();
+        const deleted = load(LIST);
 
         select(editor, { on: 'root', at: 0 }, { on: 'list', at: 1 });
+        select(deleted, { on: 'root', at: 0 }, { on: 'list', at: 1 });
 
         expect(() => lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false)).not.toThrow();
-        expect(editor.getValue()).toBe(loaded);
+        lexicalOf(deleted).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
+        expect(editor.getValue()).toBe('- two');
+        expect(editor.getValue()).toBe(deleted.getValue());
     });
 
     it('control: a caret on the root between two blocks is not moved', () => {
@@ -829,15 +832,18 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
             }
         });
 
-        it('S1: a line break over a range from just before a list to the end of its text is declined, range kept', () => {
+        it('S1: a line break over a range from just before a list to the end of its text removes the range, as Delete does, and adds no break', () => {
             const editor = load('Above\n\n- one\n- two');
-            const loaded = editor.getValue();
+            const deleted = load('Above\n\n- one\n- two');
 
             select(editor, ABOVE_LIST, ['two', 3]);
+            select(deleted, ABOVE_LIST, ['two', 3]);
 
             expect(() => lineBreak(editor)).not.toThrow();
-            expect(editor.getValue()).toBe(loaded);
-            expect(lexicalOf(editor).read(() => ($getSelection() as RangeSelection).isCollapsed())).toBe(false);
+            lexicalOf(deleted).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
+            expect(editor.getValue()).toBe('Above');
+            expect(editor.getValue()).toBe(deleted.getValue());
+            expect(lexicalOf(editor).read(() => ($getSelection() as RangeSelection).isCollapsed())).toBe(true);
         });
     });
 

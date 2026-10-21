@@ -591,27 +591,28 @@ describe('a range from a block start into a later block\'s word is removed witho
 
     // Markdown has no line break in a level 3–6 heading nor at a block's end, so Shift+Enter is declined where
     // the removal would leave the caret there — and a declined Shift+Enter changes nothing, range included.
-    describe('R16: Shift+Enter (INSERT_LINE_BREAK_COMMAND) the removal would leave unwritable is declined, range and all', () => {
+    describe('R16: Shift+Enter (INSERT_LINE_BREAK_COMMAND) where the removal would leave the break unwritable removes the range as Delete does, and adds no break', () => {
         const declined: Array<[string, string, TextPoint, TextPoint, string]> = [
-            ['starting in a level 3 heading', '### head ing\n\nefgh **ij** kl', ['head ing', 2], ['efgh ', 3], '"head ing"@2 -> "efgh "@3'],
-            ['the same range dragged backward', '### head ing\n\nefgh **ij** kl', ['efgh ', 3], ['head ing', 2], '"efgh "@3 -> "head ing"@2'],
-            ['ending just before trailing whitespace', 'ab **cd**\n\nefgh x ', ['ab ', 0], ['efgh x ', 6], '"ab "@0 -> "efgh x "@6'],
-            ['ending in a `:::` column, whose rest joins nothing', 'ab **cd**\n\n::: columns\nefgh **ij** kl\n|||\nB\n:::', ['ab ', 1], ['efgh ', 3], '"ab "@1 -> "efgh "@3'],
-            ['ending in a table cell, whose rest joins nothing', 'ab **cd**\n\n| efgh | b |\n| --- | --- |', ['ab ', 1], ['efgh', 3], '"ab "@1 -> "efgh"@3'],
+            ['starting in a level 3 heading', '### head ing\n\nefgh **ij** kl', ['head ing', 2], ['efgh ', 3], '### heh **ij** kl'],
+            ['the same range dragged backward', '### head ing\n\nefgh **ij** kl', ['efgh ', 3], ['head ing', 2], '### heh **ij** kl'],
+            ['ending just before trailing whitespace', 'ab **cd**\n\nefgh x ', ['ab ', 0], ['efgh x ', 6], ''],
+            ['ending in a `:::` column, whose rest joins nothing', 'ab **cd**\n\n::: columns\nefgh **ij** kl\n|||\nB\n:::', ['ab ', 1], ['efgh ', 3], 'a\n\n::: columns\nh **ij** kl\n|||\nB\n:::'],
+            ['ending in a table cell, whose rest joins nothing', 'ab **cd**\n\n| efgh | b |\n| --- | --- |', ['ab ', 1], ['efgh', 3], 'a'],
         ];
 
-        for (const [name, source, anchor, focus, range] of declined) {
+        for (const [name, source, anchor, focus, saved] of declined) {
             it(name, () => {
                 const editor = load(source);
-                const before = rootChildren(editor);
-                const saved = editor.getValue();
+                const deleted = load(source);
 
                 selectText(editor, anchor, focus);
+                selectText(deleted, anchor, focus);
                 lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+                lexicalOf(deleted).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
 
-                expect(rootChildren(editor)).toEqual(before);
                 expect(editor.getValue()).toBe(saved);
-                expect(rangeOf(editor)).toBe(range);
+                expect(editor.getValue()).toBe(deleted.getValue());
+                expect(rootChildren(editor)).toEqual(rootChildren(deleted));
             });
         }
 
@@ -649,14 +650,17 @@ describe('a range from a block start into a later block\'s word is removed witho
             }
         });
 
-        it('an ordinary range ending at a block\'s end is declined the same way (control)', () => {
+        it('an ordinary range ending at a block\'s end is removed the same way (control)', () => {
             const editor = load(D);
+            const deleted = load(D);
 
             selectText(editor, ['ab ', 1], [' kl', 3]);
+            selectText(deleted, ['ab ', 1], [' kl', 3]);
             lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+            lexicalOf(deleted).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
 
-            expect(editor.getValue()).toBe(D);
-            expect(rangeOf(editor)).toBe('"ab "@1 -> " kl"@3');
+            expect(editor.getValue()).toBe('a');
+            expect(editor.getValue()).toBe(deleted.getValue());
         });
 
         // Kept, each the value Shift+Enter gives at the caret the removal leaves.
@@ -1714,17 +1718,18 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
     it.each<[string, string]>([
         ['TS1', 'TE13'], ['TS2', 'TE25'], ['TS3', 'TE29'], ['TS4', 'TE36'], ['TS13', 'TE41'], ['TS14', 'TE50'],
         ['TS19', 'TE62'], ['TS20', 'TE63'], ['TS21', 'TE64'], ['TS22', 'TE65'],
-    ])('%s: Shift+Enter over %s is declined, and nothing changes', async (_name, id) => {
+    ])('%s: Shift+Enter over %s removes the range as Delete does, and adds no break', async (_name, id) => {
         const shape = shapeOfId(id);
 
         for (const [backward, inUpdate] of VARIANTS) {
             const editor = select(shape, backward);
-            const range = rangeOf(editor);
+            const deleted = select(shape, backward);
 
             await run(editor, 'Shift+Enter', inUpdate);
+            await run(deleted, 'Delete', inUpdate);
 
-            expect(editor.getValue()).toBe(shape.source);
-            expect(rangeOf(editor)).toBe(range);
+            expect(editor.getValue(), `backward ${backward}, in an update ${inUpdate}`).toBe(shape.deleted);
+            expect(editor.getValue(), `backward ${backward}, in an update ${inUpdate}`).toBe(deleted.getValue());
         }
     });
 
@@ -2143,24 +2148,24 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
             }
         });
 
-    it('TX5: Shift+Enter over all that a raw block holds is declined, and nothing changes', async () => {
+    it('TX5: Shift+Enter over all that a raw block holds removes it as Delete does, and adds no break', async () => {
         // The break would be all the block holds, which no save writes.
         for (const [backward, inUpdate] of VARIANTS) {
             const editor = load(`${RAW}\n\nafter`);
+            const deleted = load(`${RAW}\n\nafter`);
 
             selectText(editor, backward ? ['</div>', 6] : ['<div>', 0], backward ? ['<div>', 0] : ['</div>', 6]);
-
-            const range = rangeOf(editor);
-
+            selectText(deleted, backward ? ['</div>', 6] : ['<div>', 0], backward ? ['<div>', 0] : ['</div>', 6]);
             await run(editor, 'Shift+Enter', inUpdate);
+            await run(deleted, 'Delete', inUpdate);
 
-            expect(editor.getValue()).toBe(`${RAW}\n\nafter`);
-            expect(rangeOf(editor)).toBe(range);
+            expect(editor.getValue()).toBe('after');
+            expect(editor.getValue()).toBe(deleted.getValue());
         }
     });
 
     it('TX6: Shift+Enter over a range from a raw block\'s very start into a table removes it and adds no break', async () => {
-        // The limit the docs name: the decline of TX5 is judged for a range that ends in a block's text, not for one that takes a table.
+        // As in TX5, the range is removed and no break is added: the break would be all the emptied block holds.
         for (const backward of [false, true]) {
             const editor = load(`${RAW}\n\n${TABLE}\n\nafter`);
 
@@ -2491,15 +2496,18 @@ describe('a range that takes a list item\'s text whole is removed the same way o
         expect(rangeOf(editor)).toBe('"ab"@1 -> "pq"@1');
     });
 
-    it('CI80: a declined Shift+Enter over a range into a table changes nothing', () => {
+    it('CI80: Shift+Enter over a range into a table, with no place for the break, removes the range as Delete does', () => {
         const source = '- ab\n- cd\n\n  | h |\n  | --- |\n  | pq |\n\n  rr\n- z';
         const editor = load(source);
+        const deleted = load(source);
 
         selectText(editor, ['ab', 1], ['pq', 1]);
+        selectText(deleted, ['ab', 1], ['pq', 1]);
         lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+        lexicalOf(deleted).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
 
-        expect(editor.getValue()).toBe(load(source).getValue());
-        expect(rangeOf(editor)).toBe('"ab"@1 -> "pq"@1');
+        expect(editor.getValue()).toBe('- a\n\n  rr\n\n- z');
+        expect(editor.getValue()).toBe(deleted.getValue());
     });
 });
 

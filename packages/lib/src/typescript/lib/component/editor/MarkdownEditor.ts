@@ -72,8 +72,7 @@ import {
     $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $serializeMarkdownWithPlaces, $serializeRestOfBlock, $writtenListMarker, escapeLineStart, markdownBlockShape, SETEXT_H2_UNDERLINE, UNDER_TEXT_BULLET,
 } from "~/component/editor/markdownSerializer.js";
 import {
-    $breakRuleContainerOf, $contentFollows, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
-    $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $standsAsBlock, $selectionHasFormat, $showRawBlockAsSaved, $takeBlocksOutOf, RUN_EDGE_TAG,
+    $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $standsAsBlock, $selectionHasFormat, $showRawBlockAsSaved, $takeBlocksOutOf, RUN_EDGE_TAG,
     registerWritableStateRules, TASK_ITEM_OPENED_TAG,
 } from "~/component/editor/markdownWritable.js";
 import { registerMarkdownHistory } from "~/component/editor/markdownHistory.js";
@@ -2044,76 +2043,6 @@ function $removalJoinsEndBlockRest(startNode: LexicalNode, endNode: LexicalNode)
 }
 
 /**
- * Whether Shift+Enter over `selection`, a range {@link $removeJoiningRange}
- * removes — a text-only-edge range, a stale-focus range or a cross-item
- * range that is no table-edge range —, would have its line break declined once the range is
- * removed: whether the caret the removal leaves — at the range's start,
- * followed by the rest of the end's block when the removal joins it there
- * ({@link $removalJoinsEndBlockRest}) — is where a save cannot write a break
- * ({@link $lineBreakUnwritableAt}). Told ahead of the removal, so that a
- * declined Shift+Enter can leave the range as it is. A range that starts in
- * a raw Markdown block or a code block is not declined, since its caret
- * stays in that block, which keeps every break — but for one that starts
- * at the very start of a raw block and has nothing follow its end: the
- * removal empties the raw block, which then shows as an empty paragraph
- * ({@link $rawBlockEmptiedFrom}), where a break is all the block would
- * hold.
- *
- * @remarks
- * Read off the document as it stands, so it cannot tell for a range with an
- * end in a raw Markdown block that the removal makes read as another block:
- * where the break has no place in that block, the range is removed and no
- * break is added.
- *
- * "Nothing follows its end" is read in the block of text the range ends
- * in, so the range's end has to stand in one: each command's guard settles
- * the range's points ({@link $settleSelectionOffContainers}) before this is
- * asked, and moves an end held as a point on a list, a `:::` block or the
- * document — after which a whole block may follow — into the text the
- * range reaches.
- *
- * @param selection - A range of one of those shapes, its ends settled, left as it is.
- * @returns Whether the break would be declined.
- */
-function $joiningRemovalDeclinesLineBreak(selection: RangeSelection): boolean {
-    const [start, end] = $orderedPoints(selection);
-    const joinsRest = $removalJoinsEndBlockRest(start.getNode(), end.getNode());
-    const emptied = $rawBlockEmptiedFrom(start);
-    const endBlock = $findEnclosingBlock(end.getNode());
-
-    if (emptied !== null && endBlock !== null) {
-        return !$contentFollows(end, endBlock);
-    }
-
-    return $lineBreakUnwritableAt(start, joinsRest ? end : null);
-}
-
-/**
- * The raw Markdown block a removal from `start` empties: the one `start`
- * stands in with nothing of it before `start`. Such a block shows as an
- * empty paragraph once its text is gone, or as the blocks that the text
- * joined onto it reads as.
- *
- * @param start - The start of a range that ends in another block.
- * @returns The raw block, or `null` when `start` stands in none, or after some of its text.
- */
-function $rawBlockEmptiedFrom(start: PointType): MarkdownRawBlockNode | null {
-    const node = start.getNode();
-    const block = $findMatchingParent(node, $isMarkdownRawBlockNode);
-
-    if (block === null) {
-        return null;
-    }
-
-    // A raw block holds its lines' text nodes and the line breaks between them, and nothing deeper.
-    const isOnBlock = node.is(block);
-    const before = isOnBlock ? block.getChildren().slice(0, start.offset) : node.getPreviousSiblings();
-    const isAtStart = before.length === 0 && (isOnBlock || start.offset === 0);
-
-    return isAtStart ? block : null;
-}
-
-/**
  * Whether a paste will insert text of its own at the selection, read off its
  * event the way `@lexical/rich-text` routes a paste. It will not when the
  * event has no clipboard (a key or input event), nor when the clipboard's
@@ -2601,26 +2530,6 @@ function $isListContainerRange(selection: BaseSelection | null): selection is Ra
 
         return point.type === "element" && ($isMarkdownListItemNode(node) || $isListNode(node) || $isMarkdownQuoteNode(node));
     });
-}
-
-/**
- * Tells whether an insert at the selection would go in between the blocks
- * of a list item or a quote, or between the items of a list: the selection
- * is a caret there, or a range that starts there, whose removal leaves the
- * caret where it starts.
- *
- * @param selection - The selection, left as it is.
- * @returns `true` when the selection starts at an element point on a list item, a quote or a list.
- */
-function $startsOnListContainer(selection: BaseSelection | null): boolean {
-    if (!$isRangeSelection(selection)) {
-        return false;
-    }
-
-    const [start] = $orderedPoints(selection);
-    const node = start.getNode();
-
-    return start.type === "element" && ($isMarkdownListItemNode(node) || $isListNode(node) || $isMarkdownQuoteNode(node));
 }
 
 /**
@@ -3376,159 +3285,32 @@ function $clearGuardedRangeBeforeParagraph(): boolean {
 }
 
 /**
- * The point of the document as it stands that has after it, in its block,
- * what the caret will have after it once `covered` is removed and the caret,
- * left between blocks at the range's start, has settled
- * ({@link $settleCaretIntoBlock}). A table-edge removal joins nothing, so
- * the content past the range is the same before and after.
- *
- * @param covered - A copy of a table-edge range that starts in a table,
- *   covered by {@link $coverWholeTables}; its start is moved to the point returned.
- * @returns The point, or `null` when the caret settles in a block holding nothing.
- */
-function $pointAheadOfSettledCaret(covered: RangeSelection): PointType | null {
-    const [start, end] = $orderedPoints(covered);
-    const parent = start.getNode();
-    const endNode = end.getNode();
-    const endsBetweenBlocks = $isElementNode(endNode) && $isRootOrShadowRoot(endNode);
-    const endsOnParent = parent.is(endNode);
-    const endsInsideParent = parent.isParentOf(endNode);
-    const blockAfterEnd = endsBetweenBlocks ? endNode.getChildAtIndex(end.offset) : null;
-    const blockBeforeStart = $isElementNode(parent) ? parent.getChildAtIndex(start.offset - 1) : null;
-
-    const pointAt = (caret: PointCaret<CaretDirection>): PointType => {
-        $setPointFromCaret(start, $normalizeCaret(caret));
-
-        return start;
-    };
-
-    // Forward, into what the removal leaves of the end's block.
-    if (endsInsideParent && !endsBetweenBlocks) {
-        return end;
-    }
-
-    // Forward, to the block after the end's table.
-    if ((endsOnParent || endsInsideParent) && $isElementNode(blockAfterEnd)) {
-        return pointAt($getChildCaret(blockAfterEnd, "next"));
-    }
-
-    // Forward, into the column the end's table closed: the removal leaves it holding nothing else.
-    if (endsInsideParent) {
-        return null;
-    }
-
-    // Back, to the end of the block before the start's table, else into a new paragraph.
-    return $isElementNode(blockBeforeStart) ? pointAt($getChildCaret(blockBeforeStart, "previous")) : null;
-}
-
-/**
- * Whether Shift+Enter over `selection`, a table-edge range, would have its
- * line break declined once the range is removed: whether the caret the
- * removal leaves is where a save cannot write a break
- * ({@link $lineBreakUnwritableAt}). Told ahead of the removal, so that a
- * declined Shift+Enter can leave the range as it is.
- *
- * @param selection - A table-edge range, left as it is.
- * @returns Whether the break would be declined.
- */
-function $tableEdgeRemovalDeclinesLineBreak(selection: RangeSelection): boolean {
-    const covered = selection.clone();
-
-    $coverWholeTables(covered);
-
-    const [start, end] = $orderedPoints(covered);
-    const startNode = start.getNode();
-    const startsBetweenBlocks = $isElementNode(startNode) && $isRootOrShadowRoot(startNode);
-
-    if (startsBetweenBlocks) {
-        const ahead = $pointAheadOfSettledCaret(covered);
-
-        return ahead === null || $lineBreakUnwritableAt(ahead);
-    }
-
-    // The caret stays at the start, and only what the start's own block holds past the range's end follows it.
-    const container = $breakRuleContainerOf(startNode);
-    const endsInContainer = container !== null && container.is($breakRuleContainerOf(end.getNode()));
-
-    return endsInContainer ? $lineBreakUnwritableAt(end) : container !== null;
-}
-
-/**
- * Whether Shift+Enter over `selection` would have its line break declined
- * once the range is removed as {@link $removeGuardedRange} removes it: told
- * for a table-edge range by {@link $tableEdgeRemovalDeclinesLineBreak}, else
- * for a text-only-edge range, a stale-focus range or a cross-item range
- * by {@link $joiningRemovalDeclinesLineBreak} — in the order the removal
- * itself takes the shapes in. The steps that join list items away
- * ({@link $joinCoveredItemTexts}) do not change the answer: they move blocks,
- * and the decision reads only the start's block and the rest of the end's.
- *
- * @param selection - The selection, left as it is.
- * @returns Whether it is a guarded range and the break would be declined.
- */
-function $guardedRemovalDeclinesLineBreak(selection: BaseSelection | null): boolean {
-    const isTableEdge = $isTableEdgeRange(selection);
-
-    if (isTableEdge) {
-        return $tableEdgeRemovalDeclinesLineBreak(selection);
-    }
-
-    const isJoining = $isTextOnlyEdgeRange(selection) || $isStaleFocusRange(selection) || $isCrossItemRange(selection);
-
-    return isJoining && $joiningRemovalDeclinesLineBreak(selection);
-}
-
-/**
- * `INSERT_LINE_BREAK_COMMAND` listener: removes a guarded range
- * ({@link $removeGuardedRange}), then lets Lexical insert the break at the
- * now-collapsed caret — unless the removal would leave the caret where the
- * break is declined ({@link $guardedRemovalDeclinesLineBreak}). Shift+Enter
- * is then declined here, before anything is removed: a declined Shift+Enter
- * changes nothing, over these ranges as over any other. A range that starts
- * just before a list is removed first, as Enter removes it, unless the break
- * would be declined where that leaves the caret
- * ({@link $beforeListRemovalDeclinesLineBreak}); then nothing is removed.
+ * `INSERT_LINE_BREAK_COMMAND` listener: removes the range Shift+Enter is
+ * pressed over, as Delete removes it — a guarded range through
+ * {@link $removeGuardedRange}, and a range that starts just before a list or
+ * ends between the blocks of a list item through Lexical's own removal, as
+ * Enter removes it ({@link $clearGuardedRangeBeforeParagraph}) — and leaves
+ * the break to be judged at the caret that leaves: the line-break rules
+ * decline it where a save could not write it ({@link $declinesLineBreak}),
+ * and Lexical inserts it everywhere else. Between the blocks of a list item
+ * or a quote, or the items of a list, there is no line to break, and
+ * Lexical's insert throws there: a caret there, and one a removal leaves
+ * there, takes no break.
  *
  * @returns Whether the break was declined; otherwise `false`, so the command's own handlers still run.
  */
 function $clearGuardedRangeBeforeLineBreak(): boolean {
     const selection = $getSelection();
     const isGuarded = $isGuardedRange(selection);
-    const removesFirst = !isGuarded && $isRangeStartingBeforeList(selection);
-    // Between the blocks of a list item, or the items of a list, there is no line to break, and Lexical's insert
-    // throws there: for a caret, and for a range that starts or ends there, before anything of it is removed.
-    const declined = $guardedRemovalDeclinesLineBreak(selection) || $startsOnListContainer(selection) || $isListContainerRange(selection)
-        || (removesFirst && $beforeListRemovalDeclinesLineBreak(selection));
+    const removesFirst = !isGuarded && ($isRangeStartingBeforeList(selection) || $isListContainerRange(selection));
 
-    if (declined) {
-        return true;
+    if (removesFirst && $isRangeSelection(selection)) {
+        selection.removeText();
+    } else {
+        $removeGuardedRange(selection);
     }
 
-    // A range from just before a list is removed first, as Enter removes it ({@link $clearGuardedRangeBeforeParagraph}).
-    if (removesFirst) {
-        $removeGuardedRangeForInsert(selection);
-
-        return false;
-    }
-
-    $removeGuardedRange(selection);
-
-    return false;
-}
-
-/**
- * Whether Shift+Enter over a range that starts just before a list
- * ({@link $isRangeStartingBeforeList}) would have its line break declined
- * once the range is removed: the removal leaves the caret in the block the
- * range ends in, ahead of what that block holds after the range.
- *
- * @param selection - A range that starts just before a list, left as it is.
- * @returns Whether the break would be declined.
- */
-function $beforeListRemovalDeclinesLineBreak(selection: RangeSelection): boolean {
-    const [, end] = $orderedPoints(selection);
-
-    return $lineBreakUnwritableAt(end);
+    return $listContainerAtCaret($getSelection()) !== null;
 }
 
 /**
@@ -6902,16 +6684,14 @@ function $settleSelectionBeforeEnter(): boolean {
 /**
  * Whether a guarded command will change anything over a range that has a
  * horizontal rule at an end, told before the rule is removed: a paste with no
- * text to insert (an empty clipboard, a file alone), a clipboard insert with no
- * nodes, and Shift+Enter where the break would have no place once the rules at
- * the ends are gone. Every other command acts.
+ * text to insert (an empty clipboard, a file alone) and a clipboard insert with no
+ * nodes do not. Every other command acts.
  *
  * @param identity - The command.
  * @param payload - Its payload.
- * @param selection - The range, which has a rule at an end.
- * @returns `"acts"`, `"nothing"` to run the command's listener on the range as it is, or `"declined"` to cancel the command.
+ * @returns `"acts"`, or `"nothing"` to run the command's listener on the range as it is.
  */
-function $ruleEdgeRangeVerdict(identity: unknown, payload: unknown, selection: BaseSelection | null): "acts" | "nothing" | "declined" {
+function $ruleEdgeRangeVerdict(identity: unknown, payload: unknown): "acts" | "nothing" {
     if (identity === PASTE_COMMAND) {
         return pasteWillInsertText(payload as CommandPayloadType<typeof PASTE_COMMAND>) ? "acts" : "nothing";
     }
@@ -6920,41 +6700,7 @@ function $ruleEdgeRangeVerdict(identity: unknown, payload: unknown, selection: B
         return (payload as CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>).nodes.length > 0 ? "acts" : "nothing";
     }
 
-    if (identity === INSERT_LINE_BREAK_COMMAND && $isRangeSelection(selection)) {
-        return $ruleEdgeRangeDeclinesLineBreak(selection) ? "declined" : "acts";
-    }
-
     return "acts";
-}
-
-/**
- * Whether Shift+Enter over a range with a horizontal rule at an end would have
- * its line break declined once the rules at the ends are gone: the range is then
- * nothing but those rules, or the caret the removal leaves is where a save cannot
- * write a break ({@link $lineBreakUnwritableAt}).
- *
- * @param selection - A range with a rule at an end, left as it is.
- * @returns Whether the break would be declined.
- */
-function $ruleEdgeRangeDeclinesLineBreak(selection: RangeSelection): boolean {
-    const [start, end] = $orderedPoints(selection.clone());
-
-    // The same walk the removal makes, on a copy of the points: past the rules after the start, back over those before the end.
-    for (let rule = $ruleAfterElementPoint(start); rule !== null; rule = $ruleAfterElementPoint(start)) {
-        start.set(start.key, start.offset + 1, start.type);
-    }
-
-    for (let rule = $ruleBeforeElementPoint(end); rule !== null; rule = $ruleBeforeElementPoint(end)) {
-        end.set(end.key, end.offset - 1, end.type);
-    }
-
-    // Starting between blocks and ending in text, the removal leaves a caret before the rest of the end's block, which
-    // is where a break is told from. Ending between blocks, it leaves the caret at the end of the start's block, and
-    // a break at a block's end is never written.
-    const isEmptied = start.is(end);
-    const leavesRestOfEndBlock = start.type === "element" && end.type === "text";
-
-    return isEmptied || !leavesRestOfEndBlock || $lineBreakUnwritableAt(end);
 }
 
 /**
@@ -7016,11 +6762,7 @@ function registerRangeGuards(editor: LexicalEditor): () => void {
 
             // A command that will change nothing leaves the rules at the range's ends, and the selection, as they are.
             if ($standsBesideHorizontalRule($getSelection())) {
-                const verdict = $ruleEdgeRangeVerdict(identity, payload, $getSelection());
-
-                if (verdict === "declined") {
-                    return true;
-                }
+                const verdict = $ruleEdgeRangeVerdict(identity, payload);
 
                 if (verdict === "nothing") {
                     return listener(payload, target);
@@ -7030,6 +6772,11 @@ function registerRangeGuards(editor: LexicalEditor): () => void {
             const isEmptied = $removeHorizontalRulesAtRangeEnds($getSelection());
 
             $settleSelectionOffContainers($getSelection());
+
+            // Taking the rules left a caret between blocks, where there is no line to break.
+            if (isEmptied && identity === INSERT_LINE_BREAK_COMMAND) {
+                return true;
+            }
 
             if (!isEmptied || !DELETING_COMMANDS.has(identity)) {
                 return listener(payload, target);

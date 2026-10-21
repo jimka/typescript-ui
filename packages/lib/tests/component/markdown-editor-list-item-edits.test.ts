@@ -3195,10 +3195,10 @@ describe('an edit in a list item never leaves the caret, or what is typed, where
             saved:  '- a\n\n  Q\n\n- m\n\n- z\n\ntail',
         },
         {
-            name:   'Z41: Shift+Enter over such a range changes nothing: nothing is removed for a break that is declined',
+            name:   'Z41: Shift+Enter over such a range removes it, as Delete does, and adds no break: there is no line to break',
             source: `- a\n\n  ${TABLE_ITEM}\n- z`,
             steps:  [{ key: 'command', run: rangeOnItem('a', 1, 2) }, { key: 'Shift+Enter' }],
-            saved:  `- a\n\n  ${TABLE_ITEM}\n- z`,
+            saved:  '- a\n\n- z',
         },
         {
             name:   'Z42: Enter over a range from after an item\'s table into the next item\'s text',
@@ -3393,6 +3393,30 @@ describe('an edit in a list item never leaves the caret, or what is typed, where
         press(editor, { key: 'type', text: 'Q' });
 
         expect(expectSaveKeepsDocument(editor, 'the typing')).toBe('- a\n- Q\n- z');
+    });
+
+    it.each([false, true])('Shift+Enter over a range from an item\'s text to between the blocks of the next item removes it, as Delete does (backward %s)', (backward) => {
+        const source = '- x\n- a\n\n  para\n- b';
+        const editors = [load(source), load(source)];
+
+        for (const editor of editors) {
+            lexicalOf(editor).update(() => {
+                const text = $textNode('x');
+                const item = $textNode('a').getParentOrThrow().getParentOrThrow();
+                const selection = $createRangeSelection();
+                const [anchor, focus] = backward ? [selection.focus, selection.anchor] : [selection.anchor, selection.focus];
+
+                anchor.set(text.getKey(), 1, 'text');
+                focus.set(item.getKey(), 1, 'element');
+                $setSelection(selection);
+            }, { discrete: true });
+        }
+
+        press(editors[0]!, { key: 'Shift+Enter' });
+        press(editors[1]!, { key: 'Delete' });
+
+        expect(expectSaveKeepsDocument(editors[0]!, 'the line break')).toBe('- x\n\n  para\n\n- b');
+        expect(editors[0]!.getValue()).toBe(editors[1]!.getValue());
     });
 });
 
@@ -4165,8 +4189,8 @@ describe('a range that takes a list item\'s text whole joins that item away (CI 
         { name: 'CI42: Enter to the end of a block, then type', source: A,
             steps: [{ key: 'Enter', at: ['ab', 1], to: ['pq', 2] }, { key: 'type', text: 'Q' }], saved: '- a\n\n- Q\n  - nn\n\n  rr\n\n- z' },
         { name: 'CI43: Shift+Enter', source: A, steps: [{ key: 'Shift+Enter', at: ['ab', 1], to: ['pq', 1] }], saved: '- a\\\n  q\n  - nn\n\n  rr\n\n- z' },
-        { name: 'CI44: Shift+Enter with nothing after the caret: declined', source: A, steps: [{ key: 'Shift+Enter', at: ['ab', 1], to: ['pq', 2] }],
-            saved: '- ab\n- cd\n\n  pq\n  - nn\n\n  rr\n- z' },
+        { name: 'CI44: Shift+Enter with nothing after the caret: the range is removed, as Delete removes it, and no break is added', source: A,
+            steps: [{ key: 'Shift+Enter', at: ['ab', 1], to: ['pq', 2] }], saved: '- a\n  - nn\n\n  rr\n\n- z' },
         { name: 'CI45: cut()', source: A, steps: [{ key: 'command', at: ['ab', 1], to: ['pq', 1], run: (editor) => { void editor.cut(); } }],
             saved: '- aq\n  - nn\n\n  rr\n\n- z' },
         { name: 'CI46: insertImage()', source: A,
