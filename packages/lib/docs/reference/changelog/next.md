@@ -1245,6 +1245,19 @@ page resets to empty.
   `[x]` and the block now goes above the item. No consumer action is
   needed.
 
+- **`MarkdownEditor` keeps a lone task checkbox written with a character
+  reference.** A task item whose text after its checkbox is only a
+  character reference for a space (`- [x] &#32;`), which the viewer shows as
+  a checkbox alone, saved as `- [ ]` once the checkbox was toggled, which a
+  reload reads as the text `[ ]`; it now keeps the reference
+  (`- [ ] &#32;`) and stays a checkbox. A task item whose text opens with a
+  space other than an ASCII one, such as an ideographic space, saved that
+  space as itself, which a reload reads as the text `[x]`; it is now written
+  as a character reference (`- [x] &#12288;a`), so the item stays a task
+  item. A code block made from a task item with no text holds its marker as
+  the item showed it (`[x]`), where a checked one held `\[x\]`. No consumer
+  action is needed.
+
 - **`mergeTableCells()` leaves a usable table.** An empty first cell no
   longer gives the merged cell a blank first line, the caret lands in the
   merged cell so Unmerge cell is available at once (the table controls
