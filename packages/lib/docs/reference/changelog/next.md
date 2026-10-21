@@ -1122,6 +1122,9 @@ page resets to empty.
   and `Aria.setReadOnly(null)` remove their attribute, as `setHidden(null)`
   does.
 
+- **`AriaRole` gains `'menuitemcheckbox'` and `'menuitemradio'`**, the
+  roles `CheckboxMenuRow` and `RadioMenuRow` now carry.
+
 ### Data
 
 - **`JsonWriter.dataFor` is `protected`.** A subclass can override it to
@@ -2340,6 +2343,20 @@ page resets to empty.
 - **`MarkdownEditor` neutralises an image pasted as Lexical JSON with a refused
   source.** Such a source (`javascript:…`) now becomes an empty one, as it is
   refused everywhere else an image enters the editor.
+
+- **`CheckboxMenuRow` and `RadioMenuRow` are `menuitemcheckbox` and
+  `menuitemradio` items.** The row element had no role, and the checkbox or
+  radio button inside it carried `role="checkbox"` / `role="radio"` and a
+  tab stop, so inside a `role="menu"` panel assistive technology found a
+  form control where a menu item belongs. The row element now carries the
+  menu item role, its `text` as `aria-label`, `aria-checked` and, when
+  disabled, `aria-disabled`; the inner control is `aria-hidden` and takes
+  no tab stop. A keyboard-opened menu's `aria-activedescendant` names the
+  row itself. The rows in `Split`'s gutter menu, `Table`'s column menu, a
+  window's menu and `MarkdownEditor`'s context menu change with them. A
+  subclass of `AbstractBooleanMenuRow` gets the same and is a
+  `menuitemcheckbox` unless it overrides the new protected
+  `getMenuItemRole()`. No consumer action is needed.
 
 ### Core
 
