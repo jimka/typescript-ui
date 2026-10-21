@@ -1361,27 +1361,24 @@ describe('Menu keyboard session — aria-activedescendant', () => {
         expect(menu.getAria().getActiveDescendant()).toBeNull();
     });
 
-    it('A2: a checkbox or radio row is named by its inner control', () => {
+    it('A2: a checkbox or radio row is named by its own id, the element that carries its menu item role', () => {
         const menu = showFromKeyboard(makeMenu(), [
             { row: () => new CheckboxMenuRow({ text: 'Bold' }) },
             { row: () => new RadioMenuRow({ text: 'Left' }) },
         ]);
 
         const checkboxRow = rowAt(menu, 0);
-        const checkboxId  = (checkboxRow as any)._checkbox.getId();
 
         expect(menu.getFocusedIndex()).toBe(0);
-        expect(menu.getAria().getActiveDescendant()).toBe(checkboxId);
-        expect(checkboxId).not.toBe(checkboxRow.getId());
-        expect(checkboxRow.getActiveDescendantId()).toBe(checkboxId);
+        expect(menu.getAria().getActiveDescendant()).toBe(checkboxRow.getId());
+        expect(checkboxRow.getAria().getRole()).toBe('menuitemcheckbox');
 
         press(menu, 'ArrowDown');
 
         const radioRow = rowAt(menu, 1);
-        const radioId  = (radioRow as any).getControl().getId();
 
-        expect(menu.getAria().getActiveDescendant()).toBe(radioId);
-        expect(radioId).not.toBe(radioRow.getId());
+        expect(menu.getAria().getActiveDescendant()).toBe(radioRow.getId());
+        expect(radioRow.getAria().getRole()).toBe('menuitemradio');
     });
 
     it('A4: a rebuild forgets the name of a row it disposed', () => {

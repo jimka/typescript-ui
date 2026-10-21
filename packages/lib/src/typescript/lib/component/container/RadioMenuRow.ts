@@ -62,6 +62,16 @@ class RadioMenuRow extends AbstractBooleanMenuRow<RadioMenuRowOptions> {
     }
 
     /**
+     * Overrides {@link AbstractBooleanMenuRow.getMenuItemRole}: a radio row is
+     * a single choice.
+     *
+     * @returns `"menuitemradio"`.
+     */
+    protected getMenuItemRole(): "menuitemradio" {
+        return "menuitemradio";
+    }
+
+    /**
      * Selecting is one-way — a click on an already-selected row leaves it
      * selected, matching `RadioButton`'s own activation rule — so a group of
      * rows is deselected by whoever owns the group, not by the row itself.

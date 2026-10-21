@@ -28,6 +28,8 @@ export type AriaRole =
     | 'option'
     | 'menubar'
     | 'menuitem'
+    | 'menuitemcheckbox'
+    | 'menuitemradio'
     | 'menu'
     | 'toolbar'
     | 'separator'

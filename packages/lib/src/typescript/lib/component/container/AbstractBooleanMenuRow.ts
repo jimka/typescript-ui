@@ -44,8 +44,9 @@ export interface AbstractBooleanMenuRowOptions extends ComponentOptions {
  * handler that belongs to a different component.
  *
  * Each subclass supplies only what differs: its inner control (returned from
- * `getControl()`) and the value mutation performed on activation
- * (`applyActivation()`).
+ * `getControl()`), the value mutation performed on activation
+ * (`applyActivation()`) and, for a single choice, the row's menu item role
+ * (`getMenuItemRole()`).
  *
  * Not wrapped with `callable()` — abstract classes are never instantiated.
  *
@@ -97,6 +98,7 @@ export abstract class AbstractBooleanMenuRow<
      */
     setChecked(value: boolean): this {
         this.getControl().setValue(value);
+        this.getAria().setChecked(this.isChecked());
 
         return this;
     }
@@ -109,18 +111,6 @@ export abstract class AbstractBooleanMenuRow<
      */
     isNavigable(): boolean {
         return true;
-    }
-
-    /**
-     * Overrides {@link MenuRow.getActiveDescendantId}, naming the inner
-     * control: the row element carries no role, while the control — a real
-     * checkbox or radio button — carries the accessible name and the checked
-     * state a screen reader announces.
-     *
-     * @returns The inner control's id.
-     */
-    getActiveDescendantId(): string {
-        return this.getControl().getId();
     }
 
     /**
@@ -264,14 +254,32 @@ export abstract class AbstractBooleanMenuRow<
      * control field is assigned — nothing in this base's own constructor may
      * call `getControl()`, since the subclass field cannot exist until
      * the subclass constructor body runs.
+     *
+     * The row element is the menu item assistive technology sees: it takes
+     * its menu item role, the control's label as its name, and the checked
+     * and disabled states. A menu item's children are presentational, so the
+     * control — whose own `checkbox` / `radio` role, state and tab stop
+     * would read as a second control inside the item — is hidden from the
+     * accessibility tree and out of the tab order.
      */
     protected installControl(): void {
         const control = this.getControl();
+        const label = control.getLabel();
+        const aria = this.getAria();
 
         control.setPointerEvents("none");
+        control.getAria().setHidden(true).setTabIndex(null);
         this.addComponent(control);
 
+        aria.setRole(this.getMenuItemRole());
+        aria.setChecked(control.getValue());
+
+        if (label) {
+            aria.setLabel(label);
+        }
+
         if (!control.isEnabled()) {
+            aria.setDisabled(true);
             this.setPointerEvents("none");
             this.setOpacity(DISABLED_OPACITY);
         }
@@ -288,6 +296,16 @@ export abstract class AbstractBooleanMenuRow<
      * @returns The inner control.
      */
     protected abstract getControl(): AbstractBooleanInput;
+
+    /**
+     * Subclass hook: the row element's menu item role, matching the control
+     * it hosts. {@link RadioMenuRow} overrides it for its single choice.
+     *
+     * @returns `"menuitemcheckbox"` by default.
+     */
+    protected getMenuItemRole(): "menuitemcheckbox" | "menuitemradio" {
+        return "menuitemcheckbox";
+    }
 
     /**
      * Subclass hook: perform the value mutation for an activation. Called

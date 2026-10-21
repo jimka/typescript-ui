@@ -3,6 +3,7 @@ import { MenuRow } from '~/component/container/MenuRow';
 import { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
 import { RadioMenuRow } from '~/component/container/RadioMenuRow';
 import { MenuItem } from '~/component/container/MenuItem';
+import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import { installTestDOM, makeEvent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -579,5 +580,115 @@ describe('RadioMenuRow', () => {
         expect(row.isChecked()).toBe(false);
 
         row.dispose();
+    });
+});
+
+describe('boolean menu rows are the menu items assistive technology reads', () => {
+    // Same undisposed-row leak as the two blocks above: every row built here is disposed.
+    afterEach(() => DOM.reset());
+
+    /** The inner checkbox or radio button a boolean menu row hosts, through its protected `getControl()`. */
+    function controlOf(row: CheckboxMenuRow | RadioMenuRow): Component {
+        return (row as unknown as { getControl(): Component }).getControl();
+    }
+
+    /** One attribute of a component's rendered element, or `null` when it is absent. */
+    function attributeOf(component: Component, name: string): string | null {
+        return DOM.source.getAttribute(component.getElement(true)!, name);
+    }
+
+    /** The attributes assistive technology reads on a row and on its inner control. */
+    function rolesOf(row: CheckboxMenuRow | RadioMenuRow): Record<string, string | null> {
+        const control = controlOf(row);
+
+        return {
+            rowRole:         attributeOf(row, 'role'),
+            rowLabel:        attributeOf(row, 'aria-label'),
+            rowChecked:      attributeOf(row, 'aria-checked'),
+            rowDisabled:     attributeOf(row, 'aria-disabled'),
+            controlHidden:   attributeOf(control, 'aria-hidden'),
+            controlTabIndex: attributeOf(control, 'tabindex'),
+        };
+    }
+
+    it('a checkbox row is a menuitemcheckbox named by its text, and its checkbox is hidden with no tab stop', () => {
+        installTestDOM(CONFIG);
+
+        const row = new CheckboxMenuRow({ text: 'Bold' });
+
+        expect(rolesOf(row)).toEqual({
+            rowRole: 'menuitemcheckbox', rowLabel: 'Bold', rowChecked: 'false', rowDisabled: null,
+            controlHidden: 'true', controlTabIndex: null,
+        });
+
+        row.dispose();
+    });
+
+    it('a radio row is a menuitemradio named by its text, and its radio button is hidden with no tab stop', () => {
+        installTestDOM(CONFIG);
+
+        const row = new RadioMenuRow({ text: 'Red', checked: true });
+
+        expect(rolesOf(row)).toEqual({
+            rowRole: 'menuitemradio', rowLabel: 'Red', rowChecked: 'true', rowDisabled: null,
+            controlHidden: 'true', controlTabIndex: null,
+        });
+
+        row.dispose();
+    });
+
+    it('the row\'s aria-checked follows a click, activate() and setChecked()', () => {
+        installTestDOM(CONFIG);
+
+        const checkbox = new CheckboxMenuRow({ text: 'Bold' });
+        const radio = new RadioMenuRow({ text: 'Red' });
+
+        click(checkbox);
+        expect(attributeOf(checkbox, 'aria-checked')).toBe('true');
+
+        checkbox.activate();
+        expect(attributeOf(checkbox, 'aria-checked')).toBe('false');
+
+        radio.activate();
+        expect(attributeOf(radio, 'aria-checked')).toBe('true');
+
+        radio.setChecked(false);
+        expect(attributeOf(radio, 'aria-checked')).toBe('false');
+
+        checkbox.dispose();
+        radio.dispose();
+    });
+
+    it('a disabled row carries aria-disabled on the row', () => {
+        installTestDOM(CONFIG);
+
+        const checkbox = new CheckboxMenuRow({ text: 'Bold', enabled: false });
+        const radio = new RadioMenuRow({ text: 'Red', enabled: false });
+
+        expect(attributeOf(checkbox, 'aria-disabled')).toBe('true');
+        expect(attributeOf(radio, 'aria-disabled')).toBe('true');
+
+        checkbox.dispose();
+        radio.dispose();
+    });
+
+    it('a row with no text has no aria-label', () => {
+        installTestDOM(CONFIG);
+
+        const row = new CheckboxMenuRow();
+
+        expect(attributeOf(row, 'aria-label')).toBeNull();
+
+        row.dispose();
+    });
+
+    it('a plain MenuItem keeps role="menuitem"', () => {
+        installTestDOM(CONFIG);
+
+        const item = new MenuItem({ text: 'Cut' }, () => {}, () => {});
+
+        expect(attributeOf(item, 'role')).toBe('menuitem');
+
+        item.dispose();
     });
 });
