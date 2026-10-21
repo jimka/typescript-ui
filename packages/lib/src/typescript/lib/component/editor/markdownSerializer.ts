@@ -5772,10 +5772,10 @@ function writeBracketed(
  * URL and title, matching labels as `marked` does ({@link linkLabelKey}).
  * An empty title counts as none, as `marked`
  * gives a reference link with an empty title none. A title holding a blank
- * line only a definition can write — an inline link's would end its block —
- * so a link with one keeps its reference form while its label resolves to
- * its URL, whatever title the definition now gives it; the editor then
- * shows that title, as the save reads.
+ * line is no exception: a link whose definition's title is edited takes the
+ * new title before it is saved (`$adoptDefinitionTitles` in
+ * `markdownWritable.ts`), and one that shows another title — copied in from
+ * another document — is saved inline with the title it shows.
  *
  * @param node - The reference link.
  * @param definitions - The saved document's definitions, or `null`.
@@ -5795,7 +5795,7 @@ function resolvesToNode(node: ReferenceLinkNode, definitions: Links | null): boo
     const definition = definitions[key]!;
     const title = node.getTitle() || null;
 
-    return definition.href === node.getURL() && ((definition.title || null) === title || BLANK_LINE_IN_TITLE.test(title ?? ""));
+    return definition.href === node.getURL() && (definition.title || null) === title;
 }
 
 /**
@@ -6320,7 +6320,9 @@ export function readImageForm(written: string, definitions: Links | null): MdIma
 /**
  * Whether an image's written form still reads as the image: lexed alone under
  * the save's definitions, it is one image whose source, alt text and title
- * equal the node's, and it can stand where it is written.
+ * equal the node's, and it can stand where it is written. A title holding a
+ * blank line must equal it too, as a reference link's must
+ * ({@link resolvesToNode}).
  *
  * @param node - The image.
  * @param written - The form it was loaded in; `""` for an image made in the editor.
@@ -6336,7 +6338,7 @@ function writtenFormHolds(node: MarkdownImageNode, written: string, context: Inl
     const title = node.getTitle();
 
     return image !== null && image.src === node.getSrc() && image.alt === node.getAlt()
-        && (image.title === title || BLANK_LINE_IN_TITLE.test(title ?? ""));
+        && image.title === title;
 }
 
 /**

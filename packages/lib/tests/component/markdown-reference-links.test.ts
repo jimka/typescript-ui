@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-    $createParagraphNode, $createTextNode, $getRoot, $getSelection, $isRangeSelection, $isTextNode, HISTORY_PUSH_TAG, PASTE_COMMAND,
-    UNDO_COMMAND,
+    $createParagraphNode, $createTextNode, $getRoot, $getSelection, $isRangeSelection, $isTextNode, $parseSerializedNode, HISTORY_PUSH_TAG,
+    PASTE_COMMAND, UNDO_COMMAND,
 } from 'lexical';
 import type { ElementNode, LexicalEditor, TextNode } from 'lexical';
 import { $createLinkNode, $isLinkNode } from '@lexical/link';
@@ -766,6 +766,23 @@ describe('stack fuzz round 2: references where the save could read them otherwis
 
         expect(editor.getValue()).toBe('[foo][]\n\n[foo]: /url "\n\ntitle2"');
         expect(references(editor)).toEqual([{ label: 'foo', form: 'collapsed', url: '/url', title: '\n\ntitle2' }]);
+    });
+
+    it('a reference copied as JSON with a blank line in its title keeps that title where its label is defined with another', () => {
+        const json = lexicalOf(load('[a][x]\n\n[x]: /u "t&#10;&#10;u"')).read(() => $referenceLinks()[0]!.exportJSON());
+        const editor = load('z\n\n[x]: /u "other"');
+
+        update(editor, () => {
+            const link = $parseSerializedNode(json) as ReferenceLinkNode;
+
+            link.append($createTextNode('a'));
+            $getRoot().getFirstChildOrThrow<ElementNode>().append(link);
+        });
+
+        const saved = expectShownAsSaved(editor);
+
+        expect(saved).toBe('z[a](/u "t&#10;&#10;u")\n\n[x]: /u "other"');
+        expect(lexicalOf(load(saved)).read(() => $dfs().map(({ node }) => node).filter($isLinkNode).map((link) => link.getTitle()))).toEqual(['t\n\nu']);
     });
 
     it('a link nested in a link written as a reference keeps all its source when the block is written again', () => {

@@ -56,5 +56,5 @@ export const REFERENCE_LINK_CASES: readonly CorpusCase[] = [
     { name: 'definition with a blank line in its title after an html block start ending a column', source: '::: columns\n<div\n|||\n[x]: /u "t\n\nu8"\n:::\n\nb [x] c', links: ['/u'] },
     { name: 'definition with a blank line in its title after an html block start ending a list item', source: '- a\n\n  <div\n- b [x] z\n\n  [x]: /u "t\n\n  u8"', links: ['/u'] },
     { name: 'indented definition with a two-line title', source: '  [x]: /u "t\n  u"\n\nb [x] c', links: ['/u'], known: { definitions: 'definitionTitleIndent', edits: 'definitionTitleIndent' } },
-    { name: 'tab-indented definition in a list item with a blank line in its title', source: '- a\n\n\t[x]: /u "t\n\n\tu"\n\nb [x] c', links: ['/u'], known: { canonical: 'definitionTitleIndent', definitions: 'definitionTitleIndent', edits: 'definitionTitleIndent' } },
+    { name: 'tab-indented definition in a list item with a blank line in its title', source: '- a\n\n\t[x]: /u "t\n\n\tu"\n\nb [x] c', links: ['/u'], known: { definitions: 'definitionTitleIndent', edits: 'definitionTitleIndent' } },
 ];

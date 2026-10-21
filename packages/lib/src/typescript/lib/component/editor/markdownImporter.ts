@@ -2284,9 +2284,35 @@ function idSourceIndex(tokens: Token[], idScore: number): number {
  * @param context - The formatting they inherit.
  */
 function appendInlineTokens(target: InlineTarget, tokens: Token[], context: InlineContext): void {
-    for (const token of tokens) {
-        appendInlineToken(target, token, context);
+    tokens.forEach((token, index) => {
+        appendInlineToken(target, token, context, tokens[index + 1]);
+    });
+}
+
+/**
+ * The inline token types the editor builds nodes of its own for
+ * ({@link appendInlineToken}); any other token becomes a source node.
+ */
+const NODE_TOKEN_TYPES: ReadonlySet<string> = new Set([...Object.keys(TOKEN_FORMATS), "text", "escape", "codespan", "link", "styledspan", "mdimage", "br"]);
+
+/**
+ * Whether the blanks that stand alone on a paragraph line before `next`
+ * are kept: before a run kept as its source (inline HTML, a construct kept
+ * as written, a token the editor has no node for), whose save writes them
+ * back so `marked` reads the source as before. Before any other token, and
+ * at the end of the tokens, the viewer shows none of them
+ * ({@link LEADING_BLANKS}).
+ *
+ * @param target - Where the tokens are appended.
+ * @param next - The token after the blanks' text, if any.
+ * @returns `true` when the blanks are kept.
+ */
+function keepsBlanksBefore(target: InlineTarget, next: Token | undefined): boolean {
+    if (next === undefined) {
+        return false;
     }
+
+    return target.keep.has(next) || !NODE_TOKEN_TYPES.has(next.type);
 }
 
 /**
@@ -2296,8 +2322,9 @@ function appendInlineTokens(target: InlineTarget, tokens: Token[], context: Inli
  * @param target - Where nodes are appended.
  * @param token - The inline token.
  * @param context - The formatting it inherits.
+ * @param next - The token after it at its level, if any.
  */
-function appendInlineToken(target: InlineTarget, token: Token, context: InlineContext): void {
+function appendInlineToken(target: InlineTarget, token: Token, context: InlineContext, next: Token | undefined): void {
     const format = TOKEN_FORMATS[token.type];
 
     if (target.keep.has(token) && appendKeptConstruct(target, token, context)) {
@@ -2311,7 +2338,7 @@ function appendInlineToken(target: InlineTarget, token: Token, context: InlineCo
     }
 
     switch (token.type) {
-        case "text":       appendTextToken(target, token as Tokens.Text, context); break;
+        case "text":       appendTextToken(target, token as Tokens.Text, context, keepsBlanksBefore(target, next)); break;
         case "escape":     appendText(target, (token as Tokens.Escape).text, context); break;
         case "codespan":   appendLeaf(target, styledText((token as Tokens.Codespan).text, withFormat(context, "code")), context); break;
         case "link":       appendLink(target, token as Tokens.Link, context); break;
@@ -2350,8 +2377,9 @@ function appendInlineHtml(target: InlineTarget, token: Tokens.HTML, context: Inl
  * @param target - Where nodes are appended.
  * @param token - The `text` token.
  * @param context - The formatting it inherits.
+ * @param blanksKept - Whether blanks standing alone at the text's end are kept ({@link keepsBlanksBefore}).
  */
-function appendTextToken(target: InlineTarget, token: Tokens.Text, context: InlineContext): void {
+function appendTextToken(target: InlineTarget, token: Tokens.Text, context: InlineContext, blanksKept: boolean): void {
     if (token.tokens !== undefined && token.tokens.length > 0) {
         appendInlineTokens(target, token.tokens, context);
 
@@ -2361,45 +2389,57 @@ function appendTextToken(target: InlineTarget, token: Tokens.Text, context: Inli
     const nextCellParagraph = target.nextCellParagraph;
 
     if (nextCellParagraph === null) {
-        appendText(target, token.text, context);
+        appendText(target, token.text, context, blanksKept);
 
         return;
     }
 
-    token.text.split(CELL_PARAGRAPH_BREAK).forEach((piece, index) => {
+    const pieces = token.text.split(CELL_PARAGRAPH_BREAK);
+
+    pieces.forEach((piece, index) => {
         if (index > 0) {
             target.block = nextCellParagraph();
             target.openLink = null;
         }
 
-        appendText(target, piece, context);
+        // A piece the cell's next paragraph break ends is a paragraph of its own, blanks and all.
+        appendText(target, piece, context, index < pieces.length - 1 || blanksKept);
     });
 }
 
 /**
  * The spaces and tabs a paragraph line opens with, which CommonMark strips: the viewer shows none of them. Blanks
- * that stand alone before another inline token are kept, as inline HTML after them keeps its indentation.
+ * that stand alone before inline HTML or another run kept as its source are kept, as that source keeps its
+ * indentation ({@link keepsBlanksBefore}).
  */
 const LEADING_BLANKS = /^[ \t]+/;
 
 /**
  * Appends text, with a soft-break source node (showing a space, saving a
  * newline) for each newline in it. The blanks a line opens
- * with, the block's first line included, are dropped, as the viewer drops them.
+ * with, the block's first line included, are dropped, as the viewer drops them,
+ * also when they stand alone at the text's end before the next token, unless
+ * `blanksKept` says that token keeps them.
  *
  * @param target - Where nodes are appended.
  * @param text - The text.
  * @param context - Its formatting.
+ * @param blanksKept - Whether blanks standing alone at the text's end are kept; `true` by default.
  */
-function appendText(target: InlineTarget, text: string, context: InlineContext): void {
-    text.split("\n").forEach((piece, index) => {
+function appendText(target: InlineTarget, text: string, context: InlineContext, blanksKept: boolean = true): void {
+    const pieces = text.split("\n");
+
+    pieces.forEach((piece, index) => {
         if (index > 0) {
             appendLeaf(target, formatted($createMarkdownSourceTextNode(SOFT_BREAK_DISPLAY, SOFT_BREAK_SOURCE), context), context);
         }
 
-        const opensBlock = index === 0 && target.block.getChildrenSize() === 0;
+        // Blanks that open a link's text are the link's own: the link node is not in the block yet while its text is
+        // added, so a link that opens the block must not make that text the block's opening.
+        const opensBlock = index === 0 && context.link === null && target.block.getChildrenSize() === 0;
         const stripped = piece.replace(LEADING_BLANKS, "");
-        const dropsBlanks = LOADING_DOCUMENT.current && (index > 0 || opensBlock) && stripped !== "";
+        const standsAlone = stripped === "" && index === pieces.length - 1 && !blanksKept;
+        const dropsBlanks = LOADING_DOCUMENT.current && (index > 0 || opensBlock) && (stripped !== "" || standsAlone);
         const text = dropsBlanks ? stripped : piece;
 
         if (text !== "") {

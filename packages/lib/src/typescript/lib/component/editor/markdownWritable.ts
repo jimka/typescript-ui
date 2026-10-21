@@ -1677,9 +1677,9 @@ function $showBlocksAsDefinitionsRead(previous: Links, current: Links, changed: 
 /**
  * Gives each reference link in a block whose title holds a blank line the
  * title of its definition, while that definition resolves its label to its
- * URL: no inline link can write such a title (a blank line ends the block),
- * so its save keeps the reference form and the viewer shows the definition's
- * title, whatever the link's own.
+ * URL, so its save keeps the reference form and the editor shows the title
+ * the viewer shows. An image whose title holds a blank line takes the title
+ * its written form now reads with, the same way.
  *
  * @param block - The block.
  * @param definitions - The document's definitions now.

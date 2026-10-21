@@ -2697,6 +2697,15 @@ describe('a join into a code block or raw block writes what the joined block hel
         ['K17', '- a <b\n  c="d" w\n  > q\n\nab>cd', ['  c="d" w', 7], ['ab>cd', 2], '- a \\<b\n  c="d">cd'],
         // With no `<` left open, a leading `>` stays bare mid-line.
         ['K18', RAW + '\\> q', ['</div>', 6], ['> q', 0], '<div>\nraw\n</div>> q'],
+        // The `>` of the rest that would close a tag the raw text leaves open is escaped wherever it stands in the rest, as the
+        // viewer reads the joined text: a self-closing `/>`, attributes, or more of the tag's name before it.
+        ['a self-closing rest closes no tag left open in a raw list', '- a <br w\n  > q\n\nab/>cd', ['- a <br w', 7], ['ab/>cd', 2], '- a \\<br/>cd'],
+        ['a self-closing rest after a space closes no tag', '- a <br w\n  > q\n\nab />cd', ['- a <br w', 7], ['ab />cd', 2], '- a \\<br />cd'],
+        ['an attribute in the rest closes no tag', '- a <br w\n  > q\n\nab x="1">cd', ['- a <br w', 7], ['ab x="1">cd', 2], '- a \\<br x="1">cd'],
+        ['more of the tag\'s name in the rest closes no tag', '- a <br w\n  > q\n\nabr>cd', ['- a <br w', 7], ['abr>cd', 2], '- a \\<brr>cd'],
+        ['a self-closing rest closes no tag left open in a raw list\'s quote line', '- a\n  > q <br w\n\nab/>cd', ['  > q <br w', 9], ['ab/>cd', 2], '- a\n  > q <br/\\>cd'],
+        // Regression row (passes on the base): `/ >` closes no tag, so the rest is joined as it is.
+        ['a rest the viewer reads no tag in is joined as it is', '- a <br w\n  > q\n\nab/ >cd', ['- a <br w', 7], ['ab/ >cd', 2], '- a \\<br/ >cd'],
         // Regression row (passes on the base): a code block holds plain text, so a no-break space at the rest's start is the
         // character, not `&nbsp;`.
         ['J41', CODE + '### &nbsp;alpha', ['code', 4], ['\u00a0alpha', 0], '```\ncode\u00a0alpha\n```'],
@@ -2742,6 +2751,37 @@ describe('a join into a code block or raw block writes what the joined block hel
                 expect(lexicalOf(editor).read(() => $getRoot().getChildren().map((child) => `${child.getType()}:${child.getTextContent()}`))).toEqual(shown);
             }
         }
+    });
+
+    /** The raw HTML the viewer reads in `markdown`, at any depth. */
+    function htmlRead(markdown: string): string[] {
+        const visit = (tokens: ReadonlyArray<{ type: string; raw: string; tokens?: unknown[]; items?: unknown[] }>): string[] => tokens.flatMap((token) => [
+            ...(token.type === 'html' ? [token.raw] : []), ...visit((token.tokens ?? []) as never), ...visit((token.items ?? []) as never),
+        ]);
+
+        return visit(lexMarkdown(markdown) as never);
+    }
+
+    // Sweep: a raw list's text that leaves a tag open, at the end of the item's line or of its quote's line, joined with the
+    // rest of a paragraph. The joined text reads as the two texts read: as text, with no HTML in it, in the editor and its reload.
+    const OPEN_TAGS = ['<br', '<br x', '<br x="1"', '</b', '<b-c'];
+    const TAG_RESTS = ['>cd', ' >cd', '/>cd', ' />cd', '\t/>cd', ' x>cd', ' x="1">cd', " x='1'/>cd", ' x=1 />cd', 'r>cd', 'r/>cd', '-x>cd', ' x=">">cd', '/ >cd', ' x'];
+    const TAG_JOINS = OPEN_TAGS.flatMap((tag) => TAG_RESTS.flatMap((rest) => [
+        { name: `${tag} at the item's line end, then ${JSON.stringify(rest)}`, source: `- a ${tag} w\n  > q\n\nab${rest}`, start: `- a ${tag} w`, read: `- a \\${tag}${rest}` },
+        { name: `${tag} at the quote's line end, then ${JSON.stringify(rest)}`, source: `- a\n  > q ${tag} w\n\nab${rest}`, start: `  > q ${tag} w`, read: `- a\n  > q \\${tag}${rest}` },
+    ]));
+
+    it.each(TAG_JOINS)('a join after a tag left open: $name', ({ source, start, read }) => {
+        const editor = load(source);
+
+        selectText(editor, [start, start.length - 2], [`ab${source.split('\n\nab')[1]}`, 2]);
+        lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+
+        const saved = editor.getValue();
+
+        expect(htmlRead(saved)).toEqual([]);
+        expect(viewerModel(saved).blocks).toEqual(viewerModel(read).blocks);
+        expect(lexicalOf(load(saved)).read(() => $getRoot().getTextContent())).toBe(lexicalOf(editor).read(() => $getRoot().getTextContent()));
     });
 
     /** Delete over the range, then `input` at the caret that leaves: what a route must equal. */

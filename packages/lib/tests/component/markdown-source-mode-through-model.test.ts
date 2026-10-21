@@ -952,7 +952,9 @@ describe('the model is loaded and settled as the WYSIWYG editor is', () => {
         // Without the settling update the model leaves the text as it is.
         expect(doc[caret - 1]).toBe('[');
         expect(run.text.startsWith('- a')).toBe(true);
-        expect(run.text.endsWith('b **[x][x]** c')).toBe(true);
+        // The editor reads the title without the tab the viewer keeps (the corpus's known divergence `definitionTitleIndent`), so the
+        // reference is saved inline with the title it shows, as the WYSIWYG command saves it.
+        expect(run.text.endsWith('b **[x](/u "t&#10;&#10;  u")** c')).toBe(true);
         run.editor.dispose();
     });
 });

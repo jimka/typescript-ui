@@ -108,6 +108,7 @@ import {
 } from "~/component/editor/markdownTaskCheckboxNode.js";
 import type { MarkdownTaskCheckboxNode } from "~/component/editor/markdownTaskCheckboxNode.js";
 import { cssTextToAttributes, resolveImageSpec } from "~/component/display/markdownAttributes.js";
+import { lexMarkdownInline } from "~/component/display/markdownExtensions.js";
 import { readSourceSelectionState } from "~/component/editor/markdownSourceEdits.js";
 import type { MarkdownSourceEdit, MarkdownSourceTransform } from "~/component/editor/markdownSourceEdits.js";
 import { horizontalRuleSource, paragraphAroundBlockSource, tableSource } from "~/component/editor/markdownSourceLines.js";
@@ -3793,12 +3794,12 @@ const UNCLOSED_TAG_OPENING = /<[A-Za-z/!?][^>]*$/;
  * counting the whitespace the rest opens with ({@link RAW_LINE_OPENING}),
  * opens a line, so the rest keeps the escapes a line start needs there. The
  * whitespace a rest that opens a line starts with is written as
- * {@link restWrittenAtLineStart} decides. A `>` that opens the rest is
- * escaped when the raw text before the joint holds a `<` that opens a tag and
- * is not closed: the `>` would close it, making a tag of the two blocks'
- * text. The tag may span lines, so it is read off the text before the
- * joint, which the serializer's one character of context before the rest
- * cannot carry.
+ * {@link restWrittenAtLineStart} decides. When the raw text before the joint
+ * holds a `<` that opens a tag and is not closed, the `>` of the rest that
+ * would close it is escaped ({@link withTagLeftOpen}), so the joined text
+ * reads as the two blocks' texts read, with no tag made of them. The tag may
+ * span lines, so it is read off the text before the joint, which the
+ * serializer's one character of context before the rest cannot carry.
  *
  * @param target - The raw block or code block the rest joins.
  * @param source - The block the rest comes from.
@@ -3821,9 +3822,43 @@ function $joinedMarkdown(target: ElementNode, source: ElementNode, nodes: Lexica
     const written = $inlineMarkdown(nodes, opensLine ? "" : textBeforeJoint.slice(-1));
     const markdown = opensLine ? restWrittenAtLineStart(textBeforeJoint, lineBeforeJoint, written) : written;
     // The quote markers at the lines' starts are no `>` that closes a tag.
-    const opensTag = UNCLOSED_TAG_OPENING.test(textBeforeJoint.replace(QUOTE_MARKERS, ""));
+    const openTag = UNCLOSED_TAG_OPENING.exec(textBeforeJoint.replace(QUOTE_MARKERS, ""));
 
-    return opensTag ? markdown.replace(/^([ \t]*)>/, "$1\\>") : markdown;
+    return openTag === null ? markdown : withTagLeftOpen(openTag[0], markdown);
+}
+
+/**
+ * Escapes the `>` of joined Markdown that closes a tag the text before the
+ * joint leaves open, as the viewer reads the two together: `<br` joined with
+ * `/>cd`, ` x="1">cd` or `r>cd` would make the tag `<br/>`, `<br x="1">` or
+ * `<brr>`. Each `>` that ends such a tag is escaped in turn, until the text
+ * reads no tag from the `<`; a joined text the viewer reads no tag in is
+ * returned as it is.
+ *
+ * @param openTag - The text before the joint from its unclosed `<` on, quote markers removed.
+ * @param markdown - The joined Markdown.
+ * @returns The Markdown, with the `>` that would close the tag escaped.
+ */
+function withTagLeftOpen(openTag: string, markdown: string): string {
+    let written = markdown;
+    const closings = markdown.split(">").length - 1;
+
+    // Each pass escapes one more `>`, and an escaped `>` closes no tag: no more passes than the Markdown has `>`s.
+    for (let pass = 0; pass < closings; pass += 1) {
+        const [first] = lexMarkdownInline(openTag + written);
+        const closesTag = first?.type === "html" && first.raw.length > openTag.length;
+
+        if (!closesTag) {
+            break;
+        }
+
+        // The tag's last character is the `>` that closes it.
+        const close = first.raw.length - 1 - openTag.length;
+
+        written = `${written.slice(0, close)}\\${written.slice(close)}`;
+    }
+
+    return written;
 }
 
 /**
