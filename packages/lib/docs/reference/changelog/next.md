@@ -1285,9 +1285,10 @@ page resets to empty.
   at the start, inserted the paragraph and removed nothing; with the anchor
   at the end it left the caret at the document's end. The range is now
   removed first and the break comes where it was, as after Delete.
-  Shift+Enter over a range ending between a list's items is declined, and
-  changes nothing. A range that ends at the end of a list in a `:::` column
-  no longer leaves the column empty when it is deleted or replaced.
+  Shift+Enter over a range ending between a list's items removes the range,
+  as Delete does, and adds no break. A range that ends at the end of a list
+  in a `:::` column no longer leaves the column empty when it is deleted or
+  replaced.
 
 - **`MarkdownEditor` keeps a `:::` fence's opening line.** Editing anything
   inside a fence whose opening line carried more than its attributes —
@@ -1578,9 +1579,10 @@ page resets to empty.
   from the keyboard or through `cut()` / `copy()`, puts the whole table on
   the clipboard; a copy changes neither the document nor the selection.
   `insertTable()` and `insertImage()` remove the selection first, then
-  insert at the caret, as one undo step. A paste that inserts nothing, and
-  Shift+Enter where no line break could be written once the selection is
-  gone, leave the selection as it was. No consumer action is needed.
+  insert at the caret, as one undo step. A paste that inserts nothing leaves
+  the selection as it was; Shift+Enter where no line break could be written
+  once the selection is gone removes the selection, as Delete does, and adds
+  no break. No consumer action is needed.
 
 - **`MarkdownEditor` keeps the caret inside text a save trims.** Deleting
   the last line of a block converted from a code block (for example with
@@ -2150,17 +2152,10 @@ page resets to empty.
   the same key gives: Enter over a selection that cuts `<div>` down to `<`
   starts a new paragraph, and Tab no longer turns what is left into a code
   block. A paste over a selection that runs into such a block no longer
-  depends on the direction the selection was dragged in. One limit remains:
-  Shift+Enter is judged before the selection is removed, so where the
-  removal makes a raw block read as a block in which the break has no place,
-  the selection is removed and no break is added. Where no break could
-  follow the caret at all — the selection ends at the start or the end of
-  such a block and nothing would follow it, or it runs from a level 3 to 6
-  heading to such a block's start — Shift+Enter now does nothing, as over
-  any other selection there; it used to remove the selection. A selection
-  that runs from such a block's very start into a table is not judged so: it
-  is removed with the table and no break is added. No consumer
-  action is needed.
+  depends on the direction the selection was dragged in. Shift+Enter over
+  such a selection removes it the same way and adds the break only where
+  the caret that leaves has a place for one, as over any other selection.
+  No consumer action is needed.
 
 - **`MarkdownEditor`: a selection removed from a raw Markdown block into a
   later block no longer makes a heading or code block at the joint.**
@@ -2190,8 +2185,9 @@ page resets to empty.
   holding a lone line break, and what was pasted into it went in as plain
   text. It now shows as an empty paragraph holding the caret, whichever key
   removed the text, and what is typed or pasted next is rich text.
-  Shift+Enter over a selection that would leave nothing but the break does
-  nothing, as in any empty paragraph. No consumer action is needed.
+  Shift+Enter over a selection that would leave nothing but the break
+  removes the selection and adds no break, as Shift+Enter adds none in an
+  empty paragraph. No consumer action is needed.
 
 - **The caret keeps its place when an edit makes a raw Markdown block show
   as rich text.** When a raw block's text was edited until it read as a
