@@ -680,6 +680,57 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
     });
 
     /**
+     * Describes both ends of the editor's selection: each as its node's type and offset, a text point with its text.
+     *
+     * @param editor - The editor.
+     * @returns The description.
+     */
+    function selectionOf(editor: MarkdownEditor): string {
+        return lexicalOf(editor).read(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                return 'no range';
+            }
+
+            return [selection.anchor, selection.focus].map((point) => {
+                const node = point.getNode();
+                const name = point.type === 'text' ? JSON.stringify(node.getTextContent()) : node.getType();
+
+                return `${name}@${point.offset}`;
+            }).join(' .. ');
+        });
+    }
+
+    // Settling moves the editor's own selection before the command reads where it would insert; a command that then
+    // declines puts the selection back, as an edit that changes nothing leaves it.
+    it.each<[string, string, (editor: MarkdownEditor) => void, Spot, Spot]>([
+        ['insertImage', '::: columns\nA\n|||\n```\ncode\n```\n:::', (editor) => editor.insertImage('/i.png', { alt: 'i' }), { on: 'fence', at: 1 }, { on: 'fence', at: 1 }],
+        ['insertTable', '::: columns\nA\n|||\n```\ncode\n```\n:::', (editor) => editor.insertTable(2, 2), { on: 'fence', at: 1 }, { on: 'fence', at: 1 }],
+        ['insertHorizontalRule', '::: columns\nA\n|||\n```\ncode\n```\n:::', (editor) => editor.insertHorizontalRule(), { on: 'fence', at: 1 }, { on: 'fence', at: 1 }],
+        ['insertTable', '::: {align=center}\n| a | b |\n| - | - |\n| c | d |\n:::', (editor) => editor.insertTable(2, 2), { on: 'fence', at: 0 }, { on: 'fence', at: 0 }],
+        ['insertTable', '::: {align=center}\n| a | b |\n| - | - |\n| c | d |\n:::', (editor) => editor.insertTable(2, 2), { on: 'fence', at: 1 }, { on: 'fence', at: 1 }],
+        ['insertHorizontalRule', '::: {align=center}\n| a | b |\n| - | - |\n| c | d |\n:::', (editor) => editor.insertHorizontalRule(), { on: 'fence', at: 0 }, { on: 'fence', at: 0 }],
+        ['insertTable', 'p\n\n| a | b |\n| - | - |\n\nq', (editor) => editor.insertTable(2, 2), { on: 'root', at: 1 }, { on: 'root', at: 2 }],
+        // The rule removed the range first, the text of the cells it settled into, and then declined.
+        ['insertHorizontalRule', 'p\n\n| a | b |\n| - | - |\n\nq', (editor) => editor.insertHorizontalRule(), { on: 'root', at: 1 }, { on: 'root', at: 2 }],
+        // The same removal took the node the selection ended in, and the update threw.
+        ['insertHorizontalRule', 'p\n\n| a |\n| - |\n| b |\n\nq', (editor) => editor.insertHorizontalRule(), { on: 'root', at: 1 }, ['b', 1]],
+    ])('%s declined once the point settles leaves the selection as it was, in %j', (_name, source, command, anchor, focus) => {
+        const editor = load(source);
+        const loaded = editor.getValue();
+
+        select(editor, anchor, focus);
+
+        const before = selectionOf(editor);
+
+        command(editor);
+
+        expect(editor.getValue()).toBe(loaded);
+        expect(selectionOf(editor)).toBe(before);
+    });
+
+    /**
      * Inserts what a paste or drop of copied content inserts: a word, or a paragraph holding it.
      *
      * @param editor - The editor.

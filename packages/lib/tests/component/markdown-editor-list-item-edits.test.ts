@@ -3294,7 +3294,90 @@ describe('an edit in a list item never leaves the caret, or what is typed, where
             steps:  [{ key: 'Backspace', at: ['bc', 0], to: ['bc', 2] }, { key: 'Backspace key' }],
             saved:  '- a\n- ## hh\n- z',
         },
+        {
+            name:   'text typed with the caret between two paragraphs of an item goes into a paragraph of its own, as a paste there',
+            source: '- a\n\n  q\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 1) }, { key: 'type', text: 'Q' }],
+            saved:  '- a\n\n  Q\n\n  q\n\n- z',
+        },
+        {
+            name:   'the same between a table of the item and a paragraph after it',
+            source: `- a\n\n  ${TABLE_ITEM}\n\n  q\n- z`,
+            steps:  [{ key: 'command', run: caretOnItem('a', 2) }, { key: 'type', text: 'Q' }],
+            saved:  `- a\n\n  ${TABLE_ITEM}\n\n  Q\n\n  q\n\n- z`,
+        },
+        {
+            name:   'the same after the item\'s last block (control: Lexical makes the paragraph there itself)',
+            source: `- a\n\n  ${TABLE_ITEM}\n- z`,
+            steps:  [{ key: 'command', run: caretOnItem('a', 2) }, { key: 'type', text: 'Q' }],
+            saved:  `- a\n\n  ${TABLE_ITEM}\n\n  Q\n\n- z`,
+        },
+        {
+            name:   'text typed with the caret on a task item, before its text, goes in after the checkbox',
+            source: '- [ ] a\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 0) }, { key: 'type', text: 'Q' }],
+            saved:  '- [ ] Qa\n- z',
+        },
+        {
+            name:   'an image put there goes in after the checkbox',
+            source: '- [ ] a\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 0) }, { key: 'command', run: (editor) => editor.insertImage('u.png') }],
+            saved:  '- [ ] ![](u.png)a\n- z',
+        },
+        {
+            name:   'a table inserted there goes above the item, which keeps its checkbox, as at the start of its text (control)',
+            source: '- [ ] a\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 0) }, { key: 'command', run: (editor) => editor.insertTable(1, 1) }],
+            saved:  '|  |\n| --- |\n\n- [ ] a\n- z',
+        },
+        {
+            name:   'an image put with the caret on an item before its text goes in at the start of the text, as typing does there',
+            source: '- a\n\n  q\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 0) }, { key: 'command', run: (editor) => editor.insertImage('u.png') }],
+            saved:  '- ![](u.png)a\n\n  q\n\n- z',
+        },
+        {
+            name:   'text typed there goes in at the start of the text (control)',
+            source: '- a\n\n  q\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 0) }, { key: 'type', text: 'Q' }],
+            saved:  '- Qa\n\n  q\n\n- z',
+        },
+        {
+            name:   'Enter there opens an empty item above, as at the start of the text',
+            source: '- a\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 0) }, { key: 'Enter' }],
+            saved:  '-\n- a\n- z',
+        },
     ])('$name', runRow);
+
+    it('Enter with the caret on a task item, before its text, does what it does at the start of the text', () => {
+        const onItem = load('- [x] a\n- z');
+        const onText = load('- [x] a\n- z');
+
+        caretOnItem('a', 0)(onItem);
+        lexicalOf(onText).update(() => { $textNode('a').getParentOrThrow().select(0, 0); }, { discrete: true });
+        press(onItem, { key: 'Enter' });
+        press(onText, { key: 'Enter' });
+
+        expect(onItem.getValue()).toBe('- [ ]\n- [x] a\n- z');
+        expect(shapeOf(onItem)).toBe(shapeOf(onText));
+    });
+
+    it.each<[string, string, number]>([
+        ['between two paragraphs of an item', '- a\n\n  q\n- z', 1],
+        ['on an item before its text', '- a\n\n  q\n- z', 0],
+        ['on a task item before its text', '- [ ] a\n\n  q\n- z', 0],
+    ])('%s, text typed inside an update, as the browser types, gives what it gives outside one', (_name, source, offset) => {
+        const outside = load(source);
+        const inside = load(source);
+
+        caretOnItem('a', offset)(outside);
+        caretOnItem('a', offset)(inside);
+        press(outside, { key: 'type', text: 'Q' });
+        lexicalOf(inside).update(() => { lexicalOf(inside).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'Q'); }, { discrete: true });
+
+        expect(expectSaveKeepsDocument(inside, 'the typing')).toBe(outside.getValue());
+    });
 
     it('Z31: text typed with the caret on a list, between two items, makes an item of its own', () => {
         const editor = load('- a\n- z');

@@ -2506,7 +2506,9 @@ function $readEndPastContainerStart(point: PointType): void {
  * end); a range's start likewise; a range's end to the end of the block
  * before it, read past the start of its container when nothing stands
  * before it there ({@link $readEndPastContainerStart}). Lists and list items
- * are not settled, and neither is a range's start just before a list or a quote
+ * are not settled — but for a caret on an item right before the item's text,
+ * which goes to the start of that text ({@link $settleCaretOntoItemText}) —,
+ * and neither is a range's start just before a list or a quote
  * ({@link $liesBetweenBlocks}): but for a range the raw-block removal takes,
  * whose ends on lists, list items and before a list are then read inward
  * ({@link $settleTextOnlyEdgeEnds}).
@@ -2532,8 +2534,15 @@ function $settleSelectionOffContainers(selection: BaseSelection | null, pastChec
         return false;
     }
 
+    // A caret on a list item before its text acts as the caret at the start of that text.
+    const ontoItemText = $settleCaretOntoItemText(selection);
+
     // A caret before a task item's checkbox acts as the caret right after it.
     if (pastCheckbox && $settleCaretPastCheckbox(selection)) {
+        return true;
+    }
+
+    if (ontoItemText) {
         return true;
     }
 
@@ -3601,13 +3610,17 @@ function $clearGuardedRangeBeforePastedText(event: CommandPayloadType<typeof PAS
 /**
  * `CONTROLLED_TEXT_INSERTION_COMMAND` listener: removes a guarded range and
  * gives the caret the format the typed text goes in with
- * ({@link $removeGuardedRangeBeforeText}), then lets Lexical type at the
- * now-collapsed caret.
+ * ({@link $removeGuardedRangeBeforeText}), gives a caret that then stands
+ * between the blocks of a quote or a list item, or between the items of a
+ * list, a block to stand in ({@link $openBlockAtItemCaret}), as a paste
+ * there gets one, and lets Lexical type at the now-collapsed caret. Lexical
+ * would type into the start of the block after such a caret.
  *
  * @returns Always `false`, so the command's own handler still runs.
  */
 function $clearGuardedRangeBeforeTyping(): boolean {
     $removeGuardedRangeBeforeText($getSelection());
+    $openBlockAtItemCaret($getSelection());
 
     return false;
 }
@@ -6354,6 +6367,7 @@ function registerTaskItemRules(editor: LexicalEditor, isReadOnly: () => boolean,
         editor.registerCommand(KEY_ENTER_COMMAND, $toggleTouchedTaskItems, COMMAND_PRIORITY_HIGH),
         editor.registerCommand(INSERT_PARAGRAPH_COMMAND, $enterSplitsTaskItem, COMMAND_PRIORITY_HIGH),
         editor.registerCommand(COMPOSITION_START_COMMAND, () => {
+            $settleCaretOntoItemText($getSelection());
             $settleCaretPastCheckbox($getSelection());
 
             return false;
@@ -6598,6 +6612,39 @@ function $splitTaskItemAtCaret(selection: RangeSelection, text: MarkdownListItem
     $settleCaretPastCheckbox($getSelection());
     // The upper item may be left holding its checkbox alone, with the caret below it: it keeps the checkbox.
     $addUpdateTag(TASK_ITEM_OPENED_TAG);
+}
+
+/**
+ * Moves a collapsed caret that stands on a list item right before the
+ * item's text (an element point on the item at offset 0, which only code
+ * sets) to the start of that text, the place it names: what is typed,
+ * pasted, inserted or split there then goes in at the start of the item's
+ * line, as at a caret put there by a click, and a task item keeps its
+ * checkbox ({@link $settleCaretPastCheckbox} then moves the caret past it).
+ * An item that opens with another block — a heading, a quote, a code block,
+ * a table — is left alone: a caret before that block stands between blocks
+ * ({@link $openBlockAtItemCaret}). A range is not settled.
+ *
+ * @param selection - The selection, moved in place.
+ * @returns Whether a point moved.
+ */
+function $settleCaretOntoItemText(selection: BaseSelection | null): boolean {
+    if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+        return false;
+    }
+
+    const { anchor } = selection;
+    const item = anchor.getNode();
+    const text = $isMarkdownListItemNode(item) ? item.getFirstChild() : null;
+
+    if (anchor.type !== "element" || anchor.offset !== 0 || !$isMarkdownListItemTextNode(text)) {
+        return false;
+    }
+
+    selection.anchor.set(text.getKey(), 0, "element");
+    selection.focus.set(text.getKey(), 0, "element");
+
+    return true;
 }
 
 /**
@@ -11957,10 +12004,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             const initial = $getSelection();
+            // Read before settling moves it: a declined insert leaves the selection as it was.
+            const before = initial?.clone() ?? null;
             // A caret before a task item's checkbox stays there: the block goes above the item, which keeps its checkbox.
             const moved = $settleSelectionOffContainers(initial, false);
             const isTableEdge = $isTableEdgeRange(initial);
             const hadRange = $isRangeSelection(initial);
+            // A point moved off a `:::` block, or between two blocks, may have settled where no table goes (a code
+            // block), judged before anything is removed. A table-edge range's removal keeps the caret out of such blocks.
+            const declinedOnceSettled = moved && !isTableEdge && !$tableInsertApplies($selectionTouchesTextOnlyBlock());
+
+            if (declinedOnceSettled) {
+                $setSelection(before);
+
+                return;
+            }
 
             if (isTableEdge) {
                 // A range that also takes a list item's text whole joins that item away first, as every removal does.
@@ -11972,10 +12030,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
             const selection = $getSelection();
             const hasRange = $isRangeSelection(selection);
-            // A point moved off a `:::` block, or between two blocks, may have settled where no table goes (a code block).
-            const declinedOnceSettled = moved && !$tableInsertApplies($selectionTouchesTextOnlyBlock());
 
-            if (!hasRange || declinedOnceSettled) {
+            if (!hasRange) {
                 return;
             }
 
@@ -12037,9 +12093,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             $removeHorizontalRulesAtRangeEnds($getSelection());
 
             const initial = $getSelection();
+            // Read before settling moves it: a declined insert leaves the selection as it was.
+            const before = initial?.clone() ?? null;
             // A caret before a task item's checkbox stays there: the block goes above the item, which keeps its checkbox.
             const moved = $settleSelectionOffContainers(initial, false);
             const isTableEdge = $isTableEdgeRange(initial);
+            // A point moved off a `:::` block, or between two blocks, may have settled where no rule goes (a code
+            // block, a table's cell), judged before the range is removed. A table-edge range's removal keeps the caret
+            // out of such blocks.
+            const declinedOnceSettled = moved && !isTableEdge && !$tableInsertApplies($selectionTouchesTextOnlyBlock());
+
+            if (declinedOnceSettled) {
+                $setSelection(before);
+
+                return;
+            }
 
             if (isTableEdge) {
                 $joinCoveredItemTexts(initial);
@@ -12051,10 +12119,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             const selection = $getSelection();
-            // A point moved off a `:::` block, or between two blocks, may have settled where no rule goes (a code block).
-            const declinedOnceSettled = moved && !$tableInsertApplies($selectionTouchesTextOnlyBlock());
 
-            if (!$isRangeSelection(selection) || declinedOnceSettled) {
+            if (!$isRangeSelection(selection)) {
                 return;
             }
 
@@ -12132,11 +12198,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             if ($isRangeSelection(selection)) {
+                // Read before settling moves it: a declined insert leaves the selection as it was.
+                const before = selection.clone();
                 // A point moved off a `:::` block, or between two blocks, may have settled where no image goes (a code block).
                 const moved = $settleSelectionOffContainers(selection);
                 const declinedOnceSettled = moved && !$imageInsertApplies($selectionTouchesTextOnlyBlock());
 
                 if (declinedOnceSettled) {
+                    $setSelection(before);
+
                     return;
                 }
 
