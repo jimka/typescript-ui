@@ -1767,13 +1767,17 @@ page resets to empty.
   such a line reads as an HTML block now loads as a raw Markdown block, as
   one holding `<div>` already did. That is the only line of a quote, a `>`
   line that a line without `>` follows, and a last line without `>` after a
-  quote. In a list item such a line is a raw Markdown block of that item,
-  as `<div>` is there; right under the item's text in a tight list (one
-  with no blank line between its items or between an item's blocks), it
-  keeps the whole list a raw Markdown block. In
-  `"source"` mode the format toggles and the block commands decline on such
-  a last line, as they do on any line of an HTML block. No consumer action
-  is needed.
+  quote. In a list item such a line is a raw Markdown block of that item, as
+  `<div>` is there; right under the item's text in a tight list (one with no
+  blank line between its items or between an item's blocks), it keeps the
+  whole list a raw Markdown block. In `"source"` mode the format toggles and
+  the block commands decline on such a last line, as they do on any line of
+  an HTML block. A block tag name alone on its line (`<div`, `</div`)
+  followed by a blank line now ends its HTML block at that blank line, as
+  CommonMark specifies; the paragraph after it was read into the block and
+  shown as its literal text. `MarkdownEditor` loads that paragraph as a
+  paragraph, so it can be formatted, in WYSIWYG and in `"source"` mode. No
+  consumer action is needed.
 
 - **`MarkdownEditor` keeps a list whose item holds a block.** Pasting several
   blocks into a nested list item, or **Insert line after block** inside a
@@ -1928,24 +1932,23 @@ page resets to empty.
   without regard to its neighbours. Spaces typed before one that follows a
   raw list moved it into that list on reload; a raw block an edit emptied
   let the list before it and the raw list after it join; a `<div` line two
-  blank lines above a paragraph lost one of them once that paragraph was
-  edited, and then took the paragraph in; and an indented quote whose last
-  line stays in it only while indented (`> q` over an indented `<div`) lost
-  that indentation at load, so the line left the quote as soon as the quote
-  was rewritten. A raw block is now saved the same way everywhere: without an
-  empty first or last line and without spaces before it that mean nothing; a
-  block that writes nothing no longer stands between two lists; a block only
-  a second blank line ends keeps that line; and a raw block keeps the
-  indentation of any line its reading needs. A list whose item holds such a
-  quote now loads as a list, the quote a raw block of its item. In a list
-  item as well, a save no longer takes indentation off a raw block where a
-  line of it is read by that indentation: spaces typed before the lines of
-  an HTML block after its first stay, the second line of a definition's
-  title keeps its place, and a raw list whose first item is indented deeper
-  than its next keeps what that item holds. A list whose item holds such a
-  raw list, with code or an HTML block in that first item, now shows as
-  one raw Markdown block where it showed a list whose save changed that
-  code. No consumer action is needed.
+  blank lines above a paragraph took the paragraph in once it was edited;
+  and an indented quote whose last line stays in it only while indented (`>
+  q` over an indented `<div`) lost that indentation at load, so the line
+  left the quote as soon as the quote was rewritten. A raw block is now
+  saved the same way everywhere: without an empty first or last line and
+  without spaces before it that mean nothing; a block that writes nothing no
+  longer stands between two lists; and a raw block keeps the indentation of
+  any line its reading needs. A list whose item holds such a quote now loads
+  as a list, the quote a raw block of its item. In a list item as well, a
+  save no longer takes indentation off a raw block where a line of it is
+  read by that indentation: spaces typed before the lines of an HTML block
+  after its first stay, the second line of a definition's title keeps its
+  place, and a raw list whose first item is indented deeper than its next
+  keeps what that item holds. A list whose item holds such a raw list, with
+  code or an HTML block in that first item, now shows as one raw Markdown
+  block where it showed a list whose save changed that code. No consumer
+  action is needed.
 
 - **`MarkdownEditor` counts the link reference definitions the viewer
   counts.** A definition that followed an HTML block left open at the end of
@@ -2239,8 +2242,8 @@ page resets to empty.
   `Markdown` and `MarkdownEditor` read a tab that starts a later line of a
   list item as four columns wherever it started, read the rest of a line
   after `>` and a tab from column zero, and took characters, not columns,
-  off the lines under a fenced code block indented by one to three spaces.
-  A line indented by two spaces and a tab under `- a` was a code block, an
+  off the lines under a fenced code block indented by one to three spaces. A
+  line indented by two spaces and a tab under `- a` was a code block, an
   item nested by a space and a tab put its text one column too far right,
   `>`, a space and a tab made the rest of the line code, and a fence
   indented by one space dropped a line's leading tab. A tab now reaches the
@@ -2252,10 +2255,13 @@ page resets to empty.
   quote is read into the quote as its code, and its tabs show as the spaces
   that reach their tab stops. A tab in the indentation of an HTML line
   inside a list item or blockquote, or right after a marker character that
-  starts such a line, is read as the spaces that reach its tab stop. So is
-  a tab after a marker character that starts a paragraph continuation line,
-  which changes only the whitespace the tab stands for in that paragraph.
-  No consumer action is needed.
+  starts such a line, is read as the spaces that reach its tab stop. So is a
+  tab after a marker character that starts a paragraph continuation line,
+  which changes only the whitespace the tab stands for in that paragraph. A
+  setext underline may end in tabs as well as spaces: `a` over `-` and a tab
+  is a level-2 heading, where it was a paragraph, and `a` over `---` and a
+  tab no longer reads as a paragraph over a rule. No consumer action is
+  needed.
 
 - **`MarkdownEditor`'s WYSIWYG surface no longer shows the blanks a
   paragraph line opens with.** CommonMark strips the whitespace a paragraph
@@ -2403,6 +2409,15 @@ page resets to empty.
   subclass of `AbstractBooleanMenuRow` gets the same and is a
   `menuitemcheckbox` unless it overrides the new protected
   `getMenuItemRole()`. No consumer action is needed.
+
+- **`MarkdownEditor` keeps a link whose text is a no-break space.** A link
+  whose only text was a no-break space (`[&nbsp;](/u)`, written with the
+  character) at the start or end of a block loaded as uneditable source that
+  showed a plain space, so in `"source"` mode no caret in that block had a
+  place in the document and the format toggles did nothing there; opening a
+  list item, the link was lost on the next save. It now loads as a link, as
+  one with a letter does, and saves as written. No consumer action is
+  needed.
 
 ### Core
 
