@@ -323,8 +323,6 @@ The editor reads a tab as the viewer does (see [Tabs](/components/Markdown#tabs)
 
 The editor reports itself dirty, via [`Component.isDirty()`](/api/core/classes/Component), whenever `getValue()` differs from the Markdown at the last clean point — the clean point is the value it was constructed with, or the value `markClean()` last accepted. Both surfaces go through the same check, so an edit undone back to the clean text clears the flag on its own, and a mode switch that changes nothing textually does not set it. `isDirty()` folds up into every ancestor container automatically. A host that loads a document with `setValue()` should follow it with `markClean()`, so the loaded text becomes the clean text.
 
-One corner case: a `markClean()` taken in source mode over text the WYSIWYG surface cannot save as written — `\r\n` line endings — marks the editor dirty on the next switch to WYSIWYG — the value the host would save really did change.
-
 ## Read-only
 
 `setReadOnly(true)` locks the editor against edits; `false` lifts the lock. A read-only editor keeps its caret, on both surfaces:

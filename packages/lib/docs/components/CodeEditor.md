@@ -379,7 +379,7 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 
 | Method | Purpose |
 | --- | --- |
-| `getValue()` / `setValue(value)` | Read or replace the whole document. `setValue` also works while the editor is [read-only](#read-only). |
+| `getValue()` / `setValue(value)` | Read or replace the whole document. `setValue` also works while the editor is [read-only](#read-only). The document's line ends are `\n`: a value given with `\r\n` or `\r` line ends reads back with `\n`, before the editor mounts as after. |
 | `getLanguage()` / `setLanguage(id, options?)` | Read or swap the active language and its options (grammar loads lazily; omitted options reset to `{}`). |
 | `getLanguageOptions()` | Read a copy of the active language's options. |
 | `getReadOnly()` / `setReadOnly(readOnly)` | Read or toggle whether the editor accepts edits. See [Read-only](#read-only). |

@@ -2263,6 +2263,29 @@ page resets to empty.
   when a document loads, so it shows the text the viewer shows. A block that
   is not edited is still saved as written. No consumer action is needed.
 
+- **`CodeEditor`'s `markdown` language reads a marker line that only
+  whitespace follows as an empty item or quote.** `-` followed by two tabs
+  or by six spaces, and `> >` followed by a space and a tab, were read as an
+  item or quote holding an empty code block, where the `Markdown` viewer
+  reads an empty one; on the spaces form Enter then copied the line's
+  whitespace instead of continuing the list. Enter now acts there as after
+  `- `. No consumer action is needed.
+
+- **`CodeEditor`'s `markdown` language reads an ordered list in a list item
+  as the `Markdown` viewer does.** Under `- x`, a line `  8. a` was read as
+  more of the text `x`, so Enter at its end added an indented blank line
+  instead of the item `9.`. An ordered item of any number now starts a list
+  where it follows a list item's text, and Enter continues and renumbers
+  it. No consumer action is needed.
+
+- **A `CodeEditor` given `\r\n` line ends reads them as `\n` before it
+  mounts.** `getValue()` returned the value as given until the view
+  mounted, and then with `\n` line ends, so offsets taken before the mount
+  did not match the mounted document. In `MarkdownEditor`'s `"source"` mode
+  every command did nothing on such a document until the source view
+  mounted. `getValue()` now returns `\n` line ends from the start. No
+  consumer action is needed.
+
 - **`CodeEditor`'s `markdown` language reads a tab after `#` or `>` as
   Markdown does.** A heading whose `#` a tab followed was highlighted as a
   paragraph. Inside a blockquote, a tab after the `>` moved the rest of the
