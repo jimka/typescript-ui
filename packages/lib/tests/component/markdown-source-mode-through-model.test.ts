@@ -584,6 +584,15 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         // A tab the item's content column cuts across reads as the columns left of it, and the save writes those as spaces.
         ['an item\'s text before a fenced code line whose tab the item cuts across', '- one\n\n  ```\n \tbb\n  ```', 2, 5, 'bold', '- **one**\n\n  ```\n    bb\n  ```', null],
         ['an item\'s text before an indented code line of two tabs', '- a\n\n\t\tcode', 2, 3, 'bold', '- **a**\n\n  ```\n    code\n  ```', null],
+        // The model reads each of these as the source grammar does, so the command acts as on the control form beside it.
+        ['a heading underlined by "-" and a tab, as one underlined by "-" alone', 'a\n-\t\n', 0, 1, 'bold', '## **a**\n', null],
+        ['a paragraph after a heading underlined by "-" and a tab', 'a\n-\t\nb\n', 5, 6, 'bold', 'a\n-\t\n\n**b**\n', null],
+        ['a heading underlined by "---" and a tab, not a paragraph over a rule', 'a\n---\t\n', 0, 1, 'bold', '## **a**\n', null],
+        ['a paragraph after a block tag name line and a blank line', 'a\n\n<div\n\nb c\n', 9, 10, 'bold', 'a\n\n<div\n\n**b** c\n', null],
+        ['a paragraph after a closing tag name line and a blank line in a quote', '> </div\n>\n> b c\n', 12, 13, 'bold', '> </div\n>\n> **b** c\n', null],
+        ['a word beside a link whose text is a no-break space', '[\u00a0](/u) b c\n', 8, 9, 'bold', '[\u00a0](/u) **b** c\n', null],
+        ['a word in the cell after a link whose text is a no-break space', '| h | k |\n| - | - |\n| [\u00a0](/u) | b c |\n', 32, 33, 'bold', '| h | k |\n| - | - |\n| [\u00a0](/u) | **b** c |\n', null],
+        ['a word beside a link whose text is a no-break space in a list item', '- [\u00a0](/u) b c\n', 10, 11, 'bold', '- [\u00a0](/u) **b** c\n', null],
     ];
 
     it.each(ROWS.map((row) => [`${row[0]} ${row[4]}`, row] as const))('%s: gives the text, and the caret where the WYSIWYG command leaves it', (_title, [, doc, from, to, command, text, caret]) => {

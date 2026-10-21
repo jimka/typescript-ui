@@ -2321,7 +2321,8 @@ function $inlineLeaves(element: ElementNode): LexicalNode[] {
 /**
  * Whether an inline leaf holds content a save writes — an image, text other
  * than whitespace, any code, source other than whitespace — as the
- * serializer counts it when it drops a block's edge breaks.
+ * serializer counts it when it drops a block's edge breaks: whitespace is
+ * ASCII whitespace, and a no-break space is content ({@link holdsLineContent}).
  *
  * @param node - The leaf.
  * @param text - The part of its text to read; all of it when omitted.
@@ -2329,13 +2330,13 @@ function $inlineLeaves(element: ElementNode): LexicalNode[] {
  */
 function $holdsContent(node: LexicalNode, text?: string): boolean {
     if ($isMarkdownSourceTextNode(node)) {
-        return /\S/.test(node.getSource());
+        return holdsLineContent(node.getSource());
     }
 
     if ($isTextNode(node)) {
         const shown = text ?? node.getTextContent();
 
-        return node.hasFormat("code") ? shown.replace(/\n/g, "") !== "" : /\S/.test(shown);
+        return node.hasFormat("code") ? shown.replace(/\n/g, "") !== "" : holdsLineContent(shown);
     }
 
     return $isDecoratorNode(node);

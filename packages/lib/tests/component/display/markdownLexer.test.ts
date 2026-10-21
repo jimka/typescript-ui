@@ -721,6 +721,62 @@ describe('a tab counts to its tab stop, and a content tab is kept', () => {
     });
 });
 
+/** Setext headings whose underline ends in tabs, or in spaces and tabs, at the top level and in containers. */
+const TABBED_UNDERLINE_SOURCES: readonly string[] = [
+    'a\n-\t', 'a\n=\t', 'a\n---\t', 'a\n-\t\nb', 'a\n= \t \n', '> a\n> =\t', '- a\n  =\t', '- a\n  =\t\n  b', 'a\n\t-', 'a\nb\n-\t\n\nc',
+];
+
+describe('a setext underline may end in tabs, as CommonMark reads it', () => {
+    it('reads "a" over "-" and a tab as a level-2 heading that used the whole source', () => {
+        const tokens = lexMarkdown('a\n-\t');
+
+        expect(tokens).toHaveLength(1);
+        expect(tokens[0]).toMatchObject({ type: 'heading', depth: 2, text: 'a', raw: 'a\n-\t' });
+    });
+
+    it('reads "a" over "=" and a tab as a level-1 heading', () => {
+        expect(tokenAt<Tokens.Heading>('a\n=\t', 0)).toMatchObject({ type: 'heading', depth: 1, text: 'a' });
+    });
+
+    it('reads "a" over "---" and a tab as a heading, not as a paragraph and a rule', () => {
+        expect(typesOf('a\n---\t')).toEqual(['heading']);
+    });
+
+    it('reads the line after a tabbed underline as a paragraph of its own', () => {
+        const source = 'a\n-\t\nb';
+        const tokens = lexMarkdown(source);
+
+        expect(tokens.map((token) => token.type)).toEqual(['heading', 'paragraph']);
+        expect(tokens[0]!.raw).toBe('a\n-\t\n');
+        expect(joinedRaws(tokens)).toBe(source);
+    });
+
+    it('reads an underline ending in spaces and tabs mixed as an underline', () => {
+        expect(tokenAt<Tokens.Heading>('a\n= \t \n', 0)).toMatchObject({ type: 'heading', depth: 1, text: 'a', raw: 'a\n= \t \n' });
+    });
+
+    it('reads a tabbed underline in a quote as a heading in the quote', () => {
+        expect(tokenAt<Tokens.Blockquote>('> a\n> =\t', 0).tokens.map((token) => token.type)).toEqual(['heading']);
+    });
+
+    it('reads a tabbed underline in a list item as a heading in the item, with a line after it', () => {
+        expect(listItemsAt('- a\n  =\t\n  b', 0)[0]!.tokens.map((token) => token.type)).toEqual(['heading', 'text']);
+    });
+
+    // `marked` trims the end of a list's last item, so a tabbed underline that ends one read as an underline already.
+    it('still reads a tabbed underline that ends a list as a heading in the item (control)', () => {
+        expect(listItemsAt('- a\n  =\t', 0)[0]!.tokens.map((token) => token.type)).toEqual(['heading']);
+    });
+
+    it('still reads "-" indented by a tab under "a" as part of the paragraph (control)', () => {
+        expect(tokenAt<Tokens.Paragraph>('a\n\t-', 0)).toMatchObject({ type: 'paragraph', text: 'a\n\t-' });
+    });
+
+    it.each(TABBED_UNDERLINE_SOURCES)('lexes %j identically to the unbounded twin', (source) => {
+        expect(lexMarkdown(source)).toEqual(lexMarkdownUnbounded(source));
+    });
+});
+
 /** Block tag names with nothing after them: each starts an HTML block before a line end (CommonMark's start conditions 1 and 6). */
 const HTML_START_TAILS: readonly string[] = ['</div', '<pre', '<script', '<style', '<textarea', '<DIV', '   <div', '<h1', '<li'];
 
@@ -893,6 +949,73 @@ describe('an HTML block start ending its input reads as one before a line end', 
         expect(tokens.at(-1)!.raw).toBe(tail);
         expect(typesOf(source)).toEqual(typesOf(source + '\n'));
         expect(joinedRaws(tokens)).toBe(source);
+    });
+});
+
+/** Block tag names alone on the start line of an HTML block, closing tags and indentation among them (CommonMark's start condition 6). */
+const BLANK_ENDED_TAG_NAMES: readonly string[] = ['<div', '</div', '<DIV', '   <div', '<details', '<h1', '<li'];
+
+/** Every source the rows below lex, for the comparison against the unbounded twin. */
+const BLANK_ENDED_SOURCES: readonly string[] = [
+    ...BLANK_ENDED_TAG_NAMES.map((tail) => `${tail}\n\nb c`), 'a\n\n<div\n\nb c', '<div\n  \nb c', '> <div\n>\n> b c', '- <div\n\n  b c',
+    'a\n<div\n\nb c', '<div\nx\n\nb', '<pre\n\nb', '<div class="x"\n\nb',
+];
+
+describe('an HTML block whose start line is a block tag name alone ends at the blank line after it', () => {
+    it('reads "<div", a blank line and a paragraph as an html block and that paragraph', () => {
+        const source = '<div\n\nb c';
+        const tokens = lexMarkdown(source);
+
+        expect(tokens.map((token) => token.type)).toEqual(['html', 'space', 'paragraph']);
+        expect(tokens[0]).toMatchObject({ raw: '<div', text: '<div' });
+        expect(tokens[2]).toMatchObject({ text: 'b c' });
+        expect(joinedRaws(tokens)).toBe(source);
+    });
+
+    it('reads the same after a paragraph and a blank line', () => {
+        expect(typesOf('a\n\n<div\n\nb c')).toEqual(['paragraph', 'space', 'html', 'space', 'paragraph']);
+    });
+
+    it.each(BLANK_ENDED_TAG_NAMES)('reads %j, a blank line and a paragraph as an html block and that paragraph', (tail) => {
+        const source = `${tail}\n\nb c`;
+        const tokens = lexMarkdown(source);
+
+        expect(tokens.map((token) => token.type)).toEqual(['html', 'space', 'paragraph']);
+        expect(tokens[0]!.raw).toBe(tail);
+        expect(joinedRaws(tokens)).toBe(source);
+    });
+
+    it('ends the block at a blank line of spaces too', () => {
+        expect(typesOf('<div\n  \nb c')).toEqual(['html', 'space', 'paragraph']);
+    });
+
+    it('ends the block at the blank line in a quote and in a list item', () => {
+        const quote = tokenAt<Tokens.Blockquote>('> <div\n>\n> b c', 0);
+        const [item] = listItemsAt('- <div\n\n  b c', 0);
+
+        expect(quote.tokens.filter((token) => token.type !== 'space').map((token) => token.type)).toEqual(['html', 'paragraph']);
+        expect(item!.tokens.filter((token) => token.type !== 'space').map((token) => token.type)).toEqual(['html', 'paragraph']);
+    });
+
+    it('ends the block at the blank line when it interrupts a paragraph', () => {
+        expect(typesOf('a\n<div\n\nb c')).toEqual(['paragraph', 'html', 'space', 'paragraph']);
+    });
+
+    it('still runs the block on over a line of text to the next blank line (control)', () => {
+        expect(tokenAt<Tokens.HTML>('<div\nx\n\nb', 0)).toMatchObject({ type: 'html', raw: '<div\nx' });
+        expect(typesOf('<div\nx\n\nb')).toEqual(['html', 'space', 'paragraph']);
+    });
+
+    it('still runs a <pre block on over the blank line to its closing tag (control)', () => {
+        expect(typesOf('<pre\n\nb')).toEqual(['html']);
+    });
+
+    it('still ends a start line with an attribute at the blank line after it (control)', () => {
+        expect(typesOf('<div class="x"\n\nb')).toEqual(['html', 'space', 'paragraph']);
+    });
+
+    it.each(BLANK_ENDED_SOURCES)('lexes %j identically to the unbounded twin', (source) => {
+        expect(lexMarkdown(source)).toEqual(lexMarkdownUnbounded(source));
     });
 });
 

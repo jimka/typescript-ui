@@ -1459,6 +1459,27 @@ describe('$importMarkdown — whole-stack review fixes: no source dropped', () =
         expect(editorSurfaceModel(editor)).toEqual(viewerModel(editor.getValue()).blocks);
     });
 
+    // A no-break space is content: the save keeps it at a line's edge, so such a link is a link, as one of a letter is.
+    const noBreakSpaceLinks: Array<[string, string]> = [
+        ['at the start of a paragraph', '[\u00a0](u) a'],
+        ['at the end of a paragraph', 'a [\u00a0](u)'],
+        ['in emphasis at the start of a paragraph', '*[\u00a0](u)* a'],
+        ['opening a list item', '- [\u00a0](u) a'],
+        ['alone in a table cell', '| h | k |\n| - | - |\n| [\u00a0](u) | b |'],
+    ];
+
+    for (const [name, source] of noBreakSpaceLinks) {
+        it(`a link whose text is a no-break space ${name} is a link node, and the save and the standard form read as loaded`, () => {
+            const editor = load(source);
+            const links = readDocument(editor, () => $dfs().filter(({ node }) => $isLinkNode(node)).map(({ node }) => node.getTextContent()));
+
+            expect(links).toEqual(['\u00a0']);
+            expect(editor.getValue()).toBe(source);
+            expect(editorSurfaceModel(editor)).toEqual(viewerModel(source).blocks);
+            expect(viewerModel(canonicalSave(editor)).blocks).toEqual(viewerModel(source).blocks);
+        });
+    }
+
     it('an empty link keeps the formatting around it', () => {
         const editor = load('a **[](u)** b');
 
@@ -4319,7 +4340,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             const editor = backspaceOver('a\n\n<div>\n\nb', ['<div>', 4], ['<div>', 5]);
 
             expect(rootTypes(editor)).toEqual(['paragraph', 'markdown-raw-block', 'paragraph']);
-            expect(editor.getValue()).toBe('a\n\n<div\n\n\nb');
+            expect(editor.getValue()).toBe('a\n\n<div\n\nb');
             expectSaveShowsSurface(editor);
         });
 
@@ -5053,3 +5074,47 @@ describe('$importMarkdown — a list a save could not write back stays raw (R ro
     });
 });
 
+
+describe('$importMarkdown — a tabbed setext underline and a block tag name line before a blank line read as CommonMark reads them', () => {
+    /**
+     * Bolds the first occurrence of a word in the editor's text.
+     *
+     * @param editor - The editor.
+     * @param word - The word.
+     */
+    function boldWord(editor: MarkdownEditor, word: string): void {
+        lexicalOf(editor).update(() => {
+            const node = $getRoot().getAllTextNodes().find((text) => text.getTextContent().includes(word))!;
+            const at = node.getTextContent().indexOf(word);
+
+            node.select(at, at + word.length);
+        }, { discrete: true });
+        editor.toggleBold();
+    }
+
+    // Each control form beside a row reads and saves as that row does: `a⏎-` for the tab underline, `<div>` for the tag
+    // name line, `····xx` for the backtick line.
+    const rows: Array<[string, string, string, string]> = [
+        ['a heading underlined by "-" and a tab', 'a\n-\t\n', 'a', '## **a**\n'],
+        ['a paragraph after a heading underlined by "-" and a tab', 'a\n-\t\nb\n', 'b', 'a\n-\t\n\n**b**\n'],
+        ['a heading underlined by "---" and a tab', 'a\n---\t\n', 'a', '## **a**\n'],
+        ['a paragraph after a block tag name line and a blank line', 'a\n\n<div\n\nb c\n', 'b', 'a\n\n<div\n\n**b** c\n'],
+        ['a paragraph after a block tag name line and a blank line in a quote', '> <div\n>\n> b c\n', 'b', '> <div\n>\n> **b** c\n'],
+    ];
+
+    it.each(rows)('%s: the editor shows what the viewer shows, and an edit saves what the editor showed', (_name, source, word, saved) => {
+        const editor = load(source);
+
+        expect(editorSurfaceModel(editor)).toEqual(viewerModel(source).blocks);
+        expect(editor.getValue()).toBe(source);
+
+        boldWord(editor, word);
+
+        const reloaded = load(editor.getValue());
+
+        expect(editor.getValue()).toBe(saved);
+        expect(editorSurfaceModel(editor)).toEqual(viewerModel(saved).blocks);
+        expect(editorSurfaceModel(reloaded)).toEqual(editorSurfaceModel(editor));
+        expect(reloaded.getValue()).toBe(saved);
+    });
+});

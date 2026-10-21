@@ -3403,7 +3403,7 @@ describe('a raw block outside a list item is written so that it reads where it s
             name:   'RL9: once the last line stands at the margin the editor shows a quote and a raw block',
             source: DEEP_QUOTE,
             steps:  [{ key: 'Backspace', at: ['  <div', 2] }, { key: 'Backspace', at: [' <div', 1] }],
-            saved:  'p\n\n> q\n\n<div\n\n\nz',
+            saved:  'p\n\n> q\n\n<div\n\nz',
             shape:  'paragraph("p") | markdown-quote(paragraph("q")) | markdown-raw-block("<div") | paragraph("z")',
             comparesWithViewer: false,
         },
@@ -3438,7 +3438,7 @@ describe('a raw block outside a list item is written so that it reads where it s
             name:   'RL14: a block added after a last line at the margin shows it as a quote and a raw block (control)',
             source: '> q\n<div',
             steps:  [{ key: 'Enter', at: ['<div', 4] }, { key: 'type', text: 'z' }],
-            saved:  '> q\n\n<div\n\n\nz',
+            saved:  '> q\n\n<div\n\nz',
             shape:  'markdown-quote(paragraph("q")) | markdown-raw-block("<div") | paragraph("z")',
             comparesWithViewer: false,
         },
@@ -3763,39 +3763,39 @@ describe('a raw block outside a list item is written so that it reads where it s
             saved:  '- w\n  > x\n\n[//]: #\n\n- n\n  > q',
             comparesWithViewer: false,
         },
-        // RW — a raw block only a second blank line ends keeps that line when it is written as its loaded source
-        // and the block after it is not the one it was loaded before.
+        // RW — a raw block that only a second blank line ended in the source is written one blank line from the block
+        // after it, as an HTML block that one blank line ends is.
         {
-            name:   'RW1: an HTML block start keeps its second blank line when the paragraph after it is edited',
+            name:   'RW1: an HTML block start is written one blank line from the paragraph after it when that is edited',
             source: '<div\n\n\nb',
             steps:  [typeX(['b', 1])],
-            saved:  '<div\n\n\nbX',
+            saved:  '<div\n\nbX',
         },
         {
-            name:   'RW2: it keeps the line when the block after it is removed',
+            name:   'RW2: it is written one blank line from the block after it when the block between is removed',
             source: '<div\n\n\nb\n\nc',
             steps:  [{ key: 'removeBlock', index: 1 }],
-            saved:  '<div\n\n\nc',
+            saved:  '<div\n\nc',
         },
         {
-            name:   'RW3: two HTML block starts in a row each keep it',
+            name:   'RW3: two HTML block starts in a row are each written one blank line from the block after',
             source: '<div\n\n\n<div\n\n\nb',
             steps:  [typeX(['b', 1])],
-            saved:  '<div\n\n\n<div\n\n\nbX',
+            saved:  '<div\n\n\n<div\n\nbX',
         },
         {
-            name:   'RW4: a closing tag name after a paragraph keeps it',
+            name:   'RW4: a closing tag name after a paragraph is written one blank line from the block after it',
             source: 'a\n\n</details\n\n\nb',
             steps:  [typeX(['b', 1])],
-            saved:  'a\n\n</details\n\n\nbX',
+            saved:  'a\n\n</details\n\nbX',
         },
         {
             // `insertParagraphBeforeBlock()` acts on a quote, a list, a code block or a table: the new block stands
             // between two blocks that are both written as their loaded source.
-            name:   'RW5: it keeps the line before a block put between it and the block it was loaded before',
+            name:   'RW5: it is written one blank line from a block put between it and the block it was loaded before',
             source: '<div\n\n\n> b',
             steps:  [{ key: 'command', run: (editor) => editor.insertParagraphBeforeBlock(), at: ['b', 0] }, { key: 'type', text: 'n' }],
-            saved:  '<div\n\n\nn\n\n> b',
+            saved:  '<div\n\nn\n\n> b',
         },
         {
             name:   'RW6: an edit of the block before it leaves the source\'s own two blank lines (control)',
@@ -3811,10 +3811,10 @@ describe('a raw block outside a list item is written so that it reads where it s
             comparesWithViewer: false,
         },
         {
-            name:   'RW8: in a column the block is written in the standard form, which holds the line (control)',
+            name:   'RW8: in a column the block is written in the standard form, one blank line apart (control)',
             source: inColumn('<div\n\n\nb'),
             steps:  [typeX(['b', 1])],
-            saved:  inColumn('<div\n\n\nbX'),
+            saved:  inColumn('<div\n\nbX'),
         },
         {
             name:   'RW9: an HTML block one blank line ends is written one blank line apart (control)',
@@ -3825,40 +3825,40 @@ describe('a raw block outside a list item is written so that it reads where it s
         // The block itself was not edited, so every byte of its source stays: the spaces before it, the line end
         // between it and the block it was loaded right after, and the document's own first lines.
         {
-            name:   'RW10: an indented HTML block start keeps its indentation when it is given its second blank line',
+            name:   'RW10: an indented HTML block start keeps its indentation when it is written one blank line from the next',
             source: '  <div\n\n\nb',
             steps:  [typeX(['b', 1])],
-            saved:  '  <div\n\n\nbX',
+            saved:  '  <div\n\nbX',
         },
         {
             name:   'RW11: an HTML block start right under a quote stays right under it',
             source: '> q\n<div\n\n\nb',
             steps:  [typeX(['b', 1])],
-            saved:  '> q\n<div\n\n\nbX',
+            saved:  '> q\n<div\n\nbX',
         },
         {
             name:   'RW12: the blank lines that open the document stay before an HTML block start',
             source: '\n\n<div\n\n\nb',
             steps:  [typeX(['b', 1])],
-            saved:  '\n\n<div\n\n\nbX',
+            saved:  '\n\n<div\n\nbX',
         },
         {
             name:   'RW13: an indented closing tag name keeps its indentation when the block after it is removed',
             source: 'a\n\n   </details\n\n\nb\n\nc',
             steps:  [{ key: 'removeBlock', index: 2 }],
-            saved:  'a\n\n   </details\n\n\nc',
+            saved:  'a\n\n   </details\n\nc',
         },
         {
             name:   'RW14: the document\'s last block, an indented HTML block start, keeps its indentation before a new block',
             source: 'p\n\n  <div',
             steps:  [{ key: 'Enter', at: ['<div', 4] }, { key: 'type', text: 'z' }],
-            saved:  'p\n\n  <div\n\n\nz',
+            saved:  'p\n\n  <div\n\nz',
         },
         {
             name:   'RW15: the same in a document that ends with a line end',
             source: '   </details\n',
             steps:  [{ key: 'Enter', at: ['</details', 9] }, { key: 'type', text: 'z' }],
-            saved:  '   </details\n\n\nz\n',
+            saved:  '   </details\n\nz\n',
         },
         {
             name:   'RW16: an indented HTML block start keeps its indentation when every block after it is removed',
@@ -3873,7 +3873,7 @@ describe('a raw block outside a list item is written so that it reads where it s
             saved:  'p\n\n```\nk\n```\n\nz',
         },
         // RD — the document's definitions are read raw block by raw block: an HTML block left open ends with its
-        // column or list item, or at its second blank line, and the definition after it counts.
+        // column or list item, or at a blank line, and the definition after it counts.
         {
             name:   'RD1: a definition after an HTML block start ending a column keeps a reference link',
             source: `${COLUMNS}\n\nb [x] c`,
@@ -3910,11 +3910,11 @@ describe('a raw block outside a list item is written so that it reads where it s
         },
         {
             // The definition is removed, so the link is written inline with its own URL; the raw block before it
-            // keeps its second blank line.
-            name:   'RD7: removing a definition two blank lines after an HTML block start writes its link inline',
+            // is written one blank line from the next.
+            name:   'RD7: removing a definition two blank lines after an HTML block start writes its link inline, the block one blank line from the next',
             source: '<div\n\n\n[x]: /u\n\n[a][x]',
             steps:  [{ key: 'removeBlock', index: 1 }],
-            saved:  '<div\n\n\n[a](/u)',
+            saved:  '<div\n\n[a](/u)',
         },
         {
             name:   'RD8: a definition after a list whose item ends in an open comment keeps a reference link',

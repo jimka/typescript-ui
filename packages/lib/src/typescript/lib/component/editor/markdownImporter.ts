@@ -22,6 +22,7 @@ import type { TableCellNode, TableNode } from "@lexical/table";
 import { $dfs } from "@lexical/utils";
 import { FULL_REFERENCE, lexMarkdown, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions, SHORT_REFERENCE } from "~/component/display/markdownExtensions.js";
 import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
+import { holdsLineContent } from "~/component/display/markdownLineContent.js";
 import { CELL_LINE_BREAK_TAG } from "~/component/display/markdownTableExtension.js";
 import type { MdTableBodyCell, MdTableHeaderCell, MdTableToken } from "~/component/display/markdownTableExtension.js";
 import {
@@ -2978,14 +2979,15 @@ function reversedToken(token: Token): Token {
 /**
  * Tells whether a link's text shows nothing beside the links nested in it
  * but whitespace, some of it at the text's own start or end — whitespace a
- * save trims away when the link stands at its block's edge.
+ * save trims away when the link stands at its block's edge. Whitespace is
+ * ASCII whitespace, as in {@link showsOnlyWhitespace}.
  *
  * @param tokens - The link's inline tokens.
  * @returns Whether it does.
  */
 function showsWhitespaceBesideLinks(tokens: readonly Token[]): boolean {
     const atEdge = [tokens[0], tokens[tokens.length - 1]]
-        .some((token) => token?.type === "text" && /^\s+$/.test((token as Tokens.Text).text));
+        .some((token) => token?.type === "text" && (token as Tokens.Text).text !== "" && !holdsLineContent((token as Tokens.Text).text));
 
     return atEdge && !showsOnlyWhitespace(tokens) && showsOnlyWhitespace(tokens, true);
 }
@@ -2993,6 +2995,9 @@ function showsWhitespaceBesideLinks(tokens: readonly Token[]): boolean {
 /**
  * Tells whether inline tokens show nothing but whitespace: each leaf is text
  * (or an escape) holding only whitespace, at any depth of emphasis or span.
+ * Whitespace is ASCII whitespace, the spaces and tabs a save trims at a
+ * line's edge: a no-break space is content, which the save keeps
+ * ({@link holdsLineContent}).
  *
  * @param tokens - The inline tokens.
  * @param besideLinks - Whether links among them count as showing nothing, so
@@ -3012,7 +3017,7 @@ function showsOnlyWhitespace(tokens: readonly Token[], besideLinks: boolean = fa
         }
 
         return (token.type === "text" || token.type === "escape") && (children === undefined || children.length === 0
-            ? /^\s*$/.test((token as Tokens.Text).text)
+            ? !holdsLineContent((token as Tokens.Text).text)
             : showsOnlyWhitespace(children, besideLinks));
     });
 }
