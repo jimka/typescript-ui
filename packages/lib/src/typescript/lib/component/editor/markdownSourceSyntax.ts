@@ -11,6 +11,9 @@
 // it was, and a `:::` or `|||` line that carries its container's marks ends
 // the paragraph or table above it, so an opening `:::` line folds its fence
 // itself (a fold of its own, below) instead of the paragraph it used to head.
+// One more configuration changes a reading of lezer's own, to the viewer's: an
+// ordered list item of any number ends a list item's text, so Enter continues
+// that list there.
 // `@lezer/highlight` and `@codemirror/language` are loaded by theme.ts and
 // CodeEditor, so importing this module loads no grammar package.
 
@@ -122,24 +125,36 @@ export const MARKDOWN_STRIKETHROUGH: MarkdownConfig = {
 const STRIKETHROUGH_MARK_LENGTH = 2;
 
 /**
- * Adds a `~~` delimiter at a position, when two tildes and no third stand
- * there.
+ * Adds a `~~` delimiter at a position, when a run of exactly two tildes
+ * starts there. The parser is tried at a run's first `~` (an escaped `~`
+ * before it is part of its escape), and a run of another length is passed
+ * over whole as text, as {@link parseUnderlineMark} passes over a `+` run, so
+ * no `~~` is read inside `~~~`: the viewer strikes neither `x ~~~a~~~` nor
+ * `~~a~~~`.
  *
  * @param cx - The inline parse state.
  * @param next - The character code at `pos`.
  * @param pos - The position.
- * @returns The end of the delimiter, or `-1` when none starts here.
+ * @returns The end of the delimiter or of the run passed over, or `-1` when no `~` stands here.
  */
 function parseStrikethroughMark(cx: InlineContext, next: number, pos: number): number {
-    const markEnd = pos + STRIKETHROUGH_MARK_LENGTH;
-
-    if (next !== TILDE || cx.char(pos + 1) !== TILDE || cx.char(markEnd) === TILDE) {
+    if (next !== TILDE) {
         return -1;
     }
 
-    const { opens, closes } = delimiterFlanking(cx, pos, markEnd);
+    let runEnd = pos + 1;
 
-    return cx.addDelimiter(STRIKETHROUGH_DELIMITER, pos, markEnd, opens, closes);
+    while (cx.char(runEnd) === TILDE) {
+        runEnd++;
+    }
+
+    if (runEnd - pos !== STRIKETHROUGH_MARK_LENGTH) {
+        return runEnd;
+    }
+
+    const { opens, closes } = delimiterFlanking(cx, pos, runEnd);
+
+    return cx.addDelimiter(STRIKETHROUGH_DELIMITER, pos, runEnd, opens, closes);
 }
 
 /**
@@ -573,6 +588,44 @@ export const MARKDOWN_FENCE_LINES: MarkdownConfig = {
         { name: "ColonFence",      parse: parseColonFence },
         { name: "ColumnSeparator", parse: parseColumnSeparator },
     ],
+};
+
+/**
+ * An ordered list item's marker at the start of a line's text: one to nine
+ * digits, `.` or `)`, then a space, a tab or the line's end (CommonMark §5.2,
+ * and the viewer's `marked` list marker).
+ */
+const ORDERED_ITEM_MARKER = /^\d{1,9}[.)](?:[ \t]|$)/;
+
+/**
+ * Tells whether a line ends the paragraph above it by starting an ordered
+ * list item, where the paragraph is the text of a list item. The viewer's
+ * `marked` reads a list item's text a line at a time, so there any ordered
+ * item interrupts a paragraph: `- x`, `··8. a` nests an ordered list in the
+ * item. The stock parser applies CommonMark's rule for an item that
+ * interrupts a paragraph everywhere (it must start at 1 and hold text, unless
+ * an ordered list is open), so it reads `8. a` as more of the text `x`. A
+ * paragraph outside a list item, a quote's included, keeps the stock rule,
+ * as the viewer keeps it there; so does a line indented four columns past
+ * the item's content, which the stock parser never hands to this test.
+ *
+ * @param cx - The parse state.
+ * @param line - The line after the paragraph's last line.
+ * @returns `true` when the paragraph is a list item's text and the line starts an ordered item.
+ */
+function endsItemTextAtOrderedItem(cx: BlockContext, line: BlockLine): boolean {
+    const startsOrderedItem = ORDERED_ITEM_MARKER.test(line.text.slice(line.pos));
+
+    return startsOrderedItem && cx.parentType().name === "ListItem";
+}
+
+/**
+ * Lets an ordered list item interrupt a list item's text, as the viewer
+ * reads it (see endsItemTextAtOrderedItem). It reads no block itself: the
+ * stock ordered-list parser reads the line once the paragraph has ended.
+ */
+export const MARKDOWN_ITEM_TEXT_ENDS: MarkdownConfig = {
+    parseBlock: [{ name: "OrderedItemEndsItemText", endLeaf: endsItemTextAtOrderedItem }],
 };
 
 /** A delimiter row's cell: dashes with an optional colon at each end, then an optional `{…}` group (`markdownTableExtension.ts`). */

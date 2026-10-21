@@ -3228,6 +3228,19 @@ describe('MarkdownEditor dirty state', () => {
         expect(editor.isDirty()).toBe(true);
     });
 
+    it('a markClean() in source mode over \\r\\n line ends leaves the editor clean on the switch back to WYSIWYG', () => {
+        const editor = new MarkdownEditor('x');
+
+        (editor as unknown as { ensureEditor(): LexicalEditor }).ensureEditor();
+        editor.setMode('source');
+        editor.setValue('a b\r\nc d');
+        expect(editor.getValue()).toBe('a b\nc d');
+
+        editor.markClean();
+        editor.setMode('wysiwyg');
+        expect(editor.isDirty()).toBe(false);
+    });
+
     it('a first build that happens after a source-mode edit does not clear the flag', () => {
         const editor = new MarkdownEditor('# Title\n\nbody\n', { mode: 'source' });
 

@@ -30,7 +30,7 @@ import { json } from '@codemirror/lang-json';
 import { commonmarkLanguage, deleteMarkupBackward } from '@codemirror/lang-markdown';
 import { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics';
 import { tabDocuments } from './markdown-roundtrip/tabDocuments';
-import { viewerModel } from './markdown-roundtrip/viewModel';
+import { blockOutline, viewerModel } from './markdown-roundtrip/viewModel';
 import { expandPrefixTabs } from '~/component/display/markdownTabs';
 import type { SqlLanguageOptions } from '~/component/editor/languages';
 import type { MenuItemConfig } from '~/component/container/MenuItem';
@@ -108,6 +108,19 @@ describe('CodeEditor offline no-op', () => {
         const editor = new CodeEditor('const x = 1;');
 
         expect(editor.getValue()).toBe('const x = 1;');
+    });
+
+    it('getValue reads the line ends of the cached value as the mounted view holds them', () => {
+        expect(new CodeEditor('a\r\nb\rc\nd').getValue()).toBe('a\nb\nc\nd');
+        expect(new CodeEditor().setValue('a\r\nb').getValue()).toBe('a\nb');
+    });
+
+    it('replaceRange before mount works on the text getValue returns, with \\r\\n read as \\n', () => {
+        const editor = new CodeEditor('ab\r\ncd');
+
+        editor.replaceRange(3, 4, 'X');
+
+        expect(editor.getValue()).toBe('ab\nXd');
     });
 
     it('getValue defaults to "" when unset', () => {
@@ -5330,6 +5343,144 @@ describe('built-in markdown language typing', () => {
 
             expect(await languageOutline(result.replace('|', ''))).toBe(outline);
         }
+    });
+
+    // A line whose list or quote markers only spaces and tabs follow is blank there: CommonMark and the viewer read an
+    // empty item or quote, and the grammar opens no code block on it, however many columns its whitespace reaches.
+    it.each([
+        ['an item whose marker two tabs follow', '-\t\t', 'ul[li[]]'],
+        ['an item whose marker six spaces follow', '-      ', 'ul[li[]]'],
+        ['an ordered item whose marker two tabs follow', '1.\t\t', 'ol[li[]]'],
+        ['an empty item between two items', '- a\n-\t\t\n- b', 'ul[li[p] li[] li[p]]'],
+        ['an empty item whose next line continues it', '-\t\t\n  b', 'ul[li[p]]'],
+        ['a quote in a quote whose marker a space and a tab follow', '> > \t', 'quote[quote[]]'],
+        ['a quote in an item whose marker a space and a tab follow', '- > \t', 'ul[li[quote[]]]'],
+        ['an indented quote whose marker a space and a tab follow', '  > \t', 'quote[]'],
+        ['a quote whose marker two tabs follow', '>\t\t', 'quote[]'],
+        ['a quote in a quote whose marker five spaces follow', '> >     ', 'quote[quote[]]'],
+    ])('a line whose markers only whitespace follows holds no code block: %s', async (_name, doc, outline) => {
+        expect(await languageOutline(doc)).toBe(outline);
+    });
+
+    it.each([
+        ['a quote whose marker a space and a two-column tab follow', '> \t', 'quote[]'],
+        ['an item whose marker four spaces follow', '-    ', 'ul[li[]]'],
+        ['an indented line after an empty item', '-\t\t\n      x', 'ul[li[code]]'],
+        ['an indented line after an empty quote in a quote', '> > \t\n> >     x', 'quote[quote[code]]'],
+    ])('a line whose markers only whitespace follows reads as before (guard): %s', async (_name, doc, outline) => {
+        expect(await languageOutline(doc)).toBe(outline);
+    });
+
+    it('a line whose markers only spaces and tabs follow holds a code block only where the viewer reads one', async () => {
+        const markers = ['-', '*', '1.', '>'];
+        const gaps = ['', ' ', '\t', '  '];
+        const rests = ['', ' ', '\t', '  ', ' \t', '\t ', '\t\t', '    ', '     ', '  \t', ' \t\t'];
+        const differing: string[] = [];
+
+        for (const indent of ['', ' ', '  ', '   ']) {
+            for (const outer of markers) {
+                for (const gap of gaps) {
+                    for (const inner of ['', ...markers]) {
+                        for (const rest of rests) {
+                            const line = indent + outer + gap + inner + rest;
+
+                            for (const doc of [line, `- a\n${line}`, `${line}\n- b`]) {
+                                const sourceCode = (await languageOutline(doc)).includes('code');
+                                const viewerCode = JSON.stringify(viewerModel(doc).blocks).includes('"kind":"code"');
+
+                                if (sourceCode !== viewerCode) {
+                                    differing.push(JSON.stringify(doc));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        expect(differing).toEqual([]);
+    });
+
+    it('Enter after an empty item whose marker six spaces follow acts as after one space', async () => {
+        expect(await typed('markdown', '- a\n-      |', '\n')).toBe('- a\n\n-      |');
+    });
+
+    it('Enter after an only item whose marker six spaces follow removes the marker, as after two tabs', async () => {
+        expect(await typed('markdown', '-      |', '\n')).toBe('|');
+    });
+
+    it('Enter after an empty ordered item whose marker six spaces follow acts as after one space', async () => {
+        expect(await typed('markdown', '1. a\n2.      |', '\n')).toBe('1. a\n\n2.      |');
+    });
+
+    it.each([
+        ['an empty item whose marker two tabs follow', '- a\n-\t\t|', '- a\n\n-\t\t|'],
+        ['an empty item whose marker one space follows', '- a\n- |', '- a\n\n- |'],
+        ['an only item whose marker two tabs follow', '-\t\t|', '|'],
+        ['an empty quote in a quote whose marker a space and a tab follow', '> a\n> > \t|', '> a\n> >\n> > |'],
+    ])('Enter after a line whose markers only whitespace follows (guard): %s', async (_name, start, result) => {
+        expect(await typed('markdown', start, '\n')).toBe(result);
+    });
+
+    // The viewer reads a list item's text a line at a time, so an ordered item of any number ends it; CommonMark and the
+    // stock parser let only an item that starts at 1 and holds text interrupt a paragraph.
+    it.each([
+        ['an ordered list from 8 under a bullet item\'s text', '- x\n  8. a\n  9. i', 'ul[li[p ol[li[p] li[p]]]]'],
+        ['an ordered list with ")" under a bullet item\'s text', '* x\n  8) a\n  9) b', 'ul[li[p ol[li[p] li[p]]]]'],
+        ['an empty ordered item under a bullet item\'s text', '- x\n  8.\n  z', 'ul[li[p ol[li[]] p]]'],
+        ['an ordered item under the text of a nested item', '- x\n  - y\n    8. a', 'ul[li[p ul[li[p ol[li[p]]]]]]'],
+        ['an ordered item after a bullet item, at the margin', '- x\n8. a', 'ul[li[p]] ol[li[p]]'],
+        ['an ordered item in a quote, after a bullet item', '> - x\n> 8. a', 'quote[ul[li[p]] ol[li[p]]]'],
+    ])('an ordered item ends a list item\'s text, as the viewer reads it: %s', async (_name, doc, outline) => {
+        expect(await languageOutline(doc)).toBe(outline);
+    });
+
+    it.each([
+        ['an ordered item from 8 under a paragraph', 'x\n8. a', 'p'],
+        ['an ordered item from 8 under a quote\'s text', '> x\n> 8. a', 'quote[p]'],
+        ['an ordered item under the text of a quote in an item', '- > x\n  > 8. a', 'ul[li[quote[p]]]'],
+        ['an ordered item four columns past the item\'s content', '- x\n      8. a', 'ul[li[p]]'],
+        ['an ordered item from 1 under a bullet item\'s text', '- x\n  1. a\n  2. i', 'ul[li[p ol[li[p] li[p]]]]'],
+        ['a ten-digit number under a bullet item\'s text', '- x\n  1234567890. a', 'ul[li[p]]'],
+    ])('an ordered item ends a list item\'s text, as the viewer reads it (guard): %s', async (_name, doc, outline) => {
+        expect(await languageOutline(doc)).toBe(outline);
+    });
+
+    it('an ordered item after a list item\'s text reads as the viewer reads it, in the shapes of a list item', async () => {
+        const viewerOutline = (doc: string): string => blockOutline(viewerModel(doc).blocks).replace(/"[^"]*"/g, '').replace(/!/g, '');
+        const heads: Array<[head: string, indent: string]> = [['- x\n', '  '], ['1. x\n', '   '], ['> - x\n', '>   '], ['- x\n', '    '], ['- - x\n', '    '], ['- x\n  - y\n', '  ']];
+        const lines = ['8. a', '2. a', '1. a', '8.', '1.', '8) a', '0. a', '123456789. a', '10. a'];
+        const differing: string[] = [];
+
+        for (const [head, indent] of heads) {
+            for (const line of lines) {
+                const doc = `${head}${indent}${line}\n${indent}z`;
+
+                if (await languageOutline(doc) !== viewerOutline(doc)) {
+                    differing.push(JSON.stringify(doc));
+                }
+            }
+        }
+
+        expect(differing).toEqual([]);
+    });
+
+    it.each([
+        ['an ordered item from 8 under a bullet item\'s text', '- x\n  8. a|\n  9. i', '- x\n  8. a\n  9. |\n  10. i'],
+        ['the last ordered item from 8 under a bullet item\'s text', '- x\n  8. a|', '- x\n  8. a\n  9. |'],
+        ['an ordered item with ")" under a bullet item\'s text', '- x\n  8) a|\n  9) i', '- x\n  8) a\n  9) |\n  10) i'],
+        ['an ordered item whose next item has a later paragraph', '- x\n  8. a|\n  9. i\n\n     j', '- x\n  8. a\n  9. |\n  10. i\n\n      j'],
+    ])('Enter after a nested ordered item starts the next item and renumbers the rest: %s', async (_name, start, result) => {
+        expect(await typed('markdown', start, '\n')).toBe(result);
+    });
+
+    it.each([
+        ['a nested bullet item', '- x\n  - a|\n  - i', '- x\n  - a\n  - |\n  - i'],
+        ['a nested ordered item from 1', '- x\n  1. a|\n  2. i', '- x\n  1. a\n  2. |\n  3. i'],
+        ['an ordered item from 8 in an ordered item', '1. x\n   8. a|\n   9. i', '1. x\n   8. a\n   9. |\n   10. i'],
+        ['a top-level ordered item from 8', '8. a|\n9. i', '8. a\n9. |\n10. i'],
+    ])('Enter after a nested ordered item starts the next item and renumbers the rest (guard): %s', async (_name, start, result) => {
+        expect(await typed('markdown', start, '\n')).toBe(result);
     });
 });
 

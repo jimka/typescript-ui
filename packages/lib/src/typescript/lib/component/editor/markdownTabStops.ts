@@ -2,9 +2,10 @@
 
 // Makes the built-in "markdown" language's parser count a tab after `#` and
 // after `>` as Markdown does: a tab reaches the next multiple of four
-// columns (CommonMark §2.2). `languages.ts` passes MARKDOWN_TAB_STOPS to
-// `markdown()` and hands the parser it gets back to
-// readQuoteContinuationTabs. Everything here is types or plain functions, so
+// columns (CommonMark §2.2), and read a line whose markers only spaces and
+// tabs follow as blank, however many columns they reach. `languages.ts`
+// passes MARKDOWN_TAB_STOPS to `markdown()` and hands the parser it gets back
+// to readQuoteContinuationTabs. Everything here is types or plain functions, so
 // importing this module loads no grammar package.
 
 import type { markdown } from "@codemirror/lang-markdown";
@@ -200,15 +201,43 @@ function parseBlockquoteAfterTab(cx: BlockContext, line: MarkdownLine): null | f
 }
 
 /**
+ * Ends a line whose list or blockquote markers, opened on it, only spaces and
+ * tabs follow: the line is blank there (CommonMark §4.9), and a blank line
+ * opens no indented code block (§4.4), however many columns its whitespace
+ * reaches. The stock parser counts that whitespace as the indentation of a
+ * code block, so `-→→` holds an empty code block where CommonMark and the
+ * viewer read an empty item. The item's content column stays the stock one,
+ * one past the marker (§5.2: an item that starts with a blank line), so the
+ * lines after it read as before. Any other line is left to the stock
+ * parsers: a line that is blank from its start never reaches this one.
+ *
+ * @param cx - The parse state.
+ * @param line - The line the parser is on.
+ * @returns `true` when only spaces and tabs are left on the line and it is consumed, otherwise `false`.
+ */
+function endBlankLineRest(cx: BlockContext, line: MarkdownLine): boolean {
+    if (line.pos < line.text.length) {
+        return false;
+    }
+
+    // What the parser does with a blank line no block parser takes: it moves on to the next line.
+    cx.nextLine();
+
+    return true;
+}
+
+/**
  * The parser configuration the built-in `"markdown"` language adds through
- * `markdown({ extensions })`. Two block parsers, each placed in front of the
- * stock parser it completes, and each taking only the lines with a tab:
+ * `markdown({ extensions })`. Three block parsers, each placed in front of the
+ * stock parser it completes. The first two take only the lines with a tab,
+ * the third only a line whose markers only spaces and tabs follow:
  *
  * | Line | Stock reading | With these parsers |
  * | --- | --- | --- |
  * | `#→Foo` | a paragraph | a level-1 heading |
  * | `a`, then `#→b` | one paragraph | a paragraph, then a heading |
  * | `>→-·a`, `>`, `>·····b` | `b` is code after the list | `b` is a paragraph of the item |
+ * | `-→→`, `-······`, `>·>·→` | an empty code block in the item or quote | an empty item or quote |
  *
  * A quote's later lines are read by readQuoteContinuationTabs.
  *
@@ -218,6 +247,7 @@ export const MARKDOWN_TAB_STOPS: MarkdownConfig = {
     parseBlock: [
         { name: "ATXHeadingAfterTab", before: "ATXHeading", parse: parseHeadingAfterTab, endLeaf: endsParagraphAtHeadingAfterTab },
         { name: "BlockquoteAfterTab", before: "Blockquote", parse: parseBlockquoteAfterTab },
+        { name: "BlankLineRest", before: "IndentedCode", parse: endBlankLineRest },
     ],
 };
 

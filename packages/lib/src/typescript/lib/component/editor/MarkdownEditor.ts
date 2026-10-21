@@ -9931,13 +9931,6 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     private editThroughModel(command: () => unknown): void {
         const text = this._codeEditor.getValue();
         const selection = this._codeEditor.getSelection();
-        // Only the cached text of a source editor not mounted yet holds one; the import rewrites it, so no offset would match.
-        const holdsCarriageReturn = text.includes("\r");
-
-        if (holdsCarriageReturn) {
-            return;
-        }
-
         const window = sourceWindow(text, selection.from, selection.to);
         const windowed = this.runOnModel(text, selection, window, command);
         const result = windowed === WINDOW_LOST ? this.runOnModel(text, selection, wholeDocumentWindow(text), command) : windowed;

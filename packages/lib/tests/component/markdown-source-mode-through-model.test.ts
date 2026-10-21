@@ -721,11 +721,16 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         },
     );
 
-    it('5.30: a text holding a carriage return does nothing', () => {
-        const run = runInSource('one\r\ntwo', { from: 1, to: 1 }, COMMANDS.bold!);
+    it('5.30: a text holding \\r\\n line ends before the view mounts acts as the same text with \\n line ends', () => {
+        for (const command of ['bold', 'h2', 'bulleted']) {
+            const crlf = runInSource('one\r\ntwo', { from: 1, to: 1 }, COMMANDS[command]!);
+            const lf = runInSource('one\ntwo', { from: 1, to: 1 }, COMMANDS[command]!);
 
-        expect(run.replaced).toEqual([]);
-        run.editor.dispose();
+            expect(crlf.text, command).toBe(lf.text);
+            expect(crlf.text, command).not.toBe('one\ntwo');
+            crlf.editor.dispose();
+            lf.editor.dispose();
+        }
     });
 
     it('a command reports no change and no selection state of its own: only the source editor reports', () => {
