@@ -19,8 +19,8 @@ import { ToolBar } from "~/component/menubar/ToolBar.js";
 import { ToolBarSeparator } from "~/component/menubar/ToolBarSeparator.js";
 import { Spacer } from "~/component/container/Spacer.js";
 import { MenuItemConfig } from "~/component/container/MenuItem.js";
-import { MarkdownEditor } from "~/component/editor/MarkdownEditor.js";
-import type { MarkdownEditorChange, MarkdownEditorSelectionState } from "~/component/editor/MarkdownEditor.js";
+import { MarkdownEditor, TEXT_COLOUR_PRESETS, FONT_FAMILY_PRESETS, FONT_SIZE_PRESETS } from "~/component/editor/MarkdownEditor.js";
+import type { MarkdownEditorChange, MarkdownEditorSelectionState, TextStylePreset } from "~/component/editor/MarkdownEditor.js";
 import { Dialog, DialogButtons } from "~/overlay/Dialog.js";
 import { PopupPanel } from "~/overlay/PopupPanel.js";
 import { TextField } from "~/component/input/TextField.js";
@@ -394,41 +394,34 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
     /** Text style dropdown contents — the same presets as MarkdownEditor's context menu, as plain items that close the dropdown. */
     private buildTextStyleMenuItems(): MenuItemConfig[] {
         return [
-            {
-                text: "Colour",
-                submenu: {
-                    label: "Colour",
-                    items: [
-                        { text: "Red", action: () => this._editor.setTextColor("#cc0000") },
-                        { text: "Green", action: () => this._editor.setTextColor("#008000") },
-                        { text: "Blue", action: () => this._editor.setTextColor("#2563eb") },
-                        { text: "Default", action: () => this._editor.setTextColor(null) },
-                    ],
-                },
-            },
-            {
-                text: "Font",
-                submenu: {
-                    label: "Font",
-                    items: [
-                        { text: "Serif", action: () => this._editor.setFontFamily("Georgia, serif") },
-                        { text: "Monospace", action: () => this._editor.setFontFamily("monospace") },
-                        { text: "Default", action: () => this._editor.setFontFamily(null) },
-                    ],
-                },
-            },
-            {
-                text: "Size",
-                submenu: {
-                    label: "Size",
-                    items: [
-                        { text: "Small", action: () => this._editor.setFontSize("0.8em") },
-                        { text: "Large", action: () => this._editor.setFontSize("1.2em") },
-                        { text: "Default", action: () => this._editor.setFontSize(null) },
-                    ],
-                },
-            },
+            this.buildStylePresetSubmenu("Colour", TEXT_COLOUR_PRESETS, (value) => this._editor.setTextColor(value)),
+            this.buildStylePresetSubmenu("Font", FONT_FAMILY_PRESETS, (value) => this._editor.setFontFamily(value)),
+            this.buildStylePresetSubmenu("Size", FONT_SIZE_PRESETS, (value) => this._editor.setFontSize(value)),
         ];
+    }
+
+    /**
+     * Builds one submenu of the Text style dropdown: a plain item per preset,
+     * read from the list MarkdownEditor's context menu shows, so the two
+     * menus cannot drift apart.
+     *
+     * @param label - The submenu's title, also its parent item's text.
+     * @param presets - The presets, in the order shown.
+     * @param apply - Applies a preset's value; `null` clears the style.
+     * @returns The submenu's parent item.
+     */
+    private buildStylePresetSubmenu(
+        label: string,
+        presets: readonly TextStylePreset[],
+        apply: (value: string | null) => void,
+    ): MenuItemConfig {
+        return {
+            text: label,
+            submenu: {
+                label,
+                items: presets.map((preset) => ({ text: preset.text, action: () => apply(preset.value) })),
+            },
+        };
     }
 
     /** Alignment dropdown contents — verbatim from MarkdownEditor's own inline "Alignment" submenu, with a live checkmark. */

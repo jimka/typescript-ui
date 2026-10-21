@@ -8320,29 +8320,45 @@ const KEPT_CLEAR_MAX_TEXT_HEIGHTS = 5;
  */
 const KEPT_CLEAR_MAX_VIEWPORT_SHARE = 1 / 3;
 
-/** One preset of the Text style submenus: its label and the value it applies (`null` clears it). */
-interface TextStylePreset {
+/**
+ * One preset of the Text style submenus: its label and the value it applies (`null` clears it).
+ *
+ * @internal Shared with `MarkdownDocumentPanel.ts`, not part of the public API surface.
+ */
+export interface TextStylePreset {
     text: string;
     value: string | null;
 }
 
-/** The Colour presets of the Text style submenu. */
-const TEXT_COLOUR_PRESETS: readonly TextStylePreset[] = [
+/**
+ * The Colour presets of the Text style submenu.
+ *
+ * @internal Shared with `MarkdownDocumentPanel.ts`, not part of the public API surface.
+ */
+export const TEXT_COLOUR_PRESETS: readonly TextStylePreset[] = [
     { text: "Red", value: "#cc0000" },
     { text: "Green", value: "#008000" },
     { text: "Blue", value: "#2563eb" },
     { text: "Default", value: null },
 ];
 
-/** The Font presets of the Text style submenu. */
-const FONT_FAMILY_PRESETS: readonly TextStylePreset[] = [
+/**
+ * The Font presets of the Text style submenu.
+ *
+ * @internal Shared with `MarkdownDocumentPanel.ts`, not part of the public API surface.
+ */
+export const FONT_FAMILY_PRESETS: readonly TextStylePreset[] = [
     { text: "Serif", value: "Georgia, serif" },
     { text: "Monospace", value: "monospace" },
     { text: "Default", value: null },
 ];
 
-/** The Size presets of the Text style submenu. */
-const FONT_SIZE_PRESETS: readonly TextStylePreset[] = [
+/**
+ * The Size presets of the Text style submenu.
+ *
+ * @internal Shared with `MarkdownDocumentPanel.ts`, not part of the public API surface.
+ */
+export const FONT_SIZE_PRESETS: readonly TextStylePreset[] = [
     { text: "Small", value: "0.8em" },
     { text: "Large", value: `${LARGE_TEXT_SCALE}em` },
     { text: "Default", value: null },
