@@ -49,7 +49,7 @@ import {
     rawBlockStandsInItem, runsOn, withoutBlankEdges,
 } from "~/component/editor/markdownSerializer.js";
 import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode, $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
-import { $createMarkdownTaskCheckboxNode } from "~/component/editor/markdownTaskCheckboxNode.js";
+import { $createMarkdownTaskCheckboxNode, $keepBlankTextOfCheckbox, $openingCheckbox } from "~/component/editor/markdownTaskCheckboxNode.js";
 import { headingSlugSource, slugify } from "~/component/display/markdownHeadingIds.js";
 import { $readStandardForm, keptImageShown } from "~/component/editor/markdownSerializer.js";
 import type { StandardFormReading } from "~/component/editor/markdownSerializer.js";
@@ -1608,6 +1608,14 @@ function $buildListItem(item: Tokens.ListItem): ListItemNode | null {
 
             appendInlineTokens({ block: itemText, openLink: null, nextCellParagraph: null, keep, edges: edgeLinks(tokens) }, tokens, PLAIN);
             $dropBlanksEndingItemText(itemText);
+
+            // A checkbox that shows nothing after it is one to the viewer only by the text after its marker (`&#32;`).
+            const box = $openingCheckbox(itemText);
+            const showsNothingAfterBox = itemText.getChildren().slice(1).every((child) => $isTextNode(child) && !holdsLineContent(child.getTextContent()));
+
+            if (box !== null && showsNothingAfterBox) {
+                $keepBlankTextOfCheckbox(box, tokens.map((token) => token.raw).join(""));
+            }
         });
     }
 

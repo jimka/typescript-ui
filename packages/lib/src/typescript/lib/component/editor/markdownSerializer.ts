@@ -48,7 +48,7 @@ import type { KeptSource } from "~/component/editor/markdownNodeState.js";
 import { $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import type { ReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import { $horizontalRuleMarkdown, $isMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
-import { $emptyTaskItemMarkdown, $isMarkdownTaskCheckboxNode, $openingCheckbox, $taskMarkerMarkdown } from "~/component/editor/markdownTaskCheckboxNode.js";
+import { $emptyTaskItemMarkdown, $isMarkdownTaskCheckboxNode, $openingCheckbox, $taskMarkerMarkdown, taskTextAfterMarker } from "~/component/editor/markdownTaskCheckboxNode.js";
 import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import type { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import { columnBlockKey, EMPTY_SOURCE_MAP, quoteBlockKey } from "~/component/editor/markdownSourceMap.js";
@@ -1375,7 +1375,8 @@ export function $serializeBlockContent(block: ElementNode): string {
  * escape a paragraph's line start needs (`+alpha`, not `\+alpha`) and its
  * trailing `#` run escaped (`alpha \#`), or the lines of its setext form. A
  * paragraph's content is its lines, a list item's text its lines
- * with its checkbox's marker as written. Only the first line of a rest that
+ * with its checkbox's marker as written, a checkbox alone as its marker
+ * (`[x]`, not the `\[x\]` of the item's own save). Only the first line of a rest that
  * continues a line (`before` neither `""` nor `"\n"`) leaves out a line
  * start's escapes. The text is written for a code block or raw block, which
  * holds no line edge of its own: a no-break space at its edge is the
@@ -1413,9 +1414,16 @@ function $writeRestOfBlock(block: ElementNode, nodes: LexicalNode[], before: str
         ...(joinsIntoRawBlock ? { joinsIntoRawBlock } : {}),
     };
     const written = serializeInlineNodes(nodes, context);
+    const box = nodes[0];
 
     // The checkbox is written by the item's writer, not inline: the nodes open with the item's own checkbox.
-    return $isMarkdownListItemTextNode(block) && $isMarkdownTaskCheckboxNode(nodes[0]) ? withTaskMarker(block, written) : written;
+    if (!$isMarkdownListItemTextNode(block) || !$isMarkdownTaskCheckboxNode(box)) {
+        return written;
+    }
+
+    // A checkbox alone goes into the code as its marker, as the item showed it (`[x]`): the escapes of the item's own
+    // save (`\[x\]`) keep a line of Markdown from reading a reference link, which no code block's text is.
+    return holdsLineContent(written) ? withTaskMarker(block, written, false) : $taskMarkerMarkdown(box).trimEnd();
 }
 
 /**
@@ -1426,17 +1434,23 @@ function $writeRestOfBlock(block: ElementNode, nodes: LexicalNode[], before: str
  *
  * @param text - The item's text.
  * @param written - The Markdown its inline content was written as.
+ * @param readsAsTaskItem - Whether the result is read back as a task item (a list item's line), not held as code's text:
+ *   a space `marked` cannot read after a marker is then written as a character reference ({@link taskTextAfterMarker}).
  * @returns The marker and the content, or the content alone when the text opens with no checkbox. A checkbox alone
  *   is written as the text Markdown reads it as ({@link $emptyTaskItemMarkdown}).
  */
-function withTaskMarker(text: ElementNode, written: string): string {
+function withTaskMarker(text: ElementNode, written: string, readsAsTaskItem: boolean): string {
     const box = $openingCheckbox(text);
 
     if (box === null) {
         return written;
     }
 
-    return written === "" ? $emptyTaskItemMarkdown(box) : $taskMarkerMarkdown(box) + written;
+    if (!holdsLineContent(written)) {
+        return $emptyTaskItemMarkdown(box);
+    }
+
+    return $taskMarkerMarkdown(box) + (readsAsTaskItem ? taskTextAfterMarker(written) : written);
 }
 
 /**
@@ -3599,7 +3613,7 @@ function buildItemBlocks(item: ListItemNode, definitions: Links | null): ItemBlo
                 continuesText: underText && markdown.split("\n").every((line) => BARE_LIST_MARKER_LINE.test(line)),
             });
         } else if ($isMarkdownListItemTextNode(child)) {
-            push(withTaskMarker(child, serializeInline(child, { ...MULTI_LINE, definitions, inListItem: true })), false, true);
+            push(withTaskMarker(child, serializeInline(child, { ...MULTI_LINE, definitions, inListItem: true }), true), false, true);
         } else if ($isParagraphNode(child)) {
             push(serializeInline(child, { ...MULTI_LINE, definitions, inItemParagraph: true }), false, true);
         } else {

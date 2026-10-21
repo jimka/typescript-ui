@@ -31,7 +31,7 @@ import {
 } from "~/component/editor/markdownSerializer.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { $isMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
-import { $isMarkdownTaskCheckboxNode, $taskMarkerMarkdown, MarkdownTaskCheckboxNode, TASK_MARKER_LENGTH } from "~/component/editor/markdownTaskCheckboxNode.js";
+import { $isMarkdownTaskCheckboxNode, $savesAsCheckboxAlone, $taskMarkerMarkdown, MarkdownTaskCheckboxNode, TASK_MARKER_LENGTH } from "~/component/editor/markdownTaskCheckboxNode.js";
 import {
     $createMarkdownListItemTextNode, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $movePointsBetween, $removePlainly,
     MarkdownListItemTextNode,
@@ -141,7 +141,9 @@ export const TASK_ITEM_OPENED_TAG = "markdown-task-item-opened";
  * save reads it as (`[ ]`, `[x]`: Markdown has no empty task item) once the
  * selection no longer stands in it, so the editor shows what a reload shows;
  * while the selection stands there, the checkbox stays, so Enter can open a
- * task item and its text be typed. A load keeps what it loaded, and so does
+ * task item and its text be typed. A checkbox loaded with the blank text that
+ * makes it one (`- [x] &#32;`) saves as a checkbox alone, and stays one
+ * ({@link $savesAsCheckboxAlone}). A load keeps what it loaded, and so does
  * an update that makes a task item with no text ({@link TASK_ITEM_OPENED_TAG}),
  * whose emptied upper item keeps its checkbox.
  *
@@ -156,11 +158,13 @@ function $keepCheckboxesOfItemText(text: MarkdownListItemTextNode): void {
 
     const box = text.getFirstChild();
     const holdsBoxAlone = $isMarkdownTaskCheckboxNode(box)
-        && text.getChildren().slice(1).every((child) => $isTextNode(child) && child.getTextContent().trim() === "");
+        && text.getChildren().slice(1).every((child) => $isTextNode(child) && !holdsLineContent(child.getTextContent()));
+    // A checkbox whose save alone still reads as one (`- [x] &#32;`) has a Markdown form, and stays.
+    const savesAsText = holdsBoxAlone && !$savesAsCheckboxAlone(box);
 
     const isKept = $hasUpdateTag(MARKDOWN_IMPORT_TAG) || $hasUpdateTag(TASK_ITEM_OPENED_TAG);
 
-    if (holdsBoxAlone && !isKept && !$selectionStandsIn(text)) {
+    if (savesAsText && !isKept && !$selectionStandsIn(text)) {
         box.replace($createTextNode($taskMarkerMarkdown(box).slice(0, TASK_MARKER_LENGTH)));
     }
 }

@@ -240,3 +240,21 @@ export const horizontalRuleMarkerState: StateConfig<"mdHorizontalRule", string> 
 export const taskMarkerState: StateConfig<"mdTaskMarker", string> = createState("mdTaskMarker", {
     parse: (value) => (typeof value === "string" && /^\[[ xX]\]$/.test(value) ? value : ""),
 });
+
+/**
+ * Character references for ASCII whitespace (a space, tab, line feed, vertical tab, form feed or carriage return),
+ * one or more, each after any spaces and tabs: `&#32;`, `&#x20;`, `&#9;`, `&#032;`. The shape {@link taskBlankTextState}
+ * accepts. A reference for any other character shows that character (a no-break space and a wide space are content,
+ * see `holdsLineContent`), so it is no blank text to keep.
+ */
+export const BLANK_REFERENCES = /^(?:[ \t]*&#(?:0*(?:32|9|1[0-3])|[xX]0*(?:20|9|[aAbBcCdD]));)+$/;
+
+/**
+ * The blank text a task item's checkbox was loaded with when it is all its item's text holds: character references
+ * for blanks, as in `- [x] &#32;`. `marked` reads them as text after the marker, so the marker is a checkbox, and they
+ * show as nothing. Kept so a save writes the checkbox back in a form the viewer reads as one, toggled or not: without
+ * them, `- [x]` alone reads as text. `""` — the default — is any other checkbox.
+ */
+export const taskBlankTextState: StateConfig<"mdTaskBlankText", string> = createState("mdTaskBlankText", {
+    parse: (value) => (typeof value === "string" && BLANK_REFERENCES.test(value) ? value : ""),
+});

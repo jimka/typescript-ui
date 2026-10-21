@@ -571,6 +571,9 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         ['the list toggled off on an item over a nested list', '- a\n  - b\n- z', 0, 0, 'bulleted', 'a\n\n- b\n- z', null],
         ['a heading on an item over a numbered nested list keeps it numbered', '- a\n  1. b', 0, 0, 'h2', '## a\n\n1. b', null],
         ['a heading on a nested item with nothing after it', '- a\n  - b', 4, 4, 'h2', '- a\n\n## b', null],
+        // A lone checkbox written with a character reference for a space is a checkbox to the viewer, and stays one.
+        ['a code block from a lone checkbox written with a character reference holds its marker', '- [x] &#32;', 6, 6, 'code', '```\n[x]\n```', null],
+        ['a numbered list from a lone checkbox written with a character reference keeps it a checkbox', '- [x] &#32;', 6, 6, 'numbered', '1. [x] &#32;', null],
         // A code line in a list item or a quote that starts with a tab shows the tab, so its source is found and a command
         // on the text around it edits only that text.
         ['an item\'s text before a fenced code line that starts with a tab', '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two', 2, 5, 'bold', '- **one**\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two', null],
