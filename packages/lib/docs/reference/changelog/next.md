@@ -2116,8 +2116,11 @@ page resets to empty.
   Into a raw block, the rest keeps every escape, escaped for where it
   lands: mid-line it has no line-start escape (Backspace at a paragraph
   after a raw block gives `</div>+alpha`, where it gave `</div>\+alpha`),
-  right after a raw quote's or list's marker it keeps them, and a leading
-  `>` is escaped when it would close a tag the raw block left open. Backspace
+  right after a raw quote's or list's marker it keeps them, and the `>`
+  that would close a tag the raw block left open is escaped, also after a
+  `/`, attributes or more of the tag's name (`<br` at the end of a quote's
+  line joined with `/>cd` is written `<br/\>cd`, and at the end of a list
+  item's own line `\<br/>cd`; both read as text). Backspace
   and Delete between a code block or raw block and a heading, quote or list
   item's text now join it the same way. No consumer action is needed.
 
@@ -2260,8 +2263,11 @@ page resets to empty.
   editor kept it: a quote written `>`, three spaces and `foo bar` showed two
   spaces before `foo bar`, and a list item's second line indented by a tab
   showed its indentation inside the text. The editor now drops those blanks
-  when a document loads, so it shows the text the viewer shows. A block that
-  is not edited is still saved as written. No consumer action is needed.
+  when a document loads, also where bold or italic text, a code span, a link
+  or an image opens the line, and at the start of a table cell's later
+  paragraph, so it shows the text the viewer shows; inline HTML keeps the
+  blanks before it. A block that is not edited is still saved as written.
+  No consumer action is needed.
 
 - **`CodeEditor`'s `markdown` language reads a marker line that only
   whitespace follows as an empty item or quote.** `-` followed by two tabs
@@ -2369,7 +2375,11 @@ page resets to empty.
   quote, so the link fell apart on reload; the last backslash is now written
   `&#92;`. A line feed in a title of a heading or table cell was written as a
   space and a blank line collapsed to one line feed, so the title changed on
-  reload; each is now written `&#10;`.
+  reload; each is now written `&#10;`. A reference link or reference image
+  with a blank line in its title, copied as Lexical JSON into a document
+  that defines its label with another title, kept its reference form and
+  reloaded with that other title; it is now saved inline with the title it
+  shows.
 - **`MarkdownEditor` keeps the emphasis around an image.** Emphasis, strong,
   strikethrough or underline around an image (`*![a](/i.png)*`) was dropped
   from the save at the first edit in its block; an image now remembers the
