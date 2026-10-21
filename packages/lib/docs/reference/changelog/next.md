@@ -2395,6 +2395,23 @@ page resets to empty.
 - **`MarkdownEditor` neutralises an image pasted as Lexical JSON with a refused
   source.** Such a source (`javascript:…`) now becomes an empty one, as it is
   refused everywhere else an image enters the editor.
+- **`MarkdownEditor` edits at a caret set in code on a quote or a list item
+  as at the place it names.** Text typed with the caret between two blocks
+  of a quote or a list item went into the start of the block after it (`> a`
+  / `>` / `> b` with the caret between the two paragraphs gave `> Zb`); it
+  now goes into a paragraph of its own there, as a paste there already did.
+  A caret on a task item before its text typed before the checkbox, which
+  then became the text `[ ] ` (`- Z\[ \] a`); typing, pasting, Enter and an
+  inserted image now act after the checkbox, as with the caret at the start
+  of the item's text, and on any item a caret there acts at the start of its
+  text. `insertTable()`, `insertHorizontalRule()` and `insertImage()` that
+  decline once the caret has moved off a `:::` block or from between two
+  blocks now leave the selection where it was, as every edit that changes
+  nothing does; they used to leave it in the block it moved to.
+  `insertHorizontalRule()` over such a selection that settles inside a table
+  removed the text of the cells it took, or threw, before it declined; it
+  now declines before it removes anything. Only a selection set in code
+  reaches these carets. No consumer action is needed.
 
 - **`CheckboxMenuRow` and `RadioMenuRow` are `menuitemcheckbox` and
   `menuitemradio` items.** The row element had no role, and the checkbox or
