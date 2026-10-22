@@ -197,7 +197,8 @@ export function $isMarkdownSourceTextNode(node: LexicalNode | null | undefined):
  * A block of raw Markdown the editor has no rich-text form for — a thematic
  * break, an HTML block, a link reference definition, a blockquote or list
  * whose content its node cannot hold — held as plain text lines and saved
- * exactly as typed.
+ * as that text, without a blank first or last line and without indentation
+ * before it that means nothing to Markdown.
  *
  * An `ElementNode` rather than a `ParagraphNode`, so the serializer writes
  * its text unescaped. `createDOM` mints a `<p>` through the DOM seam's

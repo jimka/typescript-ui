@@ -10,7 +10,7 @@ import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode, type MarkdownRawBlo
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
-import { canonicalSave, checkTitle, loadAndSave } from './harness';
+import { canonicalSave, checkTitle, editorDefinitions, loadAndSave, viewerDefinitions } from './harness';
 import { editorSurfaceModel, viewerModel } from './viewModel';
 import { CORPUS } from './corpus';
 import type { CorpusCase, HarnessCheck } from './corpus/types';
@@ -339,6 +339,13 @@ function fuzzSequence(testCase: CorpusCase, random: () => number): void {
         }
 
         checkNoWordLost(testCase, run);
+
+        // The editor reads the definitions the viewer reads off the save.
+        if (!knownDivergence(testCase, 'definitions')) {
+            const own = editorDefinitions(run.editor);
+
+            expect(own, run.context).toEqual(viewerDefinitions(run.saved, own));
+        }
     } finally {
         run.editor.dispose();
         run.reloaded.editor.dispose();
@@ -438,6 +445,11 @@ const RAW_BLOCK_POSITIONS: ReadonlyArray<readonly [string, string]> = [
     ['the block opening an item of a list in a column', '::: columns\n- a\n- <div>\n  w\n  </div>\n|||\nb\n:::'],
     ['the last block of a list item in a column', '::: columns\n- a\n\n  <div>\n  w\n  </div>\n|||\nb\n:::'],
     ['the block under the text of a list\'s only item', '- a\n\n  <div>\n  w\n  </div>'],
+    ['a block after a list', '- a\n\n<div>\nw\n</div>'],
+    // A definition after the block, and a reference to it: left open, the block must not hide the definition.
+    ['a block before a definition', '<div>\nw\n</div>\n\n[x]: /k\n\nb [x] c'],
+    ['the only block of a column before a column holding a definition', '::: columns\n<div>\nw\n</div>\n|||\n[x]: /k\n:::\n\nb [x] c'],
+    ['the last block of a list item before an item holding a reference', '- a\n\n  <div>\n  w\n  </div>\n- b [x] c\n\n[x]: /k'],
 ];
 
 /** What an edit leaves of the raw block's text: HTML block starts first, then every other shape it can read as. */
@@ -478,7 +490,8 @@ function $setRawBlockText(block: MarkdownRawBlockNode, text: string): void {
 describe('raw block edits: a raw block shows what its save reads as, wherever it stands', () => {
     // A deterministic companion to the random fuzz, whose `appendText` only ever lengthens a raw block: the one raw
     // block of each document is set to each text an edit can leave in it, and the save must read in the viewer, and
-    // after a reload, as the editor shows it, and save again unchanged.
+    // after a reload, as the editor shows it, and save again unchanged; the editor reads the definitions the viewer
+    // reads off the save.
     const cases = RAW_BLOCK_POSITIONS.flatMap(([position, source]) =>
         RAW_BLOCK_TEXTS.map((text) => [`${JSON.stringify(text)} as ${position}`, source, text] as const));
 
@@ -499,6 +512,10 @@ describe('raw block edits: a raw block shows what its save reads as, wherever it
             expect(viewerModel(saved).blocks, context).toEqual(editorSurfaceModel(editor));
             expect(editorSurfaceModel(reloaded.editor), context).toEqual(editorSurfaceModel(editor));
             expect(reloaded.saved, context).toBe(saved);
+
+            const own = editorDefinitions(editor);
+
+            expect(own, context).toEqual(viewerDefinitions(saved, own));
         } finally {
             editor.dispose();
             reloaded.editor.dispose();

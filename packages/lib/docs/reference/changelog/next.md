@@ -1501,6 +1501,45 @@ page resets to empty.
   into the code block on the WYSIWYG surface. It now writes `[ ] todo`,
   on both surfaces. No consumer action is needed.
 
+- **`MarkdownEditor` writes a raw Markdown block so that it reads where it
+  stands.** Outside a list item a raw block was saved as typed and read
+  without regard to its neighbours. Spaces typed before one that follows a
+  raw list moved it into that list on reload; a raw block an edit emptied
+  let the list before it and the raw list after it join; a `<div` line two
+  blank lines above a paragraph lost one of them once that paragraph was
+  edited, and then took the paragraph in; and an indented quote whose last
+  line stays in it only while indented (`> q` over an indented `<div`) lost
+  that indentation at load, so the line left the quote as soon as the quote
+  was rewritten. A raw block is now saved the same way everywhere: without an
+  empty first or last line and without spaces before it that mean nothing; a
+  block that writes nothing no longer stands between two lists; a block only
+  a second blank line ends keeps that line; and a raw block keeps the
+  indentation of any line its reading needs. A list whose item holds such a
+  quote now loads as a list, the quote a raw block of its item. In a list
+  item as well, a save no longer takes indentation off a raw block where a
+  line of it is read by that indentation: spaces typed before the lines of
+  an HTML block after its first stay, the second line of a definition's
+  title keeps its place, and a raw list whose first item is indented deeper
+  than its next keeps what that item holds. A list whose item holds such a
+  raw list, with code or an HTML block in that first item, now shows as
+  one raw Markdown block where it showed a list whose save changed that
+  code. No consumer action is needed.
+
+- **`MarkdownEditor` counts the link reference definitions the viewer
+  counts.** A definition that followed an HTML block left open at the end of
+  a `:::` column or a list item (`<div`, `<!--`), or a `<div` line at the top
+  level, was not counted by the editor, or a later definition of the same
+  label was taken for the first. A reference link was then saved inline
+  (`[x](/u)` for `[x]`) once its block was edited, losing a title that holds
+  a blank line. The editor now reads each raw block's definitions where that
+  block stands, as the viewer does. No consumer action is needed.
+
+- **Pasting into a raw `<pre>` or comment block no longer throws.** A paste
+  that split such a block in two and ended on an empty line threw
+  `$getTextNodeOffset: invalid offset` and left the editor without a usable
+  selection. The caret now stands on that empty line. No consumer action is
+  needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation

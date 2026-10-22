@@ -908,3 +908,812 @@ RC8 throws on the parent and passes with the prototype (`zz-rbe-nodes.test.ts`).
 [^rows-in-files]: The first version of this plan created `markdown-editor-raw-block-places.test.ts` with a copy of 300 lines of helpers from the edits file. The rows need exactly that file's `Row` and `runRow`, and a copy of them drifts: the list-item-node branch changed `TEXT_ONLY_BLOCKS` in the original after the copy was specified. `markdown-editor-cross-item-range-removal`, written under the same rule, adds its rows to the same files.
 
 [^order]: Three reasons to go first. Plan 2 calls the raw-block re-read from inside its range removal, which reaches `$selectTextOffset`; after this plan that call cannot leave a negative offset. Plan 2's rows do not depend on the order: its matrix was measured on a prototype of plan 2 alone and on a prototype of both plans, and no cell fails its assertion in either (the block-list form changes eight Shift+Enter cells and their controls alike, by one blank line). And both plans edit `markdownWritable.ts` next to each other, so one of them has to name the other. If plan 2 does land first, this plan is unchanged: no step here edits `registerRawBlockRules`, and `$showRawBlockAsSaved` is found by name wherever it stands.
+
+---
+
+## Implementation Notes
+
+Implemented on `feature/markdown-editor-raw-block-edge-cases`, on top of
+`feature/markdown-list-toggle-task-item-parity` at `75d022ba1`, which
+these notes call "the parent". Scratch files named below are under
+`~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/impl/raw-block-edge-cases/`
+("the scratch folder"). They are not in the repository. The reviser's
+files are under `…/scratch-keep/plans3/raw-block-revision/` ("the
+reviser's folder").
+
+The branch has two code commits. The first is the plan, with two
+deviations in it that cannot stand apart from it: the margin rule's
+answer is remembered (D2), without which the plan's code costs a long raw
+block's lexing on every keystroke, and a written form keeps what the text
+holds (D9), which mends a defect of the plan's own block-list form. The
+second commit is D1 and reverts cleanly on its own. All three are
+decisions the user has not seen; they are listed under *Decisions that
+await the user's sign-off*. Until the third review the branch had a code
+commit for each; the second and the third review both said that D2 and D9
+are fixes of the first commit and belong in it, and the notes' own account
+agreed (D2's commit did not revert cleanly once D9 was in, and the first
+commit should not ship without D9), so they were folded after the third
+review. The final tree is the same.
+
+**Where the review stands.** The first review found one blocking defect,
+in the plan's own block-list form: it moved a raw list's first line to the
+margin where the lines of the first item are read by it. D9 is the answer,
+and the places probe, widened after that review, showed two more shapes of
+the same cause, both in list items, which D9 covers too. The review's
+advisory notes were taken up: the stale comments (D6), the test of
+`takesInBlockAfter` (D1), the comment of `WrittenBlock.text`, the title of
+the `Q` rows' `describe`, and typed indentation inside a `<pre>` (`RM6`).
+Two were left with a reason then: the extra code commits stayed apart
+(they were folded after the third review, see above), and a non-breaking
+space alone writes nothing (*Found along the way*).
+
+The second review found no defect in the code. Its two blocking findings
+were both in these notes: the docs and changelog text that differs from
+the plan's was not recorded (now D10), and the sentence on dropping the
+extra commits was wrong for D2's (the commits are folded now, and
+sign-off 2 says what dropping D2 takes). Its advisory notes were taken
+up (D11, the manual checks run again on the final code, the changelog
+sentence on `R6` and `R7`), but for the commit shape, which was left for
+sign-off then, and two observations about the parent, which are under
+*Found along the way*.
+
+The third review, the last the audit loop allows, found no defect in the
+code either. Its one blocking finding was a row that was missing and a
+note that was wrong: D9 makes a load compare what list items hold, the
+notes said a load "keeps asking for the blocks only", and rows `R6` and
+`R7`, which the notes gave for it, pass by the item form alone. The
+behaviour is the right one by the review's own reading (the parent moved
+a space of an item's `<pre>` block). Rows `R11` and `RM9` to `RM12` now
+pin it, the note is corrected (D9) and so is the comment of
+`rawBlockAtMargin`. Its advisory notes: the commit shape was taken up
+(above); two clauses of `ownText` that no test told apart have a row each
+(`RM13`, `RM14`); the docs wording of line 82 is the plan's again but for
+one added clause (D10). Three were left with a reason, under *Found
+along the way*: the definitions in the margin rule's reading, a raw
+table's later lines, and a non-breaking space. What was changed after
+this review (the rows, one comment, one docs clause, the commit shape
+and these notes) was not read by a reviewer; no line of code that runs
+was changed after it.
+
+### The base
+
+The plan was written against `85b55a8f4`. The parent is three branches
+above it. Of the files this plan changes, `git diff --stat 85b55a8f4
+75d022ba1` names `markdownSerializer.ts` (six lines, the second parameter
+of `$serializeInlineNodes`, which moves the plan's later line numbers in
+that file by two), `markdown-editor-list-item-edits.test.ts` (796 lines, the
+`H` rows of the list toggle plan, all placed before the `Z` rows),
+`markdown-roundtrip.test.ts` and two corpus files (the Enter-inside-HTML
+cases), the docs page and the changelog. `markdownImporter.ts`,
+`markdownWritable.ts`, the paste test file and the other test files are
+unchanged. Every function the plan changes has the body the plan prints
+as "today", and every symbol it names exists under that name.
+
+### How the plan's steps went
+
+| Step | The plan's check | Measured at the parent or on the branch |
+|---|---|---|
+| 1 | the parent's results are recorded | route matrix 3,192 cells, cross-item grid 26,928 records, on a private copy of `75d022ba1` |
+| 2 | no existing case or row fails the new check | 5,192 tests pass |
+| 3 | exactly 21 checks fail, the 52 new `RB` rows pass | the same 21, by name (12 in `markdown-roundtrip.test.ts`, 9 in `markdown-edit-fuzz.test.ts`); the `RB` rows pass |
+| 4 | the red rows fail, the controls pass | all 45 rows marked red fail at the parent (39 `R` rows, `RC1` to `RC6`), each for the reason its cause gives; all 24 controls pass; `RC8` throws |
+| 6 | `RF1` to `RF9` pass, `RT1` to `RT3` still pass | so |
+| 7 | `RL1` to `RL10` and the three changed list-item rows pass | so |
+| 8, 9 | `RE1` to `RE5`, then `RW1` to `RW5` pass | so |
+| 10, 11 | the greps give no match; the `RD` rows, the new corpus cases and the saving-cost test pass | so; the serializer calls `lexMarkdownLinkDefinitions` once |
+| 12 | every `RC` row passes | so |
+| 13 | `joined as blocks` gives no match | so |
+| 14 | the Markdown suites pass with only the allowed changes | so: no expected string of an existing test changed other than the three tests the plan names |
+
+No row marked red passed at the parent, and no control failed.
+`logs/red-R-rows-base.log`, `logs/red-RC-rows-base.log` and
+`logs/rows-on-parent.log` in the scratch folder hold the runs.
+
+### Deviations
+
+**D1. A raw block that only a second blank line ends stays its source.**
+The plan's `writtenBlocks` writes such a block in the standard form once
+the block after it is not the one it was loaded before
+(`takesInBlockAfter` as a third condition of the splice). The standard
+form of an unedited block is not its source: it has lost the indentation
+before the block, and the block is then separated from its neighbours as
+an edited block is. Measured on the plan's version, with the raw block
+never edited:
+
+| Source | Edit | The plan's version saves | The branch saves |
+|---|---|---|---|
+| `  <div⏎⏎⏎b` | type `X` after `b` | `<div⏎⏎⏎bX` | `  <div⏎⏎⏎bX` |
+| `> q⏎<div⏎⏎⏎b` | the same | `> q⏎⏎<div⏎⏎⏎bX` | `> q⏎<div⏎⏎⏎bX` |
+| `⏎⏎<div⏎⏎⏎b` | the same | `<div⏎⏎⏎bX` | `⏎⏎<div⏎⏎⏎bX` |
+| `a⏎⏎   </details⏎⏎⏎b⏎⏎c` | remove `b` | `a⏎⏎</details⏎⏎⏎c` | `a⏎⏎   </details⏎⏎⏎c` |
+
+On the branch the block keeps its `source` and its text gets the one line
+end it lacks. `takesInBlockAfter` is the plan's but for its last test: it
+asks whether only a second blank line ends the block (`rawBlockEnd` gives
+`"wide"`) where the plan asks `runsOn`, which also holds for a block no
+blank line ends, and one line end does nothing for that one (the editor
+holds such a block as a paragraph once a block follows it). The rule is
+one for every way such a block comes to stand before another neighbour:
+
+| At load the block | Then | The parent saves it as | The branch saves it as | Rows |
+|---|---|---|---|---|
+| is followed by a block | that block is edited or removed, or a block is put between | its source, one line end short, so the next block is read into it | its source and one line end | `RW1` to `RW5`, `RW10` to `RW13` |
+| is followed by a block | every block after it is removed | its standard form, the indentation gone | its source | `RW16` |
+| is the document's last block | a block is added after it | its standard form, the indentation gone | its source and one line end | `RW14`, `RW15` |
+| is indented and follows a list | the list is edited | its standard form, at the margin, so that the list does not take it in | the same (`joinsPreviousBlock`, unchanged) | — |
+
+The second and the third line are not the plan's defect 5: the parent
+saves a document that reads right there, and only rewrites a block that
+was not edited. They needed one more change. A save tells an edited block
+by comparing its standard output with the one at load, and a raw block of
+this kind writes one line end more while a block follows it.
+`writesAsAtLoad` leaves that line end out of the comparison, and the
+first loop of `writtenBlocks` no longer sends such a block to its
+standard form for having been its document's last. `RW17` is the control:
+an unclosed code fence that was the document's last block is still closed
+by its standard form when a block follows. Each of `RW10` to `RW16` fails
+on the plan's version, and `RW10` to `RW16` fail on the first code
+commit. This is sign-off 1 and a commit of its own.
+
+**D2. The margin rule's answer is remembered.** With a written form for
+every raw block, `$definitionsSource` asks `rawBlockAtMargin` for each raw
+block's form in a root transform, on every update, and so does every
+save. The rule lexes a text whose first line is indented up to eight
+times. A raw block keeps such indentation exactly when its reading needs
+it, so the cost falls on every keystroke anywhere in a document that
+holds one. Measured on a raw list of 400 items whose first two are
+indented (`diff/zz-ec-perf.test.ts`, parent and branch run side by
+side, on a busy machine): about 2.4 ms a keystroke and 4.4 ms a save at
+the parent, 45 ms and 28 to 38 ms with the plan's code, 2.4 ms and 1.0 ms
+on the branch. The
+answer is kept in a map by text, bounded like `STANDS_IN_ITEM`, `RUNS_ON`
+and the plan's own `DEFINITIONS_READ`. The candidates moved into
+`marginCandidates`, unchanged, to keep the function short. A test in
+`markdown-source-preservation.test.ts` counts the lexes of the list's
+text after a keystroke and a save: none, as at the parent; 32 with the
+plan's code. This is sign-off 2. It is part of the first code commit.
+
+**D9. A written form says what the text says.** The plan's block-list
+form takes a dedent whenever the text still reads as the same kinds of
+blocks (`blockShape`). That is not the same content, as the first review
+showed, and the plan's own definitions change makes the difference show:
+the definitions are now read from the written forms.
+
+| Raw block's text in the editor | The plan's form | What that changes | The branch's form |
+|---|---|---|---|
+| `  - a⏎⏎        code⏎⏎    > q⏎    <div⏎- b` (a raw list whose first item is indented two spaces more than its second) | `- a⏎⏎        code⏎…` | the item's code is `  code` for `code` | the text |
+| `  - a⏎    <pre>⏎      x⏎    </pre>⏎- b` | `- a⏎    <pre>⏎…` | the item's HTML block gains two spaces on every line | the text |
+| ` <pre>⏎ x⏎ </pre>` (a space typed before every line) | `<pre>⏎x⏎</pre>` | the line in the `<pre>` loses its space | `<pre>⏎ x⏎ </pre>` |
+| `  [x]: /u "t⏎  u"` (two spaces typed before a definition) | `[x]: /u "t⏎u"` | the title is `t⏎u` for `t⏎  u`, so the definition no longer gives the link its title and `[x]` is saved `[x](/u "t⏎  u")` | `[x]: /u "t⏎  u"` |
+
+`rawBlockAtMargin` takes a third parameter, `keepsContent`. Its reading
+of a text (`readingInBlockList`) now always holds what the blocks of a
+list item hold (`blockContent`): `marked` measures an item's lines from
+its marker, so a marker moved alone changes them. With `keepsContent` it
+also holds the text of every other block, without the indentation before
+its first line, and the definitions the text gives. A paragraph's lines
+are compared without the whitespace before them, which shows as nothing.
+Three things follow.
+
+- **The block-list form** (`rawBlockInBlockList`) asks for the content.
+  Rows `RM1` to `RM8`. `RM5` is the other side: a raw list whose first
+  line alone is indented, and holds nothing measured by it, is still
+  written at the margin, as the plan's restated importer test expects.
+- **The item form** (`rawBlockInItem`) asks for it too. The plan's
+  Non-Goal leaves the item form alone, but the item form has the same
+  reading, and with the definitions read from the written forms it did
+  the fourth line of the table inside a list item: 14 cells of the places
+  probe saved an unedited paragraph's `[x]` inline. Rows `R9` and `R10`.
+  The spaces that end an item's raw block are still trimmed, which is the
+  plan's Non-Goal.
+- **A load** asks for the blocks and for what the list items hold, and
+  for no more: an indented HTML block still loses all its indentation at
+  load (`RL13`). What it no longer does is move the lines of a list item
+  against the item's marker. Two shapes. The first is a list whose first
+  marker is indented deeper than its second, where an item's code or HTML
+  block is read from that marker. A list item that held such a nested raw
+  list at the parent (with the code's indentation already changed, so
+  that the parent's standard form failed the `canonical` check at load)
+  cannot hold it, and the whole list is the raw block, saved as written.
+  Rows `R6` and `R7` are that shape, and they pass by the item form
+  alone, so they do not pin the load; `R8` is the control, a nested raw
+  list of that shape holding only text and a quote, which loads as at the
+  parent. Without this the branch was worse than the parent here: the
+  plan's `RL` rule made the save of that document load as a list, so its
+  reload differed from the editor. The second shape is the one that pins
+  the load: a raw list indented as a whole, one of whose items holds an
+  HTML block with a line indented less than the item's content. `marked`
+  reads such a line as written, not from the marker, so with the whole
+  list further left it holds fewer spaces. The parent took the
+  indentation off at load, and then wrote the block one space off once
+  its list item was rewritten; the branch keeps the list where it is.
+  Rows `RM9` (the document), `RM10` (a column), `R11` (a list item) and
+  `RM11` (an indented quote holding such a list, which loses its first
+  line's indentation alone); `RM12` is the control, a raw list indented
+  as a whole whose items hold nothing read from the margin, which still
+  loses the indentation at load. Each of `R11` and `RM9` to `RM11` fails
+  when the load's comparison is taken out, and nothing else does.
+
+Both forms were checked against a reading that is not the serializer's:
+the viewer's lexer rendered by `marked`'s parser, and the lexer's link
+definitions (`diff/zz-ec-form.test.ts`). 24 kinds of raw text, each
+indented in 23 patterns (the first line, every line, every line but the
+first, every line but the last, the last or the second line alone, by
+one to three spaces, and five mixes) and with seven kinds of edge (blank
+or space-only lines before and after, spaces or a tab after the last
+line): 3,303 texts that the editor holds as one raw block. A difference
+in whitespace that shows as nothing (at the start of a line of text, or
+around the `<div` tag of the quote texts) is not counted.
+
+| Form | Differs from the text, at the parent | Before D9 | On the branch |
+|---|---|---|---|
+| block-list form | (no such form; a save wrote the text) | 271: 96 definitions, 112 HTML and `<pre>` lines, 63 list items | 0 |
+| item form | 353 | 353 | 82, every one the spaces or the tab that end the last line, which the item form trims (the plan's Non-Goal) |
+
+This is sign-off 3. It is part of the first code commit.
+
+**D3. Rows the plan does not have.** `RW10` to `RW17` (D1), `RM1` to
+`RM14` and `R6` to `R11` (D9). `RM13` and `RM14` pin two clauses of
+`ownText` that the third review found no test told apart: a block of a
+list item is compared with the spaces before its first line (`RM13`, a
+one-line HTML block), and code keeps its own spaces outside a list item
+too (`RM14`). The editor shows the text of `RM14`, a quote and indented
+code, as two blocks, so no row can hold it in one raw block; `RM14`
+calls `rawBlockInBlockList` with it, as other tests call an exported
+function of the serializer (`formatDelimiterRow`, `$listReadsLoose`). `RK1` to `RK9` pin that a raw block that
+was not edited keeps its whitespace: the spaces and the tab that end it,
+a tab and spaces inside it, its indentation, and blank lines that hold a
+space or a tab between two unedited blocks, at the top level; and, in a
+column whose other block was edited, what its block-list form holds.
+`RK6` pins that an edit which changes nothing a save writes (two spaces
+typed before an indented raw block) leaves the block as its source.
+`RK6` fails at the parent, the other eight pass there. The `RB` rows of
+`markdown-edit-fuzz.test.ts` now also compare the editor's definitions
+with the viewer's, and three positions were added to them that hold a
+definition after the raw block and a reference to it (at the top level,
+in the next column, in the next list item): 46 of those rows fail at the
+parent, for the texts that leave an HTML block open. The `RC` rows also
+assert that one undo brings the document back after the paste, which the
+plan's rows do not ask. `RW10` to `RW17` are in the second code commit,
+the rest in the first.
+
+**D10. The docs and the changelog say more than the plan's text.** The
+plan gives the words of every docs edit. Two of them no longer describe
+the branch once D9 is in, so they differ from the plan's:
+
+- *`docs/components/MarkdownEditor.md`, line 82, the plan's edit 2.* The
+  plan's words are there, and one clause after them: "…and would move it
+  into a list above it; they stay where a line of the block is read by
+  them, as the lines of a raw list's first item are". The plan's other
+  four edits of that page are word for word.
+- *The changelog's first entry.* The plan's text ends "…the quote a raw
+  block of its item. No consumer action is needed." The branch has four
+  more sentences between the two: that in a list item as well a save no
+  longer takes indentation off a raw block where a line is read by it,
+  with the three shapes of D9 (the lines of an HTML block, a definition's
+  title, a raw list whose first item is indented deeper), and that a list
+  whose item holds such a raw list, with code or an HTML block in that
+  first item, now shows as one raw Markdown block (`R6`, `R7`), which is
+  a change a user can see. The other two entries are the plan's, word for
+  word.
+
+**D11. What the second review's advisory notes changed.** None changes
+what the editor does; the differential and the fuzz were run again after
+them and are the same, file for file.
+
+- `blockShape` and `blockContent` walked the token tree in two copies of
+  one function. They are now two calls of one walker, `blockStructure`,
+  which takes what to write for a block.
+- `definitionsIn` is the one place that calls `lexMarkdownLinkDefinitions`
+  and holds the test for a `[`. `definitionsOfText` (the memo
+  `DEFINITIONS_READ`) and `readingInBlockList` both call it, so the memo
+  no longer receives the candidate texts of the margin rule.
+- In `writtenBlocks`, `lacksOnlyLineEnd` is computed before `runsOn`,
+  which uses it.
+- In `registerDefinitionRules` the variable `lexed` is `lastRead`: it
+  holds a JSON source now, not lexed tokens.
+- Two corpus cases in `referenceLinks.ts` pin the finding of sign-off 4,
+  as known divergences under a new entry `definitionTitleIndent` of
+  `divergences.ts`: `indented definition with a two-line title` and
+  `tab-indented definition in a list item with a blank line in its
+  title` (the plan's Non-Goal). The reason text says what differs and
+  that the parent does the same.
+
+**D4. `pasteText` is a function declaration.** The plan moves the helper
+"unchanged". Its body is unchanged; at module level it is written
+`function pasteText(…)` with a JSDoc block, as every other module-level
+helper of that file is.
+
+**D5. The title of the restated `Q11` to `Q13` rows.** The `it.each`'s
+name is `'%s: a quote whose last line is indented deeper than the quote
+is a raw block of its item'`, so that each test keeps its row's name, as
+the neighbouring `it.each` does (`'%s keeps the save reading as the
+editor shows it'`).
+
+**D6. Comments and one title beyond step 13's list.** Three line
+comments inside `registerDefinitionRules` spoke of a source that is
+"lexed" and of a state's "text"; they now speak of a source that is read.
+The class comment of `MarkdownRawBlockNode` (`markdownSourceNodes.ts`)
+and the comment of the typing shortcuts in `MarkdownEditor.ts` said a raw
+block is saved "as typed"; both were reworded. A variable there was
+renamed (D11). That is a comment-only
+edit of `MarkdownEditor.ts`, a file the plan says it does not touch. The
+`describe` that holds `Q1` to `Q13` ends "keeps its list a raw block";
+with `Q11` to `Q13` restated in it, its title got ", unless that line is
+indented deeper".
+
+**D7. `divergences.ts` is in the code commit.** The plan lists its reason
+text under *Documentation Impact*. The file is in the test tree, so it is
+committed with the tests.
+
+**D8. Where the harnesses ran.** The plan runs the differential and the
+fuzz files by copying them into a worktree. Here they ran on private
+archive copies of the two commits (`mkcopy.sh`), from copies of the
+scripts in the scratch folder, so that nothing was written into this
+worktree or into the reviser's folder. The reviewer-7 fuzz ran with the
+seeds its baselines have: 11, 23, 37, 41 and 59.
+
+### Found along the way, not changed
+
+- **A load changes the title of an indented definition, in more shapes
+  than the plan names, and a link then loses its reference form.** The
+  plan's Non-Goal is a definition whose title holds a blank line "in a
+  tab-indented list item": the viewer reads other whitespace on the
+  title's later lines than the raw block holds. The same holds for a
+  definition whose title has a second line, with or without a blank line
+  between, indented by one to three spaces at the top level or in a
+  column, or indented deeper than its item's content: the load takes the
+  indentation off every line, and the viewer keeps it on the title's
+  later lines (`t⏎⏎  u8` for `t⏎⏎u8`). Labels and URLs agree. The parent
+  loads these documents the same way; the new `definitions` check is what
+  shows it, and no corpus case fails it. It has one visible effect, at
+  the parent and on the branch alike: a reference link to such a
+  definition is saved inline once its paragraph is edited, when the title
+  holds no blank line (`- a⏎⏎    [x]: /u "t⏎      u"⏎⏎b [x] c`, type
+  after `b`: `b [x]` is saved `b [x](/u "t⏎    u")`). A load that asks for
+  the same definitions, as the two save forms now do (D9), would keep
+  the title's indentation and end this for every shape but the tab one.
+  It was left because it changes what a load builds; it is sign-off 4.
+- **An indented `<pre>` block loses its lines' indentation at load.**
+  `RL13` pins the plan's decision that an HTML block indented as a whole
+  loses all of it. In a `<pre>` those spaces show. The parent does the
+  same.
+- **The item form trims what ends its last line.** The plan's Non-Goal.
+  In the form check it is the 82 texts of D9's table: a code line of a
+  quote that ends in spaces or a tab loses them in a list item, and `> q`
+  over `<div` followed by a tab reads as a paragraph with the tab and as
+  an HTML block without it. The parent does the same.
+- **An indented line that continues a paragraph keeps its spaces in the
+  editor.** `a` over an indented `b` loads as the text `a`, a soft break
+  and the text `  b`; the save writes `b` at the margin. The parent does
+  the same. With `RL`, a quote whose indented last line an edit turns
+  into text of the quote shows those spaces too.
+- **Backspace on the `>` of a quote whose last line is kept indented.**
+  `> q` over an indented `<div` becomes one paragraph (`q` over
+  `\<div`), where the parent, which held `<div` at the margin, showed a
+  paragraph and a raw block. Both read back as shown. It follows from the
+  indentation the raw block now keeps: an indented `<div` does not end a
+  paragraph.
+- **A raw block that holds a non-breaking space alone writes nothing**,
+  as whitespace does: `rawBlockInBlockList` tests `text.trim()`, as
+  `rawBlockInItem` does. The parent wrote the character, and its reload
+  showed an empty paragraph. The first review noted it.
+- **The margin rule's reading holds the definitions as well as every
+  block's text.** The third review notes that the second follows from
+  the first in every text it tried, and that no test fails without the
+  definitions. They were left in: the block texts are the lexer's tokens
+  and the definitions are the viewer's own reading of the text, which is
+  the thing a save must not change (cause E was those two disagreeing),
+  and the cost is paid once for a text, behind D2's memo.
+- **A raw table keeps typed indentation on its later lines.** Two spaces
+  typed before every line of a raw table (one whose body row holds more
+  cells than its header) are saved before every line but the first, where
+  a quote edited the same way is saved at the margin: a table's text is
+  compared as written. It reads the same and a second save writes the
+  same. The third review noted it. The same holds for a one-line HTML
+  block in a list item (`RM13`): the form keeps more than it must, never
+  less.
+- **Two things the second review saw at the parent, unchanged here.** A
+  definition that was not edited loses a space that ends its line when
+  the block after it is edited, because that space falls in what the save
+  writes between the two blocks. And a document's own definition of the
+  label `//` (`[//]: /real`) loses to a `[//]: #` line the save writes
+  before it to keep two raw lists apart, the first definition of a label
+  being the one that counts. Neither is a raw block edge this plan
+  names.
+
+### Checks
+
+From `packages/lib`, on the final code:
+
+- `npm run typecheck`, `npm run typecheck:test`, `npm run lint`: clean.
+- `npm test`: 557 files, 17,749 tests pass, 2 todo, none fails. The
+  parent has 16,866 and the same 2. The 883 new ones: 99 in
+  `markdown-editor-list-item-edits.test.ts` (420 to 519: 93 `R` rows in
+  the new `describe`, and `R6` to `R11`), 8 in
+  `markdown-editor-list-item-paste.test.ts` (298 to 306: `RC1` to
+  `RC8`), 224 in `markdown-edit-fuzz.test.ts` (1,632 to 1,856: one edit
+  fuzz for each of the 16 new corpus cases, and 4 new positions of 52
+  `RB` rows each), 551 in `markdown-roundtrip.test.ts` (2,672 to 3,223:
+  the `definitions` check of the 431 cases the corpus had, and the checks
+  of the 16 new ones) and 1 in `markdown-source-preservation.test.ts`.
+  Earlier runs, made while other suites used the machine, timed out in
+  `import-without-dom.test.ts` (`./glyphs`), as the parent does under the
+  same load; the file passes alone.
+- The 16 Markdown test files of step 14: 8,176 tests pass.
+- The branch's test files run on the parent's source: 138 tests fail,
+  every one a row this branch adds or restates (54 `R` rows of the new
+  `describe`, `R6`, `R7`, `R9`, `R10` and `R11`, 46 `RB` rows, 9 edit
+  fuzzes and 12 round-trip checks of the new corpus cases, `RC1` to `RC6`
+  and `RC8`, `Q11` to `Q13`, the restated saving-cost test and the
+  restated importer test). On the branch none fails. The first code
+  commit alone type-checks and passes the 16 files of step 14 (8,168
+  tests: it does not have `RW10` to `RW17`); with the second commit's
+  rows on the first commit's code, `RW10` to `RW16` fail.
+- Single changes of the new code that a row catches: the load's
+  comparison of list items taken out (`R11`, `RM9` to `RM11`), a list
+  item's block compared without the spaces before it (`RM13`), code
+  compared without its own spaces (`RM14`).
+- `npm run docs:api`: no warning. `npm run docs:llms:check`: coverage OK.
+  `npm run build:lib`: builds.
+- The greps of steps 10, 11 and 13 give no match, and
+  `markdownSerializer.ts` calls `lexMarkdownLinkDefinitions` once, in
+  `definitionsIn`.
+
+No demo was added: the demo's MD Editor page already shows every block
+this plan touches, and no public signature changed.
+
+### The differential check
+
+Three harnesses, each run on a private copy of the parent and of the
+branch's final code (`11782acb3`, which the tip differs from in comments,
+tests, docs and notes only; `rundiffall.sh`; the results are `diff/*-parent*.json`
+and `diff/*-b6.json` in the scratch folder).
+
+| Harness | Cells | Cells whose save differs | Any other recorded field that differs | Hard checks |
+|---|---|---|---|---|
+| the route matrix of the plan (`zz-rbr-probe.test.ts`) | 3,192 | 16 | none | none failed |
+| the cross-item grid of the plan (`zz-cir-probe.test.ts`) | 26,928 | 78 | none | none failed |
+| a raw block at every place (`zz-ec-places.test.ts`, written for this run) | 66,694 of 5,400 documents | 13,541 | see below | none failed |
+
+**The matrix and the grid.** `ecdiff.py`, the plan's check, ends with
+`hard checks failed: none` for both. The changed cells are the plan's:
+16 Shift+Enter cells of the matrix (shapes E5, E26, E27 and E30) and 78
+of the grid (72 Shift+Enter, 6 `INSERT_PARAGRAPH_COMMAND` from a raw
+block into a raw block), each a save that differs in blank lines only,
+because the block-list form no longer writes a raw block's empty last
+line. Beyond the plan's check, every recorded field of every cell was
+compared: the editor's tree, its text, the selection, the result of one
+undo, the parity and reload checks and any error are the same on both
+sides in all 30,120 cells. So no route that acted at the parent does
+nothing on the branch, nothing throws, and one undo restores what it
+restored at the parent.
+
+**The places probe.** The two harnesses above are range routes; neither
+types before a raw block or edits its neighbour. The probe puts each of
+20 raw texts at 18 places (alone, between paragraphs, after and before a
+list and a raw list, between a list and a raw list, before a raw block
+and a quote, in a column in four ways, in a list item in two), written
+seven ways (as it is, indented by one, two and three spaces, its first
+line alone indented, two spaces and a tab after its last line) and with
+five kinds of blank line around it (one, two, one holding a space, one
+holding a tab, three with spaces in the middle one). The texts are HTML
+blocks closed, left open and only a second blank line ends, a comment, a
+`<pre>` holding an empty line, definitions, a thematic break, raw
+quotes, raw lists, a code line of spaces in a quote, and four whose
+indentation is content: the two misaligned raw lists of D9, a `<pre>`
+with indented lines and a definition with a two-line title. On each
+document it makes 16 edits one at a time: text typed at the start and
+the end of the raw block and of the block before and after it, two
+spaces and a tab before and after the raw block, a space before every
+line of it, Shift+Enter at its start and its end, Enter at its end,
+Backspace over its first character and over all of it, and the block
+before or after it removed. For every cell it records the save, the
+tree, whether the edit changed anything, the checks of the edits file's
+`expectSaveKeepsDocument`, whether each raw block renders after a reload
+as it did in the editor (whitespace kept), whether the selection can be
+read, whether undoing the edit's keys restores the loaded document, and
+which top-level blocks the edit did not touch are in the save line for
+line. `placesdiff.py` compares the two sides:
+
+| Hard check | Cells |
+|---|---|
+| a throw the parent does not have | 0 (nothing throws on either side) |
+| an edit that changed something at the parent and nothing on the branch | 0 |
+| a reload, raw-reading, raw-rendering, idempotence, standard-form or definitions check the branch fails and the parent passes | 0 |
+| an undo that restored the document at the parent and not on the branch | 0 (it restores it in every cell on both sides) |
+| a selection that cannot be read | 0 |
+| a block that was not edited and is not in the save byte for byte, where it was at the parent | 0, after 99 cells that are rows `RE1` to `RE5` |
+
+The 99 cells empty a raw block between a list and a raw list. The list
+is then written with another marker (`* la` for `- la`), which is the
+fix of cause C: at the parent the two joined into one list on reload,
+and the parent's cell fails the reload check. The script takes a cell
+out of the count only when all of that holds for it.
+
+In 603 cells the branch fails one check the parent passes that is not in
+the list above: the editor's and the viewer's title of a definition
+differ in whitespace. All are a definition indented in the source whose
+title has a second line (see *Found along the way*), after an edit that
+changes nothing a save writes. The branch then saves the document as
+loaded, and the loaded document fails that check on both sides (1,064
+cells fail it on both). The script takes a cell out only when its save
+equals the load's and both loads fail the check.
+
+The branch passes checks the parent fails in these cells: 12,274
+standard-form idempotence, 1,575 raw rendering, 373 standard-form
+reload, 330 reload, 302 raw reading, 281 standard form, 507 definitions
+and 118 a title's whitespace; and in 112 cells an unedited block is byte
+for byte in the save where the parent rewrote it.
+
+The 13,541 cells whose save differs, by what differs:
+
+| Cells | What differs | The change |
+|---|---|---|
+| 10,830 | the branch saves the document as loaded: the edit was Shift+Enter at an edge of the raw block, spaces before its first line, a space before every line where none of them is content, or Enter at its end, none of which a save writes | the block-list form (`RF`, `RK6`) |
+| 1,857 | the parent's save fails a check that the branch's passes; 1,575 of them are a space typed before every line of a raw block, which the parent wrote or dropped so that the reload rendered otherwise | causes B to E; D9 |
+| 447 | a quote whose last line is kept indented (`> q` over an indented `<div`), with a neighbour edited or removed, spaces typed before or after it, or its first character typed over or removed: the branch holds one raw block, with that indentation, where the parent held a quote and a raw block | `RL` |
+| 267 | a raw list whose first line an edit made a block of its own: the rest is written with its first line at the margin | the block-list form |
+| 88 | the misaligned raw list of D9 with its first space removed: its quote is now a raw block of its item (`RL`), so the editor shows a list where the parent kept a raw block | `RL`, the `Q11` to `Q13` change |
+| 44 | every block after a raw block only a second blank line ends is removed: the branch writes that block as its source, with the source's own lines before it | D1 (`RW16`) |
+| 8 | a space typed before every line of an indented definition in a list item: the parent saved the document as loaded, the branch keeps the space before the title's second line | D9 (`R9`) |
+
+In 562 more cells the save is the same and the tree differs, and 1,198
+cells exist on one side only. Both are the raw block that `RL` keeps
+whole and the misaligned raw lists of D9, which the branch holds as
+another block than the parent (`R6`, `R7`). The classes were read by raw
+text and edit, one cell of each kind, not cell by cell.
+
+On both sides alike, 1,358 times an unedited block is not found line for
+line in the save. Read by kind, these are the probe's own count (in a
+place whose neighbour is the document's last block the probe counts the
+edited block; where a load joins the raw text to a neighbour the probe
+does not name there is no block of its own) and the parent's rule that
+writes an indented block at the margin once the list before it was
+edited (`joinsPreviousBlock`).
+
+The probe first ran without the four texts whose indentation is content,
+without the edit that types before every line and without the rendering
+check. It then showed nothing of what the first review found, and the
+review's own grid did not either. With them it showed the two further
+shapes D9 covers: the item form writing a link inline, and a list item's
+nested raw list whose reload differed.
+
+### The fuzz
+
+The harnesses of the list item node plan, run on private archive copies
+(`runfuzzall.sh`), against the baselines the list toggle plan left in
+`…/scratch-keep/impl/list-toggle/{fuzz-5,lif-5,r7-5}`. `cmpfuzz2.py`
+compares record by record. The parent was run again first (`lif-P/`,
+`r7-P/`, `fuzz-P/`): the list-edit and reviewer-7 results, both table
+edge variants and nine seeds of the paste fuzz are those of the
+baselines in every field, and the run was then stopped.
+
+| Fuzz | Seeds, size | Baseline | Branch |
+|---|---|---|---|
+| paste (`column-paste-fuzz`), and strict | the 11 seeds, 3,000 each | 0, 0 | 0, 0 |
+| table edge (`table-edge-fuzz-lbdeclined`), and strict | the 11 seeds, 3,000 each | 0, 0 | 0, 0 |
+| list edit (`lif`) | the 11 seeds, 1,500 each | 14 | 1 |
+| reviewer 7 (`r7`) | seeds 11, 23, 37, 41, 59, 3,000 each | 119 | 88 |
+
+The run is `fuzz-b6/`, `lif-b6/`, `lifx-b6/` and `r7-b6/` in the scratch
+folder, made at `11782acb3`, before the commits were folded. The source
+at the branch's tip differs from that commit in comments only (22 lines
+of `markdownSerializer.ts`, all inside JSDoc blocks); the rest of what
+changed after it is tests, docs and these notes. No other field of the paste and table
+edge results (documents run, commands declined, pastes that copied
+nothing) differs from the baseline either.
+
+Each fuzz draws its steps from one random stream per seed, and the
+stream depends on what the editor holds: on the branch 72 more of the
+16,500 list-edit documents load as a list (15,039 for 14,967), which is
+the `Q11` to `Q13` change. A record that is gone may therefore be fixed
+or only no longer drawn, and a new record may be an old failure newly
+drawn. So every record was replayed on the other side (`fuzzreplay.py`,
+the output is `replay-P-b6.json`).
+
+**List edit.** The plan's table, measured:
+
+| Class | Parent | Branch |
+|---|---|---|
+| `spacesBeforeRaw:reload`, `:rawReading`, `:canonicalReload` | 2 each | 0 |
+| `load:canonical`, `load:canonicalReload`, `load:canonicalIdempotence` | 12, 12 and 10 | 1, 0 and 0 |
+| any other key | none | none |
+
+All 14 parent records pass when replayed on the branch: the two
+`spacesBeforeRaw` ones (cause B: spaces typed before a raw block after a
+raw list), ten loads of cause A (a quote with a lazy `<div` or `</div`
+line in a list item or a column) and two loads of cause E (seeds 4409
+and 7703: a definition whose title holds a blank line, after an HTML
+block left open in a list item, as in row `RD6`). A `spacesBeforeRaw`
+step does not record which raw block it took, so each was replayed once
+for every raw block of its document. The branch's one record is the
+document the plan predicts: seed 7703, document 196, `load:canonical`, a
+tab-indented list item holding a definition whose title has a blank
+line. Replayed on the parent it fails the same check. The same run
+without the fuzz file's `holdsBlankEdgedRawOutsideItems` exemption
+(`lifx-b6/`) gives the same result in every field, so the exemption can
+go.
+
+**Reviewer 7.** No record is new:
+
+| | Records | Replayed on the other side |
+|---|---|---|
+| the parent's | 119 | 27 pass on the branch for a cause of this plan: 25 `load:canonical` (cause A: each opens with `<div` and holds a quote with a lazy `<div` line in a list item) and 2 throws of `$getTextNodeOffset` (cause F). 1 more passes and is not counted as fixed (see below). 91 fail the same way: 70 `linesMerged`, 20 `lettersLost`, 1 `parity` |
+| the branch's | 88 | all 88 fail the same way on the parent |
+
+Of the branch's 88 records, 85 are the parent's own, byte for byte. Two
+are parent records written differently (seeds 11 and 23, `linesMerged`):
+the same source, steps and failing check, and a save that holds the
+quote and its indented `<div` as one raw block where the parent's held a
+quote and a raw block. One is drawn only on the branch (seed 37, the
+list `7. w0` over three indented table lines, `linesMerged` after two
+typing steps); replayed on the parent it fails the same check with the
+same save. Four parent records that still fail when replayed are not
+drawn on the branch. `linesMerged`, `lettersLost` and `parity` are
+classes this plan does not touch.
+
+The fuzz was run five times as the code changed (after the plan's
+commit, after D1 and D2, after D1's last two shapes, after D9, and on the
+final code). The list-edit and reviewer-7 results are the same in every run,
+and so is every paste and table edge result that completed.
+
+A step of this fuzz names its text nodes by their index in the document.
+One parent record (seed 23, `linesMerged` after two Shift+Enter steps
+and a paste of copied nodes) is of a document that holds `> q7` over a
+lazy `<div` in a list item, which loads as a list on the branch and as a
+raw block at the parent. The same indices are other text nodes there, so
+its passing on the branch says nothing about that failure. So the count
+went from 119 to 88 for three reasons: 27 records fixed, this one, and
+the stream drawing other steps (four parent failures not drawn, one
+drawn that the parent's run did not draw).
+
+### The manual checks
+
+Run in Chrome on the demo's MD Editor page (`npx vite --port 8052` in
+`packages/lib`; the server is stopped), first on the code before D2 and
+D9 and then again, all of them, on the final code. The
+second run added M6, for D9. Each text was put in through source
+mode. The caret was set through the page's selection, text was typed with
+real key events, and the paste of M1 was a `paste` event carrying a
+`DataTransfer`, not the system clipboard.
+
+| # | Result |
+|---|---|
+| M1 | no console message; two raw blocks; `Y` stands on the second line under the second `<pre>`; the source reads `<pre>⏎x1⏎</pre>⏎⏎<pre>⏎⏎Y⏎x2⏎</pre>`. The pasted text was the five lines with the line end of the last one, six lines in all (`RC1`'s text) |
+| M2 | after the two spaces the source shows `<div>` at the margin; back in WYSIWYG the raw list and the raw block are two blocks |
+| M3 | the source reads `<div`, two empty lines, `bX` |
+| M4 | the last line reads `bX [x] c` |
+| M5 | one raw block; the source reads `> qX` and under it `<div` with two spaces before it |
+| M6 (added) | `<pre>`, `x`, `</pre>` as a raw block, then a space typed before each of its three lines: the source reads `<pre>⏎ x⏎ </pre>`, the first line at the margin and the other two with their space (`RM6`) |
+
+No console message in either run.
+
+### Decisions that await the user's sign-off
+
+**1. An unedited raw block that only a second blank line ends keeps its
+bytes (D1).** Commit "Keep an unedited raw block's bytes when it gets its
+second blank line", which reverts cleanly on the tip. Without it the plan's own code is in force: the
+block's indentation, the line end between it and a quote right above it
+and the document's first blank lines are rewritten although the block was
+not edited. The commit also covers two shapes the parent rewrites the
+same way and the plan does not name (the document's last block, and a
+block whose followers are all removed), so that the rule has no
+exception. Rows `RW10` to `RW17` go with the commit.
+
+**2. The margin rule's answer is remembered (D2).** Without it a document
+that holds a long raw block with an indented first line costs that
+block's lexing, up to eight times, on every keystroke. The test in
+`markdown-source-preservation.test.ts` goes with it. It is part of the
+first code commit; to decide against it, take the memo out of the final
+code (the `AT_MARGIN` map, its read and its write in `rawBlockAtMargin`,
+and that test).
+
+**3. A written form keeps what the text holds (D9).** It is part of the
+first code commit. Three decisions are in it. The block-list form takes indentation off only where blocks, content
+and definitions stay; this mends the plan's form and is not optional. The
+item form does the same, against the plan's Non-Goal, because with the
+plan's definitions change it wrote links inline. And a load no longer
+moves a list's first marker where an item's code or HTML block is read
+by it, so a list that held such a nested raw list as an item's raw block
+at the parent now loads as one raw block (`R6`, `R7`), and a raw list
+indented as a whole keeps that indentation where a line of an item's
+HTML block is indented less than the item's content (`R11`, `RM9` to
+`RM11`).
+
+**4. A load still changes the title of an indented definition.** See
+*Found along the way*. The other choice is a load that asks for the same
+definitions (`keepsContent` for the definitions alone, in
+`$buildRawBlock`): the raw block then keeps the indentation of the
+title's later lines, the editor's title is the viewer's, and a link to
+the definition keeps its reference form. It changes what a load builds
+for such a definition and leaves the tab shape of the plan's Non-Goal.
+
+**5. Rows and corpus cases beyond the plan's (D3, D11).** They are tests
+only.
+
+**6. The commit shape.** D2 and D9 are in the plan's commit and D1 is a
+commit of its own, as the second and the third review asked. If D1 is
+accepted it can stay a commit or be folded into the first.
+
+**7. The docs and changelog text that is not the plan's (D10).**
+
+### For the plans that follow
+
+Line numbers are of this branch's tip.
+
+- **`pasteText(editor, text)`** is at module level in
+  `markdown-editor-list-item-paste.test.ts` (`:173`), after `pasteNodes`
+  (`:151`), written as a function declaration (D4). The `describe` at
+  `:681` uses it.
+- **The new `describe`s are the last of their files.** `a raw block
+  outside a list item is written so that it reads where it stands (R
+  rows)` is at `:2999` of `markdown-editor-list-item-edits.test.ts`,
+  which ends at `:3659`. Its last test, `RM14`, is an `it` of its own
+  after the `it.each`. `a paste into a raw block that leaves the caret
+  on an empty line keeps a usable selection (RC rows)` is at `:1142` of
+  the paste file, which ends at `:1288`.
+- **Rows `Q11` to `Q13`** are restated in place: `:647` to `:652` of the
+  edits file, in an `it.each` of their own inside the `describe` at
+  `:624`, whose title now ends ", unless that line is indented deeper".
+  Rows `R6` to `R11` were added to the `describe` at `:491` (from
+  `:528`), and an import of `rawBlockInBlockList` at `:21`, which moved
+  everything after that `describe` by 53 lines.
+- **The helpers of the edits file moved by three to eight lines**: `Step`
+  `:55`, `press` `:151`, `expectSaveKeepsDocument` `:262`, `Row` `:290`,
+  `runRow` `:307`. `expectSaveKeepsDocument` compares the editor's
+  definitions with the viewer's now, so every row a later plan runs
+  through `runRow` gets that check after the load and after every step.
+- **`$selectTextOffset`** (`markdownWritable.ts:1044`) never sets a
+  negative offset. An offset on a line that holds no text gives an
+  element point before that line's line break.
+- **`registerRawBlockRules`** (`markdownWritable.ts:903`) is untouched.
+  `checkSiblings` (`:904`) and `$showRawBlockAsSaved` (`:923`) are still
+  local to it, for `markdown-editor-raw-block-range-edits` to move.
+- **`markdownSerializer.ts`.** New exports: `rawBlockInBlockList`
+  (`:1834`), `$documentDefinitions` (`:777`), `definitionsOfSource`
+  (`:788`) and `NO_DEFINITIONS_SOURCE` (`:122`). `$definitionsSource`
+  (`:887`) returns JSON, to be read with `definitionsOfSource`.
+  `$lexDefinitions` is gone; a caller that needs the document's
+  definitions calls `$documentDefinitions()`, and the definitions of one
+  text are `definitionsIn` (`:850`). `rawBlockAtMargin` (`:2012`) is
+  `(source, isList, keepsContent = false)` and remembers its answers; its
+  candidates are in `marginCandidates` (`:2050`), and its reading in
+  `readingInBlockList` (`:2082`), `blockContent` (`:2104`), `ownText`
+  (`:2121`), `blockShape` (`:2142`) and their walker `blockStructure`
+  (`:2157`). `writtenBlocks` (`:1322`) has the two changes of D1,
+  `takesInBlockAfter` is at `:1408` and `writesAsAtLoad` at `:1500`.
+- **A raw block's written form** (`$rawBlockSource`, `:1809`) has no
+  empty first or last line outside a list item either. A range route
+  that leaves a raw block with an empty last line therefore saves one
+  line end fewer than at the parent: 16 cells of the route matrix
+  (Shift+Enter over shapes E5, E26, E27 and E30) and 78 of the cross-item
+  grid (72 Shift+Enter, 6 `INSERT_PARAGRAPH_COMMAND`). The two plans that
+  follow say this of their own prototypes. Their differential checks
+  need the parent's results recorded anew on this branch's tip.
+- **A load compares what list items hold** (D9): a raw list indented as
+  a whole keeps that indentation where a line of an item is read as
+  written. A plan whose rows load an indented raw list should expect the
+  raw block's text with it in that case.
+- **Both written forms keep content** (D9). A plan that writes text into
+  a raw block and expects a save to dedent it should expect the first
+  line at the margin and every other line as written, unless the block
+  is a list whose lines all share the indentation.
+- **A wide raw block's standard output** still ends in one more line end
+  while a block follows it; `writesAsAtLoad` leaves that line end out
+  when it tells an edited block (D1).
+- **`markdown-source-preservation.test.ts`** wraps `lexMarkdown` in a spy
+  as well as `lexMarkdownLinkDefinitions`.
+- **Docs.** In `docs/components/MarkdownEditor.md` the paragraphs at
+  lines 74 and 82 and the *Lists* bullet at line 95 changed. Three
+  entries were appended to `## Fixed` → `### Components` of the
+  changelog.
+- **Fuzz baselines at this tip**: `fuzz-b6/`, `lif-b6/` and `r7-b6/` in
+  the scratch folder (paste 0 and 0, table edge 0 and 0, list edit 1,
+  reviewer 7 88). The list-edit fuzz's `holdsBlankEdgedRawOutsideItems`
+  exemption is no longer needed. The differential harnesses are in
+  `diff/`: `zz-ec-places.test.ts` with `runplaces.sh` and
+  `placesdiff.py`, and `zz-ec-form.test.ts` with `formsum.py`.
+- **Left open.** The title of an indented definition (sign-off 4).
+  `$selectInRun` (`markdownWritable.ts:2213`) walks an offset as
+  `$selectTextOffset` did; it is the plan's Non-Goal and is unchanged.

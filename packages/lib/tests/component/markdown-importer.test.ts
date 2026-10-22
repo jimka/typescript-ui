@@ -1925,13 +1925,13 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             expect(viewerModel(saved).blocks.filter((block) => block.kind === 'list')).toHaveLength(2);
         });
 
-        it('a loaded list before an indented raw list it would take in is kept apart by a separator that shows nothing', () => {
+        it('a loaded list before a raw list whose first line alone was indented is written with that line at the margin', () => {
             const source = ' - *\n  * 0\n    > 9\nd';
             const editor = load(source);
 
             const standard = readDocument(editor, () => $serializeMarkdown());
 
-            expect(standard).toBe('- *\n\n[//]: #\n\n  * 0\n    > 9\nd');
+            expect(standard).toBe('- *\n\n* 0\n    > 9\nd');
             expect(viewerModel(standard).blocks).toEqual(viewerModel(source).blocks);
         });
     });

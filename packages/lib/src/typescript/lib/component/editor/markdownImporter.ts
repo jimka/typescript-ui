@@ -40,7 +40,7 @@ import {
 import { $createReferenceLinkNode, $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import type { ReferenceLinkReference } from "~/component/editor/markdownReferenceLinkNode.js";
 import {
-    $definitionsSource, $listReadsLoose, $readDefinitions, $serializeLinkContent, $serializeTopLevelBlocks, rawBlockAtMargin, rawBlockInItem,
+    $documentDefinitions, $listReadsLoose, $readDefinitions, $serializeLinkContent, $serializeTopLevelBlocks, rawBlockAtMargin, rawBlockInItem,
     rawBlockStandsInItem, runsOn, withoutBlankEdges,
 } from "~/component/editor/markdownSerializer.js";
 import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode, $isMarkdownRawBlockNode } from "~/component/editor/markdownSourceNodes.js";
@@ -363,7 +363,7 @@ export function $readBlocksWithDefinitions(markdown: string, definitions: Links)
  * @param tokens - The inline tokens.
  */
 export function $buildInlineContent(block: ElementNode, tokens: Token[]): void {
-    IMPORT_DEFINITIONS.current = lexMarkdownLinkDefinitions($definitionsSource());
+    IMPORT_DEFINITIONS.current = $documentDefinitions();
 
     try {
         if ($isTableCellNode(block)) {

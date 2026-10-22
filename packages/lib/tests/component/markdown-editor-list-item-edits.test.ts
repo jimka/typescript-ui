@@ -18,11 +18,12 @@ import { $createQuoteNode, $isHeadingNode } from '@lexical/rich-text';
 import { $dfs } from '@lexical/utils';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import type { MarkdownBlockType } from '~/component/editor/MarkdownEditor';
+import { rawBlockInBlockList } from '~/component/editor/markdownSerializer';
 import { $createMarkdownRawBlockNode, $isMarkdownRawBlockNode } from '~/component/editor/markdownSourceNodes';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
-import { canonicalSave } from './markdown-roundtrip/harness';
+import { canonicalSave, editorDefinitions, viewerDefinitions } from './markdown-roundtrip/harness';
 import { editorSurfaceModel, viewerModel } from './markdown-roundtrip/viewModel';
 
 const CONFIG = {
@@ -249,7 +250,8 @@ function blocksInText(editor: MarkdownEditor): string[] {
  * (idempotence), the viewer reads the save as the editor shows it (parity),
  * and the standard form of the document — what a save writes for it once it
  * is edited further — reads as the save does and loads as the same document
- * (canonical).
+ * (canonical), and the editor reads the link reference definitions the viewer
+ * reads off the save (definitions).
  *
  * @param editor - The editor.
  * @param context - What was done, for the failure message.
@@ -276,6 +278,10 @@ function expectSaveKeepsDocument(editor: MarkdownEditor, context: string, compar
     expect(viewerModel(standard), `canonical after ${context}: ${JSON.stringify(standard)}`).toEqual(viewerModel(saved));
     expect(editorSurfaceModel(fromStandard), `canonical reload after ${context}: ${JSON.stringify(standard)}`).toEqual(surface);
     expect(canonicalSave(fromStandard), `canonical idempotence after ${context}`).toBe(standard);
+
+    const own = editorDefinitions(editor);
+
+    expect(own, `definitions after ${context}: ${JSON.stringify(saved)}`).toEqual(viewerDefinitions(saved, own));
 
     return saved;
 }
@@ -516,6 +522,58 @@ describe('spaces typed before a raw list of a list item are kept where they are 
             steps:  [{ key: 'type', text: '  ', at: ['- a', 0] }, { key: 'type', text: '  ', at: ['- b', 0] }],
             comparesWithViewer: false,
         },
+        // A raw list whose first marker is indented deeper than its second cannot lose that indentation where a
+        // line of its first item is read by it: no raw block of the item holds it, and its whole list is the raw block.
+        {
+            name:   'R6: a raw list whose first item is indented deeper than its second and holds code keeps the code as it is',
+            source: '- o\n\n    - a\n\n          code\n\n      > q\n      <div\n  - b\n- z\n\np',
+            steps:  [{ key: 'type', text: 'X', at: ['p', 1] }],
+            saved:  '- o\n\n    - a\n\n          code\n\n      > q\n      <div\n  - b\n- z\n\npX',
+            shape:  'markdown-raw-block("- o", linebreak, linebreak, "    - a", linebreak, linebreak, "          code", linebreak, linebreak, "      > q", linebreak, '
+                + '"      <div", linebreak, "  - b", linebreak, "- z") | paragraph("pX")',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'R7: the same holding an HTML block',
+            source: '- o\n\n    - a\n      <pre>\n        x\n      </pre>\n  - b\n- z',
+            steps:  [{ key: 'type', text: 'X', at: ['- z', 3] }],
+            saved:  '- o\n\n    - a\n      <pre>\n        x\n      </pre>\n  - b\n- zX',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'R8: such a raw list holding only text and a quote loses the indentation, and is a raw block of its item (control)',
+            source: '- o\n\n    - a\n      lazy\n      > x\n  - b\n- z',
+            steps:  [{ key: 'type', text: 'X', at: ['z', 1] }],
+            shape:  'list(markdown-list-item(markdown-list-item-text("o"), markdown-raw-block("- a", linebreak, "    lazy", linebreak, "    > x", linebreak, "- b")), '
+                + 'markdown-list-item(markdown-list-item-text("zX")))',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'R11: a raw list indented deeper than its item\'s text keeps that where a line of its HTML block is indented less than the block',
+            source: '- o\n\n   - a\n     <pre>\n      x\n    </pre>\n    - b\n- z',
+            steps:  [{ key: 'type', text: 'X', at: ['z', 1] }],
+            // The list is loose, so a save sets its items a blank line apart.
+            saved:  '- o\n\n   - a\n     <pre>\n      x\n    </pre>\n    - b\n\n- zX',
+            shape:  'list(markdown-list-item(markdown-list-item-text("o"), markdown-raw-block(" - a", linebreak, "   <pre>", linebreak, "    x", linebreak, '
+                + '"  </pre>", linebreak, "  - b")), markdown-list-item(markdown-list-item-text("zX")))',
+            comparesWithViewer: false,
+        },
+        // The item form of any raw block takes indentation off only where the block then holds what it held.
+        {
+            name:   'R9: spaces typed before a definition in an item leave its title\'s second line where it is, and the link its form',
+            source: '- a\n\n  [x]: /u "t\n    u"\n\nb [x] c',
+            steps:  [{ key: 'type', text: '  ', at: ['[x]: /u "t', 0] }],
+            saved:  '- a\n\n  [x]: /u "t\n    u"\n\nb [x] c',
+        },
+        {
+            name:   'R10: a space typed before every line of an HTML block in an item stays before every line but the first',
+            source: '- a\n\n  <pre>\n  x\n  </pre>\n- z',
+            steps:  [
+                { key: 'type', text: ' ', at: ['<pre>', 0] }, { key: 'type', text: ' ', at: ['x', 0] }, { key: 'type', text: ' ', at: ['</pre>', 0] },
+            ],
+            // The list is loose, so a save sets its items a blank line apart.
+            saved:  '- a\n\n  <pre>\n   x\n   </pre>\n\n- z',
+        },
     ])('$name', runRow);
 });
 
@@ -563,7 +621,7 @@ describe('spaces typed before a raw list in a list item, for every shape, place 
     });
 });
 
-describe('a raw quote ending on a line without > that starts an HTML block keeps its list a raw block', () => {
+describe('a raw quote ending on a line without > that starts an HTML block keeps its list a raw block, unless that line is indented deeper', () => {
     // `marked` reads that last line as part of the quote where the item's text ends there, and as a block after the
     // quote where a line end follows: a blank line a save writes after the item. No list item can hold such a block.
     it.each<[string, string, string]>([
@@ -574,18 +632,30 @@ describe('a raw quote ending on a line without > that starts an HTML block keeps
         ['Q5: in a column', '::: columns\n- a\n\n  > q\n  <div\n- z\n|||\nb\n:::', 'markdown-block'],
         ['Q6: in the last item', '- a\n\n- b\n\n  > q\n  <div', 'markdown-raw-block'],
         ['Q7: opening an item of a tight list', '- > q\n  <div\n- z', 'markdown-raw-block'],
-        // Indented deeper than the item's content, the last line stays in the quote whatever follows. The raw block
-        // drops that indentation, so it is its text, not the source, that must read the same.
-        ['Q11: indented by a tab', '- a\n\n\t> q\n\t</div', 'markdown-raw-block'],
-        ['Q12: indented one space deeper than the item', '- a\n\n   > q\n   <div\n- z', 'markdown-raw-block'],
-        // Here the quote takes the indented lines after it in, and its raw block has to keep their indentation to
-        // read so. Moved onto the item's marker line by an edit, that indentation would shift the whole item.
-        ['Q13: a quote whose lazy lines only read so indented', '* w0\n\t> q1\n\t<div\n\t::: {align=center}\n\tf2\n\t:::\n* w3\n\n\tp', 'markdown-raw-block'],
     ])('%s', (_name, source, rootType) => {
         const editor = load(source);
 
         expect(lexicalOf(editor).read(() => $getRoot().getFirstChildOrThrow().getType())).toBe(rootType);
         expect(shapeOf(editor)).not.toContain('list(');
+        expect(editor.getValue()).toBe(source);
+        expectSaveKeepsDocument(editor, 'the load', false);
+    });
+
+    // Indented deeper than the quote, the last line stays in the quote whatever follows, and the raw block keeps
+    // that indentation.
+    it.each<[string, string, string]>([
+        ['Q11: indented by a tab', '- a\n\n\t> q\n\t</div', 'list(markdown-list-item(markdown-list-item-text("a"), markdown-raw-block("> q", linebreak, "  </div")))'],
+        ['Q12: indented one space deeper than the item', '- a\n\n   > q\n   <div\n- z',
+            'list(markdown-list-item(markdown-list-item-text("a"), markdown-raw-block("> q", linebreak, " <div")), markdown-list-item(markdown-list-item-text("z")))'],
+        // Here the quote takes the indented lines after it in, and its raw block has to keep their indentation to
+        // read so. Moved onto the item's marker line by an edit, that indentation would shift the whole item.
+        ['Q13: a quote whose lazy lines only read so indented', '* w0\n\t> q1\n\t<div\n\t::: {align=center}\n\tf2\n\t:::\n* w3\n\n\tp',
+            'list(markdown-list-item(markdown-list-item-text("w0"), markdown-raw-block("> q1", linebreak, "  <div", linebreak, "  ::: {align=center}", linebreak, "  f2", linebreak, "  :::")), '
+            + 'markdown-list-item(markdown-list-item-text("w3"), paragraph("  p")))'],
+    ])('%s: a quote whose last line is indented deeper than the quote is a raw block of its item', (_name, source, shape) => {
+        const editor = load(source);
+
+        expect(shapeOf(editor)).toBe(shape);
         expect(editor.getValue()).toBe(source);
         expectSaveKeepsDocument(editor, 'the load', false);
     });
@@ -2923,5 +2993,667 @@ describe('an edit in a list item never leaves the caret, or what is typed, where
         press(editor, { key: 'type', text: 'Q' });
 
         expect(expectSaveKeepsDocument(editor, 'the typing')).toBe('- a\n- Q\n- z');
+    });
+});
+
+describe('a raw block outside a list item is written so that it reads where it stands (R rows)', () => {
+    /** A tight list whose item holds a quote right under its text: it loads as one raw block. */
+    const RAW_LIST = '- a\n  > x';
+    const HTML = '<div>\ny\n</div>';
+    /** A two-column fence holding `blocks` in its first column. */
+    const inColumn = (blocks: string): string => `::: columns\n${blocks}\n|||\nv\n:::`;
+    /** A fence whose first column ends in an HTML block start and whose second holds a definition. */
+    const COLUMNS = '::: columns\n<div\n|||\n[x]: /u\n:::';
+    const typeX = (at: TextPoint): Step => ({ key: 'type', text: 'X', at });
+    /** Removes the whole text of the raw block `<div>`, which then writes nothing. */
+    const EMPTY: Step = { key: 'Backspace', at: ['<div>', 0], to: ['<div>', 5] };
+    /** A quote whose last line stays in it only while indented, between two paragraphs. */
+    const DEEP_QUOTE = 'p\n\n  > q\n  <div\n\nz';
+    /** A list, a raw block and a raw list: emptied, the raw block leaves the two lists as neighbours. */
+    const LISTS_APART = '- w\n\n<div>\n\n- n\n  > q';
+    /** A raw list whose first item's marker is indented two spaces more than its second's, holding indented code. */
+    const MISALIGNED_LIST = '  - a\n\n        code\n\n    > q\n    <div\n- b';
+    /**
+     * A raw list indented one space as a whole. The last line of its first item's HTML block is indented less than
+     * the item's content, so it is read as written and not from the item's marker: with the list one space to the
+     * left it would hold one space fewer.
+     */
+    const LIST_WITH_SHALLOW_LINE = ' - a\n   <pre>\n    x\n  </pre>\n  - b';
+    /** A column ending in an HTML block start, then a definition whose title holds a blank line. */
+    const TITLED = '::: columns\n<div\n|||\n[x]: /u "t\n\nu8"\n:::\n\nb [x] c';
+
+    it.each<Row>([
+        // RL — a quote whose last line stays in it only while indented. `marked` reads `<div` under `> q` as part
+        // of the quote where its input ends and as a block after it before a line end; indented, it is the quote's
+        // everywhere. The raw block keeps that line's indentation and loses only the first line's.
+        {
+            name:   'RL1: an indented quote before an indented lazy HTML start keeps the second line\'s indentation',
+            source: DEEP_QUOTE,
+            steps:  [],
+            shape:  'paragraph("p") | markdown-raw-block("> q", linebreak, "  <div") | paragraph("z")',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL2: the same in a column',
+            source: inColumn('  > q\n  <div\n\nw'),
+            steps:  [],
+            shape:  'markdown-block(markdown-column(markdown-raw-block("> q", linebreak, "  <div"), paragraph("w")), markdown-column(paragraph("v")))',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL3: indented three spaces, the document\'s first block',
+            source: '   > q\n   <div\n\nz',
+            steps:  [],
+            shape:  'markdown-raw-block("> q", linebreak, "   <div") | paragraph("z")',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL4: with a closing tag name, after a raw block',
+            source: '***\n\n  > q\n  </div\n\nw',
+            steps:  [],
+            shape:  'markdown-raw-block("***") | markdown-raw-block("> q", linebreak, "  </div") | paragraph("w")',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL5: a quote of two lines keeps the indentation of every line but its first',
+            source: '  > a\n  > b\n  <div\n\nz',
+            steps:  [],
+            shape:  'markdown-raw-block("> a", linebreak, "  > b", linebreak, "  <div") | paragraph("z")',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL6: the document\'s last block keeps it too, so a block added after it changes nothing',
+            source: '  > q\n  </div',
+            steps:  [],
+            shape:  'markdown-raw-block("> q", linebreak, "  </div")',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL7: typing in the paragraph after it leaves it as loaded',
+            source: DEEP_QUOTE,
+            steps:  [typeX(['z', 1])],
+            saved:  'p\n\n  > q\n  <div\n\nzX',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL8: typing in the quote writes its first line at the margin and its last line indented',
+            source: DEEP_QUOTE,
+            steps:  [typeX(['> q', 3])],
+            saved:  'p\n\n> qX\n  <div\n\nz',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL9: once the last line stands at the margin the editor shows a quote and a raw block',
+            source: DEEP_QUOTE,
+            steps:  [{ key: 'Backspace', at: ['  <div', 2] }, { key: 'Backspace', at: [' <div', 1] }],
+            saved:  'p\n\n> q\n\n<div\n\n\nz',
+            shape:  'paragraph("p") | quote("q") | markdown-raw-block("<div") | paragraph("z")',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL10: a raw list that comes to stand before it does not take it in',
+            source: `${RAW_LIST}\n\n[//]: #\n\n  > q\n  <div\n\nz`,
+            steps:  [{ key: 'removeBlock', index: 1 }],
+            saved:  `${RAW_LIST}\n\n> q\n  <div\n\nz`,
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL11: a last line at the margin reads by its place, and is a raw block while it is last (control)',
+            source: '> q\n<div',
+            steps:  [],
+            shape:  'markdown-raw-block("> q", linebreak, "<div")',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL12: the same with the quote alone indented (control)',
+            source: '  > q\n<div',
+            steps:  [],
+            shape:  'markdown-raw-block("> q", linebreak, "<div")',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL13: an HTML block indented as a whole still loses all of its indentation (control)',
+            source: '  <div>\n  x\n  </div>\n\nz',
+            steps:  [],
+            shape:  'markdown-raw-block("<div>", linebreak, "x", linebreak, "</div>") | paragraph("z")',
+        },
+        {
+            name:   'RL14: a block added after a last line at the margin shows it as a quote and a raw block (control)',
+            source: '> q\n<div',
+            steps:  [{ key: 'Enter', at: ['<div', 4] }, { key: 'type', text: 'z' }],
+            saved:  '> q\n\n<div\n\n\nz',
+            shape:  'quote("q") | markdown-raw-block("<div") | paragraph("z")',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL15: in a list item, a last line one space deeper than the quote is the item\'s raw block (control)',
+            source: '- a\n\n  > q\n   <div\n- z',
+            steps:  [],
+            shape:  'list(markdown-list-item(markdown-list-item-text("a"), markdown-raw-block("> q", linebreak, " <div")), markdown-list-item(markdown-list-item-text("z")))',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RL16: in a list item, a last line indented by a tab is the item\'s raw block (control)',
+            source: '- a\n\n  > q\n\t</div',
+            steps:  [],
+            shape:  'list(markdown-list-item(markdown-list-item-text("a"), markdown-raw-block("> q", linebreak, "  </div")))',
+            comparesWithViewer: false,
+        },
+        // RF — the block-list form: a raw block of the document or of a column is written without the spaces
+        // before it that mean nothing, and without an empty first or last line.
+        {
+            name:   'RF1: spaces typed before an HTML block after a raw list are not written',
+            source: `${RAW_LIST}\n\n${HTML}`,
+            steps:  [{ key: 'type', text: '  ', at: ['<div>', 0] }],
+            saved:  `${RAW_LIST}\n\n${HTML}`,
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RF2: spaces typed before a definition after a raw list are not written',
+            source: `${RAW_LIST}\n\n[x]: /u`,
+            steps:  [{ key: 'type', text: '   ', at: ['[x]: /u', 0] }],
+            saved:  `${RAW_LIST}\n\n[x]: /u`,
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RF3: spaces typed before an HTML block after an ordered raw list are not written',
+            source: '1) w\n   > x\n\n<div>\ny\n</div>',
+            steps:  [{ key: 'type', text: '   ', at: ['<div>', 0] }],
+            saved:  '1) w\n   > x\n\n<div>\ny\n</div>',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RF4: spaces typed before an HTML block after a list are not written, and no separator line is',
+            source: `- a\n\n${HTML}`,
+            steps:  [{ key: 'type', text: '  ', at: ['<div>', 0] }],
+            saved:  `- a\n\n${HTML}`,
+        },
+        {
+            name:   'RF5: the same after a raw list in a column',
+            source: inColumn(`${RAW_LIST}\n\n${HTML}`),
+            steps:  [{ key: 'type', text: '  ', at: ['<div>', 0] }],
+            saved:  inColumn(`${RAW_LIST}\n\n${HTML}`),
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RF6: spaces typed before an HTML block after a paragraph are not written',
+            source: `p\n\n${HTML}`,
+            steps:  [{ key: 'type', text: '   ', at: ['<div>', 0] }],
+            saved:  `p\n\n${HTML}`,
+        },
+        {
+            name:   'RF7: an empty last line is not written',
+            source: `${HTML}\n\nb`,
+            steps:  [{ key: 'Shift+Enter', at: ['</div>', 6] }],
+            saved:  `${HTML}\n\nb`,
+        },
+        {
+            name:   'RF8: an empty first line is not written',
+            source: `p\n\n${HTML}\n\nb`,
+            steps:  [{ key: 'Shift+Enter', at: ['<div>', 0] }],
+            saved:  `p\n\n${HTML}\n\nb`,
+        },
+        {
+            name:   'RF9: the spaces stay unwritten when another block is edited after them',
+            source: `${RAW_LIST}\n\n${HTML}\n\nb`,
+            steps:  [{ key: 'type', text: '  ', at: ['<div>', 0] }, typeX(['b', 1])],
+            saved:  `${RAW_LIST}\n\n${HTML}\n\nbX`,
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RF10: four spaces make indented code, and the editor shows the blocks (control)',
+            source: `p\n\n${HTML}`,
+            steps:  [{ key: 'type', text: '    ', at: ['<div>', 0] }],
+            saved:  'p\n\n```\n<div>\n```\n\ny\n\n</div>',
+        },
+        {
+            name:   'RF11: a raw list keeps the spaces it reads by, and is kept apart by a separator line (control)',
+            source: '- a\n\n[//]: #\n\n  - x\n  - y\n- z\n  > q',
+            steps:  [{ key: 'removeBlock', index: 1 }],
+            saved:  '- a\n\n[//]: #\n\n  - x\n  - y\n- z\n  > q',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RF12: a tab typed before an HTML block after a raw list keeps the save reading as shown (control)',
+            source: `${RAW_LIST}\n\n${HTML}`,
+            steps:  [{ key: 'type', text: '\t', at: ['<div>', 0] }],
+            comparesWithViewer: false,
+        },
+        // RM — the block-list form changes nothing a raw block holds. Its first line goes to the margin only where
+        // every line of the block then holds what it held: the lines of a list item are measured from its marker,
+        // and the lines after an HTML block's first are its content.
+        {
+            name:   'RM1: a raw list whose first item is indented deeper than its second keeps that item\'s code as it is',
+            source: MISALIGNED_LIST,
+            steps:  [typeX(['- b', 3])],
+            saved:  `${MISALIGNED_LIST}X`,
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RM2: the same when the paragraph after the list is edited',
+            source: `${MISALIGNED_LIST}\n\nw`,
+            steps:  [typeX(['w', 1])],
+            saved:  `${MISALIGNED_LIST}\n\nwX`,
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RM3: the same in a column whose other block is edited',
+            source: inColumn(`${MISALIGNED_LIST}\n\nw`),
+            steps:  [typeX(['w', 1])],
+            saved:  inColumn(`${MISALIGNED_LIST}\n\nwX`),
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RM4: a raw list whose first item is indented deeper than its second keeps that item\'s HTML block as it is',
+            source: '  - a\n    <pre>\n      x\n    </pre>\n- b',
+            steps:  [typeX(['- b', 3])],
+            saved:  '  - a\n    <pre>\n      x\n    </pre>\n- bX',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RM8: a list above such a raw list does not take it in: the two are kept apart by a separator line',
+            source: `- w\n\n[//]: #\n\n${MISALIGNED_LIST}`,
+            steps:  [{ key: 'removeBlock', index: 1 }],
+            saved:  `- w\n\n[//]: #\n\n${MISALIGNED_LIST}`,
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RM5: a raw list whose first line alone is indented, and holds nothing measured by it, is written at the margin',
+            source: 'p\n\n  * 0\n    > 9\nd',
+            steps:  [typeX(['d', 1])],
+            saved:  'p\n\n* 0\n    > 9\ndX',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RM6: a space typed before every line of an HTML block stays before every line but the first',
+            source: '<pre>\nx\n</pre>\n\nb',
+            steps:  [
+                { key: 'type', text: ' ', at: ['<pre>', 0] }, { key: 'type', text: ' ', at: ['x', 0] }, { key: 'type', text: ' ', at: ['</pre>', 0] },
+            ],
+            saved:  '<pre>\n x\n </pre>\n\nb',
+        },
+        {
+            name:   'RM7: spaces typed before a definition leave the indentation of its title\'s second line',
+            source: '[x]: /u "t\n  u"\n\nb [x] c',
+            steps:  [{ key: 'type', text: '  ', at: ['[x]: /u "t', 0] }],
+            saved:  '[x]: /u "t\n  u"\n\nb [x] c',
+        },
+        // A load holds to the same for a list item's lines: the indentation before a raw block goes only where
+        // every list item of the block then holds what it held.
+        {
+            name:   'RM9: a raw list indented as a whole keeps that at load where a line of an item\'s HTML block is indented less than the block',
+            source: `${LIST_WITH_SHALLOW_LINE}\n\np`,
+            steps:  [typeX(['  - b', 5])],
+            saved:  `${LIST_WITH_SHALLOW_LINE}X\n\np`,
+            shape:  'markdown-raw-block(" - a", linebreak, "   <pre>", linebreak, "    x", linebreak, "  </pre>", linebreak, "  - bX") | paragraph("p")',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RM10: the same in a column whose other block is edited',
+            source: inColumn(`${LIST_WITH_SHALLOW_LINE}\n\nw`),
+            steps:  [typeX(['w', 1])],
+            saved:  inColumn(`${LIST_WITH_SHALLOW_LINE}\n\nwX`),
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RM11: an indented quote holding such a list loses the indentation of its first line alone',
+            source: ' > - a\n >   <pre>\n  x\n\np',
+            steps:  [typeX(['  x', 3])],
+            saved:  '> - a\n >   <pre>\n  xX\n\np',
+            shape:  'markdown-raw-block("> - a", linebreak, " >   <pre>", linebreak, "  xX") | paragraph("p")',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RM12: a raw list indented as a whole whose items hold nothing read from the margin loses that at load (control)',
+            source: '  - a\n    > q\n  - b\n\np',
+            steps:  [typeX(['- b', 3])],
+            saved:  '- a\n  > q\n- bX\n\np',
+            shape:  'markdown-raw-block("- a", linebreak, "  > q", linebreak, "- bX") | paragraph("p")',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RM13: a one-line HTML block of a first item indented deeper than the next keeps the spaces before it',
+            source: '  - a\n    <div>\n- b',
+            steps:  [typeX(['- b', 3])],
+            saved:  '  - a\n    <div>\n- bX',
+            comparesWithViewer: false,
+        },
+        // RT — the spaces that end a raw block's last line stay: they can be content.
+        {
+            name:   'RT1: spaces typed after an HTML block\'s last line are written (control)',
+            source: `${HTML}\n\nb`,
+            steps:  [{ key: 'type', text: '  ', at: ['</div>', 6] }],
+            saved:  '<div>\ny\n</div>  \n\nb',
+        },
+        {
+            name:   'RT2: a code line of one space in a quote stays when the block after it is edited (control)',
+            source: '>```\n>  \n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '>```\n>  \n\nbX',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RT3: a code line of one space in a quote stays when the quote is edited (control)',
+            source: '>```\n>  ',
+            steps:  [{ key: 'type', text: 'x', at: ['>```', 4] }],
+            saved:  '>```x\n>  ',
+            comparesWithViewer: false,
+        },
+        // RK — a raw block that was not edited is saved byte for byte, its whitespace included: at the top level it
+        // is written as its source; in a column whose other block was edited it is written in its block-list form,
+        // which holds every space and tab inside it and at the end of its last line.
+        {
+            name:   'RK1: the spaces that end an unedited raw block stay when the block after it is edited (control)',
+            source: '<div>\ny\n</div>  \n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '<div>\ny\n</div>  \n\nbX',
+        },
+        {
+            name:   'RK2: the tab that ends an unedited raw block stays (control)',
+            source: '<div>\ny\n</div>\t\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '<div>\ny\n</div>\t\n\nbX',
+        },
+        {
+            name:   'RK3: an unedited raw block keeps the indentation its source has (control)',
+            source: 'p\n\n  <div>\n  y\n  </div>\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  'p\n\n  <div>\n  y\n  </div>\n\nbX',
+        },
+        {
+            name:   'RK4: a tab and the spaces that end a line inside an unedited raw block stay (control)',
+            source: '<div>\n\ty  \n</div>\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '<div>\n\ty  \n</div>\n\nbX',
+        },
+        {
+            name:   'RK5: blank lines holding a space or a tab stay between unedited blocks (control)',
+            source: 'p\n \n<div>\ny\n</div>\n\t\nq\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  'p\n \n<div>\ny\n</div>\n\t\nq\n\nbX',
+        },
+        {
+            name:   'RK6: an edit that changes nothing a save writes leaves an indented raw block as its source',
+            source: 'p\n\n  <div>\n  y\n  </div>\n\nb',
+            steps:  [{ key: 'type', text: '  ', at: ['<div>', 0] }],
+            saved:  'p\n\n  <div>\n  y\n  </div>\n\nb',
+        },
+        {
+            name:   'RK7: in a column whose other block is edited, the spaces that end the raw block stay (control)',
+            source: inColumn('<div>\ny\n</div>  \n\nw'),
+            steps:  [typeX(['w', 1])],
+            saved:  inColumn('<div>\ny\n</div>  \n\nwX'),
+        },
+        {
+            name:   'RK8: in a column whose other block is edited, a tab and spaces inside the raw block stay (control)',
+            source: inColumn('<div>\n\ty  \n</div>\t\n\nw'),
+            steps:  [typeX(['w', 1])],
+            saved:  inColumn('<div>\n\ty  \n</div>\t\n\nwX'),
+        },
+        {
+            name:   'RK9: in a column whose other block is edited, an empty line inside the raw block stays (control)',
+            source: inColumn('<pre>\nx1\n\nx2\n</pre>\n\nw'),
+            steps:  [typeX(['w', 1])],
+            saved:  inColumn('<pre>\nx1\n\nx2\n</pre>\n\nwX'),
+        },
+        // RE — a raw block that writes nothing is no neighbour: the list before it and the raw list after it are
+        // kept apart as if it were not there.
+        {
+            name:   'RE1: an emptied raw block between a list and a raw list of its marker',
+            source: LISTS_APART,
+            steps:  [EMPTY],
+            saved:  '* w\n\n- n\n  > q',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RE2: the same between ordered lists',
+            source: '1. w\n\n<div>\n\n1. n\n   > q',
+            steps:  [EMPTY],
+            saved:  '1) w\n\n1. n\n   > q',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RE3: the same in a column',
+            source: inColumn(LISTS_APART),
+            steps:  [EMPTY],
+            saved:  inColumn('* w\n\n- n\n  > q'),
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RE4: a raw block left holding a space writes nothing either',
+            source: LISTS_APART,
+            steps:  [{ key: 'type', text: ' ', at: ['<div>', 0], to: ['<div>', 5] }],
+            saved:  '* w\n\n- n\n  > q',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RE5: the lists stay apart when the list is edited after the raw block was emptied',
+            source: LISTS_APART,
+            steps:  [EMPTY, typeX(['w', 1])],
+            saved:  '* wX\n\n- n\n  > q',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RE6: an emptied raw block between two lists (control)',
+            source: '- w\n\n<div>\n\n- n',
+            steps:  [EMPTY],
+            saved:  '- w\n\n* n',
+        },
+        {
+            name:   'RE7: an emptied raw block between two raw lists leaves a separator line (control)',
+            source: '- w\n  > x\n\n<div>\n\n- n\n  > q',
+            steps:  [EMPTY],
+            saved:  '- w\n  > x\n\n[//]: #\n\n- n\n  > q',
+            comparesWithViewer: false,
+        },
+        // RW — a raw block only a second blank line ends keeps that line when it is written as its loaded source
+        // and the block after it is not the one it was loaded before.
+        {
+            name:   'RW1: an HTML block start keeps its second blank line when the paragraph after it is edited',
+            source: '<div\n\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '<div\n\n\nbX',
+        },
+        {
+            name:   'RW2: it keeps the line when the block after it is removed',
+            source: '<div\n\n\nb\n\nc',
+            steps:  [{ key: 'removeBlock', index: 1 }],
+            saved:  '<div\n\n\nc',
+        },
+        {
+            name:   'RW3: two HTML block starts in a row each keep it',
+            source: '<div\n\n\n<div\n\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '<div\n\n\n<div\n\n\nbX',
+        },
+        {
+            name:   'RW4: a closing tag name after a paragraph keeps it',
+            source: 'a\n\n</details\n\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  'a\n\n</details\n\n\nbX',
+        },
+        {
+            // `insertParagraphBeforeBlock()` acts on a quote, a list, a code block or a table: the new block stands
+            // between two blocks that are both written as their loaded source.
+            name:   'RW5: it keeps the line before a block put between it and the block it was loaded before',
+            source: '<div\n\n\n> b',
+            steps:  [{ key: 'command', run: (editor) => editor.insertParagraphBeforeBlock(), at: ['b', 0] }, { key: 'type', text: 'n' }],
+            saved:  '<div\n\n\nn\n\n> b',
+        },
+        {
+            name:   'RW6: an edit of the block before it leaves the source\'s own two blank lines (control)',
+            source: 'a\n\n<div\n\n\nb',
+            steps:  [typeX(['a', 1])],
+            saved:  'aX\n\n<div\n\n\nb',
+        },
+        {
+            name:   'RW7: a quote ends the HTML block it holds, so one blank line is written (control)',
+            source: '> <div\n\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '> <div\n\nbX',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RW8: in a column the block is written in the standard form, which holds the line (control)',
+            source: inColumn('<div\n\n\nb'),
+            steps:  [typeX(['b', 1])],
+            saved:  inColumn('<div\n\n\nbX'),
+        },
+        {
+            name:   'RW9: an HTML block one blank line ends is written one blank line apart (control)',
+            source: '<div>\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '<div>\n\nbX',
+        },
+        // The block itself was not edited, so every byte of its source stays: the spaces before it, the line end
+        // between it and the block it was loaded right after, and the document's own first lines.
+        {
+            name:   'RW10: an indented HTML block start keeps its indentation when it is given its second blank line',
+            source: '  <div\n\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '  <div\n\n\nbX',
+        },
+        {
+            name:   'RW11: an HTML block start right under a quote stays right under it',
+            source: '> q\n<div\n\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '> q\n<div\n\n\nbX',
+        },
+        {
+            name:   'RW12: the blank lines that open the document stay before an HTML block start',
+            source: '\n\n<div\n\n\nb',
+            steps:  [typeX(['b', 1])],
+            saved:  '\n\n<div\n\n\nbX',
+        },
+        {
+            name:   'RW13: an indented closing tag name keeps its indentation when the block after it is removed',
+            source: 'a\n\n   </details\n\n\nb\n\nc',
+            steps:  [{ key: 'removeBlock', index: 2 }],
+            saved:  'a\n\n   </details\n\n\nc',
+        },
+        {
+            name:   'RW14: the document\'s last block, an indented HTML block start, keeps its indentation before a new block',
+            source: 'p\n\n  <div',
+            steps:  [{ key: 'Enter', at: ['<div', 4] }, { key: 'type', text: 'z' }],
+            saved:  'p\n\n  <div\n\n\nz',
+        },
+        {
+            name:   'RW15: the same in a document that ends with a line end',
+            source: '   </details\n',
+            steps:  [{ key: 'Enter', at: ['</details', 9] }, { key: 'type', text: 'z' }],
+            saved:  '   </details\n\n\nz\n',
+        },
+        {
+            name:   'RW16: an indented HTML block start keeps its indentation when every block after it is removed',
+            source: '  <div\n\n\nb',
+            steps:  [{ key: 'removeBlock', index: 1 }],
+            saved:  '  <div',
+        },
+        {
+            name:   'RW17: a code fence left open as the last block is still closed before a new block (control)',
+            source: 'p\n\n```\nk',
+            steps:  [{ key: 'command', run: (editor) => editor.insertParagraphAfterBlock(), at: ['k', 1] }, { key: 'type', text: 'z' }],
+            saved:  'p\n\n```\nk\n```\n\nz',
+        },
+        // RD — the document's definitions are read raw block by raw block: an HTML block left open ends with its
+        // column or list item, or at its second blank line, and the definition after it counts.
+        {
+            name:   'RD1: a definition after an HTML block start ending a column keeps a reference link',
+            source: `${COLUMNS}\n\nb [x] c`,
+            steps:  [typeX(['b ', 1])],
+            saved:  `${COLUMNS}\n\nbX [x] c`,
+        },
+        {
+            name:   'RD2: a definition after an open comment ending a list item keeps a reference link',
+            source: '- a\n\n  <!-- c\n- b [x] z\n\n  [x]: /u',
+            steps:  [typeX(['b ', 1])],
+            saved:  '- a\n\n  <!-- c\n\n- bX [x] z\n\n  [x]: /u',
+        },
+        {
+            name:   'RD3: a definition two blank lines after an HTML block start keeps a reference link',
+            source: '<div\n\n\n[x]: /u\n\nb [x] c',
+            steps:  [typeX(['b ', 1])],
+            saved:  '<div\n\n\n[x]: /u\n\nbX [x] c',
+        },
+        {
+            name:   'RD4: the first definition of a label counts, also after an HTML block start ending a column',
+            source: `${COLUMNS}\n\n[x]: /v\n\nb [x] c`,
+            steps:  [typeX(['b ', 1])],
+            saved:  `${COLUMNS}\n\n[x]: /v\n\nbX [x] c`,
+        },
+        {
+            name:   'RD5: a title holding a blank line is read after an HTML block start ending a column',
+            source: TITLED,
+            steps:  [],
+        },
+        {
+            name:   'RD6: a title holding a blank line is read after an HTML block start ending a list item',
+            source: '- a\n\n  <div\n- b [x] z\n\n  [x]: /u "t\n\n  u8"',
+            steps:  [],
+        },
+        {
+            // The definition is removed, so the link is written inline with its own URL; the raw block before it
+            // keeps its second blank line.
+            name:   'RD7: removing a definition two blank lines after an HTML block start writes its link inline',
+            source: '<div\n\n\n[x]: /u\n\n[a][x]',
+            steps:  [{ key: 'removeBlock', index: 1 }],
+            saved:  '<div\n\n\n[a](/u)',
+        },
+        {
+            name:   'RD8: a definition after a list whose item ends in an open comment keeps a reference link',
+            source: '- a\n\n  <!-- c\n- b\n\n[x]: /u\n\nb [x] c',
+            steps:  [typeX(['b ', 1])],
+            saved:  '- a\n\n  <!-- c\n- b\n\n[x]: /u\n\nbX [x] c',
+        },
+        {
+            name:   'RD9: a label naming a member of Object.prototype is a label like any other (control)',
+            source: '[constructor]: /u\n\nb [constructor] c',
+            steps:  [typeX(['b ', 1])],
+            saved:  '[constructor]: /u\n\nbX [constructor] c',
+        },
+        {
+            name:   'RD10: a definition after a quote holding an HTML block start (control)',
+            source: '> <div\n\n[x]: /u\n\nb [x] c',
+            steps:  [typeX(['b ', 1])],
+            saved:  '> <div\n\n[x]: /u\n\nbX [x] c',
+            comparesWithViewer: false,
+        },
+        {
+            name:   'RD11: two definitions of one label in two raw blocks (control)',
+            source: '[x]: /u\n\n[x]: /v\n\nb [x] c',
+            steps:  [typeX(['b ', 1])],
+            saved:  '[x]: /u\n\n[x]: /v\n\nbX [x] c',
+        },
+        {
+            // The typed text makes the line a paragraph: the definition is gone, and the link is written inline.
+            name:   'RD12: a definition after an HTML block start ending a column, edited away, writes its link inline',
+            source: `${COLUMNS}\n\nb [x] c`,
+            steps:  [{ key: 'type', text: ' w', at: ['[x]: /u', 7] }],
+            saved:  '::: columns\n<div\n|||\n\\[x\\]: /u w\n:::\n\nb [x](/u) c',
+        },
+        {
+            name:   'RD13: a title edited in a definition after an HTML block start ending a column is the link\'s title',
+            source: TITLED,
+            steps:  [typeX(['[x]: /u "t', 10])],
+            saved:  '::: columns\n<div\n|||\n[x]: /u "tX\n\nu8"\n:::\n\nb [x] c',
+        },
+        {
+            name:   'RD14: RD12 where the column\'s HTML block is closed (control)',
+            source: '::: columns\n<div>\n|||\n[x]: /u\n:::\n\nb [x] c',
+            steps:  [{ key: 'type', text: ' w', at: ['[x]: /u', 7] }],
+            saved:  '::: columns\n<div>\n|||\n\\[x\\]: /u w\n:::\n\nb [x](/u) c',
+        },
+        {
+            name:   'RD15: RD13 where the column\'s HTML block is closed (control)',
+            source: '::: columns\n<div>\n|||\n[x]: /u "t\n\nu8"\n:::\n\nb [x] c',
+            steps:  [typeX(['[x]: /u "t', 10])],
+            saved:  '::: columns\n<div>\n|||\n[x]: /u "tX\n\nu8"\n:::\n\nb [x] c',
+        },
+    ])('$name', runRow);
+
+    // RM14 — the form is asked for whatever text a raw block holds, also one the editor then shows as two blocks,
+    // which no row above can hold: code under a quote is measured from the margin, so its own spaces stay.
+    it('RM14: the block-list form of a quote and indented code, indented as a whole, keeps the code\'s own spaces', () => {
+        expect(rawBlockInBlockList('  > q\n\n      code')).toBe('> q\n\n      code');
     });
 });

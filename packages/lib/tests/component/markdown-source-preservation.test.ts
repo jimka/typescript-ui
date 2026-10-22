@@ -5,7 +5,7 @@ import { $dfs } from '@lexical/utils';
 import { $createCodeNode } from '@lexical/code';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from '~/component/editor/markdownSourceNodes';
-import { lexMarkdownLinkDefinitions } from '~/component/display/markdownExtensions';
+import { lexMarkdown, lexMarkdownLinkDefinitions } from '~/component/display/markdownExtensions';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -16,12 +16,13 @@ import { editorSurfaceModel, viewerModel } from './markdown-roundtrip/viewModel'
 // Node-types-free, so `node:fs` cannot be imported here. See the helper for why.
 import { readDemoEditorSample } from '../helpers/readDemoSample.mjs';
 
-// Wraps the definitions lexer in a spy that still lexes, so a test can count
-// how often a save reads the definitions; every other test sees it unchanged.
+// Wraps the lexer and the definitions lexer in spies that still lex, so a test
+// can count how often a save reads the definitions or lexes a block's text;
+// every other test sees them unchanged.
 vi.mock('~/component/display/markdownExtensions.js', async (importOriginal) => {
     const actual = await importOriginal<typeof import('~/component/display/markdownExtensions.js')>();
 
-    return { ...actual, lexMarkdownLinkDefinitions: vi.fn(actual.lexMarkdownLinkDefinitions) };
+    return { ...actual, lexMarkdown: vi.fn(actual.lexMarkdown), lexMarkdownLinkDefinitions: vi.fn(actual.lexMarkdownLinkDefinitions) };
 });
 
 const CONFIG = {
@@ -435,14 +436,36 @@ describe('stack fuzz round: a block holding a reference link reads back with the
 });
 
 describe('whole-stack review fixes: saving cost', () => {
-    it('reads the definitions with one lex per save when the document holds reference links', () => {
+    it('lexes a raw block\'s definitions once, not once per save', () => {
         const editor = load('[ref] and _em_\n\n_em_ alone\n\n[ref]: https://one');
         const lex = vi.mocked(lexMarkdownLinkDefinitions);
 
         lex.mockClear();
         editor.getValue();
 
+        expect(lex).toHaveBeenCalledTimes(0);
+
+        // A definition text no other test of this file loads, so no earlier test has read it.
+        append(editor, '[ref]: https://one', '-cost');
+        editor.getValue();
+
         expect(lex).toHaveBeenCalledTimes(1);
+    });
+
+    it('finds a raw block\'s written form once, not on every keystroke and save', () => {
+        // The first two items of this raw list are indented, and it reads otherwise without that indentation, so
+        // its written form is found by lexing it. Every keystroke and every save ask for that form.
+        const items = Array.from({ length: 200 }, (_, index) => `- z${index}`).join('\n');
+        const editor = load(`  - x\n  - y\n${items}\n  > q\n\nafter`);
+        const lex = vi.mocked(lexMarkdown);
+
+        append(editor, 'after', '1');
+        editor.getValue();
+        lex.mockClear();
+        append(editor, 'after1', '2');
+
+        expect(editor.getValue()).toBe(`  - x\n  - y\n${items}\n  > q\n\nafter12`);
+        expect(lex.mock.calls.filter(([text]) => text.includes('- z199'))).toEqual([]);
     });
 });
 

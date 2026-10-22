@@ -9,7 +9,8 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-    $createParagraphNode, $createRangeSelection, $createTextNode, $getRoot, $getSelection, $isElementNode, $isTextNode, $setSelection,
+    $createParagraphNode, $createRangeSelection, $createTextNode, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isTextNode,
+    $setSelection,
     CONTROLLED_TEXT_INSERTION_COMMAND, DELETE_CHARACTER_COMMAND, DROP_COMMAND, PASTE_COMMAND, SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
     UNDO_COMMAND,
 } from 'lexical';
@@ -160,6 +161,26 @@ function pasteNodes(editor: MarkdownEditor, nodes: CopiedNodes): void {
 
     update(editor, () => {
         lexical.dispatchCommand(PASTE_COMMAND, event);
+    });
+}
+
+/**
+ * Pastes plain text at the selection, as Ctrl/Cmd+V does with a clipboard holding only text.
+ *
+ * @param editor - The editor.
+ * @param text - The clipboard's text.
+ */
+function pasteText(editor: MarkdownEditor, text: string): void {
+    const data: Record<string, string> = { 'text/plain': text };
+
+    vi.stubGlobal('ClipboardEvent', class ClipboardEvent {});
+    vi.stubGlobal('DragEvent', class DragEvent {});
+    vi.stubGlobal('InputEvent', class InputEvent {});
+    vi.stubGlobal('KeyboardEvent', class KeyboardEvent {});
+    update(editor, () => {
+        lexicalOf(editor).dispatchCommand(PASTE_COMMAND, Object.assign(new ClipboardEvent('paste'), {
+            clipboardData: { types: Object.keys(data), files: [], getData: (type: string) => data[type] ?? '' }, preventDefault: () => {},
+        }));
     });
 }
 
@@ -663,21 +684,6 @@ describe('a paste into the text of a list item that holds blocks leaves them as 
     const ITEM: Target = { name: 'item holding a paragraph', source: '- bcd\n\n  p2\n- z' };
     const QUOTE_ITEM: Target = { name: 'item holding a quote and a paragraph', source: '- bcd\n\n  > q\n\n  p2\n- z' };
 
-    /** Pastes plain text at the selection, as Ctrl/Cmd+V does with a clipboard holding only text. */
-    const pasteText = (editor: MarkdownEditor, text: string): void => {
-        const data: Record<string, string> = { 'text/plain': text };
-
-        vi.stubGlobal('ClipboardEvent', class ClipboardEvent {});
-        vi.stubGlobal('DragEvent', class DragEvent {});
-        vi.stubGlobal('InputEvent', class InputEvent {});
-        vi.stubGlobal('KeyboardEvent', class KeyboardEvent {});
-        update(editor, () => {
-            lexicalOf(editor).dispatchCommand(PASTE_COMMAND, Object.assign(new ClipboardEvent('paste'), {
-                clipboardData: { types: Object.keys(data), files: [], getData: (type: string) => data[type] ?? '' }, preventDefault: () => {},
-            }));
-        });
-    };
-
     it.each<[string, Target, Clipboard, number, string]>([
         ['paragraphs inside the text', ITEM, PARAGRAPHS, 1, '- bP1\n\nP2cd\n\np2\n\n- z'],
         ['paragraphs at the end of the text', ITEM, PARAGRAPHS, 3, '- bcdP1\n\nP2\n\np2\n\n- z'],
@@ -1130,5 +1136,153 @@ describe('a list item whose text stands straight in it, as one built from pasted
         });
 
         expect(editor.getValue()).toBe('```\nba\n\np\n\nkcd\n```');
+    });
+});
+
+describe('a paste into a raw block that leaves the caret on an empty line keeps a usable selection (RC rows)', () => {
+    // The pasted lines close the raw block and open another, so its text reads as two blocks and the editor shows
+    // them; the caret goes back to the place in the text it stood at, which here is a line holding no text.
+    const PRE = '<pre>\nx1\nx2\n</pre>';
+    /** Text that closes a `<pre>` block and opens another, ending on two empty lines. */
+    const SPLIT = '\n</pre>\n\n<pre>\n\n';
+
+    /** Where a caret stands: its point, and the node the point is on. */
+    interface Caret {
+        readonly type:       'text' | 'element';
+        readonly offset:     number;
+        /** The node's Lexical type, or its text for a text node. */
+        readonly on:         string;
+        /** The index of the top-level block that holds the node, when the row pins it. */
+        readonly rootChild?: number;
+    }
+
+    /** One row: a document, the text pasted at a point of it, and what the paste leaves. */
+    interface CaretRow {
+        readonly name:   string;
+        readonly source: string;
+        readonly text:   string;
+        /** Text typed after the paste, at the caret the paste leaves. */
+        readonly typed?: string;
+        /** The save after the paste and the typing, when the row pins it. */
+        readonly saved?: string;
+        /** The caret after the paste, when the row pins it. */
+        readonly caret?: Caret;
+    }
+
+    /**
+     * Reads the selection as a caret.
+     *
+     * @param editor - The editor.
+     * @param withRootChild - Whether to name the top-level block that holds the caret.
+     * @returns The caret, or `null` when the selection is not a collapsed range.
+     */
+    const caretOf = (editor: MarkdownEditor, withRootChild: boolean): Caret | null => lexicalOf(editor).read(() => {
+        const selection = $getSelection();
+
+        if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+            return null;
+        }
+
+        const node = selection.anchor.getNode();
+        const caret = { type: selection.anchor.type, offset: selection.anchor.offset, on: $isTextNode(node) ? node.getTextContent() : node.getType() };
+
+        return withRootChild ? { ...caret, rootChild: node.getTopLevelElementOrThrow().getIndexWithinParent() } : caret;
+    });
+
+    it.each<CaretRow>([
+        {
+            name:   'RC1: a paste ending on two empty lines leaves the caret on the second',
+            source: PRE,
+            text:   SPLIT,
+            saved:  '<pre>\nx1\n</pre>\n\n<pre>\n\n\nx2\n</pre>',
+            caret:  { type: 'element', offset: 3, on: 'markdown-raw-block', rootChild: 1 },
+        },
+        {
+            name:   'RC2: a paste ending on one empty line leaves the caret on it',
+            source: PRE,
+            text:   '\n</pre>\n\n<pre>\n',
+            saved:  '<pre>\nx1\n</pre>\n\n<pre>\n\nx2\n</pre>',
+            caret:  { type: 'element', offset: 2, on: 'markdown-raw-block', rootChild: 1 },
+        },
+        {
+            name:   'RC3: the same in a comment',
+            source: '<!-- a\nx1\nx2\n-->',
+            text:   '\n-->\n\n<!--\n\n',
+            saved:  '<!-- a\nx1\n-->\n\n<!--\n\n\nx2\n-->',
+            caret:  { type: 'element', offset: 3, on: 'markdown-raw-block', rootChild: 1 },
+        },
+        {
+            name:   'RC4: the same between two paragraphs',
+            source: `a\n\n${PRE}\n\nb`,
+            text:   SPLIT,
+            saved:  'a\n\n<pre>\nx1\n</pre>\n\n<pre>\n\n\nx2\n</pre>\n\nb',
+            caret:  { type: 'element', offset: 3, on: 'markdown-raw-block', rootChild: 2 },
+        },
+        {
+            name:   'RC5: the same in a raw block of a list item',
+            source: '- a\n\n  <pre>\n  x1\n  x2\n  </pre>\n- b',
+            text:   SPLIT,
+            caret:  { type: 'element', offset: 3, on: 'markdown-raw-block' },
+        },
+        {
+            name:   'RC6: text typed after the paste goes onto the empty line the caret stands on',
+            source: PRE,
+            text:   SPLIT,
+            typed:  'Y',
+            saved:  '<pre>\nx1\n</pre>\n\n<pre>\n\nY\nx2\n</pre>',
+        },
+        {
+            name:   'RC7: a paste ending on a line of text leaves the caret in that text (control)',
+            source: PRE,
+            text:   '\n</pre>\n\n<pre>',
+            saved:  '<pre>\nx1\n</pre>\n\n<pre>\nx2\n</pre>',
+            caret:  { type: 'text', offset: 5, on: '<pre>', rootChild: 1 },
+        },
+    ])('$name', ({ source, text, typed, saved, caret }) => {
+        const editor = load(source);
+
+        selectText(editor, ['x1', 2], ['x1', 2]);
+
+        expect(() => pasteText(editor, text)).not.toThrow();
+
+        if (caret !== undefined) {
+            expect(caretOf(editor, caret.rootChild !== undefined)).toEqual(caret);
+        }
+
+        expect(() => lexicalOf(editor).read(() => $getSelection()!.getNodes())).not.toThrow();
+
+        if (typed !== undefined) {
+            lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, typed);
+        }
+
+        if (saved !== undefined) {
+            expect(editor.getValue()).toBe(saved);
+        }
+
+        expectSaveKeepsDocument(editor);
+
+        // The paste and the two blocks the editor then shows are one step: one undo brings the document back.
+        if (typed === undefined) {
+            expectUndoRestores(editor, source);
+        }
+    });
+
+    it('RC8: copied nodes pasted into a raw block whose text then reads as several blocks leave a usable selection', () => {
+        const source = 'w0\n\n<pre>\nx1\n\nx2\n</pre>\n\n<pre>\nx3\n\nx4\n</pre>';
+        const editor = load(source);
+
+        selectText(editor, ['x2', 2], ['x4', 0]);
+
+        const nodes = copySelection(editor);
+
+        selectText(editor, ['x3', 2], ['x3', 2]);
+
+        expect(() => pasteNodes(editor, nodes)).not.toThrow();
+        expect(() => lexicalOf(editor).read(() => $getSelection()!.getNodes())).not.toThrow();
+
+        const saved = editor.getValue();
+
+        expect(load(saved).getValue()).toBe(saved);
+        expectUndoRestores(editor, source);
     });
 });
