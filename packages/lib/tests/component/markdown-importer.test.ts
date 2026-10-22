@@ -31,6 +31,7 @@ import { $isMarkdownImageNode } from '~/component/editor/markdownImageNode';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
+import { canonicalSave } from './markdown-roundtrip/harness';
 import { editorSurfaceModel, linkTargets, viewerModel } from './markdown-roundtrip/viewModel';
 
 const CONFIG = {
@@ -324,6 +325,7 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
     });
 
     it('I18 (a dropped definition before the next block): a token is only found where it starts and ends a line', () => {
+        // The standard-form save: an unedited document saves as loaded (plan markdown-editor-source-preservation, P1).
         // `b`, `a` and `[x]` also occur inside the dropped definitions; matching there split them and repeated text.
         for (const [source, texts] of [
             ['[x]: /a\n[x]: /b\n\nb', ['[x]: /a\n[x]: /b', 'b']],
@@ -333,26 +335,27 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
             const editor = load(source);
 
             expect(rootTexts(editor), source).toEqual(texts);
-            expect(editor.getValue(), source).toBe(texts.join('\n\n'));
-            expect(load(editor.getValue()).getValue(), source).toBe(editor.getValue());
+            expect(canonicalSave(editor), source).toBe(texts.join('\n\n'));
+            expect(canonicalSave(load(canonicalSave(editor))), source).toBe(canonicalSave(editor));
         }
 
         // The definitions stay one run, the reference `[x]` keeps its form, and the dropped line is kept once.
         const editor = load('[x]: /v\n[x]: /u\n[x]');
 
         expect(rootTexts(editor)).toEqual(['[x]: /v\n[x]: /u', 'x']);
-        expect(editor.getValue()).toBe('[x]: /v\n[x]: /u\n\n[x]');
+        expect(canonicalSave(editor)).toBe('[x]: /v\n[x]: /u\n\n[x]');
 
         // A paragraph equal to the dropped definition but for whitespace: only an exact match anchors it. Its
         // shortcut reference starts the paragraph before a `:`, so it is written collapsed (else a definition).
         const spaced = load('[x]: /a\n[x]: </b> "t"\n\n[x]: </b>"t"');
 
         expect(rootTexts(spaced)).toEqual(['[x]: /a\n[x]: </b> "t"', 'x: </b>"t"']);
-        expect(spaced.getValue()).toBe('[x]: /a\n[x]: </b> "t"\n\n[x][]: </b>"t"');
-        expect(viewerModel(spaced.getValue())).toEqual(viewerModel('[x]: /a\n[x]: </b> "t"\n\n[x]: </b>"t"'));
+        expect(canonicalSave(spaced)).toBe('[x]: /a\n[x]: </b> "t"\n\n[x][]: </b>"t"');
+        expect(viewerModel(canonicalSave(spaced))).toEqual(viewerModel('[x]: /a\n[x]: </b> "t"\n\n[x]: </b>"t"'));
     });
 
     it('I7 (a raw block\'s text): a blockquote whose raw marked rebuilt keeps its own source text', () => {
+        // The standard-form save: an unedited document saves as loaded (plan markdown-editor-source-preservation, P1).
         // marked rebuilds the raw of a quote holding a list plus a lazy line (`> - a\n\n<b>`); the raw block must hold
         // the document's text, or the save moves the lazy line out of the quote.
         for (const [source, saved] of [
@@ -368,11 +371,11 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
             ['> - a\n<b>\n\npara\n\n> - a\n\n<b>', '> - a\n<b>\n\npara\n\n> - a\n\n<b>'],
         ] as Array<[string, string]>) {
             const editor = load(source);
-            const value = editor.getValue();
+            const value = canonicalSave(editor);
 
             expect(value, source).toBe(saved);
             expect(viewerModel(value), source).toEqual(viewerModel(source));
-            expect(load(value).getValue(), source).toBe(value);
+            expect(canonicalSave(load(value)), source).toBe(value);
         }
     });
 
@@ -578,18 +581,21 @@ describe('$importMarkdown — authored autolink and span forms (whole-stack revi
         ['a span with its attributes in authored order and an unknown one', '## [a]{size=2em bogus=1 color=red} [b]{bogus=1}'],
     ];
 
+    // The standard-form save: an unedited document saves as loaded (plan markdown-editor-source-preservation, P1).
     for (const [name, source] of rows) {
         it(`${name} saves unchanged, so a heading keeps its id`, () => {
-            expect(load(source).getValue()).toBe(source);
+            expect(canonicalSave(load(source))).toBe(source);
         });
     }
 
     it('an inline link whose text is a www. address stays an inline link', () => {
-        expect(load('### [www.x.test](http://www.x.test)').getValue()).toBe('### [www\\.x.test](http://www.x.test)');
+        expect(canonicalSave(load('### [www.x.test](http://www.x.test)'))).toBe('### [www\\.x.test](http://www.x.test)');
     });
 });
 
 describe('$importMarkdown — round trips (R rows)', () => {
+    // An unedited document saves as loaded (plan markdown-editor-source-preservation, P1), so these rows read the
+    // standard-form save, which is what an edited block writes.
     const rows: Array<[string, string, string]> = [
         ['R1', '_x_', '*x*'],
         ['R2', 'Title\n===', '# Title'],
@@ -623,9 +629,9 @@ describe('$importMarkdown — round trips (R rows)', () => {
 
     for (const [id, source, saved] of rows) {
         it(`${id}: ${JSON.stringify(source)} saves as ${JSON.stringify(saved)}`, () => {
-            expect(load(source).getValue()).toBe(saved);
+            expect(canonicalSave(load(source))).toBe(saved);
             expect(viewerModel(saved)).toEqual(viewerModel(source));
-            expect(load(saved).getValue()).toBe(saved);
+            expect(canonicalSave(load(saved))).toBe(saved);
         });
     }
 });
@@ -1276,7 +1282,7 @@ describe('$importMarkdown — whole-stack review fixes: no source dropped', () =
         const editor = load(source);
 
         expect(rootTypes(editor)).toEqual(['markdown-raw-block']);
-        expect(editor.getValue()).toBe(source);
+        expect(canonicalSave(editor)).toBe(source);
     });
 
     it('a table whose extra body cells are empty is still a table', () => {
@@ -1292,10 +1298,10 @@ describe('$importMarkdown — whole-stack review fixes: code blocks', () => {
 
     for (const [name, source] of rows) {
         it(`${name} keeps its blank lines across saves`, () => {
-            const saved = load(source).getValue();
+            const saved = canonicalSave(load(source));
 
             expect(saved).toBe(source);
-            expect(load(saved).getValue()).toBe(source);
+            expect(canonicalSave(load(saved))).toBe(source);
         });
     }
 });
@@ -1335,7 +1341,7 @@ describe('$importMarkdown — whole-stack review fixes: an HTML block that runs 
 
     for (const [name, source, shown] of unclosed) {
         it(`${name} at the end saves as written while nothing follows it`, () => {
-            expect(load(source).getValue()).toBe(source);
+            expect(canonicalSave(load(source))).toBe(source);
         });
 
         it(`${name} followed by a new block saves so the block after it stays its own`, () => {
@@ -1449,9 +1455,10 @@ describe('$importMarkdown — whole-stack review fixes: combined table merges', 
             const editor = load(source);
 
             expectSurface(editor, source);
-            expect(editor.getValue()).toBe(saved);
+            expect(editor.getValue()).toBe(source);
+            expect(canonicalSave(editor)).toBe(saved);
             expect(viewerModel(saved)).toEqual(viewerModel(source));
-            expect(load(saved).getValue()).toBe(saved);
+            expect(canonicalSave(load(saved))).toBe(saved);
         });
     }
 });

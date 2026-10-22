@@ -373,6 +373,12 @@ page resets to empty.
   `^^` in every covered position render as before. No consumer action is
   needed.
 
+- **`MarkdownEditor` saves only what you edited.** Blocks you did not
+  change keep their exact source — list markers, table padding, line
+  wrapping and blank lines — so a one-word edit no longer reformats the
+  document, and switching to source mode and back leaves the text as it
+  was. No consumer action is needed.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the

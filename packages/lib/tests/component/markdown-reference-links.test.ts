@@ -21,6 +21,7 @@ import { lexMarkdown } from '~/component/display/markdownExtensions';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
+import { canonicalSave } from './markdown-roundtrip/harness';
 import { editorSurfaceModel, viewerModel } from './markdown-roundtrip/viewModel';
 
 // Wraps the viewer's lexer in a spy that still lexes, so a test can count how
@@ -232,7 +233,9 @@ describe('reference links load and save in their own form (RL rows)', () => {
     it('RL12: an undefined label is text in the viewer and the editor', () => {
         const editor = load('see [x][toString]');
 
-        expect(editor.getValue()).toBe('see \\[x\\]\\[toString\\]');
+        // Unedited, it saves as loaded (plan markdown-editor-source-preservation, P1); the standard form escapes it.
+        expect(editor.getValue()).toBe('see [x][toString]');
+        expect(canonicalSave(editor)).toBe('see \\[x\\]\\[toString\\]');
         expect(references(editor)).toEqual([]);
     });
 
