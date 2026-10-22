@@ -69,7 +69,7 @@ const KINDS: readonly Kind[] = [
     ['a heading', '\\# ;cd', '\\# cd', '# cd'],
     ['a level 3 heading', '\\### ;cd', '\\### cd', '### cd'],
     ['a quote', '\\> ;cd', '\\> cd', '> cd'],
-    ['a code fence', '\\`\\`\\` ;cd', '\\`\\`\\` cd', '```\ncd\n```'],
+    ['a code fence', '\\`\\`\\` ;cd', '\\``` cd', '```\ncd\n```'],
 ];
 
 /** One way of removing a selection. */

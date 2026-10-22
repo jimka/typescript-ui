@@ -607,7 +607,7 @@ describe('$serializeMarkdown — further cases the plan specifies', () => {
         })).toBe('| a | b |\n| --- | --- |\n| d | e |\n| ^^ | f |');
     });
 
-    for (const char of ['>', '-', '+', '*', '=', '|', ':', '~', '`']) {
+    for (const char of ['>', '-', '+', '*']) {
         it(`a paragraph starting with ${char} escapes it`, () => {
             const output = serialize(() => [p(`${char} x`)]);
 
@@ -616,11 +616,24 @@ describe('$serializeMarkdown — further cases the plan specifies', () => {
         });
     }
 
-    it('` and ~ are escaped anywhere in text', () => {
-        const output = serialize(() => [p('a`b~c')]);
+    // These open no block at a line start, so they are written bare.
+    for (const char of ['=', '|', ':', '~', '`']) {
+        it(`a paragraph starting with ${char} that opens no block writes it bare`, () => {
+            const output = serialize(() => [p(`${char} x`)]);
 
-        expect(output).toBe('a\\`b\\~c');
-        expect(viewerModel(output).blocks).toEqual([para(run('a`b~c'))]);
+            expect(output).toBe(`${char} x`);
+            expect(viewerModel(output).blocks).toEqual([para(run(`${char} x`))]);
+        });
+    }
+
+    it('a lone ` and ~ need no escape; two of either are escaped', () => {
+        const lone = serialize(() => [p('a`b~c')]);
+        const pairs = serialize(() => [p('a`b`c ~d~')]);
+
+        expect(lone).toBe('a`b~c');
+        expect(viewerModel(lone).blocks).toEqual([para(run('a`b~c'))]);
+        expect(pairs).toBe('a\\`b\\`c \\~d\\~');
+        expect(viewerModel(pairs).blocks).toEqual([para(run('a`b`c ~d~'))]);
     });
 
     it('a code span starting or ending with a backtick is padded inside its fences', () => {
@@ -1972,5 +1985,217 @@ describe('$serializeMarkdown — the same placement for marks however whitespace
         expect(output).toBe('**a b c**[**www\\.d.test**](http://www.d.test) [~~x~~](/p)y');
         expect(serialized(editorWith(build(false)))).toBe(output);
         expect(viewerModel(output).blocks).toEqual(editorSurfaceModel(bareEditor));
+    });
+});
+
+describe('$serializeMarkdown — lean escapes', () => {
+    /** Builds a paragraph's children from a text where `⏎` stands for a line break. */
+    function withBreaks(source: string): Array<LexicalNode | string> {
+        return source.split('⏎').flatMap((part, index) => (index === 0 ? [part] : [br(), part]));
+    }
+
+    /**
+     * Pins that a document saves as `expected` and that the viewer shows that save as the editor shows the document.
+     *
+     * @param build - Creates the root's children.
+     * @param expected - The expected save.
+     */
+    function expectSave(build: () => LexicalNode[], expected: string): void {
+        const editor = editorWith(build);
+        const output = serialized(editor);
+
+        expect(output).toBe(expected);
+        expect(viewerModel(output).blocks).toEqual(editorSurfaceModel(editor));
+    }
+
+    // Each row: the paragraph's text (`⏎` is a line break) and the save. A character is escaped only where it would read otherwise.
+    const paragraphs: Array<[string, string, string]> = [
+        ['L1', '--- tail', '--- tail'],
+        ['L2', '---', '\\---'],
+        ['L3', 'a⏎--- tail', 'a\\\n--- tail'],
+        ['L4', 'a⏎---', 'a\\\n\\---'],
+        ['L5', '--', '--'],
+        ['L6', 'a⏎--', 'a\\\n\\--'],
+        ['L7', '===', '==='],
+        ['L8', 'a⏎===', 'a\\\n\\==='],
+        ['L9', '#tag', '#tag'],
+        ['L10', '# x', '\\# x'],
+        ['L11', '####### foo', '####### foo'],
+        ['L12', '- x', '\\- x'],
+        ['L13', '+1', '+1'],
+        ['L14', '*x*', '\\*x\\*'],
+        ['L15', '***', '\\***'],
+        ['L16', 'a * b', 'a * b'],
+        ['L17', 'a * b *c*', 'a * b \\*c\\*'],
+        ['L18', '2*3', '2*3'],
+        ['L19', '___', '\\___'],
+        ['L20', '_ _ _', '\\_ _ _'],
+        ['L21', '__init__', '\\_\\_init\\_\\_'],
+        ['L22', '_x', '_x'],
+        ['L23', '| a | b |', '| a | b |'],
+        ['L24', '|||', '\\|||'],
+        ['L25', 'a | b⏎--- | ---', 'a | b\\\n\\--- | ---'],
+        ['L26', 'a⏎:-:', 'a\\\n\\:-:'],
+        ['L27', ': x', ': x'],
+        ['L28', '::: x', '\\::: x'],
+        ['L29', '~5 km', '~5 km'],
+        ['L30', '~a~', '\\~a\\~'],
+        ['L31', '~~~', '\\~~~'],
+        ['L32', 'a`b', 'a`b'],
+        ['L33', '```', '\\```'],
+        ['L34', '[a]', '\\[a\\]'],
+        ['L35', '[a](b)', '\\[a\\]\\(b)'],
+        ['L36', '[a]: /url', '\\[a\\]: /url'],
+        ['L37', '1.5 l', '1.5 l'],
+        ['L38', 'a⏎2. x', 'a\\\n2\\. x'],
+        ['L39', 'a ++ b', 'a ++ b'],
+        ['L40', 'a ++ b ++ c', 'a \\+\\+ b \\+\\+ c'],
+    ];
+
+    for (const [id, input, expected] of paragraphs) {
+        it(`${id}: a paragraph of ${JSON.stringify(input)} is saved as ${JSON.stringify(expected)}`, () => {
+            expectSave(() => [p(...withBreaks(input))], expected);
+        });
+    }
+
+    it('J1: a list item of "[ ] mid" keeps both bracket escapes', () => {
+        expectSave(() => [list('bullet', 1, ['[ ] mid'])], '- \\[ \\] mid');
+    });
+
+    it('J2: a list item of "[a]: /url" keeps both bracket escapes', () => {
+        expectSave(() => [list('bullet', 1, ['[a]: /url'])], '- \\[a\\]: /url');
+    });
+
+    it('J3: a list item of "- x" keeps its escape', () => {
+        expectSave(() => [list('bullet', 1, ['- x'])], '- \\- x');
+    });
+
+    it('J4: a list item line "===" under another line keeps its escape', () => {
+        const item = (): LexicalNode => $createListItemNode().append(fill($createMarkdownListItemTextNode(), ['a', br(), '===']));
+
+        expectSave(() => [$createListNode('bullet', 1).append(item())], '- a\\\n  \\===');
+    });
+
+    it('J5: a heading of "***" is saved bare', () => {
+        expectSave(() => [fill($createHeadingNode('h3'), ['***'])], '### ***');
+    });
+
+    it('J6: a heading of "[a]" keeps both bracket escapes', () => {
+        expectSave(() => [fill($createHeadingNode('h3'), ['[a]'])], '### \\[a\\]');
+    });
+
+    it('J7: a quote of "--- tail" is saved bare', () => {
+        expectSave(() => [fill($createQuoteNode(), ['--- tail'])], '> --- tail');
+    });
+
+    it('J8: a pipe in a table cell is still escaped', () => {
+        expectSave(() => [table([cell(true, 'h')], [cell(false, 'a | b')])], '| h |\n| --- |\n| a \\| b |');
+    });
+
+    it('J9: a lone backtick in a table cell is saved bare', () => {
+        expectSave(() => [table([cell(true, 'h')], [cell(false, 'a`b')])], '| h |\n| --- |\n| a`b |');
+    });
+
+    it('J10: a ":::" line in a column keeps its escape', () => {
+        expectSave(
+            () => [fill($createMarkdownBlockNode(), [fill($createMarkdownColumnNode(), [p(':::')]), fill($createMarkdownColumnNode(), [p('B')])])],
+            '::: columns\n\\:::\n|||\nB\n:::',
+        );
+    });
+
+    it('J11: a "|||" line in a column keeps its escape', () => {
+        expectSave(
+            () => [fill($createMarkdownBlockNode(), [fill($createMarkdownColumnNode(), [p('|||')]), fill($createMarkdownColumnNode(), [p('B')])])],
+            '::: columns\n\\|||\n|||\nB\n:::',
+        );
+    });
+
+    it('J12: a "--- tail" line in a column is saved bare', () => {
+        expectSave(
+            () => [fill($createMarkdownBlockNode(), [fill($createMarkdownColumnNode(), [p('--- tail')]), fill($createMarkdownColumnNode(), [p('B')])])],
+            '::: columns\n--- tail\n|||\nB\n:::',
+        );
+    });
+
+    it('J13: a backtick in link text keeps its escape', () => {
+        expectSave(() => [p($createLinkNode('/u').append($createTextNode('x`')))], '[x\\`](/u)');
+    });
+
+    it('J14: brackets in link text keep their escapes', () => {
+        expectSave(() => [p($createLinkNode('/u').append($createTextNode('[a]')))], '[\\\\[a\\\\]](/u)');
+    });
+
+    it('J15: a "]" after a link keeps its escape', () => {
+        expectSave(() => [p($createLinkNode('/u').append($createTextNode('a')), ' b] c')], '[a](/u) b\\] c');
+    });
+
+    it('J16: a "*" right after bold text keeps its escape', () => {
+        expectSave(() => [p(text('a', ['bold']), '*')], '**a**\\*');
+    });
+
+    it('J17: a "~" right after italic text keeps its escape', () => {
+        expectSave(() => [p(text('a', ['italic']), '~b')], '*a*\\~b');
+    });
+
+    it('J18: a spaced "*" before bold text is saved bare', () => {
+        expectSave(() => [p('x * ', text('b', ['bold']))], 'x * **b**');
+    });
+
+    it('J20: a list item of "--" keeps its escape: its marker and the text would form a thematic break', () => {
+        expectSave(() => [list('bullet', 1, ['--'])], '- \\--');
+    });
+
+    it('J21: a list item of "**" in a "*" list keeps its escape', () => {
+        const editor = editorWith(() => {
+            const node = list('bullet', 1, ['**']);
+
+            $setState(node, listMarkerState, '*');
+
+            return [node];
+        });
+        const output = serialized(editor);
+
+        expect(output).toBe('* \\**');
+        expect(viewerModel(output).blocks).toEqual(editorSurfaceModel(editor));
+    });
+
+    it('J22: a nested item of "--" keeps its escape and the nested list its marker', () => {
+        expectSave(() => [list('bullet', 1, ['a', list('bullet', 1, ['--'])])], '- a\n  - \\--');
+    });
+
+    it('J23: a list item of "-x" is saved bare: no thematic break forms', () => {
+        expectSave(() => [list('bullet', 1, ['-x'])], '- -x');
+    });
+
+    // A cell's paragraphs are written as one run, so a lone delimiter in two of them pairs across the break: a cell of
+    // several paragraphs, or a list, keeps every escape.
+    const joinedCells: Array<[string, string, string]> = [
+        ['*', 'a *b', 'c* d'],
+        ['_', 'a _b', 'c_ d'],
+        ['~', 'a ~b', 'c~ d'],
+        ['**', 'a **b', 'c** d'],
+        ['++', 'a ++b', 'c++ d'],
+        ['a backtick', 'a `b', 'c` d'],
+    ];
+
+    for (const [name, first, second] of joinedCells) {
+        const escape = (value: string): string => value.replace(/([*_~+`])/g, '\\$1');
+        const saved = `| h |\n| --- |\n| ${escape(first)}\\n\\n${escape(second)} |`;
+
+        it(`J24: a cell of two paragraphs holding ${name} keeps every escape`, () => {
+            expectSave(() => [table([cell(true, 'h')], [cell(false, first, second)])], saved);
+        });
+
+        it(`J25: a cell holding a list of two items holding ${name} keeps every escape`, () => {
+            expectSave(() => [table([cell(true, 'h')], [$createTableCellNode(TableCellHeaderStates.NO_STATUS).append(list('bullet', 1, [first, second]))])], saved);
+        });
+    }
+
+    it('J26: a cell of one paragraph is still written lean', () => {
+        expectSave(() => [table([cell(true, 'h')], [cell(false, 'a *b')])], '| h |\n| --- |\n| a *b |');
+    });
+
+    it('J19: every escape of a setext heading is kept', () => {
+        expectSave(() => [fill($createHeadingNode('h2'), ['a', br(), '|'])], 'a\\\n\\|\n---');
     });
 });
