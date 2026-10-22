@@ -25,8 +25,8 @@ A **WYSIWYG** editor whose value is a *Markdown* string, built on Lexical.
 
 > Edit on the left; the read-only Markdown viewer on the right stays in sync.
 
-| Column {width=160} | Aligned |
-|:---|:---:|
+| Column | Aligned |
+| :--- {width=160} | :---: |
 | Tables | yes |
 | Merge | << |
 
