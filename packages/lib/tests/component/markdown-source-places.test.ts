@@ -2,6 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { $isElementNode, $isLineBreakNode, $isTextNode } from 'lexical';
 import type { LexicalEditor, LexicalNode, TextNode } from 'lexical';
 import { $dfs } from '@lexical/utils';
+import { expandPrefixTabs, prefixTabLines } from '~/component/display/markdownTabs';
+import { BOLD_SOURCE } from '~/component/editor/markdownSourceEdits';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { $readRawBlockAsBlocks } from '~/component/editor/markdownImporter';
 import { $placeOfSourceOffset, $placeOutsideSourceNode } from '~/component/editor/markdownSourcePlaces';
@@ -10,6 +12,8 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { CORPUS } from './markdown-roundtrip/corpus';
+import { tabDocuments } from './markdown-roundtrip/tabDocuments';
+import { blockOutline, viewerModel } from './markdown-roundtrip/viewModel';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -217,8 +221,8 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
         ['> q1 ¦ **(b)** z', '[q1 ¦ {1:(b)} z]'],
         ['- one _w_¦ next', '[[[one {2:w}¦ next]]]'],
         ['> a 😀¦b **c😀d**', '[a 😀¦b {1:c😀d}]'],
-        ['> a\tb¦\n> \tc', '[a\tb¦{0§: }\tc]'],
-        ['> a\tb\n> ¦\tc', '[a\tb{0§: }¦\tc]'],
+        ['> a\tb¦\n> \tc', '[a\tb¦{0§: }  c]'],
+        ['> a\tb\n> ¦\tc', '[a\tb{0§: }¦  c]'],
     ])('SP1: nothing the block shows changes sides: %j', (marked, expected) => {
         expect(placeOf(marked)).toBe(expected);
     });
@@ -339,25 +343,24 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
     it.each<[string, string | null]>([
         ['>¦', null],
         ['- ¦', null],
-        ['- a¦\n- b\n\t zz', null],
-        ['- a¦ x\n- b\n\t zz', null],
-        ['- a\n- b\n\t z¦z', null],
         ['- a¦\n\n- [x]  zz', null],
         ['- a\n\n- [x]  z¦z', null],
     ])('SP7: there is no place where the block shows nothing, or holds text whose source is not found beside the offset or after it: %j', (marked, expected) => {
         expect(placeOf(marked)).toBe(expected);
     });
 
-    // `marked` 18.1 hands a tab between the words of a list item's text back as written, and reads `[x]` followed by a
-    // tab as text, not as a task item's checkbox: such text has its source found, and an offset in it has a place.
+    // `marked` 18.1 hands a tab between the words of a list item's text back as written. A tab after `[x]` is the
+    // spaces to its tab stop in the dialect's reading, which makes the item a task: its checkbox shows as its source
+    // and the text after it has its source found, so an offset anywhere in the item has a place. The rows after the
+    // checkbox rows are lines of items that a tab indents, which show the spaces it stands for.
     it.each<[string, string | null]>([
-        ['¦- [x]\tAlpha beta', '[[[¦[x]\tAlpha beta]]]'],
-        ['- ¦[x]\tAlpha beta', '[[[¦[x]\tAlpha beta]]]'],
-        ['- [x¦]\tAlpha beta', '[[[[x¦]\tAlpha beta]]]'],
-        ['- [x]¦\tAlpha beta', '[[[[x]¦\tAlpha beta]]]'],
-        ['- [x]\t¦Alpha beta', '[[[[x]\t¦Alpha beta]]]'],
-        ['- a\n- [x]\t¦Alpha beta', '[[[a]][[[x]\t¦Alpha beta]]]'],
-        ['1. [ ]\t¦Alpha', '[[[[ ]\t¦Alpha]]]'],
+        ['¦- [x]\tAlpha beta', '[[[{0§:¦[x] }Alpha beta]]]'],
+        ['- ¦[x]\tAlpha beta', '[[[{0§:¦[x] }Alpha beta]]]'],
+        ['- [x¦]\tAlpha beta', '[[[{0§:¦[x] }Alpha beta]]]'],
+        ['- [x]¦\tAlpha beta', '[[[{0§:¦[x] }Alpha beta]]]'],
+        ['- [x]\t¦Alpha beta', '[[[{0§:[x] }¦Alpha beta]]]'],
+        ['- a\n- [x]\t¦Alpha beta', '[[[a]][[{0§:[x] }¦Alpha beta]]]'],
+        ['1. [ ]\t¦Alpha', '[[[{0§:[ ] }¦Alpha]]]'],
         ['- a\tb w¦ x', '[[[a\tb w¦ x]]]'],
         ['- a\tb w x¦', '[[[a\tb w x¦]]]'],
         ['- a¦\tb w', '[[[a¦\tb w]]]'],
@@ -365,9 +368,31 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
         ['1. a\tb¦ c', '[[[a\tb¦ c]]]'],
         ['- [ ] a\tb¦ c', '[[[{0§:[ ] }a\tb¦ c]]]'],
         ['- a\n  - b\tc¦ d', '[[[a][[[b\tc¦ d]]]]]'],
-        ['- [x]\tA¦lpha beta', '[[[[x]\tA¦lpha beta]]]'],
-        ['- [x]\tAlpha¦ beta', '[[[[x]\tAlpha¦ beta]]]'],
+        ['- a¦\n- b\n\t zz', '[[[a¦]][[b{0§: }   zz]]]'],
+        ['- a¦ x\n- b\n\t zz', '[[[a¦ x]][[b{0§: }   zz]]]'],
+        ['- a\n- b\n\t z¦z', '[[[a]][[b{0§: }   z¦z]]]'],
+        ['- [x]\tA¦lpha beta', '[[[{0§:[x] }A¦lpha beta]]]'],
+        ['- [x]\tAlpha¦ beta', '[[[{0§:[x] }Alpha¦ beta]]]'],
     ])('SP16: a tab in a list item\'s text has its source found: %j', (marked, expected) => {
+        expect(placeOf(marked)).toBe(expected);
+    });
+
+    // A quote or a list an item written in the standard form (a marker at the margin, one space after it) holds as a raw
+    // block shows its text as written, tabs included, so an offset in it has a place. The lexer read the tabs of the
+    // prefixes as the spaces they stand for, and the item's tokens keep their source.
+    it.each<[string, string | null]>([
+        ['¦1. a\n\n   >\t# h', '[[[¦a][>\t# h]]]'],
+        ['1. a\n\n¦   >\t# h', '[[[a][¦>\t# h]]]'],
+        ['1. a\n\n   >¦\t# h', '[[[a][>¦\t# h]]]'],
+        ['1. a\n\n   >\t¦# h', '[[[a][>\t¦# h]]]'],
+        ['1. a\n\n   >\t# h¦', '[[[a][>\t# h¦]]]'],
+        ['¦- a\n\n  > > q\n  > >\tr **b**', '[[[¦a][> > q⏎> >\tr **b**]]]'],
+        ['- a\n\n¦  > > q\n  > >\tr **b**', '[[[a][¦> > q⏎> >\tr **b**]]]'],
+        ['- a\n\n  >¦ > q\n  > >\tr **b**', '[[[a][>¦ > q⏎> >\tr **b**]]]'],
+        ['- a\n\n  > > q\n ¦ > >\tr **b**', '[[[a][> > q⏎¦> >\tr **b**]]]'],
+        ['- a\n\n  > > q\n  > >\tr¦ **b**', '[[[a][> > q⏎> >\tr¦ **b**]]]'],
+        ['- a\n\n  > > q\n  > >\tr **b**¦', '[[[a][> > q⏎> >\tr **b**¦]]]'],
+    ])('SP19: a raw block in a list item holds its source, and an offset in it has a place: %j', (marked, expected) => {
         expect(placeOf(marked)).toBe(expected);
     });
 
@@ -719,6 +744,61 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
         expect(placeOf(`[d]: /a\n\n- t\n\n  [d]: /b\n  [d]: /c\n\n  [${CARET}`)).toBeNull();
     });
 
+    // A tab document reads as its spaces form (the container prefix's tabs written as the spaces they stand for), so
+    // an offset has a place in one exactly when it has one in the other, and the bold command acts on a word in one
+    // exactly when it acts in the other. The documents left out hold a code, HTML, task or table block, whose text shows
+    // the spaces a tab stands for (rows T30 to T33), or a line of markers and tabs that is text (row T42). A word that is
+    // one marker character is left out too.
+    it('SP20: over the generated tab documents, the places and the bold command agree with the spaces form', () => {
+        const differing: string[] = [];
+
+        for (const source of tabDocuments(600)) {
+            const outline = blockOutline(viewerModel(source).blocks);
+            // An item written otherwise than as `- x` or `1. x` (spaces before the marker, a tab or more than one space after it)
+            // that holds a quote keeps the spaces its tabs stand for in the quote's raw block: a save writes the item's
+            // blocks at the item's own column, where those tabs would not keep their width.
+            const holdsQuoteInOddItem = /li\[quote/.test(outline) && /^ *(?:[-*+]|\d+[.)])(?! \S)/m.test(source);
+            const isLeftOut = /code|raw|table|\[[ x]\]/.test(outline) || /\t-\t-/.test(source) || holdsQuoteInOddItem;
+
+            if (isLeftOut) {
+                continue;
+            }
+
+            const expansion = expandPrefixTabs(source);
+            const expandedAt = (offset: number): number => expansion.offsets.indexOf(offset);
+            const text = source.replace(/\n+$/, '');
+            const spaced = expansion.text.replace(/\n+$/, '');
+
+            for (let offset = 1; offset <= text.length; offset += 1) {
+                inUpdate(() => {
+                    const tab = $placeIn(text, offset)?.place ?? null;
+                    const spaces = $placeIn(spaced, expandedAt(offset))?.place ?? null;
+
+                    if ((tab === null) !== (spaces === null)) {
+                        differing.push(JSON.stringify([source, offset]));
+                    }
+                });
+            }
+
+            for (const word of text.matchAll(/[^\s]+/g)) {
+                // A word that is one marker character is syntax in one form and text in the other on a few lines.
+                if (/^(?:[>*+-]|\d+[.)])$/.test(word[0])) {
+                    continue;
+                }
+
+                const at = expandedAt(word.index!);
+                const tabEdit = BOLD_SOURCE(text, word.index!, word.index! + word[0].length);
+                const spacesEdit = BOLD_SOURCE(spaced, at, at + word[0].length);
+
+                if ((tabEdit === null) !== (spacesEdit === null)) {
+                    differing.push(JSON.stringify([source, 'bold', word[0]]));
+                }
+            }
+        }
+
+        expect([...new Set(differing)]).toEqual([]);
+    }, 120_000);
+
     it('SP10: over the round-trip corpus, the place is where a mark put at the offset shows, wherever the mark tells', () => {
         const tails = ['', ' next'];
         const untold: string[] = [];
@@ -754,18 +834,25 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
         }
 
         // Where the mark tells and there is no place, the block shows nothing (not counted above) or holds one of the
-        // three texts whose source is not found that this corpus has: a line of a list item that a tab indents, a link
-        // reference definition that repeats a label, and a character reference. (The other, a task item's checkbox
-        // followed by two spaces in a loose list, is a row of SP7.)
+        // four texts whose source is not found that this corpus has: a code line whose prefix holds a tab, a
+        // paragraph line of markers and tabs, a link reference definition that repeats a label, and a character
+        // reference. (The other, a task item's checkbox followed by two spaces in a loose list, is a row of SP7.)
         const isKnown = (text: string): boolean => {
             const labels = [...text.matchAll(/^\s*\[([^\]]+)\]:/gm)].map((match) => match[1]);
             const repeatsLabel = new Set(labels).size < labels.length;
-            const indentsWithTab = /^[ >]*\t/m.test(text);
+
+            // A code or HTML line of an item whose prefix holds a tab shows the tab as the spaces to its stop (rows T30 to T33),
+            // in a fence, a tag, or after a run of blanks that holds a tab and goes on: `- foo`, a blank line, two tabs.
+            const hasPrefixTab = prefixTabLines(text.split('\n')).some(Boolean);
+            const holdsCodeWithPrefixTab = hasPrefixTab && (text.includes('```') || /<\/?(?:div|pre)>/.test(text) || /^[ >]*(?:(?:[-*+]|\d+[.)])\t[ \t]+|[ ]*\t[ ]*\t[ \t]*)\S/m.test(text));
 
             // `marked` 18.1 hands a character reference back as the character it stands for.
             const holdsCharacterReference = /&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);/.test(text);
 
-            return indentsWithTab || repeatsLabel || holdsCharacterReference;
+            // A paragraph line made of markers and tabs (row T42) shows its tabs as the spaces they are read as.
+            const holdsMarkerLine = /^[ \t]*-\t-\t*$/m.test(text);
+
+            return holdsCodeWithPrefixTab || holdsMarkerLine || repeatsLabel || holdsCharacterReference;
         };
 
         expect(untold.filter((text) => !isKnown(text))).toEqual([]);

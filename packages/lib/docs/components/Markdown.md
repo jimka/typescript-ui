@@ -76,6 +76,23 @@ Every rendered heading carries a slugified `id` (lowercase, non-alphanumerics co
 
 A `::: {…}` fence opens on a line whose trimmed form starts with `:::` and has more after it, and closes on a line whose trimmed form is exactly `:::`; fences nest, tracked by depth. A fenced code block inside a fence is code: a `:::` or `|||` line in it neither opens, closes nor splits anything. The code block ends only at a line holding a run of its own fence character at least as long as its opening run and nothing else but fence characters, as `marked` reads it; like the `:::` and `|||` lines, a code-fence line counts at any indentation, and a code fence or nested `:::` fence opened on a list item's marker line (`- ~~~`, `- ::: {align=right}`) counts too, since the line closing it is indented under the item. A fence in a list item holds blocks like a fence anywhere else: its paragraphs render as paragraphs, with their inline formatting. A code block left open inside a fence hides the fence's closing line, so that fence is unclosed and renders as ordinary paragraphs. An HTML block is not tracked: a `:::` or `|||` line inside one still closes or splits the fence. An unclosed fence (no matching `:::`) renders as ordinary paragraphs — no `<div>` at all. Inside the fence, a line whose trimmed form is exactly `|||` starts a new column; see [Extension syntax](#extension-syntax) for the full column-splitting rule.
 
+### Tabs
+
+A tab in a line's indentation counts as CommonMark counts it: it reaches the next multiple of four columns, counted from the start of the line. `→` is one tab and `·` one space in this table.
+
+| Markdown | Reads as |
+| --- | --- |
+| `→code`, `··→code` | a code block holding `code` |
+| `- a`, a blank line, `··→b` | one list item with two paragraphs: the tab runs from column 2 to column 4, two columns past the item's text |
+| `- a`, `·→- b` | a list nested in the item |
+| `-→a`, `→-→b`, `→→-→c` | three nested lists |
+| `>·→foo` | a quote holding the paragraph `foo` |
+| `>→→foo` | a quote holding the code `··foo` |
+
+A tab after the first character of a line's text is kept as a tab: in a paragraph, a code span, a code block and an HTML block, inside a list item as well. A marker character that starts a line counts as a marker when tabs are counted, wherever the line stands: on a paragraph continuation line such as `-→-→b c` the tabs are read as the spaces to their stop, which changes only the whitespace they stand for in that paragraph.
+
+One reading differs from CommonMark. Inside a list item or a blockquote, a tab in the leading run of spaces, tabs, `>` markers and list markers of a code or HTML line is shown as the spaces that reach its tab stop. `··→bb` in a fenced code block of a `- ` item shows as `··bb`, and `··-→old` shows as `-·old`. CommonMark keeps both tabs.
+
 ### Link resolution
 
 Every link's href passes through the `linkResolver` option before rendering, and the resolution decides both the rendered `href` and whether the anchor carries `target="_blank" rel="noopener noreferrer"`. The default resolver returns `{ href, external: true }` for every href — today's behaviour, unchanged for anyone not passing the option. A consumer embedding `Markdown` in an app with its own routing (e.g. a docs site) can rewrite in-site hrefs and mark them non-external so they navigate in place instead of opening a new tab, while external links stay external:

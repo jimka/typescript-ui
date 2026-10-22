@@ -5,6 +5,8 @@ import {
     formatAttributes, lineEndAt, resolveSpanStyle, spanStyleToAttributes,
 } from "~/component/display/markdownAttributes.js";
 import { lexMarkdown } from "~/component/display/markdownExtensions.js";
+import { containerRanges, expandPrefixTabs } from "~/component/display/markdownTabs.js";
+import type { TabExpansion } from "~/component/display/markdownTabs.js";
 import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
 import type { MdTableToken } from "~/component/display/markdownTableExtension.js";
 
@@ -185,11 +187,133 @@ export function analyzeMarkdownSource(text: string): SourceAnalysis {
  * @returns The analysis.
  */
 function buildAnalysis(text: string): SourceAnalysis {
-    const builder: Builder = { text, cursor: 0, tree: [], parent: null, inlineBlocks: [], inlines: [], entries: [] };
+    const expansion = expandContainerTabs(text);
+    const read = expansion.text;
+    const builder: Builder = { text: read, cursor: 0, tree: [], parent: null, inlineBlocks: [], inlines: [], entries: [] };
 
-    walkBlocks(builder, lexMarkdown(text), text.length);
+    walkBlocks(builder, lexMarkdown(read), read.length);
+    restoreSourceOffsets(builder, expansion.offsets);
 
-    return builder;
+    return { ...builder, text };
+}
+
+/**
+ * Writes the tabs of the container prefixes of `text` as spaces, the way the
+ * list and blockquote tokenizers read them ({@link expandPrefixTabs}): the
+ * lines of the lists and quotes they read ({@link containerRanges}), and no
+ * others, so that the tab of an indented code block at the margin stays. When
+ * the top-level tokens' `raw` do not add up to `text` (a repeated link
+ * reference definition is dropped from them), every line is expanded. The
+ * analysis then reads the same document whether a tab or its spaces stand in
+ * a prefix, and {@link restoreSourceOffsets} maps what it finds back.
+ *
+ * @param text - The Markdown source.
+ * @returns The expanded text and where each of its characters stands in `text`.
+ */
+function expandContainerTabs(text: string): TabExpansion {
+    if (!text.includes("\t")) {
+        return { text, offsets: Array.from({ length: text.length + 1 }, (_, at) => at) };
+    }
+
+    const tokens = lexMarkdown(text);
+    const isWhole = tokens.reduce((length, token) => length + token.raw.length, 0) === text.length;
+
+    if (!isWhole) {
+        return expandPrefixTabs(text);
+    }
+
+    const pieces: string[] = [];
+    const offsets: number[] = [];
+    let position = 0;
+
+    const addSegment = (end: number, expands: boolean): void => {
+        const segment = text.slice(position, end);
+        const expansion = expands ? expandPrefixTabs(segment) : null;
+        const piece = expansion?.text ?? segment;
+
+        pieces.push(piece);
+
+        for (let at = 0; at < piece.length; at += 1) {
+            offsets.push(position + (expansion?.offsets[at] ?? at));
+        }
+
+        position = end;
+    };
+
+    for (const [start, end] of containerRanges(tokens, text)) {
+        addSegment(start, false);
+        addSegment(end, true);
+    }
+
+    addSegment(text.length, false);
+    offsets.push(text.length);
+
+    return { text: pieces.join(""), offsets };
+}
+
+/** A source range an analysis holds, which {@link restoreSourceOffsets} moves back to the source. */
+interface MutableRange {
+    start:       number;
+    end:         number;
+    innerStart?: number;
+    innerEnd?:   number;
+}
+
+/**
+ * Every range an analysis holds, once each: its blocks, inline runs, inline
+ * tokens and the entries' places.
+ *
+ * @param builder - The analysis.
+ * @returns The ranges, which are the analysis's own objects.
+ */
+function rangesOf(builder: Builder): Set<MutableRange> {
+    const ranges = new Set<MutableRange>();
+    const addNodes = (nodes: readonly BuildingNode[]): void => {
+        for (const node of nodes) {
+            ranges.add(node);
+            addNodes(node.children);
+        }
+    };
+
+    addNodes(builder.tree);
+    builder.inlineBlocks.forEach((block) => ranges.add(block));
+    builder.inlines.forEach((inline) => ranges.add(inline));
+
+    for (const entry of builder.entries) {
+        ranges.add(entry);
+        entry.ancestors.forEach((inline) => ranges.add(inline));
+    }
+
+    return ranges;
+}
+
+/**
+ * Maps the offsets an analysis of expanded text found back to the source.
+ * A character a tab stands for is at the tab; a range ends just past the
+ * source character its last character came from; `-1` stays `-1`.
+ *
+ * @param builder - The analysis, whose offsets are in the expanded text; changed in place.
+ * @param offsets - The source offset of each expanded character, and the source's length.
+ */
+function restoreSourceOffsets(builder: Builder, offsets: readonly number[]): void {
+    const startOf = (at: number): number => (at < 0 ? at : offsets[at]!);
+    const endOf = (at: number, from: number): number => {
+        const past = at <= 0 ? at : offsets[at - 1]! + 1;
+
+        return at < 0 ? at : Math.max(startOf(from), past);
+    };
+
+    for (const range of rangesOf(builder)) {
+        const { start, end, innerStart, innerEnd } = range;
+
+        range.start = startOf(start);
+        range.end = endOf(end, start);
+
+        if (innerStart !== undefined && innerEnd !== undefined) {
+            range.innerStart = startOf(innerStart);
+            range.innerEnd = endOf(innerEnd, innerStart);
+        }
+    }
 }
 
 /**

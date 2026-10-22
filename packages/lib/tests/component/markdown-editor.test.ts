@@ -38,6 +38,7 @@ import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState } from '@codemirror/state';
 import { editorSurfaceModel, viewerModel } from './markdown-roundtrip/viewModel';
 import { canonicalSave } from './markdown-roundtrip/harness';
+import { expandPrefixTabs } from '~/component/display/markdownTabs';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -1245,6 +1246,8 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['Z1', '- one\n-\n- three', 'one', null, 'OL', '1. one\n\n-\n- three', '1. one\n-\n- three'],
         // A tab in an item's text is content: both surfaces keep it.
         ['E19', '- one\ttab\n- z', 'one', null, 'h2', '## one\ttab\n\n- z', '## one\ttab\n- z'],
+        // A tab in a code span is content too.
+        ['E37', '- a `x\ty`\n- z', 'a', null, 'h2', '## a `x\ty`\n\n- z', '## a `x\ty`\n- z'],
         // A code block made from a heading holds the heading's text as the heading's own line holds it: none of the
         // escapes a paragraph's line needs at its start, and the escape of a last `#` run, which the line needs.
         ['E41', '### +alpha', 'alpha', null, 'code', '```\n+alpha\n```', '```\n+alpha\n```'],
@@ -1312,6 +1315,8 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['E16', 'one\\\ntwo', 'one', 'two', 'h2', 'one\\\ntwo\n---', 'one\\\ntwo'],
         ['E17', '- one\\\n  two\n- three', 'one', 'three', 'UL', 'one\\\ntwo\n\nthree', '- one\\\n  two\n- three'],
         ['E19', '-\tone\n\n\tsecond\n- two', 'one', null, 'UL', 'one\n\nsecond\n\n- two', '-\tone\n\n\tsecond\n- two'],
+        // The code block leaves the list on the WYSIWYG surface alone, as in the E24 rows; its tab is kept on both.
+        ['E38', '- one\n\n  ```\n  a\tb\n  ```\n\n- two', 'one', null, 'UL', 'one\n\n```\na\tb\n```\n\n- two', 'one\n\n- ```\n  a\tb\n  ```\n\n- two'],
         // The source-mode lift rule is deferred: what a list item holds after its text leaves the list with the
         // text on the WYSIWYG surface, and stays in the list in source mode, in an item its marker re-opens. A
         // task item that holds such blocks, or a nested list, is left alone there. Each row below is a row the
@@ -1426,8 +1431,6 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         // A block or a nested list indented with a tab: the block itself, and a block before it in the item.
         ['E24', '- one\n\n\tsecond\n- two', 'one', null, 'UL', 'one\n\nsecond\n\n- two', '- one\n\n\tsecond\n- two'],
         ['E24', '- one\n\n\tsecond\n- two', 'one', null, 'h2', '## one\n\nsecond\n\n- two', '- one\n\n\tsecond\n- two'],
-        ['E25', '- one\n\n\tsecond\n- two', 'second', null, 'UL', '- one\n\n- second\n\n- two', '- one\n\n\tsecond\n- two'],
-        ['E26', '- one\n\t- nested\n- two', 'nested', null, 'UL', '- one\n\nnested\n\n- two', '- one\n\t- nested\n- two'],
         ['E27', '- one\n\t- nested\n- two', 'one', null, 'UL', 'one\n\n- - nested\n- two', '- one\n\t- nested\n- two'],
         // Text opening with an unescaped `[ ] `, which a new item would read as a task marker (the editor writes
         // `\\[ \\]`), and the block before such text in a list item, which the item's marker would re-open as one.
@@ -1488,6 +1491,16 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
             expect(viewerModel(source).blocks).not.toEqual(viewerModel(wysiwyg).blocks);
         });
     }
+
+    // A block or a nested list indented with a tab lifts in source mode as it lifts written with the spaces the tab
+    // stands for. These two were `DIFFERS` rows while the tab kept the command from finding the block.
+    it.each<[string, string, string, string]>([
+        ['E25', '- one\n\n\tsecond\n- two', 'second', '- one\n\n- second\n- two'],
+        ['E26', '- one\n\t- nested\n- two', 'nested', '- one\n\nnested\n\n- two'],
+    ])('%s: source mode lifts the tab-indented block as it lifts its spaces form', (id, tabbed, text, expected) => {
+        expect(sourceAfter([id, tabbed, text, null, 'UL', '', ''])).toBe(expected);
+        expect(sourceAfter([id, expandPrefixTabs(tabbed).text, text, null, 'UL', '', ''])).toBe(expected);
+    });
 
     // A list the WYSIWYG surface keeps as a raw Markdown block is no list there. These two documents still hold that
     // block after the command, which the editor shows as text and the viewer as a list, so they are no `DIFFERS` rows.
@@ -2075,6 +2088,52 @@ describe('MarkdownEditor value round-trip (idempotence)', () => {
             expect(normalize(v1)).toBe(normalize(doc));
         });
     }
+});
+
+// A quote or list a list item holds as a raw Markdown block shows and saves its tabs. The lexer reads the lines with the
+// tabs of their prefixes as the spaces they stand for, so these rows would show spaces and save them once the item was
+// edited elsewhere if the tokens did not keep their source. R1 keeps the block's two columns of indentation next to the
+// item's own, because a dedent that moves a line with a prefix tab is refused.
+describe('MarkdownEditor raw blocks in a list item keep their tabs', () => {
+    it.each<[string, string, string]>([
+        ['R1: a quote after a blank line, a tab before and after its marker', '- a\n\n\t>\t# h', '- **a**\n\n    >\t# h'],
+        ['R2: a quote in a quote, a tab after the inner marker', '- a\n\n  > > q\n  > >\tr **b**', '- **a**\n\n  > > q\n  > >\tr **b**'],
+    ])('%s: bolding the item\'s text saves the block as written', (_title, source, saved) => {
+        const editor = new MarkdownEditor();
+
+        editor.setValue(source);
+        lexicalOf(editor).update(() => {
+            $getRoot().getAllTextNodes().find((node) => node.getTextContent() === source.match(/[a-z]/)![0])!.select(0, 1);
+        }, { discrete: true });
+        editor.toggleBold();
+
+        expect(editor.getValue()).toBe(saved);
+    });
+});
+
+// CommonMark strips the whitespace a paragraph line opens with, and the viewer shows none of it. The WYSIWYG
+// surface's text holds none either, whether the document writes the indentation as spaces or as a tab. The
+// round-trip harness collapses whitespace, so it cannot see the difference; this reads the text as it is.
+describe('MarkdownEditor WYSIWYG text of paragraph lines', () => {
+    it.each<[string, string, string]>([
+        ['W1: a quote whose lines follow a marker and spaces', '>   foo bar\n>   baz', 'foo bar baz'],
+        ['W2: a quote whose lines follow a marker and a tab', '>\tfoo bar\n>\tbaz', 'foo bar baz'],
+        ['W3: a quote line continued after a space and a tab', '> one\n> \ttwo', 'one two'],
+        ['W4: an item line indented by spaces', '- a\n   b', 'a b'],
+        ['W5: an item line indented by a tab', '- a\n\tb', 'a b'],
+        ['W6: a paragraph line indented by spaces', 'a\n   b', 'a b'],
+        // W7 is a guard row: it passes without the blank-dropping too, and keeps a hard break's line from losing its text.
+        ['W7: a line after a hard break', 'a  \n   b', 'a\nb'],
+    ])('%s', (_title, source, expected) => {
+        const editor = new MarkdownEditor();
+
+        editor.setValue(source);
+
+        const text = lexicalOf(editor).getEditorState().read(() => $getRoot().getTextContent());
+
+        expect(text).toBe(expected);
+        editor.dispose();
+    });
 });
 
 // These cover the mode API's offline-observable behaviour (get/set mode, the

@@ -829,3 +829,44 @@ function collectRunLinks(runs: Run[], targets: string[]): void {
         previous = link;
     }
 }
+
+/**
+ * Writes a block's literal text for an outline: a tab as `→` and a line feed as `⏎`, so both show in a test title.
+ *
+ * @param text - A code block's or raw block's text.
+ * @returns The text on one line.
+ */
+function outlineText(text: string): string {
+    return text.replace(/\n+$/, '').replace(/\t/g, '→').replace(/\n/g, '⏎');
+}
+
+/**
+ * Writes the text of a heading's or paragraph's runs for an outline.
+ *
+ * @param runs - The runs.
+ * @returns Their text, an image as `!` and a line break as `⏎`.
+ */
+function outlineRuns(runs: Run[]): string {
+    return runs.map((run) => (run.kind === 'text' ? run.text : run.kind === 'image' ? '!' : '⏎')).join('');
+}
+
+/**
+ * Writes blocks as one line: `p"text"`, `h2"text"`, `code"text"`, `raw"text"`, `quote[…]`, `ul[li[…] li[…]]` or
+ * `ol[…]` (with `!` after the name of a loose list), `table` and `fence`.
+ *
+ * @param blocks - The blocks of a document, a quote or a list item.
+ * @returns The outline.
+ */
+export function blockOutline(blocks: Block[]): string {
+    return blocks.map((block) => {
+        switch (block.kind) {
+            case 'paragraph': return `p"${outlineRuns(block.runs)}"`;
+            case 'heading':   return `h${block.depth}"${outlineRuns(block.runs)}"`;
+            case 'code':      return `code"${outlineText(block.text)}"`;
+            case 'raw':       return `raw"${outlineText(block.text)}"`;
+            case 'quote':     return `quote[${blockOutline(block.blocks)}]`;
+            case 'list':      return `${block.ordered ? 'ol' : 'ul'}${block.loose ? '!' : ''}[${block.items.map((item) => `li[${blockOutline(item)}]`).join(' ')}]`;
+            default:          return block.kind;
+        }
+    }).join(' ');
+}

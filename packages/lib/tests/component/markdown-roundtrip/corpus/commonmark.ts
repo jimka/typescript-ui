@@ -3,7 +3,16 @@ import type { CorpusCase } from './types';
 /** CommonMark Spec 0.31.2 examples, copied verbatim with their trailing newline and named by example number and section. */
 export const COMMONMARK_CASES: readonly CorpusCase[] = [
     { name: 'CommonMark 1 (Tabs)', source: '\tfoo\tbaz\t\tbim\n' },
+    { name: 'CommonMark 2 (Tabs)', source: '  \tfoo\tbaz\t\tbim\n', blocks: 'code"foo→baz→→bim"' },
+    { name: 'CommonMark 3 (Tabs)', source: '    a\ta\n    ὐ\ta\n', blocks: 'code"a→a⏎ὐ→a"' },
+    { name: 'CommonMark 4 (Tabs)', source: '  - foo\n\n\tbar\n', blocks: 'ul![li[p"foo" p"bar"]]' },
+    { name: 'CommonMark 5 (Tabs)', source: '- foo\n\n\t\tbar\n', blocks: 'ul![li[p"foo" code"  bar"]]' },
+    { name: 'CommonMark 6 (Tabs)', source: '>\t\tfoo\n', blocks: 'quote[code"  foo"]', known: { surface: 'quoteBlocks' } },
+    { name: 'CommonMark 7 (Tabs)', source: '-\t\tfoo\n', blocks: 'ul[li[code"  foo"]]' },
+    { name: 'CommonMark 8 (Tabs)', source: '    foo\n\tbar\n', blocks: 'code"foo⏎bar"' },
+    { name: 'CommonMark 9 (Tabs)', source: ' - foo\n   - bar\n\t - baz\n', blocks: 'ul[li[p"foo" ul[li[p"bar" ul[li[p"baz"]]]]]]' },
     { name: 'CommonMark 10 (Tabs)', source: '#\tFoo\n' },
+    { name: 'CommonMark 11 (Tabs)', source: '*\t*\t*\t\n', blocks: 'raw"* * *"' },
     { name: 'CommonMark 15 (Backslash escapes)', source: '\\\\*emphasis*\n' },
     { name: 'CommonMark 16 (Backslash escapes)', source: 'foo\\\nbar\n' },
     { name: 'CommonMark 17 (Backslash escapes)', source: '`` \\[\\` ``\n' },

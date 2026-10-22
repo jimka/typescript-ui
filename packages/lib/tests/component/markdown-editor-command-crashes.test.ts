@@ -1316,6 +1316,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         { id: 'TE59', name: 'after bold text of a raw quote → before a hard break (the caret after formatted text, a line break after it)', source: '> **b** w\n>\n> q2\n\nab\\\ncd', start: ['> **b** w', 7], end: ['ab', 2], typed: '> **bx**\\\n> cd', deleted: '> **b**\\\n> cd' },
         { id: 'TE60', name: 'a raw quote\'s marker → before two spaces (the caret before spaces of which one shows)', source: `${RAW_QUOTE_ALONE}\n\nend.  Next\n\nmore`, start: ['> q1', 1], end: ['end.  Next', 4], typed: '> x Next\n\nmore', deleted: '> Next\n\nmore' },
         { id: 'TE61', name: 'a later line\'s marker of a raw quote → before two spaces', source: `${RAW_QUOTE_ALONE}\n\nab  cd\n\nmore`, start: ['>', 1], end: ['ab  cd', 2], typed: '> q1\n> x cd\n\nmore', deleted: '> q1\n> cd\n\nmore' },
+        { id: 'TE89', name: 'a raw quote\'s text after its marker → before two spaces (the edit started after the marker)', source: `${RAW_QUOTE_ALONE}\n\nend.  Next\n\nmore`, start: ['> q1', 2], end: ['end.  Next', 4], typed: '> x  Next\n\nmore', deleted: '> Next\n\nmore' },
         { id: 'TE62', name: 'raw start → a later block\'s end (the raw block emptied)', source: `${RAW}\n\nafter\n\nlast`, start: ['<div>', 0], end: ['after', 5], typed: 'x\n\nlast', deleted: 'last' },
         { id: 'TE63', name: 'raw start → the end of the document (the raw block emptied, nothing left)', source: `${RAW}\n\nafter`, start: ['<div>', 0], end: ['after', 5], typed: 'x', deleted: '' },
         { id: 'TE64', name: 'the start of a list item\'s raw block → the end of that item\'s paragraph (the raw block emptied)', source: '- one\n\n  <div>\n  raw text\n  </div>\n\n  para\n- z\n\nafter', start: ['<div>', 0], end: ['para', 4], typed: '- one\n\n  x\n\n- z\n\nafter', deleted: '- one\n\n- z\n\nafter' },
@@ -1831,6 +1832,8 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         ['TP7: a quote\'s marker stands before the caret and bold text after it', '> q1\n>\n> **b** x\n\nafter', ['> q1', 2], ['> **b** x', 2], 'Delete', '> **b** x\n\nafter', '"b"@0'],
         // A caret inside a link's address shows in no text: the link's text is before it, and what follows the link after it.
         ['TP6: the caret stands inside a link\'s address', '> [k](/abzz\n>\n> cd) t\n\nafter', ['> [k](/abzz', 9], ['> cd) t', 3], 'Delete', '> [k](/abd) t\n\nafter', '" t"@0'],
+        // A tab that indents a list item's line past the item's text has its source found: the line shows none of its blanks.
+        ['TP9: a list item\'s line that a tab indents stands after the caret', '- a\n  > q\n- b\n\t zz\n\nafter', ['  > q', 2], ['  > q', 5], 'Delete', '- a\n\n- b\n  zz\n\nafter', '"b"@0'],
         ['TP8: italic text written with underscores stands before the caret, and a space after it', '> a _b_ c\n>\n> q2\n\nafter', ['> a _b_ c', 7], ['> q2', 1], 'Delete', '> a *b* q2\n\nafter', '" q2"@0'],
     ])('%s: an edit inside one raw block that makes it show as its blocks keeps the caret\'s place', async (_name, source, anchor, focus, route, expected, caret) => {
         const editor = load(source);
@@ -1845,8 +1848,6 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
     it.each<[string, string, TextPoint, TextPoint, Route, string, string]>([
         // A block that shows nothing has one place.
         ['TL1: a quote that shows nothing', `${RAW_QUOTE_ALONE}\n\nafter`, ['> q1', 1], ['after', 5], 'Delete', '>', 'quote@0 -> quote@0'],
-        // A tab that indents a list item's line past the item's text shows as spaces the source does not hold.
-        ['TL2: a list item\'s line that a tab indents, after the caret', '- a\n  > q\n- b\n\t zz\n\nafter', ['  > q', 2], ['  > q', 5], 'Delete', '- a\n\n- b\n  zz\n\nafter', '"   zz"@5 -> "   zz"@5'],
         // `marked` hands a task item's text back without the spaces that open it.
         ['TL3: a task item\'s text that opens with a space, after the caret', '- a\n  > q\n- [x]  zz\n\nafter', ['  > q', 2], ['  > q', 5], 'Delete', '- a\n\n- [x] zz\n\nafter', '"zz"@2 -> "zz"@2'],
     ])('%s: the caret goes to the end of its block (the limit)', async (_name, source, anchor, focus, route, expected, caret) => {

@@ -651,7 +651,7 @@ describe('a raw quote ending on a line without > that starts an HTML block keeps
         // read so. Moved onto the item's marker line by an edit, that indentation would shift the whole item.
         ['Q13: a quote whose lazy lines only read so indented', '* w0\n\t> q1\n\t<div\n\t::: {align=center}\n\tf2\n\t:::\n* w3\n\n\tp',
             'list(markdown-list-item(markdown-list-item-text("w0"), markdown-raw-block("> q1", linebreak, "  <div", linebreak, "  ::: {align=center}", linebreak, "  f2", linebreak, "  :::")), '
-            + 'markdown-list-item(markdown-list-item-text("w3"), paragraph("  p")))'],
+            + 'markdown-list-item(markdown-list-item-text("w3"), paragraph("p")))'],
     ])('%s: a quote whose last line is indented deeper than the quote is a raw block of its item', (_name, source, shape) => {
         const editor = load(source);
 

@@ -1487,6 +1487,17 @@ describe('line commands act on the blocks the viewer reads', () => {
         expect(apply('-\tone\n- two', blockPrefixSource('## ')('-\tone\n- two', 2, 2)!)).toBe('## one\n- two');
     });
 
+    // The tab after `>` is three columns wide here. Source mode acts on the list as it acts on its spaces form,
+    // which writes the list's markers three columns in.
+    it('S2. acts on an item of a list in a quote whose markers a tab after the quote marker indents, as on its spaces form', () => {
+        const text = '>\t- a\n>\t- b';
+        const spaced = '>   - a\n>   - b';
+
+        expect(apply(text, blockPrefixSource('## ')(text, 4, 4)!)).toBe('## a\n>\t- b');
+        expect(apply(spaced, blockPrefixSource('## ')(spaced, 4, 4)!)).toBe('## a\n>   - b');
+        expect(apply(text, listSource('unordered')(text, 4, 4)!)).toBe('a\n>\t- b');
+    });
+
     it('lifts a block out of a quote that a list item holds, and re-opens the item on the quote\'s next line', () => {
         const other = '- outer\n\n  > - one\n  >\n  >   held\n  >\n  > 1. other list\n- z';
 
@@ -2056,5 +2067,83 @@ describe('REMOVE_LINK_SOURCE — a link nested in a link (whole-stack review fix
         const [from, to] = rangeOf(text, 'a');
 
         expect(REMOVE_LINK_SOURCE(text, from, to)).toBeNull();
+    });
+});
+
+// A tab in a line's container prefix is the spaces to its tab stop in the lexer's reading, so the tokens of a
+// quote's or item's content hold spaces where the source holds the tab. The commands and the toolbar state act on
+// these documents as they act on their spaces forms.
+describe('a tab in a container prefix', () => {
+    const QUOTE = '>\tfoo bar\n>\tbaz';
+    const CONTINUED = '> one\n> \ttwo';
+    const ITEM = '- foo bar\n  \tbaz';
+    const TABBED_ITEM = '- foo bar\n\tbaz';
+    const TASK = '- [ ]\tAlpha beta';
+
+    it.each<[string, string, number, number, string]>([
+        ['TB1: the first line of a quote whose lines follow a marker and a tab', QUOTE, 2, 5, '>\t**foo** bar\n>\tbaz'],
+        ['TB2: the second line of that quote', QUOTE, 12, 15, '>\tfoo bar\n>\t**baz**'],
+        ['TB3: the first line of a quote continued after a space and a tab', CONTINUED, 2, 5, '> **one**\n> \ttwo'],
+        ['TB4: the continued line of that quote', CONTINUED, 9, 12, '> one\n> \t**two**'],
+        ['TB5: a line of an item indented by two spaces and a tab', ITEM, 13, 16, '- foo bar\n  \t**baz**'],
+        ['TB6: a line of an item indented by a tab', TABBED_ITEM, 11, 14, '- foo bar\n\t**baz**'],
+        // TB7 is a guard row: the text after a checkbox acted on before the source analysis read tabs by column.
+        ['TB7: the text after a task item\'s checkbox and a tab', TASK, 12, 16, '- [ ]\tAlpha **beta**'],
+        ['TB7b: a continued line of a task item written with a checkbox and a tab', '- [ ]\tAlpha beta\n\tgamma delta', 18, 23, '- [ ]\tAlpha beta\n\t**gamma** delta'],
+    ])('%s: bold acts', (_title, text, from, to, expected) => {
+        expect(apply(text, BOLD_SOURCE(text, from, to)!)).toBe(expected);
+    });
+
+    it('TB8: a link acts on text in a quote after a marker and a tab, and on a continued line', () => {
+        expect(apply(QUOTE, linkSource('u')(QUOTE, 2, 5)!)).toBe('>\t[foo](u) bar\n>\tbaz');
+        expect(apply(CONTINUED, linkSource('u')(CONTINUED, 9, 12)!)).toBe('> one\n> \t[two](u)');
+    });
+
+    it('TB9: the heading command acts on a quote whose lines follow a marker and a tab', () => {
+        expect(apply(QUOTE, blockPrefixSource('## ')(QUOTE, 3, 3)!)).toBe('## foo bar\n## baz');
+    });
+
+    it('TB10: the toolbar state reads a bold run in a quote after a marker and a tab', () => {
+        expect(readSourceSelectionState('>\t**foo** bar', 4, 7).bold).toBe(true);
+        expect(readSourceSelectionState('> one\n> \t**two**', 11, 14).bold).toBe(true);
+        expect(readSourceSelectionState('- [ ]\tAlpha **beta**', 14, 18).bold).toBe(true);
+    });
+
+    // Two tabs in one line's prefix, a tab after a lazy task line, and quotes nested in items: each acts as its spaces form
+    // does, with the tabs left where they stand.
+    it.each<[string, string, number, string, string, string | null]>([
+        ['TB11: a list in a quote, a tab after each marker', '>\t-\tx y', 4, '>\t-\t**x** y', '>\t-\t[x](u) y', '## x y'],
+        ['TB12: a quote in a quote, a tab after each marker', '>\t>\tx', 4, '>\t>\t**x**', '>\t>\t[x](u)', '## x'],
+        ['TB13: a lazy line of a task item opened by a tab', '* [ ]\tc d\n   \t[ ] y z', 6, '* [ ]\t**c** d\n   \t[ ] y z', '* [ ]\t[c](u) d\n   \t[ ] y z', '## \\[ \\] c d\n## [ ] y z'],
+        ['TB14: a quote in an item, tabs after the marker and in the next line', '1.\t> x\n\t  >\t---', 5, '1.\t> **x**\n\t  >\t---', '1.\t> [x](u)\n\t  >\t---', '## x'],
+        ['TB15: a quote in an item, a tab after its marker', '-\t>\t# h\n\t>', 6, '-\t>\t# **h**\n\t>', '-\t>\t# [h](u)\n\t>', null],
+        ['TB16: a quote in a quote in an item, a tab after the inner marker', '- > a\n  >\t> b', 4, '- > **a**\n  >\t> b', '- > [a](u)\n  >\t> b', '## a\n- >\t> b'],
+        ['TB17: an item whose marker is followed by spaces and a tab, a line indented by a space and a tab', '-  \tx\n \t  w', 4, '-  \t**x**\n \t  w', '-  \t[x](u)\n \t  w', '## x\n## w'],
+        ['TB18: a task item opened by a tab, an item indented by a tab after it', '   * [ ] a\tb\n\t- ```', 9, '   * [ ] **a**\tb\n\t- ```', '   * [ ] [a](u)\tb\n\t- ```', '## \\[ \\] a\tb\n## - ```'],
+    ])('%s', (_title, text, at, bold, link, heading) => {
+        const word = /[A-Za-z]/.exec(text.slice(at))![0].length;
+
+        expect(apply(text, BOLD_SOURCE(text, at, at + word)!)).toBe(bold);
+        expect(apply(text, linkSource('u')(text, at, at + word)!)).toBe(link);
+
+        // The heading command lifts the block, and a tab on a line it keeps stays a decline of source mode.
+        const edit = blockPrefixSource('## ')(text, at, at);
+
+        expect(edit === null ? null : apply(text, edit)).toBe(heading);
+    });
+
+    // A tab after a quote marker inside a `:::` column is read like one outside it.
+    it.each<[string, string, string, string, string | null]>([
+        ['TB22: a quote in the only column of a fence', '::: {gap=2}\n>\tq r\n:::', 'q', '::: {gap=2}\n>\t**q** r\n:::', '::: {gap=2}\n## q r\n:::'],
+        ['TB23: a quote in the second column of a fence', '::: {gap=2}\nx\n|||\n>\tq r\n:::', 'q', '::: {gap=2}\nx\n|||\n>\t**q** r\n:::', '::: {gap=2}\nx\n|||\n## q r\n:::'],
+    ])('%s', (_title, text, word, bold, heading) => {
+        const at = text.lastIndexOf(word === 'b' ? 'b c' : 'q r');
+
+        expect(apply(text, BOLD_SOURCE(text, at, at + 1)!)).toBe(bold);
+        expect(readSourceSelectionState(bold, bold.indexOf('**') + 2, bold.indexOf('**') + 3).bold).toBe(true);
+
+        const edit = blockPrefixSource('## ')(text, at, at);
+
+        expect(edit === null ? null : apply(text, edit)).toBe(heading);
     });
 });

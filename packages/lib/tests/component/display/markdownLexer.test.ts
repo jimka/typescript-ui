@@ -24,6 +24,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Lexer } from 'marked';
 import type { Token, Tokens } from 'marked';
+import { tabDocuments } from '../markdown-roundtrip/tabDocuments';
 import { lexMarkdown, lexMarkdownUnbounded, type MdBlockToken } from '~/component/display/markdownExtensions';
 import type { MdTableToken } from '~/component/display/markdownTableExtension';
 import { Markdown } from '~/component/display/Markdown';
@@ -644,6 +645,74 @@ describe('a blockquote\'s raw is the source it used', () => {
             const joined = joinedRaws(lexMarkdown(source));
 
             if (joined !== source) {
+                differing.push(`#${index}: ${JSON.stringify(source)}`);
+            }
+        });
+
+        expect(differing).toEqual([]);
+    });
+});
+
+describe('a tab counts to its tab stop, and a content tab is kept', () => {
+    it('LX30. keeps the tab of a code span in a list item', () => {
+        const list = lexMarkdown('- a `x\ty`')[0] as Tokens.List;
+        const text = list.items[0]!.tokens[0] as Tokens.Text;
+
+        expect(list.items[0]!.text).toBe('a `x\ty`');
+        expect(text.tokens![1]).toMatchObject({ type: 'codespan', text: 'x\ty' });
+    });
+
+    it('LX31. sets a list\'s raw and each item\'s back to the source', () => {
+        const source = '-\tone\n\n\tsecond\n- two\n\nafter';
+        const tokens = lexMarkdown(source);
+        const list = tokens[0] as Tokens.List;
+
+        expect(list.raw).toBe('-\tone\n\n\tsecond\n- two');
+        expect(list.items.map((item) => item.raw)).toEqual(['-\tone\n\n\tsecond\n', '- two']);
+        expect(list.items.map((item) => item.text)).toEqual(['one\n\nsecond', 'two']);
+        expect(joinedRaws(tokens)).toBe(source);
+    });
+
+    it('LX32. keeps the tab of an HTML block in a list item', () => {
+        const list = lexMarkdown('- <pre>\n  a\tb\n  </pre>')[0] as Tokens.List;
+
+        expect(list.items[0]!.tokens[0]).toMatchObject({ type: 'html', text: '<pre>\na\tb\n</pre>' });
+    });
+
+    it('LX33. takes a tab after spaces off an indented code line', () => {
+        expect(lexMarkdown('  \tfoo\n\nafter')[0]).toMatchObject({ type: 'code', raw: '  \tfoo', text: 'foo' });
+    });
+
+    it('LX34. takes one column off a tab-indented line under a fence indented by one space', () => {
+        const source = ' ```\n\tx\n ```\nafter';
+        const tokens = lexMarkdown(source);
+
+        expect(tokens[0]).toMatchObject({ type: 'code', raw: ' ```\n\tx\n ```\n', text: '   x' });
+        expect(joinedRaws(tokens)).toBe(source);
+    });
+
+    it('LX35. sets a quote\'s raw back to the source, lazy line included', () => {
+        const source = '> - a\n>\t- b\nlazy\n\nafter';
+        const tokens = lexMarkdown(source);
+        const quote = tokens[0] as Tokens.Blockquote;
+
+        expect(quote).toMatchObject({ type: 'blockquote', raw: '> - a\n>\t- b\nlazy' });
+        expect((quote.tokens[0] as Tokens.List).items).toHaveLength(1);
+        expect(joinedRaws(tokens)).toBe(source);
+    });
+
+    // 3,000 draws give 2,932 documents. Both checks hold before the tab tokenizers too: this row guards the two
+    // `raw` restores and the windows.
+    it('LX36. joins the top-level raws of 3,000 drawn tab documents back into each document, as the unbounded twin lexes them', () => {
+        const differing: string[] = [];
+
+        tabDocuments(3_000).forEach((source, index) => {
+            const tokens = lexMarkdown(source);
+
+            try {
+                expect(joinedRaws(tokens)).toBe(source);
+                expect(tokens).toEqual(lexMarkdownUnbounded(source));
+            } catch {
                 differing.push(`#${index}: ${JSON.stringify(source)}`);
             }
         });

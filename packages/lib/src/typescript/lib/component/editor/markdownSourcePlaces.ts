@@ -137,13 +137,14 @@ const NO_INLINES: readonly SourceInline[] = [];
  * nothing, and where the block holds, beside the offset or after it,
  * something whose source is not found ({@link $placeAmongUnits}): what
  * the lexer hands back otherwise than the source holds it. Those are a
- * tab that indents a line of a list item and shows as spaces; a task
- * item's checkbox written with more than one space after it in a list whose
- * items stand apart, which shows with the one space of its own; a list item's
- * text that begins as a link reference definition repeating a label, which
- * the lexer drops; and text holding a character reference such as `&#35;`,
- * which the lexer decodes. (A link text holding an escaped bracket is such
- * text too, and its source is found another way:
+ * tab in the container prefix of a code line or an HTML line, or of a
+ * paragraph line made of list markers and tabs, which shows as the spaces the
+ * tab stands for; a task item's checkbox written with more than one space
+ * after it in a list whose items stand apart, which shows with the one space
+ * of its own; a list item's text that begins as a link reference definition
+ * repeating a label, which the lexer drops; and text holding a character
+ * reference such as `&#35;`, which the lexer decodes. (A link text holding
+ * an escaped bracket is such text too, and its source is found another way:
  * {@link leavesOfUnescapedLinks}.)
  *
  * @param text - The Markdown the block was built of, with the blocks beside it.

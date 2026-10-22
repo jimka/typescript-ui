@@ -7,6 +7,7 @@ import {
 } from "~/component/display/markdownAttributes.js";
 import { decodeCharacterReferences, decodeEscapesAndCharacterReferences } from "~/component/display/markdownCharacterReferences.js";
 import { tokenizeTable } from "~/component/display/markdownTableExtension.js";
+import { expandPrefixTabs, restoreTokenSources, tabWidthAt } from "~/component/display/markdownTabs.js";
 
 /** The `mdblock` token the fence extension emits — one token list per column. */
 export interface MdBlockToken {
@@ -570,14 +571,35 @@ function readEscapesAndReferences(text: string): string {
 }
 
 /**
- * The four tokenizers that read character references (`&copy;`, `&#169;`)
- * where CommonMark reads them: in text, link destinations and titles (inline
- * links and link reference definitions, so a reference link gets its
- * definition's read values), and code fence info strings. `marked` reads only
- * numeric references, and only in text; it keeps a named one as written. Each
- * runs `marked`'s own method; `link`, `def` and `fences` run it on
- * {@link keepingEscapes}'s view and then read the escapes and references
- * together ({@link decodeEscapesAndCharacterReferences}), so an escaped `&`
+ * Runs `marked`'s fenced-code tokenizer and reads the character references and
+ * backslash escapes of the fence's info string, as CommonMark reads them.
+ * {@link fencesWithColumnIndent} wraps it, and the character-reference
+ * tokenizers leave the `fences` slot to that wrapper.
+ *
+ * @param src - The remaining source at the current block position.
+ * @returns The code token, or `undefined` when no fenced code starts here.
+ */
+function fencesReadingReferences(this: Tokenizer, src: string): Tokens.Code | undefined {
+    const token = Tokenizer.prototype.fences.call(keepingEscapes(this), src);
+
+    if (token?.lang) {
+        token.lang = readEscapesAndReferences(token.lang);
+    }
+
+    return token;
+}
+
+/**
+ * The three tokenizers that read character references (`&copy;`, `&#169;`)
+ * where CommonMark reads them: in text and in link destinations and titles
+ * (inline links and link reference definitions, so a reference link gets its
+ * definition's read values). Code fence info strings are read the same way by
+ * {@link fencesReadingReferences}, which {@link fencesWithColumnIndent} wraps
+ * in the `fences` slot. `marked` reads only numeric references, and only in
+ * text; it keeps a named one as written. Each runs `marked`'s own method;
+ * `link` and `def` run it on {@link keepingEscapes}'s view and then read the
+ * escapes and references together
+ * ({@link decodeEscapesAndCharacterReferences}), so an escaped `&`
  * (`\&copy;`) stays text. Text inside raw HTML (`marked`'s `escaped`), code
  * spans, code blocks and autolinks is not read: those keep what is written.
  */
@@ -623,49 +645,224 @@ const CHARACTER_REFERENCE_TOKENIZERS: TokenizerObject = {
 
         return token;
     },
-    fences(src) {
-        const token = Tokenizer.prototype.fences.call(keepingEscapes(this), src);
-
-        if (token?.lang) {
-            token.lang = readEscapesAndReferences(token.lang);
-        }
-
-        return token;
-    },
 };
 
 /**
- * The four block tokenizers the dialect owns, installed in `marked`'s
- * `blockquote`, `list`, `table` and `html` slots: the unbounded test twin
- * installs them as they are, and {@link BOUNDED_BLOCK_TOKENIZERS} calls the
- * same four behind its guards, so the twin differs from the bounded instance
- * in nothing else.
+ * Applies `change` to every line of `text`.
+ *
+ * @param text - Lines joined by line feeds.
+ * @param change - What to do with one line.
+ * @returns The changed lines, joined by line feeds.
+ */
+function mapLines(text: string, change: (line: string) => string): string {
+    return text.split("\n").map(change).join("\n");
+}
+
+/**
+ * The first `count` lines of `text`, without the line end after the last.
+ *
+ * @param text - Lines joined by line feeds.
+ * @param count - How many lines to take.
+ * @returns Those lines, joined by line feeds.
+ */
+function leadingLines(text: string, count: number): string {
+    return text.split("\n").slice(0, count).join("\n");
+}
+
+/**
+ * Counts the lines a token's `raw` spans. A line end that closes the last
+ * line starts no new one.
+ *
+ * @param raw - A token's `raw`.
+ * @returns The number of lines.
+ */
+function lineCount(raw: string): number {
+    const pieces = raw.split("\n").length;
+    const closed = raw.endsWith("\n");
+
+    return closed ? pieces - 1 : pieces;
+}
+
+/**
+ * Sets a list token's `raw`, and each item's, back to the source lines they
+ * span. `marked` builds both from whole lines, and the tab-free form of the
+ * source has the same lines, so counting lines finds the source.
+ *
+ * @param list - The list token, lexed from the tab-free form of `src`.
+ * @param src - The source the list was read from.
+ */
+function restoreListSource(list: Tokens.List, src: string): void {
+    const lines = src.split("\n");
+    let line = 0;
+
+    for (const item of list.items) {
+        const count = lineCount(item.raw);
+        const closed = item.raw.endsWith("\n");
+        const source = lines.slice(line, line + count).join("\n");
+
+        item.raw = closed ? source + "\n" : source.trimEnd();
+        line += count;
+    }
+
+    list.raw = leadingLines(src, lineCount(list.raw)).trimEnd();
+}
+
+/**
+ * Runs the dialect's list tokenizer on a form of the source in which a tab
+ * counts as CommonMark counts it. `marked` writes each tab that starts a
+ * continuation line of an item as four spaces, wherever the tab starts, and
+ * so reads `- a` / (blank) / two spaces, a tab, `b` as code where CommonMark
+ * reads a paragraph. Here each tab of a line's container prefix is written as
+ * the spaces that reach its tab stop; every other tab is left to `marked`,
+ * which keeps it. The `raw` of the list, its items and the containers and raw
+ * blocks inside them are set back to the source ({@link restoreTokenSources}),
+ * which the lexer and the editor's import measure with.
+ *
+ * @param src - The remaining source at the current block position.
+ * @returns The list token, or `undefined` when no list starts here.
+ */
+function listWithTabStops(this: Tokenizer, src: string): Tokens.List | undefined {
+    const hasTab = src.includes("\t");
+
+    if (!hasTab) {
+        return listWithOwnTaskMarker.call(this, src);
+    }
+
+    const expansion = expandPrefixTabs(src);
+    const list = listWithOwnTaskMarker.call(this, expansion.text);
+
+    if (list === undefined) {
+        return undefined;
+    }
+
+    restoreTokenSources([list], expansion, src);
+    restoreListSource(list, src);
+
+    return list;
+}
+
+/**
+ * Runs the dialect's blockquote tokenizer on a form of the source in which a
+ * tab counts as CommonMark counts it. `marked` takes one space or tab after
+ * `>` and reads the rest from column 0, so `>`, a space, a tab, `foo` is code
+ * where CommonMark reads a paragraph. Each tab of a line's container prefix
+ * is written as the spaces that reach its tab stop; the token's `raw` is set
+ * back to the source lines it spans.
+ *
+ * @param src - The remaining source at the current block position.
+ * @returns The blockquote token, or `undefined` when no blockquote starts here.
+ */
+function blockquoteWithTabStops(this: Tokenizer, src: string): Tokens.Blockquote | undefined {
+    const hasTab = src.includes("\t");
+
+    if (!hasTab) {
+        return blockquoteWithSourceRaw.call(this, src);
+    }
+
+    const expansion = expandPrefixTabs(src);
+    const token = blockquoteWithSourceRaw.call(this, expansion.text);
+
+    if (token !== undefined) {
+        restoreTokenSources([token], expansion, src);
+        token.raw = leadingLines(src, lineCount(token.raw));
+    }
+
+    return token;
+}
+
+/** The indentation of an indented backtick fence: one to three spaces. `marked` takes it off the content of backtick fences only. */
+const INDENTED_BACKTICK_FENCE = /^ {1,3}(?=`{3})/;
+
+/**
+ * Writes the tabs in the first `columns` columns of a line's indentation as
+ * the spaces that reach their tab stops.
+ *
+ * @param line - One line, without its line end.
+ * @param columns - How many columns of indentation to make tab-free.
+ * @returns The line, its indentation tab-free up to that column.
+ */
+function withIndentTabsAsSpaces(line: string, columns: number): string {
+    let indentation = "";
+    let index = 0;
+
+    while (index < line.length && indentation.length < columns && (line[index] === " " || line[index] === "\t")) {
+        indentation += line[index] === "\t" ? " ".repeat(tabWidthAt(indentation.length)) : " ";
+        index += 1;
+    }
+
+    return indentation + line.slice(index);
+}
+
+/**
+ * Runs `marked`'s fenced-code tokenizer and, for a backtick fence indented by
+ * one to three spaces, takes that many columns off each content line.
+ * `marked` takes off characters: under a fence indented by one space it drops
+ * a line's leading tab whole, where CommonMark leaves three spaces. The
+ * token's own text is lexed again with those tabs written as spaces; only
+ * `text` changes.
+ *
+ * @param src - The remaining source at the current block position.
+ * @returns The code token, or `undefined` when no fenced code starts here.
+ */
+function fencesWithColumnIndent(this: Tokenizer, src: string): Tokens.Code | undefined {
+    const token = fencesReadingReferences.call(this, src);
+
+    if (token === undefined) {
+        return undefined;
+    }
+
+    const indent = INDENTED_BACKTICK_FENCE.exec(token.raw)?.[0].length ?? 0;
+    const hasTab = token.raw.includes("\t");
+
+    if (indent === 0 || !hasTab) {
+        return token;
+    }
+
+    const spaced = fencesReadingReferences.call(this, mapLines(token.raw, (line) => withIndentTabsAsSpaces(line, indent)));
+
+    if (spaced !== undefined) {
+        token.text = spaced.text;
+    }
+
+    return token;
+}
+
+/**
+ * The five block tokenizers the dialect owns, installed in `marked`'s
+ * `blockquote`, `list`, `table`, `html` and `fences` slots: the unbounded test
+ * twin installs them as they are, and {@link BOUNDED_BLOCK_TOKENIZERS} calls
+ * the same five, four of them behind its guards, so the twin differs from the
+ * bounded instance in nothing else.
  */
 const DIALECT_BLOCK_TOKENIZERS: TokenizerObject = {
-    blockquote: blockquoteWithSourceRaw,
-    list:       listWithOwnTaskMarker,
+    blockquote: blockquoteWithTabStops,
+    list:       listWithTabStops,
     table:      dialectTable,
     html:       htmlWithInputEndAsLineEnd,
+    fences:     fencesWithColumnIndent,
 };
 
 /**
- * The six block slots the bounded instance overrides. Five run `marked` rules
+ * The seven block slots the bounded instance overrides. Five run `marked` rules
  * whose anchored regexes JavaScriptCore — the engine WebKitGTK runs — scans
  * from every start position of whatever it is handed, so each failed match
  * costs time in proportion to the rest of the document and lexing a long
  * document is quadratic (`blockquote`, `list` and `html` reach theirs through
  * the dialect's wrappers); the sixth, `table`, is the dialect's own tokenizer,
- * which has no such regex. Each override returns `undefined`,
- * declining the position outright, when a condition its rule's own regex
- * requires does not hold; otherwise it calls `marked`'s original method on
- * {@link blockWindow}'s cut of the source. `blockquote` and `list` call the
- * dialect's source-`raw` and task-marker wrappers on the window instead of the
- * originals. `table` runs the dialect's table tokenizer behind the guard with
- * no window: that tokenizer reads only up to its first blank line, so it never
- * scans the rest of the document. `html` takes the guard only and calls the
- * dialect's input-end wrapper on the whole source, because its `<script>`,
- * comment, processing-instruction, declaration and CDATA forms all run to a
- * closing marker no restart line bounds.
+ * which has no such regex; the seventh, `fences`, is described below. Each
+ * override returns `undefined`, declining the position outright, when a
+ * condition its rule's own regex requires does not hold; otherwise it calls
+ * `marked`'s original method on {@link blockWindow}'s cut of the source.
+ * `blockquote` and `list` call the dialect's tab-stop wrappers on the window
+ * instead of the originals. `table` runs the dialect's table tokenizer behind
+ * the guard with no window: that tokenizer reads only up to its first blank
+ * line, so it never scans the rest of the document. `html` takes the guard
+ * only and calls the dialect's input-end wrapper on the whole source, because
+ * its `<script>`, comment, processing-instruction, declaration and CDATA forms
+ * all run to a closing marker no restart line bounds. `fences` carries no
+ * guard and no window: it calls the dialect's column-indent wrapper on the
+ * same source it would have been given, and that wrapper reads only the token
+ * it returned.
  *
  * The originals are reached through `Tokenizer.prototype`: `marked` installs
  * these overrides as own properties on the instance's tokenizer object, so the
@@ -678,10 +875,10 @@ const BOUNDED_BLOCK_TOKENIZERS: TokenizerObject = {
         return HR_START.test(src) ? Tokenizer.prototype.hr.call(this, blockWindow(src)) : undefined;
     },
     blockquote(src) {
-        return BLOCKQUOTE_START.test(src) ? blockquoteWithSourceRaw.call(this, blockWindow(src)) : undefined;
+        return BLOCKQUOTE_START.test(src) ? blockquoteWithTabStops.call(this, blockWindow(src)) : undefined;
     },
     list(src) {
-        return LIST_START.test(src) ? listWithOwnTaskMarker.call(this, blockWindow(src)) : undefined;
+        return LIST_START.test(src) ? listWithTabStops.call(this, blockWindow(src)) : undefined;
     },
     table(src) {
         return secondLineHasDash(src) ? dialectTable.call(this, src) : undefined;
@@ -692,6 +889,7 @@ const BOUNDED_BLOCK_TOKENIZERS: TokenizerObject = {
     html(src) {
         return HTML_START.test(src) ? htmlWithInputEndAsLineEnd.call(this, src) : undefined;
     },
+    fences: fencesWithColumnIndent,
 };
 
 /**

@@ -3,8 +3,10 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { assertCheck, canonicalSave, checkTitle, editorDefinitions, loadAndSave, viewerDefinitions } from './harness';
-import { editorSurfaceModel, linkTargets, viewerModel } from './viewModel';
+import { blockOutline, editorSurfaceModel, linkTargets, viewerModel } from './viewModel';
 import { CORPUS } from './corpus';
+import { tabDocuments } from './tabDocuments';
+import { expandPrefixTabs } from '~/component/display/markdownTabs';
 import { DIVERGENCES } from './corpus/divergences';
 import { ENTER_IN_CODE_CASES } from './corpus/enterInCode';
 import { ENTER_INSIDE_HTML_CASES } from './corpus/enterInsideHtml';
@@ -55,6 +57,14 @@ for (const testCase of CORPUS) {
         if (links !== undefined) {
             it('viewer reads the declared links', () => {
                 expect(linkTargets(viewerModel(testCase.source))).toEqual(links);
+            });
+        }
+
+        const blocks = testCase.blocks;
+
+        if (blocks !== undefined) {
+            it('viewer reads the declared blocks', () => {
+                expect(blockOutline(viewerModel(testCase.source).blocks)).toBe(blocks);
             });
         }
 
@@ -127,19 +137,6 @@ function leavesWithContainer(blocks: readonly Block[], container: string = ''): 
     });
 }
 
-/**
- * The Enter-inside-HTML cases in which the viewer reads a line below the HTML's first line outside the list item that
- * line is in, each with the reason. A listed case must not pass the check, so a fix turns its test red until the
- * entry is removed, as a corpus case's known divergence does.
- */
-const READ_OUT_OF_ITS_ITEM: Readonly<Record<string, string>> = {
-    // Not the line Enter added, which carries the marker line's own prefix: the two six-space lines the row starts
-    // with. The viewer counts the tab of a ` \t- ` marker line as four columns wherever it starts, so it puts the
-    // item's content at column 7 where CommonMark puts it at 6, and after the empty line those lines are an indented
-    // code block of the outer item. The case after it holds the same lines with the marker line's prefix, and passes.
-    'Enter on a marker line indented by a space and a tab (M36)': 'the viewer counts a tab that follows a space as four columns',
-};
-
 describe('what Enter leaves inside HTML stays in its blockquote or list item', () => {
     // Each of these documents is one blockquote or one list, and its HTML
     // starts in the innermost quote or item of its first HTML line. A new
@@ -153,28 +150,12 @@ describe('what Enter leaves inside HTML stays in its blockquote or list item', (
         // none holds inline tags only, in its one paragraph.
         const firstHtml  = Math.max(leaves.findIndex((leaf) => leaf.kind === 'raw'), 0);
         const containers = new Set(leaves.slice(firstHtml).map((leaf) => leaf.container));
-        const known      = READ_OUT_OF_ITS_ITEM[name];
 
         expect(blocks.map((block) => block.kind)).toEqual([source.startsWith('>') ? 'quote' : 'list']);
 
-        if (known === undefined) {
-            expect([...containers]).toHaveLength(1);
-        } else {
-            expect([...containers], `${name}: now read in one item — remove its entry (${known})`).not.toHaveLength(1);
-        }
+        expect([...containers]).toHaveLength(1);
     });
 });
-
-/**
- * The Enter-in-code cases the viewer reads with other text in the code block than `reads` gives, each with the
- * reason. A listed case must not pass the check, so a fix turns its test red until the entry is removed.
- */
-const READ_WITH_OTHER_CODE_TEXT: Readonly<Record<string, string>> = {
-    // The marker line is `-`, a tab, and the fence, so the item's content starts at column 4. The new line carries
-    // that line's prefix with the marker as a space: a space and the tab, which is column 4 too. The viewer counts
-    // the tab as four columns from column 1 and shows the line as one space of code.
-    'Enter after a fence opened on an item marker line with a tab after the marker': 'the viewer counts a tab that follows a space as four columns',
-};
 
 describe('what Enter leaves in a code block stays in the block and in its blockquote or list item', () => {
     // A new line that lost its prefix would end the block: `> code` over an
@@ -183,14 +164,69 @@ describe('what Enter leaves in a code block stays in the block and in its blockq
     it.each(ENTER_IN_CODE_CASES.map((testCase) => [testCase.name, testCase] as const))('%s', (name, testCase) => {
         const leaves = leavesWithContainer(viewerModel(testCase.source).blocks);
         const read   = leaves.map((leaf) => (leaf.text === undefined ? [leaf.container, leaf.kind] : [leaf.container, leaf.kind, leaf.text]));
-        const known  = READ_WITH_OTHER_CODE_TEXT[name];
 
-        if (known === undefined) {
-            expect(read).toEqual(testCase.reads);
-        } else {
-            expect(read, `${name}: now read as written — remove its entry (${known})`).not.toEqual(testCase.reads);
-        }
+        expect(read).toEqual(testCase.reads);
     });
+});
+
+describe('generated tab documents', () => {
+    /** How many documents are drawn; 591 of them hold a tab. */
+    const DRAWS = 600;
+
+    /** These tests load each document several times, which takes longer than the default timeout allows. */
+    const TIMEOUT_MS = 120_000;
+
+    /**
+     * Writes a document with every tab of a container prefix as the spaces that reach its tab stop.
+     *
+     * @param document - A document.
+     * @returns Its spaces form.
+     */
+    function spacesForm(document: string): string {
+        return expandPrefixTabs(document).text;
+    }
+
+    /**
+     * Writes the outline of what the viewer reads, without the text of code and raw blocks, where a tab may stand.
+     *
+     * @param document - A document.
+     * @returns The outline.
+     */
+    function shape(document: string): string {
+        return blockOutline(viewerModel(document).blocks).replace(/(code|raw)"[^"]*"/g, '$1');
+    }
+
+    /**
+     * Tells whether the editor's surface holds the blocks the viewer shows for a document.
+     *
+     * @param document - A document.
+     * @returns `true` when they are the same.
+     */
+    function agrees(document: string): boolean {
+        return JSON.stringify(editorSurfaceModel(loadAndSave(document).editor)) === JSON.stringify(viewerModel(document).blocks);
+    }
+
+    it('G1. a tab document reads as its spaces form', () => {
+        const differing = tabDocuments(DRAWS).filter((document) => shape(document) !== shape(spacesForm(document)));
+
+        expect(differing.map((document) => JSON.stringify(document))).toEqual([]);
+    }, TIMEOUT_MS);
+
+    it('G2. viewer and editor agree on a tab document exactly when they agree on its spaces form', () => {
+        const differing = tabDocuments(DRAWS).filter((document) => agrees(document) !== agrees(spacesForm(document)));
+
+        expect(differing.map((document) => JSON.stringify(document))).toEqual([]);
+    }, TIMEOUT_MS);
+
+    it('G3. an unedited tab document is saved byte for byte, and the save reloads to itself', () => {
+        const differing = tabDocuments(DRAWS).filter((document) => {
+            const { saved } = loadAndSave(document);
+
+            return saved !== document || loadAndSave(saved).saved !== saved;
+        });
+
+        expect(differing.map((document) => JSON.stringify(document))).toEqual([]);
+    }, TIMEOUT_MS);
 });
 
 describe('corpus integrity', () => {
