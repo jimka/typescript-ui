@@ -130,7 +130,8 @@ export class MarkdownBlockNode extends ElementNode {
     }
 
     static importJSON(json: SerializedMarkdownBlockNode): MarkdownBlockNode {
-        const node = new MarkdownBlockNode();
+        // `updateFromJSON` restores the node's state (its authored attributes), as Lexical's own nodes do.
+        const node = new MarkdownBlockNode().updateFromJSON(json);
 
         node.__align = json.align;
         node.__columnGap = json.columnGap;

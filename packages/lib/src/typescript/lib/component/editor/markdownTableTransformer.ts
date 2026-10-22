@@ -10,6 +10,7 @@ import {
 } from "@lexical/table";
 import type { TableRowNode as TableRowNodeType } from "@lexical/table";
 import { resolveColumnWidth } from "~/component/display/markdownAttributes.js";
+import { formatDelimiterRow } from "~/component/editor/markdownSerializer.js";
 
 /**
  * A candidate table row: any line containing a pipe. Deliberately loose — a
@@ -115,40 +116,6 @@ function parseDelimiterRow(line: string): { alignments: ElementFormatType[]; wid
     }
 
     return { alignments, widths };
-}
-
-/**
- * Renders a delimiter row from the header cells' formats and the table's
- * column widths. A `0` (or `null`) width is `@lexical/table`'s own "no width"
- * sentinel for `TableNode.getColWidths()`, so it re-emits with no `{width=…}`.
- *
- * @param alignments - One {@link ElementFormatType} per column.
- * @param widths - One column width (in pixels) per column, or `null`/`0` for none.
- * @returns The rendered delimiter-row line.
- *
- * @example
- * ```
- * formatDelimiterRow(["left", "center", "right", ""], [240, null, null, null])
- * // -> "| :--- {width=240} | :---: | ---: | --- |"
- * ```
- */
-export function formatDelimiterRow(alignments: ElementFormatType[], widths: readonly (number | null)[]): string {
-    const cells = alignments.map((alignment, index) => {
-        const dashes = (() => {
-            switch (alignment) {
-                case "left":   return ":---";
-                case "center": return ":---:";
-                case "right":  return "---:";
-                default:       return "---";
-            }
-        })();
-
-        const width = widths[index];
-
-        return width !== null && width !== 0 && width !== undefined ? `${dashes} {width=${width}}` : dashes;
-    });
-
-    return "| " + cells.join(" | ") + " |";
 }
 
 /**

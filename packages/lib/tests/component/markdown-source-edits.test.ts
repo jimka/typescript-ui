@@ -6,7 +6,7 @@ import {
 } from '~/component/editor/markdownSourceEdits';
 import type { MarkdownSourceEdit } from '~/component/editor/markdownSourceEdits';
 import { lexMarkdown } from '~/component/display/markdownExtensions';
-import { formatDelimiterRow } from '~/component/editor/markdownTableTransformer';
+import { formatDelimiterRow } from '~/component/editor/markdownSerializer';
 import type { ElementFormatType } from 'lexical';
 
 // This module touches no DOM, no Lexical, no component — every transform is a

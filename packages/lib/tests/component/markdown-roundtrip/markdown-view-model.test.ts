@@ -288,4 +288,19 @@ describe('editor surface projection', () => {
             },
         ]);
     });
+
+    it('S9. maps a newline inside a text node to a break run, as the editor\'s pre-wrap surface shows it', () => {
+        // A code block turned into a paragraph keeps its lines in one text node; the save writes each newline as a
+        // hard break, which the viewer shows as the editor does.
+        const editor = loadedEditor('');
+
+        (editor as unknown as { _editor: LexicalEditor })._editor.update(() => {
+            $getRoot().clear().append($createParagraphNode().append($createTextNode('x\n# y')));
+        }, { discrete: true });
+
+        expect(editorSurfaceModel(editor)).toEqual([
+            { kind: 'paragraph', runs: [textRun('x'), { kind: 'break' }, textRun('# y')] },
+        ]);
+        expect(editorSurfaceModel(editor)).toEqual(viewerModel('x\\\n\\# y').blocks);
+    });
 });

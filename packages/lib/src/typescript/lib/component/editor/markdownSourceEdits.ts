@@ -2852,9 +2852,9 @@ export function imageSource(src: string, alt: string, attributes: Record<string,
 /**
  * A GFM delimiter cell with no alignment and no width — every column
  * `tableSource` builds. Spelled out here rather than produced by
- * `markdownTableTransformer.ts`'s `formatDelimiterRow`, which lives in a
- * Lexical module this leaf module must not import; the test suite pins the
- * row built from it byte-for-byte against that helper's output.
+ * `markdownSerializer.ts`'s `formatDelimiterRow`, which lives in a Lexical
+ * module this leaf module must not import; the test suite pins the row built
+ * from it byte-for-byte against that helper's output.
  */
 const UNALIGNED_DELIMITER_CELL = "---";
 

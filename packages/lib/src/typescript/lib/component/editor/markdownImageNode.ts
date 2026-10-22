@@ -64,9 +64,10 @@ export class MarkdownImageNode extends DecoratorNode<null> {
     }
 
     static importJSON(json: SerializedMarkdownImageNode): MarkdownImageNode {
+        // `updateFromJSON` restores the node's state (its authored attributes), as Lexical's own nodes do.
         return new MarkdownImageNode({
             src: json.src, alt: json.alt, width: json.width, height: json.height,
-        });
+        }).updateFromJSON(json);
     }
 
     /**
