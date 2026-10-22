@@ -135,6 +135,26 @@ page resets to empty.
   `canInsertHorizontalRule`. See [Migration](/reference/migration/next) for
   the full note.
 
+- **`Markdown` and `MarkdownEditor` show task-list items with a checkbox.**
+  The viewer drew `[ ] ` as text before a task item's text; it now draws a
+  read-only checkbox (`role="checkbox"`, checked for `[x]` and `[X]`) there,
+  in a tight list, a loose one and a nested one. The editor held the marker
+  as an atomic run of source; it now holds a checkbox node of its own
+  (`markdown-task-checkbox`) first in the item's text, toggled by a click or
+  by Ctrl/Cmd+Enter. Enter in a task item opens an unchecked one, Enter on an
+  empty one ends the list (one that holds a further paragraph stays, the
+  caret moving into the paragraph and the checkbox staying), Backspace right
+  after a checkbox removes it, and
+  `[ ] `, `[x] ` or `[X] ` typed at the start of an item's text makes one. A
+  format toggle or text style over a task item now applies to its text, which
+  is written after the marker: bold over `- [ ] a` from before the checkbox
+  saves `- [ ] **a**`, where the toggle declined. A colour over the checkbox
+  alone styles nothing. A link over a range that takes in a checkbox links
+  the text after it and never the checkbox. The checkbox leaves as HTML as an
+  `<input type="checkbox">` and is read back from one, so a task item copied
+  from one `MarkdownEditor` pastes into another with its checkbox. See
+  [Migration](/reference/migration/next).
+
 ### Core
 
 - **`DOM.sink` and `DOM.source` are now read-only.** Swap a seam through
@@ -674,6 +694,22 @@ page resets to empty.
 ## Added
 
 ### Components
+
+- **`MarkdownEditor.toggleTaskList()`.** Makes the selected blocks task items,
+  or takes their checkboxes off when every selected block is the text of a
+  task item; a list keeps its kind, so a numbered item stays numbered. An
+  empty item or paragraph becomes a task item that keeps its checkbox, saved
+  as `- [ ]`, which a reload reads as the text `[ ]`. The
+  empty-line context menu's Insert submenu and `MarkdownDocumentPanel`'s
+  Insert dropdown gain a **Task list** entry after **Numbered list**, and in
+  `"source"` mode the command runs on the Markdown around the selection as
+  the other list toggles do. An HTML check list pasted from a web page (a
+  GitHub task list, Joplin's, items marked `aria-checked`) is a bulleted list
+  of task items, and a task item copied from the editor pastes into another
+  application as a checkbox. In source mode `[ ]` and `[x]` that open the first
+  block of a task item are muted as the list marker is; at the start of a
+  later paragraph of the item the viewer reads them as text, and so the
+  source surface leaves them plain.
 
 - **`MarkdownEditor.insertHorizontalRule()` and
   `canInsertHorizontalRule`.** `insertHorizontalRule()` inserts a rule at the
@@ -1346,13 +1382,25 @@ page resets to empty.
   line end inside a paragraph still flows. No consumer action is needed.
 
 - **`Markdown` shows a task-list item's marker.** `- [ ] task` rendered
-  only `task`; it now renders `[ ] task`, as it already did when the
-  item's text held an escape or formatting. The marker is still literal
-  text, not a checkbox. In a task item a blank line before its nested list
-  or second paragraph makes loose (`- [x] a` over a blank line and
-  `  - b`), the marker stood on a line of its own above the item's text; it
-  now starts the item's first paragraph, as in GFM and in a list loose from
-  its first item. No consumer action is needed.
+  only `task`; the item now shows its checkbox (see Breaking changes). In a
+  task item a blank line before its nested list or second paragraph makes
+  loose (`- [x] a` over a blank line and `  - b`), the marker stood on a line
+  of its own above the item's text; it now starts the item's first paragraph,
+  as in GFM and in a list loose from its first item. No consumer action is
+  needed.
+
+- **`MarkdownEditor` keeps a task item a task item through a save.** An
+  edited item whose marker is also a defined label (`[x]: /u` and `- [x]
+  done`) was saved as the text `- \[x\] done`, and an item whose text opened
+  with a no-break space (`- [x] &nbsp;a`) was saved so that the next load
+  read no task item. The text after the marker is now written as the start
+  of a line, so both save as task items. No consumer action is needed.
+
+- **The blanks that end a list item's text no longer show in
+  `MarkdownEditor`.** `marked` keeps them on every item but a list's last,
+  and the viewer shows none: `- [ ] ` showed the text `[ ] ` and `- a ` showed
+  `a `, a space the save dropped. The editor now loads them as nothing. No
+  consumer action is needed.
 
 - **`Markdown` no longer drops a character after a blockquote.** When a
   list inside a blockquote ran on through a lazy line, the line straight

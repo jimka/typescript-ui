@@ -47,6 +47,8 @@ const BLOCK_CLASS         = "ts-ui-md-block";
 const COLUMN_CLASS        = "ts-ui-md-column";
 const IMAGE_CLASS         = "ts-ui-md-image";
 const HORIZONTAL_RULE_CLASS = "ts-ui-md-horizontal-rule";
+const TASK_CHECKBOX_CLASS         = "ts-ui-md-task-checkbox";
+const TASK_CHECKBOX_CHECKED_CLASS = "ts-ui-md-task-checkbox-checked";
 /**
  * The literal two-character sequence (backslash, `n`) a `MarkdownEditor`
  * table cell's saved Markdown writes twice (see below) in place of a real
@@ -244,6 +246,55 @@ function ensureMarkdownClassRules(): void {
             border:    "0",
             borderTop: "1px solid var(--ts-ui-border-color, rgba(127, 127, 127, 0.4))",
             margin:    "1em 0",
+        },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TASK_CHECKBOX_CLASS,
+        // The box of a task item, drawn with the tokens the `Checkbox` component draws its box with. Matches the
+        // editor's own rules (editorTheme.ts). Em-relative so the box follows the font size and the font scale.
+        styles: {
+            display:         "inline-block",
+            boxSizing:       "border-box",
+            // A little under the font size, so the box fits the line at any font size.
+            width:           "0.9em",
+            height:          "0.9em",
+            verticalAlign:   "middle",
+            // The width of the space the marker is followed by.
+            marginRight:     "0.35em",
+            // The frame the check mark is drawn in.
+            position:        "relative",
+            border:          "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))",
+            borderRadius:    "var(--ts-ui-checkbox-radius, 3px)",
+            backgroundColor: "var(--ts-ui-checkbox-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))",
+        },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TASK_CHECKBOX_CHECKED_CLASS,
+        styles: {
+            backgroundColor: "var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))",
+            borderColor:     "var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))",
+        },
+    });
+
+    new StyleRule({
+        scope:  "selector",
+        name:   `.${TASK_CHECKBOX_CHECKED_CLASS}::after`,
+        // The check mark: the right and bottom borders of a box turned 45 degrees, placed and sized in proportion
+        // to the box so it scales with the text.
+        styles: {
+            content:     '""',
+            position:    "absolute",
+            left:        "32%",
+            top:         "10%",
+            width:       "30%",
+            height:      "55%",
+            border:      "solid var(--ts-ui-checkbox-check-color, rgb(255, 255, 255))",
+            borderWidth: "0 0.12em 0.12em 0",
+            transform:   "rotate(45deg)",
         },
     });
 
@@ -586,11 +637,11 @@ const _defaultMarkdownOptions: Partial<MarkdownOptions> = { userSelect: "text", 
  * reference-style; a reference definition renders nothing), hard line breaks,
  * GFM pipe tables (including per-column alignment, widths, and merged cells),
  * underline, coloured/sized/font-styled spans, `:::` alignment/multi-column
- * fences, thematic breaks (a horizontal rule), and sized images validated
- * against a scheme allow-list. Any other
- * token type (raw HTML, a task-list item's `[ ]` / `[x]`
- * marker, the remaining GFM extensions) falls through to a defined fallback
- * that renders the token's plain text — never a crash, never markup.
+ * fences, thematic breaks (a horizontal rule), task-list items (a read-only
+ * checkbox before the item's text), and sized images validated against a
+ * scheme allow-list. Any other token type (raw HTML, the remaining GFM
+ * extensions) falls through to a defined fallback that renders the token's
+ * plain text — never a crash, never markup.
  *
  * A fenced code block whose info string names a language
  * [`CodeEditor`](/components/CodeEditor) has a registered grammar for
@@ -1673,6 +1724,9 @@ class Markdown extends Component<MarkdownOptions> {
             // reference to it into a `link` token, so the definition renders nothing.
             case "def": break;
 
+            // A task item's checkbox, which `marked` lexes as a token of its own before the item's text.
+            case "checkbox": this.appendTaskCheckbox(parent, token as Tokens.Checkbox); break;
+
             default: this.appendTextNode(parent, token.raw ?? ""); break;
         }
     }
@@ -1736,11 +1790,11 @@ class Markdown extends Component<MarkdownOptions> {
      * Builds an `<li>` and walks its children, which are block tokens for a
      * loose list and inline-bearing `text` tokens for a tight one — so both
      * render. Only the item's first `text` token may write the item's whole
-     * text content; a later one appends, so a task item keeps the `[ ]` /
-     * `[x]` marker printed before it. A task item `marked` made loose after
-     * lexing it keeps its marker as a token of its own before its first
-     * paragraph; the marker is printed at the start of that paragraph, as
-     * GFM shows it and as `marked` puts it in an item loose from the start.
+     * text content; a later one appends, so a task item keeps the checkbox
+     * drawn before it. A task item `marked` made loose after lexing it keeps its
+     * checkbox as a token of its own before its first paragraph; the checkbox is
+     * drawn at the start of that paragraph, as GFM shows it and as `marked` puts
+     * it in an item loose from the start.
      *
      * @param list - The `<ul>`/`<ol>` element handle to append into.
      * @param item - The list-item token.
@@ -1776,7 +1830,7 @@ class Markdown extends Component<MarkdownOptions> {
             if (inline.length > 0 && index === 0) {
                 this.appendInlineTokens(listItem, inline);
             } else if (inline.length > 0) {
-                // An earlier token (a task item's `[ ]` marker) already rendered into
+                // An earlier token (a task item's checkbox) already rendered into
                 // the item, so no child may take the sole-text path that replaces it.
                 for (const child of inline) {
                     this.appendInlineToken(listItem, child, false);
@@ -2122,8 +2176,30 @@ class Markdown extends Component<MarkdownOptions> {
 
             case "html": this.appendInlineHtml(parent, token as Tokens.HTML, splitCellBreaks); break;
 
+            case "checkbox": this.appendTaskCheckbox(parent, token as Tokens.Checkbox); break;
+
             default: this.appendTextNode(parent, (token as Tokens.Text).text ?? token.raw ?? ""); break;
         }
+    }
+
+    /**
+     * Builds a task item's checkbox: a read-only `role="checkbox"` span, checked
+     * for `[x]` and `[X]`, drawn by CSS with the tokens the `Checkbox`
+     * component draws its box with. A span rather than an `<input>`, as the
+     * editor's checkbox is, so one rule set draws both and a theme token can
+     * colour the check mark.
+     *
+     * @param parent - The element handle to append into.
+     * @param token - The checkbox token.
+     */
+    private appendTaskCheckbox(parent: Handle, token: Tokens.Checkbox): void {
+        const box = this.create("span");
+
+        DOM.sink.apply(box, {
+            addClass: token.checked ? [TASK_CHECKBOX_CLASS, TASK_CHECKBOX_CHECKED_CLASS] : [TASK_CHECKBOX_CLASS],
+            setAttr:  { role: "checkbox", "aria-checked": token.checked ? "true" : "false", "aria-readonly": "true" },
+        });
+        DOM.sink.appendChild(parent, box);
     }
 
     /**

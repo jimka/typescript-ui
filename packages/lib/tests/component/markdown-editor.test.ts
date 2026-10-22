@@ -1132,7 +1132,7 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['T8', '- one\n  - [ ] inner\n- three', 'inner', null, 'UL', '- one\n\n\\[ \\] inner\n\n- three'],
         ['T8', '- one\n  - [ ] inner\n- three', 'inner', null, 'OL', '- one\n\n1. [ ] inner\n\n- three'],
         ['T10', '- [x] one\n- two\n\n[x]: /url', 'one', null, 'UL', '\\[x\\] one\n\n- two\n\n[x]: /url'],
-        ['T10', '- [x] one\n- two\n\n[x]: /url', 'one', null, 'OL', '1. \\[x\\] one\n\n- two\n\n[x]: /url'],
+        ['T10', '- [x] one\n- two\n\n[x]: /url', 'one', null, 'OL', '1. [x] one\n\n- two\n\n[x]: /url'],
         ['T10', '- [x] one\n- two\n\n[x]: /url', 'one', null, 'paragraph', '\\[x\\] one\n\n- two\n\n[x]: /url'],
         ['T11', '- [ ] **one** two\n- three', 'one', null, 'UL', '\\[ \\] **one** two\n\n- three'],
         ['T11', '- [ ] **one** two\n- three', 'one', null, 'OL', '1. [ ] **one** two\n\n- three'],
@@ -5125,12 +5125,12 @@ describe('MarkdownEditor context menu', () => {
         ]);
     });
 
-    it('an "empty-line" context\'s Insert submenu offers Quote, Code block, Bulleted list, Numbered list, Table, Image…, and Horizontal rule, in that order', () => {
+    it('an "empty-line" context\'s Insert submenu offers Quote, Code block, Bulleted list, Numbered list, Task list, Table, Image…, and Horizontal rule, in that order', () => {
         const editor = new MarkdownEditor();
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: true, availability: ALL_AVAILABLE });
 
         expect(submenuItemsOf(findItem(items, 'Insert'))?.map((item) => item.text ?? '(separator)')).toEqual([
-            'Quote', 'Code block', 'Bulleted list', 'Numbered list', '(separator)', 'Table', 'Image…', 'Horizontal rule',
+            'Quote', 'Code block', 'Bulleted list', 'Numbered list', 'Task list', '(separator)', 'Table', 'Image…', 'Horizontal rule',
         ]);
     });
 
@@ -5348,6 +5348,15 @@ describe('MarkdownEditor context menu', () => {
         submenuItemsOf(findItem(numberedItems, 'Insert'))?.find((item) => item.text === 'Numbered list')?.action?.();
 
         expect(numbered.getValue()).toContain('1. word');
+
+        const tasks = new MarkdownEditor();
+        tasks.setValue('word');
+        selectStart(tasks);
+        const taskItems = contextMenuMethodsOf(tasks).buildContextMenuItems({ kind: 'empty-line', hasSelectedText: false, availability: ALL_AVAILABLE });
+
+        submenuItemsOf(findItem(taskItems, 'Insert'))?.find((item) => item.text === 'Task list')?.action?.();
+
+        expect(tasks.getValue()).toBe('- [ ] word');
     });
 
     it('Cut and Copy carry enabled: hasSelectedText in all three contexts; Paste never sets enabled', () => {
@@ -6074,9 +6083,12 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                 available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
             },
             {
-                name: 'N1: a caret inside the word of a task-list marker', markdown: '- [ ] one\n- [x] two',
-                select: (editor) => caretIn(editor, '[x] ', 1),
-                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertParagraphAroundBlock', 'canInsertTable', 'canInsertHorizontalRule', 'canInsertImage'],
+                name: 'N1: a caret right after a task item\'s checkbox', markdown: '- [ ] one\n- [x] two',
+                select: (editor) => caretIn(editor, 'two', 0),
+                available: [
+                    'canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertParagraphAroundBlock', 'canInsertTable',
+                    'canInsertHorizontalRule', 'canInsertImage',
+                ],
             },
             {
                 name: 'N2: a caret at the end of a run kept as Markdown source', markdown: 'kept <span>x</span> source',
@@ -6379,6 +6391,7 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                 ['setBlockType', (editor) => editor.setBlockType('h1')],
                 ['toggleUnorderedList', (editor) => editor.toggleUnorderedList()],
                 ['toggleOrderedList', (editor) => editor.toggleOrderedList()],
+                ['toggleTaskList', (editor) => editor.toggleTaskList()],
             ],
             canSetBlockLayout: [
                 ['setBlockAlignment', (editor) => editor.setBlockAlignment('center')],
@@ -7088,33 +7101,33 @@ describe('MarkdownEditor context menu — caret and availability', () => {
 
             expect(findItem(neither, 'Heading')?.enabled).toBe(false);
             expect(insertEnabled(neither)).toEqual({
-                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Table': false, 'Image…': false, 'Horizontal rule': false,
+                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Task list': false, 'Table': false, 'Image…': false, 'Horizontal rule': false,
             });
 
             const noBlockType = build({ ...ALL_AVAILABLE, canSetBlockType: false });
 
             expect(findItem(noBlockType, 'Heading')?.enabled).toBe(false);
             expect(insertEnabled(noBlockType)).toEqual({
-                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Table': true, 'Image…': true, 'Horizontal rule': true,
+                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Task list': false, 'Table': true, 'Image…': true, 'Horizontal rule': true,
             });
 
             const noTable = build({ ...ALL_AVAILABLE, canInsertTable: false });
 
             expect(findItem(noTable, 'Heading')?.enabled).toBe(true);
             expect(insertEnabled(noTable)).toEqual({
-                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': false, 'Image…': true, 'Horizontal rule': true,
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Task list': true, 'Table': false, 'Image…': true, 'Horizontal rule': true,
             });
 
             const noImage = build({ ...ALL_AVAILABLE, canInsertImage: false });
 
             expect(insertEnabled(noImage)).toEqual({
-                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': false, 'Horizontal rule': true,
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Task list': true, 'Table': true, 'Image…': false, 'Horizontal rule': true,
             });
 
             const noRule = build({ ...ALL_AVAILABLE, canInsertHorizontalRule: false });
 
             expect(insertEnabled(noRule)).toEqual({
-                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': true, 'Horizontal rule': false,
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Task list': true, 'Table': true, 'Image…': true, 'Horizontal rule': false,
             });
         });
 

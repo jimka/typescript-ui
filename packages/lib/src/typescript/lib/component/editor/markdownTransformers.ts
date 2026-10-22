@@ -13,11 +13,12 @@ import {
     LINK,
 } from "@lexical/markdown";
 import type { ElementTransformer, Transformer } from "@lexical/markdown";
-import { $isParagraphNode } from "lexical";
+import { $isParagraphNode, $isTextNode } from "lexical";
 import { $isTableCellNode } from "@lexical/table";
 import { $findMatchingParent } from "@lexical/utils";
 import { $createMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
-import { $isMarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
+import { $isMarkdownListItemNode, $isMarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
+import { $createMarkdownTaskCheckboxNode, $openingCheckbox } from "~/component/editor/markdownTaskCheckboxNode.js";
 import { UNDERLINE } from "~/component/editor/markdownStyleTransformers.js";
 
 /**
@@ -64,6 +65,46 @@ export const HORIZONTAL_RULE_SHORTCUT: ElementTransformer = {
         return undefined;
     },
     triggerOnEnter: true,
+    type:           "element",
+};
+
+/**
+ * `[ ] `, `[x] ` or `[X] ` typed at the start of a list item's text that has
+ * no checkbox yet: a task item. The checkbox is put first, keeping the letter
+ * as typed, and the caret stands at the start of what follows it (right after
+ * the checkbox when nothing follows).
+ *
+ * It is not a member of {@link SHORTCUT_TRANSFORMERS}: Lexical's own shortcut
+ * path runs an element shortcut only on a block whose parent is a root, and
+ * never in an item's text. The editor's held-block shortcuts try it alone in
+ * such a text, on typing only, never on Enter (`triggerOnEnter` is `false`).
+ */
+export const TASK_ITEM_SHORTCUT: ElementTransformer = {
+    dependencies: [],
+    // The editor saves through its own serializer; like every entry here, this one is only typed.
+    export:       () => null,
+    regExp:       /^\[([ xX])\]\s/,
+    replace:      (block, children, match): false | undefined => {
+        const isItemText = $isMarkdownListItemTextNode(block) && $isMarkdownListItemNode(block.getParent());
+
+        if (!isItemText || $openingCheckbox(block) !== null) {
+            return false;
+        }
+
+        const box = $createMarkdownTaskCheckboxNode(match[1] !== " ", `[${match[1]}]`);
+        const first = children[0];
+
+        block.splice(0, 0, [box]);
+
+        if ($isTextNode(first)) {
+            first.select(0, 0);
+        } else {
+            box.selectNext();
+        }
+
+        return undefined;
+    },
+    triggerOnEnter: false,
     type:           "element",
 };
 

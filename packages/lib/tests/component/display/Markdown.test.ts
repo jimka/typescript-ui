@@ -1370,26 +1370,34 @@ describe('Markdown after a blockquote whose list has lazy lines', () => {
 });
 
 describe('Markdown task-list items', () => {
-    it('BF12. shows a task item\'s [ ] marker before its text', () => {
+    it('BF12. draws a task item\'s checkbox before its text', () => {
         new Markdown('- [ ] task').getElement(true);
 
         expect(childTagsOf('li')).toEqual(['SPAN', 'SPAN']);
-        expect(textWrites()).toEqual(expect.arrayContaining(['[ ] ', 'task']));
+        expect(classWrites()).toContainEqual(['ts-ui-md-task-checkbox']);
+        expect(attrWrites()).toContainEqual({ role: 'checkbox', 'aria-checked': 'false', 'aria-readonly': 'true' });
+        expect(textWrites()).toEqual(['task']);
         expect(textWriteTags()).not.toContain('LI');
     });
 
-    it('BF13. shows the marker of checked and unchecked items', () => {
+    it('BF13. draws checked and unchecked checkboxes', () => {
         new Markdown('- [x] done\n- [ ] todo').getElement(true);
 
         expect(childTagsOf('li')).toEqual(['SPAN', 'SPAN', 'SPAN', 'SPAN']);
-        expect(textWrites()).toEqual(expect.arrayContaining(['[x] ', 'done', '[ ] ', 'todo']));
+        expect(classWrites()).toEqual(expect.arrayContaining([
+            ['ts-ui-md-task-checkbox', 'ts-ui-md-task-checkbox-checked'],
+            ['ts-ui-md-task-checkbox'],
+        ]));
+        expect(attrWrites().filter((attrs) => attrs.role === 'checkbox').map((attrs) => attrs['aria-checked'])).toEqual(['true', 'false']);
+        expect(textWrites()).toEqual(['done', 'todo']);
         expect(textWriteTags()).not.toContain('LI');
     });
 
-    it('BF14. shows the marker before text holding an escape', () => {
+    it('BF14. draws the checkbox before text holding an escape', () => {
         new Markdown('- [ ] see \\[docs\\]').getElement(true);
 
-        expect(textWrites()).toEqual(expect.arrayContaining(['[ ] ', 'see ']));
+        expect(attrWrites().filter((attrs) => attrs.role === 'checkbox')).toHaveLength(1);
+        expect(textWrites().join('')).toBe('see [docs]');
     });
 
     it('BF15. still writes an item\'s first text straight onto the <li>', () => {
@@ -1402,21 +1410,36 @@ describe('Markdown task-list items', () => {
     // `marked` leaves the checkbox of an item it made loose after lexing it as
     // a token of its own before the item's paragraphs; GFM, and a list loose
     // from the start, show it at the start of the first paragraph.
-    it('BF16. shows a task item\'s marker at the start of its first paragraph, and a later paragraph\'s marker text', () => {
+    it('BF16. draws a loose task item\'s checkbox in its first paragraph, and a later paragraph\'s marker as text', () => {
         new Markdown('- [ ] foo\n\n  [x] bar').getElement(true);
 
         expect(childTagsOf('li')).toEqual(['P', 'P']);
         expect(childTagsOf('p')).toEqual(['SPAN', 'SPAN']);
-        expect(textWrites()).toEqual(['[ ] ', 'foo', '[x] bar']);
-        expect(textWriteTags()).toEqual(['SPAN', 'SPAN', 'P']);
+        expect(textWrites()).toEqual(['foo', '[x] bar']);
+        expect(textWriteTags()).toEqual(['SPAN', 'P']);
     });
 
-    it('BF17. shows the marker in the paragraph of a task item a nested list after a blank line makes loose', () => {
+    it('BF17. draws the checkbox in the paragraph of a task item a nested list after a blank line makes loose', () => {
         new Markdown('- [x] **a** b\n\n  - c').getElement(true);
 
         expect(childTagsOf('li')).toEqual(['P', 'UL']);
         expect(childTagsOf('p')).toEqual(['SPAN', 'STRONG', 'SPAN']);
-        expect(textWrites()).toEqual(['[x] ', 'a', ' b', 'c']);
+        expect(textWrites()).toEqual(['a', ' b', 'c']);
+    });
+
+    it('BF17a. draws the checkbox of an ordered list and of a mixed one', () => {
+        new Markdown('1. [X] a\n2. b').getElement(true);
+
+        expect(createdTags()).toContain('ol');
+        expect(attrWrites().filter((attrs) => attrs.role === 'checkbox').map((attrs) => attrs['aria-checked'])).toEqual(['true']);
+        expect(textWrites()).toEqual(['a', 'b']);
+    });
+
+    it('BF17b. draws no checkbox for a marker with nothing after it', () => {
+        new Markdown('- [ ]').getElement(true);
+
+        expect(attrWrites().filter((attrs) => attrs.role === 'checkbox')).toHaveLength(0);
+        expect(textWrites().join('')).toContain('[ ]');
     });
 });
 

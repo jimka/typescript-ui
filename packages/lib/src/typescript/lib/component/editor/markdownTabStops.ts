@@ -14,13 +14,13 @@ import type { markdown } from "@codemirror/lang-markdown";
  * signature because `@lezer/markdown`, which declares the type, is not a
  * direct dependency.
  */
-type MarkdownExtension = NonNullable<NonNullable<Parameters<typeof markdown>[0]>["extensions"]>;
+export type MarkdownExtension = NonNullable<NonNullable<Parameters<typeof markdown>[0]>["extensions"]>;
 
 /** One parser configuration, as opposed to a list of them. */
-type MarkdownConfig = Exclude<MarkdownExtension, readonly unknown[]>;
+export type MarkdownConfig = Exclude<MarkdownExtension, readonly unknown[]>;
 
 /** A block parser of a parser configuration. */
-type BlockParser = NonNullable<MarkdownConfig["parseBlock"]>[number];
+export type BlockParser = NonNullable<MarkdownConfig["parseBlock"]>[number];
 
 /** The parse state a block parser is given. */
 type BlockContext = Parameters<NonNullable<BlockParser["parse"]>>[0];

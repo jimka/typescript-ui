@@ -29,6 +29,7 @@ import {
 } from '~/component/editor/markdownSourceNodes';
 import { $isMarkdownBlockNode, $isMarkdownColumnNode } from '~/component/editor/markdownBlockNode';
 import { $isMarkdownImageNode } from '~/component/editor/markdownImageNode';
+import { $isMarkdownTaskCheckboxNode } from '~/component/editor/markdownTaskCheckboxNode';
 import { $createMarkdownListItemTextNode } from '~/component/editor/markdownListItemNode';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
@@ -52,6 +53,7 @@ type InlineSummary =
     | { text: string; format?: number; style?: string }
     | { source: string; display: string; format?: number }
     | { br: string }
+    | { checkbox: boolean }
     | { link: string; children: InlineSummary[] };
 
 /**
@@ -107,6 +109,10 @@ function rootTypes(editor: MarkdownEditor): string[] {
  */
 function summarize(nodes: LexicalNode[]): InlineSummary[] {
     return nodes.map((node): InlineSummary => {
+        if ($isMarkdownTaskCheckboxNode(node)) {
+            return { checkbox: node.isChecked() };
+        }
+
         if ($isMarkdownSourceTextNode(node)) {
             return { source: node.getSource(), display: node.getTextContent(), ...(node.getFormat() === 0 ? {} : { format: node.getFormat() }) };
         }
@@ -460,7 +466,7 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
         expect(firstBlockInline(load(source))).toEqual([{ source, display: '' }]);
     });
 
-    it('I21: a task-list checkbox is a source node before the item text', () => {
+    it('I21: a task-list checkbox is a checkbox node before the item text', () => {
         const editor = load('- [ ] task');
 
         expect(readDocument(editor, () => {
@@ -468,7 +474,7 @@ describe('$importMarkdown — blocks and inline (I rows)', () => {
 
             // The item's text is its first child, a node of its own.
             return summarize((item.getFirstChild() as ElementNode).getChildren());
-        })).toEqual([{ source: '[ ] ', display: '[ ] ' }, { text: 'task' }]);
+        })).toEqual([{ checkbox: false }, { text: 'task' }]);
     });
 
     it('I22: inline HTML tags are source nodes', () => {
@@ -2318,8 +2324,6 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
 
     describe('#6 formatting declines over a run kept as source', () => {
         const cases: Array<[string, string, [string, number], [string, number], (editor: MarkdownEditor) => void]> = [
-            ['colour on a task marker', '- [ ] a', ['[ ]', 0], ['[ ]', 4], (editor) => editor.setTextColor('#cc0000')],
-            ['bold over a task marker and its text', '- [ ] a', ['[ ]', 0], ['a', 1], (editor) => editor.toggleBold()],
             ['inline code on inline HTML', 'x <b> y', ['<b>', 0], ['<b>', 3], (editor) => editor.toggleInlineCode()],
             ['colour on a link nested in a link', 'x [<https://a.test/in>](/out) y', ['https://a.test/in', 0], ['https://a.test/in', 1], (editor) => editor.setTextColor('#cc0000')],
             ['a link over inline HTML', 'x <b> y', ['x', 0], [' y', 2], (editor) => editor.toggleLink('https://u.test')],
@@ -2712,6 +2716,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
                 const BLOCK_COMMANDS: ReadonlyArray<[name: string, run: (editor: MarkdownEditor) => void]> = [
                     ['toggleUnorderedList', (editor) => editor.toggleUnorderedList()],
                     ['toggleOrderedList', (editor) => editor.toggleOrderedList()],
+                    ['toggleTaskList', (editor) => editor.toggleTaskList()],
                     ['setBlockType("h2")', (editor) => editor.setBlockType('h2')],
                 ];
 
@@ -4632,17 +4637,17 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         });
     });
 
-    describe('a task marker left alone in its item', () => {
-        // Without text after it on its line, `[x]` is no checkbox: the viewer
-        // reads it as text, or as a reference link where a definition names
-        // it. The marker kept as source is then written as the text it shows.
+    describe('an emptied task item', () => {
+        // Without text after it on its line, `[x]` is no checkbox: the viewer reads it as text, or as a reference
+        // link where a definition names it. The save writes the text it reads as; the editor keeps the checkbox
+        // while the caret is in the item, so the item can be typed in.
         const cases: Array<[string, string, string]> = [
             ['with a definition naming its label', '- [x] a\n\n[x]: /u', '- \\[x\\]\n\n[x]: /u'],
-            ['unchecked', '- [ ] a', '- \\[ \\]'],
+            ['unchecked', '- [ ] a', '- [ ]'],
         ];
 
         for (const [name, source, saved] of cases) {
-            it(`${name}: saves as the text it shows`, () => {
+            it(`${name}: keeps its checkbox and saves as the text it reads as`, () => {
                 const editor = load(source);
 
                 select(editor, ['a', 0], ['a', 1]);
@@ -4650,11 +4655,29 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
                     lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
                 });
 
-                // The list alone: a definition shows as a raw block in the editor and as nothing in the viewer.
+                expect(readDocument(editor, () => $dfs().filter(({ node }) => $isMarkdownTaskCheckboxNode(node)).length)).toBe(1);
                 expect(editor.getValue()).toBe(saved);
-                expect(editorSurfaceModel(editor)[0]).toEqual(viewerModel(saved).blocks[0]);
                 expect(load(saved).getValue()).toBe(saved);
             });
+        }
+
+        /**
+         * Puts a caret before the checkbox of the item whose text holds `text`: an element point at offset 0 of the
+         * item's text.
+         *
+         * @param editor - The editor.
+         * @param text - The exact text of a text node in the item's text.
+         */
+        function selectBeforeCheckbox(editor: MarkdownEditor, text: string): void {
+            lexicalOf(editor).update(() => {
+                const node = $dfs().map((entry) => entry.node).find((entry) => $isTextNode(entry) && entry.getTextContent() === text)!;
+                const block = node.getParent()!;
+                const selection = $createRangeSelection();
+
+                selection.anchor.set(block.getKey(), 0, 'element');
+                selection.focus.set(block.getKey(), 0, 'element');
+                $setSelection(selection);
+            }, { discrete: true });
         }
 
         it('a checkbox that text typed before it leaves inside its item\'s line saves as the text it shows', () => {
@@ -4662,7 +4685,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             const source = '- [x] done\n\n[x]: https://e.com';
             const editor = load(source);
 
-            select(editor, ['[x] ', 0]);
+            selectBeforeCheckbox(editor, 'done');
             edit(editor, () => {
                 ($getSelection() as RangeSelection).insertText('}}');
             });
@@ -4677,7 +4700,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         it('a checkbox a line break moves off its item\'s first line saves as the text it shows', () => {
             const editor = load('- [x] done\n\n[x]: /u');
 
-            select(editor, ['[x] ', 0]);
+            selectBeforeCheckbox(editor, 'done');
             edit(editor, () => {
                 ($getSelection() as RangeSelection).insertText('a');
                 ($getSelection() as RangeSelection).insertLineBreak();

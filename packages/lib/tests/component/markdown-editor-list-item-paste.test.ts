@@ -198,6 +198,8 @@ interface Clipboard {
     readonly to:     TextPoint;
     /** The Lexical types of the copied top-level nodes. */
     readonly types:  readonly string[];
+    /** The text of a node in an item's text whose checkbox the copy starts before (an element point at its start), in place of `from`. */
+    readonly startsBeforeCheckboxOf?: string;
 }
 
 const TOP_LEVEL: Target = { name: 'top-level item', source: '- bcd\n- z' };
@@ -252,6 +254,19 @@ function copyOf(clipboard: Clipboard): CopiedNodes {
     const origin = load(clipboard.source);
 
     selectText(origin, clipboard.from, clipboard.to);
+
+    if (clipboard.startsBeforeCheckboxOf !== undefined) {
+        const startsBefore = clipboard.startsBeforeCheckboxOf;
+
+        update(origin, () => {
+            const selection = $createRangeSelection();
+            const block = $textNode(startsBefore).getParent()!;
+
+            selection.anchor.set(block.getKey(), 0, 'element');
+            selection.focus.set($textNode(clipboard.to[0]).getKey(), clipboard.to[1], 'text');
+            $setSelection(selection);
+        });
+    }
 
     return copySelection(origin);
 }
@@ -516,7 +531,9 @@ describe('a copied list keeps the paragraphs its items hold', () => {
     // Lexical builds copied nodes by appending each child to its parent, and a list item's `append` merges a
     // paragraph into the item's text: `- a` holding a paragraph `p` would be pasted as `- ap`.
     const ITEM_PARAGRAPHS: Clipboard = { name: 'list', source: '- a\n\n  p\n\n  r\n- k', from: ['a', 0], to: ['k', 1], types: ['list'] };
-    const TASK_PARAGRAPH: Clipboard = { name: 'list', source: '- [ ] a\n\n  p\n- [x] k', from: ['[ ] ', 0], to: ['k', 1], types: ['list'] };
+    const TASK_PARAGRAPH: Clipboard = {
+        name: 'list', source: '- [ ] a\n\n  p\n- [x] k', from: ['a', 0], to: ['k', 1], types: ['list'], startsBeforeCheckboxOf: 'a',
+    };
     const QUOTE_PARAGRAPH: Clipboard = { name: 'list', source: '- > q\n\n  p\n- k', from: ['q', 0], to: ['k', 1], types: ['list'] };
     const NESTED_PARAGRAPH: Clipboard = { name: 'list', source: '- a\n  - n\n\n    p\n- k', from: ['a', 0], to: ['k', 1], types: ['list'] };
     const PARAGRAPH: Target = { name: 'paragraph', source: 'bcd' };
@@ -524,9 +541,13 @@ describe('a copied list keeps the paragraphs its items hold', () => {
 
     /** The document's blocks, by node type and text. */
     const shapeOf = (editor: MarkdownEditor): string => lexicalOf(editor).read(() => {
-        const describeNode = (node: LexicalNode): string => ($isElementNode(node)
-            ? `${node.getType()}(${node.getChildren().map(describeNode).join(', ')})`
-            : JSON.stringify(node.getTextContent()));
+        const describeNode = (node: LexicalNode): string => {
+            if ($isElementNode(node)) {
+                return `${node.getType()}(${node.getChildren().map(describeNode).join(', ')})`;
+            }
+
+            return node.getType() === 'markdown-task-checkbox' ? node.getType() : JSON.stringify(node.getTextContent());
+        };
 
         return $getRoot().getChildren().map(describeNode).join(' | ');
     });
@@ -547,7 +568,7 @@ describe('a copied list keeps the paragraphs its items hold', () => {
             + 'markdown-list-item(markdown-list-item-text("e")))), markdown-list-item(markdown-list-item-text("f")))',
             '- a\n  - b\n\n  - a\n\n    p\n\n    r\n\n  - kcd\n\n  - e\n- f'],
         ['a task item\'s paragraph', PARAGRAPH, TASK_PARAGRAPH,
-            'paragraph("b") | list(markdown-list-item(markdown-list-item-text("[ ] ", "a"), paragraph("p")), markdown-list-item(markdown-list-item-text("[x] ", "k"))) | paragraph("cd")',
+            'paragraph("b") | list(markdown-list-item(markdown-list-item-text(markdown-task-checkbox, "a"), paragraph("p")), markdown-list-item(markdown-list-item-text(markdown-task-checkbox, "k"))) | paragraph("cd")',
             'b\n\n- [ ] a\n\n  p\n\n- [x] k\n\ncd'],
         ['a paragraph after an item\'s quote', PARAGRAPH, QUOTE_PARAGRAPH,
             'paragraph("b") | list(markdown-list-item(markdown-quote(paragraph("q")), paragraph("p")), markdown-list-item(markdown-list-item-text("k"))) | paragraph("cd")',

@@ -739,7 +739,7 @@ describe('MarkdownDocumentPanel live toolbar state', () => {
             panel.getEditor().setReadOnly(true);
 
             expect(controlsEnabled()).toEqual([false, false, false, false, false, false, false, false, false, false]);
-            expect(Object.values(insertEntriesEnabled(panel))).toEqual([false, false, false, false, false, false, false]);
+            expect(Object.values(insertEntriesEnabled(panel))).toEqual([false, false, false, false, false, false, false, false]);
 
             panel.getEditor().setReadOnly(false);
 
@@ -760,13 +760,13 @@ describe('MarkdownDocumentPanel live toolbar state', () => {
             caretIn(panel.getEditor(), RAW_BLOCK, 3);
 
             expect(insertEntriesEnabled(panel)).toEqual({
-                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': false, 'Image…': false, 'Horizontal rule': false,
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Task list': true, 'Table': false, 'Image…': false, 'Horizontal rule': false,
             });
 
             caretIn(panel.getEditor(), 'text', 2);
 
             expect(insertEntriesEnabled(panel)).toEqual({
-                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': true, 'Horizontal rule': true,
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Task list': true, 'Table': true, 'Image…': true, 'Horizontal rule': true,
             });
         });
 
@@ -777,7 +777,7 @@ describe('MarkdownDocumentPanel live toolbar state', () => {
             caretIn(panel.getEditor(), '1', 1);
 
             expect(insertEntriesEnabled(panel)).toEqual({
-                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Table': false, 'Image…': true, 'Horizontal rule': false,
+                'Quote': false, 'Code block': false, 'Bulleted list': false, 'Numbered list': false, 'Task list': false, 'Table': false, 'Image…': true, 'Horizontal rule': false,
             });
         });
 
@@ -802,7 +802,7 @@ describe('MarkdownDocumentPanel live toolbar state', () => {
             panel.getEditor().setMode('source');
 
             expect(insertEntriesEnabled(panel)).toEqual({
-                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Table': true, 'Image…': true, 'Horizontal rule': true,
+                'Quote': true, 'Code block': true, 'Bulleted list': true, 'Numbered list': true, 'Task list': true, 'Table': true, 'Image…': true, 'Horizontal rule': true,
             });
         });
     });
@@ -897,6 +897,23 @@ describe('MarkdownDocumentPanel Insert dropdown', () => {
         findItem(resolveItems(findMenuButton(numberPanel, 'Insert…').getMenuItems()), 'Numbered list').action!();
 
         expect(numberPanel.getValue()).toContain('1. word');
+    });
+
+    it('"Task list" calls toggleTaskList', () => {
+        const panel = new MarkdownDocumentPanel();
+
+        panel.setValue('word');
+        selectStart(panel.getEditor());
+        findItem(resolveItems(findMenuButton(panel, 'Insert…').getMenuItems()), 'Task list').action!();
+
+        expect(panel.getValue()).toBe('- [ ] word');
+    });
+
+    it('offers Task list right after Numbered list', () => {
+        const panel = new MarkdownDocumentPanel();
+        const labels = resolveItems(findMenuButton(panel, 'Insert…').getMenuItems()).map((item) => item.text);
+
+        expect(labels.indexOf('Task list')).toBe(labels.indexOf('Numbered list') + 1);
     });
 
     it('"Code block" makes a heading\'s text the code as the heading\'s line holds it', () => {

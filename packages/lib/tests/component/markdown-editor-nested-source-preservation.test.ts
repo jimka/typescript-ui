@@ -12,6 +12,7 @@ import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import type { MarkdownSourceMap } from '~/component/editor/markdownSourceMap';
 import { $createMarkdownListItemTextNode } from '~/component/editor/markdownListItemNode';
 import { $isMarkdownSourceTextNode } from '~/component/editor/markdownSourceNodes';
+import { $isMarkdownTaskCheckboxNode } from '~/component/editor/markdownTaskCheckboxNode';
 import { lexMarkdown } from '~/component/display/markdownExtensions';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
@@ -780,6 +781,39 @@ describe('9. horizontal rules', () => {
         {
             id: '9.6', source: lines('- ***', '- b'), edit: (editor) => append(editor, 'b'),
             saved: lines('- ***', '- b!'),
+        },
+    ]);
+});
+
+describe('10. task items', () => {
+    runRows([
+        {
+            id: '10.1', source: lines('- [X]   a', '- b'), edit: (editor) => append(editor, 'b'),
+            saved: lines('- [X]   a', '- b!'),
+        },
+        {
+            id: '10.2', source: lines('- [X]   a', '- b'), edit: (editor) => append(editor, 'a'),
+            saved: lines('- [X] a!', '- b'),
+        },
+        {
+            // A click on the box is `setChecked` in an update: the item is written in the standard form.
+            id: '10.3', source: lines('- [X] a', '- b'),
+            edit: (editor) => update(editor, () => {
+                const box = $dfs().map(({ node }) => node).find($isMarkdownTaskCheckboxNode)!;
+
+                box.setChecked(false);
+            }),
+            saved: lines('- [ ] a', '- b'),
+        },
+        {
+            id: '10.4', source: lines('- [X] a', '- b'),
+            edit: (editor) => update(editor, () => {
+                const box = $dfs().map(({ node }) => node).find($isMarkdownTaskCheckboxNode)!;
+
+                box.setChecked(false);
+                box.setChecked(true);
+            }),
+            saved: lines('- [x] a', '- b'),
         },
     ]);
 });

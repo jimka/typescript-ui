@@ -3951,6 +3951,40 @@ describe('built-in markdown language typing', () => {
         expect(await syntaxNodes('a\n\n---\n\nb')).toContain('HorizontalRule[3,6]');
     });
 
+    // A task item's marker is tagged as list markup, which the editor theme mutes as it does `-`; the leaf test is
+    // `marked`'s, which wants a non-blank character after the blanks (lezer's own wants any blank).
+    it('TM1: task markers that open a task item are TaskMarker nodes, and other brackets are not', async () => {
+        const nodes = await syntaxNodes('- [ ] a\n- [x] b\n- [ ]\n- [ ]\tc\n- \\[ ] d');
+
+        expect(nodes).toContain('TaskMarker[2,5]');
+        expect(nodes).toContain('TaskMarker[10,13]');
+        expect(nodes).toContain('TaskMarker[24,27]');
+        expect(nodes.match(/Task\[/g)).toHaveLength(3);
+        expect(nodes).not.toContain('TaskMarker[16,19]');
+    });
+
+    it('TM3: a marker at the start of a later paragraph of an item is no task marker, as the viewer reads it', async () => {
+        expect(await syntaxNodes('- a\n\n  [ ] b')).not.toContain('Task');
+        expect(await syntaxNodes('- a\n\n  [ ] b')).not.toContain('TaskMarker');
+    });
+
+    it.each([
+        ['a second paragraph after a task item\'s first', '- [ ] a\n\n  [x] b', 'TaskMarker[2,5]'],
+        ['a nested item', '- a\n  - [ ] b', 'TaskMarker[8,11]'],
+        ['a quote', '> - [ ] q', 'TaskMarker[4,7]'],
+        ['an ordered item', '1. [x] a', 'TaskMarker[3,6]'],
+    ])('TM4: the first block of an item still takes its marker: %s', async (_name, doc, node) => {
+        expect(await syntaxNodes(doc)).toContain(node);
+    });
+
+    it('TM5: only the first block of a task item takes a marker', async () => {
+        expect(await syntaxNodes('- [ ] a\n\n  [x] b')).not.toContain('TaskMarker[11,14]');
+    });
+
+    it('TM2: brackets in a paragraph are no task marker', async () => {
+        expect(await syntaxNodes('a [ ] b')).not.toContain('Task');
+    });
+
     it('TAB22: a heading after a tab has the nodes of a heading after a space', async () => {
         expect(await syntaxNodes('#\tFoo *b* #')).toBe(await syntaxNodes('# Foo *b* #'));
     });

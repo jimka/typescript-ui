@@ -1602,6 +1602,18 @@ describe('MarkdownEditor read-only, mounted: switching read-only', () => {
         expect(seen.flashes()).toBe(1);
     });
 
+    it('M8: toggleTaskList on a read-only editor is refused as the other list toggles are, changing nothing and signalling once', () => {
+        const m = prepared();
+        const seen = watch(m);
+        const before = m.editor.getValue();
+
+        m.editor.toggleTaskList();
+
+        expect(m.editor.getValue()).toBe(before);
+        expect(seen.refusals()).toBe(1);
+        expect(seen.flashes()).toBe(1);
+    });
+
     it('M6: focus() on a read-only editor gives the surface the keyboard, and Lexical sets no selection of its own', async () => {
         // That the browser keeps a caret it already holds there is a browser check: jsdom collapses the selection on every focus.
         const m = prepared();

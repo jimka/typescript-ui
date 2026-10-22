@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import {
-    $addUpdateTag, $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $getSelection, $getNodeByKey, $isElementNode, $setState,
-    TEXT_TYPE_TO_FORMAT,
+    $addUpdateTag, $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $getSelection, $getNodeByKey, $isElementNode, $isTextNode,
+    $setState, TEXT_TYPE_TO_FORMAT,
 } from "lexical";
 import type { ElementNode, LexicalNode, NodeKey, TextFormatType, TextNode } from "lexical";
 import { Lexer } from "marked";
@@ -48,7 +48,8 @@ import {
     $documentDefinitions, $listReadsLoose, $readDefinitions, $recordPartFingerprints, contentColumn, $serializeLinkContent, rawBlockAtMargin, rawBlockInItem,
     rawBlockStandsInItem, runsOn, withoutBlankEdges,
 } from "~/component/editor/markdownSerializer.js";
-import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode, $isMarkdownRawBlockNode } from "~/component/editor/markdownSourceNodes.js";
+import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode, $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
+import { $createMarkdownTaskCheckboxNode } from "~/component/editor/markdownTaskCheckboxNode.js";
 import { headingSlugSource, slugify } from "~/component/display/markdownHeadingIds.js";
 import { $readStandardForm, keptImageShown } from "~/component/editor/markdownSerializer.js";
 import type { StandardFormReading } from "~/component/editor/markdownSerializer.js";
@@ -191,6 +192,12 @@ const IMPORT_PARTS: { current: Map<NodeKey, RecordedPart> | null } = { current: 
  * (a bullet, or a number and its delimiter) and the spaces after it.
  */
 const ITEM_START = /^( {0,3})(?:([-*+])|(\d{1,9})([.)]))( *)/;
+
+/**
+ * A task item's marker on its marker line: the list marker, its blanks, then
+ * `[ ]`, `[x]` or `[X]` (GFM, task list items). Group 1 is the marker.
+ */
+const AUTHORED_TASK_MARKER = /^[ \t]*(?:[-*+]|\d{1,9}[.)])[ \t]+(\[[ xX]\])/;
 
 /** A fence line that can close a fenced code block: up to three spaces, a run of one fence character, then only whitespace. */
 const CLOSING_FENCE_LINE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
@@ -1527,8 +1534,44 @@ function withOwnCheckbox(tokens: Token[]): Token[] {
 }
 
 /**
+ * A task item's marker as its first line writes it.
+ *
+ * @param item - The list-item token.
+ * @returns `[ ]`, `[x]` or `[X]`; `""` where the marker is not on the marker line (a loose item whose marker
+ *   `marked` lexed apart).
+ */
+function authoredTaskMarker(item: Tokens.ListItem): string {
+    return AUTHORED_TASK_MARKER.exec(item.raw)?.[1] ?? "";
+}
+
+/**
+ * Trims the blanks that end an item's text. `marked` keeps them on every
+ * item but a list's last, the viewer shows none of them and no save writes
+ * them, so the editor would otherwise show a space its save drops. Only plain
+ * text is trimmed, not a source node or a code span; a node left empty goes.
+ * No hard break can stand there, since a break needs a line after it.
+ *
+ * @param text - The item's text.
+ */
+function $dropBlanksEndingItemText(text: ElementNode): void {
+    const last = text.getLastChild();
+
+    if (!$isTextNode(last) || $isMarkdownSourceTextNode(last) || last.hasFormat("code")) {
+        return;
+    }
+
+    const kept = last.getTextContent().replace(/[ \t]+$/, "");
+
+    if (kept === "") {
+        last.remove();
+    } else if (kept !== last.getTextContent()) {
+        last.setTextContent(kept);
+    }
+}
+
+/**
  * Builds one list item: its text, a node of its own holding an optional
- * checkbox and the item's inline content, then the item's blocks
+ * checkbox node and the item's inline content, then the item's blocks
  * ({@link $buildItemBlocks}), located as any container's are
  * ({@link locateBlocks}): each run of link reference definitions is one
  * block, and text of the item no token covers (a repeated definition, which
@@ -1549,7 +1592,7 @@ function $buildListItem(item: Tokens.ListItem): ListItemNode | null {
     const blocks = text === null ? located : located.slice(1);
     const tokens = text === null ? [] : text.type === "paragraph" ? (text as Tokens.Paragraph).tokens : [text];
 
-    // The viewer prints a task marker inline at the start of the item's text
+    // The viewer draws a task item's checkbox at the start of the item's text
     // or first paragraph; before anything else it stands on a line of its
     // own, which an item's line of text cannot show.
     if (checkbox !== null && tokens.length === 0) {
@@ -1568,14 +1611,15 @@ function $buildListItem(item: Tokens.ListItem): ListItemNode | null {
     }
 
     if (text !== null) {
-        $buildKeepingConstructs(itemText, [...(checkbox === null ? [] : [checkbox]), ...tokens], false, (keep) => {
+        $buildKeepingConstructs(itemText, tokens, false, (keep) => {
             itemText.clear();
 
             if (checkbox !== null) {
-                itemText.append($createMarkdownSourceTextNode(checkbox.raw, checkbox.raw));
+                itemText.append($createMarkdownTaskCheckboxNode((checkbox as Tokens.Checkbox).checked, authoredTaskMarker(item)));
             }
 
             appendInlineTokens({ block: itemText, openLink: null, nextCellParagraph: null, keep, edges: edgeLinks(tokens) }, tokens, PLAIN);
+            $dropBlanksEndingItemText(itemText);
         });
     }
 
@@ -1965,7 +2009,7 @@ function $appendInlineContent<T extends ElementNode>(block: T, tokens: Token[], 
  * is built once.
  *
  * @param container - The block (a table cell for a cell's content).
- * @param tokens - Its inline tokens (a task item's checkbox first).
+ * @param tokens - Its inline tokens (a task item's, without its checkbox).
  * @param isHeading - Whether the block is a heading.
  * @param build - Builds the block's content, the given tokens kept as written.
  */

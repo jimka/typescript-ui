@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { $createListItemNode, $isListItemNode, $isListNode, ListItemNode, ListNode } from "@lexical/list";
+import { $createMarkdownTaskCheckboxNode, $isMarkdownTaskCheckboxNode, $keepOnlyOpeningCheckbox } from "~/component/editor/markdownTaskCheckboxNode.js";
 import type { SerializedListItemNode } from "@lexical/list";
 import {
     $copyNode, $createParagraphNode, $getEditor, $getNodeByKey, $getSelection, $hasAncestor, $isElementNode, $isRangeSelection, $isRootNode,
@@ -208,6 +209,12 @@ const LIST_CONVERSION_PRIORITY = 1;
  * ({@link $nestedListWrittenApart}). Such a list goes to the end of the item
  * before it. Any other child of the list that is no item is wrapped in one.
  *
+ * A check list (Lexical's own, `ListNode`'s type `"check"`, whose items carry
+ * a checked state) is built as a bulleted list of task items: the editor
+ * holds no check list, and each item whose checked state is set gets a
+ * checkbox first, which Lexical's conversions of GitHub's, Joplin's and
+ * `aria-checked` check lists already leave in that state.
+ *
  * @param output - What `ListNode`'s conversion returned.
  * @returns The same output, keeping nested lists in their items.
  */
@@ -218,10 +225,29 @@ function keepingNestedLists(output: DOMConversionOutput | null): DOMConversionOu
         return output;
     }
 
+    if (list.getListType() === "check") {
+        list.setListType("bullet");
+    }
+
     return {
         ...output,
         after: (children) => {
             const items: LexicalNode[] = [];
+
+            for (const child of children) {
+                if ($isListItemNode(child)) {
+                    $keepOnlyOpeningCheckbox(child, $isListItemNode);
+                }
+
+                if ($isListItemNode(child) && child.__checked !== undefined) {
+                    // An item whose checkbox input was read as a node already has its checkbox.
+                    if (!$isMarkdownTaskCheckboxNode(child.getFirstDescendant())) {
+                        child.splice(0, 0, [$createMarkdownTaskCheckboxNode(child.__checked)]);
+                    }
+
+                    child.setChecked(undefined);
+                }
+            }
 
             for (const child of children) {
                 const before = items[items.length - 1];
@@ -295,7 +321,7 @@ let _isExportingItemTextAsHtml = false;
 /**
  * The text a list item opens with: the first child of a
  * {@link MarkdownListItemNode}, holding the item's inline content (and its
- * task marker, when it has one).
+ * task item checkbox, first, when it has one).
  *
  * Lexical asks the block the caret is in what an edit does: Enter, Backspace
  * at the block's start, an indent, a block type, a join, a paste. In a list

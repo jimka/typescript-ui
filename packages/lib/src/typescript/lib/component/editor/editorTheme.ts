@@ -30,6 +30,9 @@ const IMAGE_CLASS                = "ts-ui-mde-image";
 const RAW_BLOCK_CLASS            = "ts-ui-mde-raw-block";
 const HORIZONTAL_RULE_CLASS          = "ts-ui-mde-horizontal-rule";
 const HORIZONTAL_RULE_SELECTED_CLASS = "ts-ui-mde-horizontal-rule-selected";
+const TASK_CHECKBOX_CLASS            = "ts-ui-mde-task-checkbox";
+const TASK_CHECKBOX_CHECKED_CLASS    = "ts-ui-mde-task-checkbox-checked";
+const TASK_CHECKBOX_READ_ONLY_CLASS  = "ts-ui-mde-task-checkbox-read-only";
 
 /** Guards the module-singleton class-rule registration in {@link ensureMarkdownEditorClassRules}. */
 let _classRulesEnsured = false;
@@ -304,6 +307,63 @@ export function ensureMarkdownEditorClassRules(): void {
             outlineOffset: "2px",
         },
     });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TASK_CHECKBOX_CLASS,
+        // The box of a task item, drawn with the tokens the `Checkbox` component draws its box with. Matches the
+        // viewer's own TASK_CHECKBOX_CLASS rule (Markdown.ts), and is clickable.
+        styles: {
+            display:         "inline-block",
+            boxSizing:       "border-box",
+            // A little under the font size, so the box fits the line at any font size or font scale.
+            width:           "0.9em",
+            height:          "0.9em",
+            verticalAlign:   "middle",
+            // The width of the space the marker is followed by.
+            marginRight:     "0.35em",
+            // The frame the check mark is drawn in.
+            position:        "relative",
+            border:          "1px solid var(--ts-ui-form-border, rgb(160, 160, 160))",
+            borderRadius:    "var(--ts-ui-checkbox-radius, 3px)",
+            backgroundColor: "var(--ts-ui-checkbox-bg, var(--ts-ui-form-bg, rgb(255, 255, 255)))",
+            cursor:          "pointer",
+        },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TASK_CHECKBOX_READ_ONLY_CLASS,
+        // A read-only editor refuses the click, so the box shows no pointer.
+        styles: { cursor: "default" },
+    });
+
+    new StyleRule({
+        scope:  "class",
+        name:   TASK_CHECKBOX_CHECKED_CLASS,
+        styles: {
+            backgroundColor: "var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))",
+            borderColor:     "var(--ts-ui-checkbox-bg-selected, rgb(30, 100, 200))",
+        },
+    });
+
+    new StyleRule({
+        scope:  "selector",
+        name:   `.${TASK_CHECKBOX_CHECKED_CLASS}::after`,
+        // The check mark: the right and bottom borders of a box turned 45 degrees, placed and sized in proportion
+        // to the box so it scales with the text.
+        styles: {
+            content:     '""',
+            position:    "absolute",
+            left:        "32%",
+            top:         "10%",
+            width:       "30%",
+            height:      "55%",
+            border:      "solid var(--ts-ui-checkbox-check-color, rgb(255, 255, 255))",
+            borderWidth: "0 0.12em 0.12em 0",
+            transform:   "rotate(45deg)",
+        },
+    });
 }
 
 /**
@@ -352,4 +412,7 @@ export const EDITOR_THEME: EditorThemeClasses = {
     mdRawBlock:        RAW_BLOCK_CLASS,
     mdHorizontalRule:         HORIZONTAL_RULE_CLASS,
     mdHorizontalRuleSelected: HORIZONTAL_RULE_SELECTED_CLASS,
+    mdTaskCheckbox:           TASK_CHECKBOX_CLASS,
+    mdTaskCheckboxChecked:    TASK_CHECKBOX_CHECKED_CLASS,
+    mdTaskCheckboxReadOnly:   TASK_CHECKBOX_READ_ONLY_CLASS,
 };

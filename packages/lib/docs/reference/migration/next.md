@@ -636,3 +636,32 @@ editor's tree for a `markdown-raw-block` holding `---` reads
 <!-- After: still shows the text -->
 \---
 ```
+
+## Task-list items show a checkbox in `Markdown` and `MarkdownEditor`
+
+**What changed and why.** A GFM task-list item (`- [ ] todo`, `- [x] done`,
+also under `*`, `+` and ordered markers, nested, in loose and tight lists)
+showed its marker as text in the viewer, and the editor held it as an atomic
+run of source. The viewer now draws a read-only checkbox in its place, and the
+editor holds a checkbox node of its own that a click or Ctrl/Cmd+Enter
+toggles.
+
+| | Before | Now |
+|---|---|---|
+| `- [ ] a` in `Markdown` | the text `[ ] a` | a read-only checkbox (`role="checkbox"`, `aria-checked`), then `a` |
+| `- [ ] a` in `MarkdownEditor` | an atomic run `[ ] ` (a `MarkdownSourceTextNode`) | a checkbox node of type `markdown-task-checkbox` |
+| bold over `- [ ] a` from before the marker | declined | formats the text: `- [ ] **a**` |
+| `toggleTaskList()` | not there | makes or removes task items |
+
+**Who needs to act.** CSS or tests that read the viewer's `[ ] ` text read the
+`role="checkbox"` span instead. Code that read the editor's tree for a
+`MarkdownSourceTextNode` holding `[ ] ` reads the checkbox node. Content that
+showed `[ ]` as text at an item's start on purpose writes `\[ \]`.
+
+```markdown
+<!-- Before: showed the text [ ] a -->
+- [ ] a
+
+<!-- After: shows a checkbox; to keep the text, escape it -->
+- \[ \] a
+```

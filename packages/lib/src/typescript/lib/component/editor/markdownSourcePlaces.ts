@@ -10,6 +10,7 @@ import type { TableNode } from "@lexical/table";
 import { $dfs } from "@lexical/utils";
 import { COLUMN_SEPARATOR, lineEndAt } from "~/component/display/markdownAttributes.js";
 import { lexMarkdownLinkDefinitions } from "~/component/display/markdownExtensions.js";
+import { $isMarkdownTaskCheckboxNode } from "~/component/editor/markdownTaskCheckboxNode.js";
 import { $isMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
 import type { MarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
 import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
@@ -136,8 +137,11 @@ export type BetweenBlocksPlace = "next" | "previous" | "none";
  *   between the backslash of an escape and its character, in the syntax of
  *   a hard line break or of an image — is before that thing.
  * - An offset inside the source of a source node that shows its source as
- *   written (inline HTML, a task item's checkbox) is at the nearer end of
- *   that node, never inside it ({@link $placeOutsideSourceNode}).
+ *   written (inline HTML) is at the nearer end of that node, never inside
+ *   it ({@link $placeOutsideSourceNode}).
+ * - An offset anywhere in the source of a task item's checkbox (its marker
+ *   and the blanks after it) is after the checkbox, which is one unit shown
+ *   whole and no place for a caret to stand before ({@link $placeAmongUnits}).
  * - An offset in a list item or a table cell that shows nothing, in a block
  *   that shows something elsewhere, is in that item or cell
  *   ({@link $emptyBlockAt}), never at the end of the text before it or the
@@ -154,8 +158,7 @@ export type BetweenBlocksPlace = "next" | "previous" | "none";
  * tab in the container prefix of a code line or an HTML line, or of a
  * paragraph line made of list markers and tabs, which shows as the spaces the
  * tab stands for; a task item's checkbox written with more than one space
- * after it in a list whose items stand apart, which shows with the one space
- * of its own; a list item's text that begins as a link reference definition
+ * after it in a list whose items stand apart, whose blanks the lexer drops; a list item's text that begins as a link reference definition
  * repeating a label, which the lexer drops. (A link text holding
  * an escaped bracket is such text too, and its source is found another way:
  * {@link leavesOfUnescapedLinks}.)
@@ -428,8 +431,7 @@ function sourceOffsetInElement(units: readonly ShownUnit[], point: BlockPoint): 
  * nearer end of the node, its start where both are as near, named in the
  * ordinary text beside the node there when there is some. A source node
  * is kept as written and takes no typing: a character typed inside one
- * replaces the node whole, a task item's checkbox with it. So a caret is
- * never left inside one. Any other place is returned as it is.
+ * replaces the node whole. So a caret is never left inside one. Any other place is returned as it is.
  *
  * @param place - The place.
  * @returns The place, outside any source node.
@@ -887,7 +889,7 @@ function showsAsCellParagraphBreak(walk: UnitWalk, entries: readonly SourceEntry
 /**
  * Finds the source of what a block entry shows by itself: a horizontal
  * rule, which stands for its line, a task item's
- * checkbox, which shows as its source, or the text of a code block or of a
+ * checkbox, which stands for its marker, or the text of a code block or of a
  * raw block, which shows as it is written. A raw block stands for a block
  * the nodes cannot hold, with all that is in it, so the entries inside
  * that block are passed over with it. Any other block entry shows nothing
@@ -916,7 +918,12 @@ function locateBlockEntry(walk: UnitWalk, block: SourceBlockNode | undefined): n
     }
 
     if (block.type === "checkbox") {
-        locateSourceNode(walk, block.token?.raw ?? "", block.start, block.end, NO_INLINES);
+        // A task item's checkbox is one unit shown whole, whose source is its marker and the blanks after it.
+        if ($isMarkdownTaskCheckboxNode(unit.node) && block.start !== NOT_FOUND) {
+            unit.start = block.start;
+            unit.end = block.end;
+            walk.at += 1;
+        }
 
         return 0;
     }
@@ -1350,8 +1357,13 @@ function givesFormat(inline: SourceInline): boolean {
 function $placeAmongUnits(
     units: readonly ShownUnit[], offset: number, text: string, inlines: readonly SourceInline[], betweenBlocks?: BetweenBlocksPlace,
 ): SourcePlace | null {
-    const firstAfter = units.findIndex((unit) => unit.start !== NOT_FOUND && unit.end > offset);
-    const index = firstAfter === -1 ? units.length : firstAfter;
+    // An offset anywhere in a checkbox's source is after the checkbox: it is no place for a caret to stand before.
+    const endOf = (unit: ShownUnit): number => ($isMarkdownTaskCheckboxNode(unit.node) ? unit.start : unit.end);
+    const firstAfter = units.findIndex((unit) => unit.start !== NOT_FOUND && endOf(unit) > offset);
+    const firstUnitAfter = firstAfter === -1 ? units.length : firstAfter;
+    // An offset on a later item's own line, before its checkbox (at the line's start, or between the list marker and its
+    // space), is in that item, after the checkbox, as an offset there is for a plain item; not at the end of the item above.
+    const index = $startsLaterTaskItemLine(units, firstUnitAfter, offset, text) ? firstUnitAfter + 1 : firstUnitAfter;
     const before = units[index - 1];
     const after = units[index];
     const cut = units.filter((unit) => unit.start !== NOT_FOUND && unit.start < offset && offset < unit.end);
@@ -1369,6 +1381,30 @@ function $placeAmongUnits(
         && inline.innerStart <= offset && offset <= inline.innerEnd);
 
     return $placeBetween(before, after, around, text, offset, betweenBlocks);
+}
+
+/**
+ * Whether an offset stands on the line of a task item's checkbox, before the checkbox, with another item's unit before it.
+ * The checkbox unit ends at its start ({@link $placeAmongUnits}), so such an offset would otherwise fall back to the
+ * previous item.
+ *
+ * @param units - The block's units.
+ * @param index - The index of the first unit the offset is before.
+ * @param offset - The offset.
+ * @param text - The block's Markdown.
+ * @returns `true` when the unit at `index` is a checkbox whose line the offset is on, ahead of it.
+ */
+function $startsLaterTaskItemLine(units: readonly ShownUnit[], index: number, offset: number, text: string): boolean {
+    const box = units[index];
+    const before = units[index - 1];
+
+    if (box === undefined || before === undefined || !$isMarkdownTaskCheckboxNode(box.node) || box.start === NOT_FOUND || offset >= box.start) {
+        return false;
+    }
+
+    const isOnBoxLine = !text.slice(offset, box.start).includes("\n");
+
+    return isOnBoxLine && before.start !== NOT_FOUND && $blockOf(before.node) !== $blockOf(box.node);
 }
 
 /**

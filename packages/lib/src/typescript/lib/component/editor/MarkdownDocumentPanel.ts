@@ -324,6 +324,7 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
             { text: "Code block", enabled: state.canSetBlockType, action: () => this._editor.setBlockType("code") },
             { text: "Bulleted list", enabled: state.canSetBlockType, action: () => this._editor.toggleUnorderedList() },
             { text: "Numbered list", enabled: state.canSetBlockType, action: () => this._editor.toggleOrderedList() },
+            { text: "Task list", enabled: state.canSetBlockType, action: () => this._editor.toggleTaskList() },
             { separator: true },
             { text: "Table", enabled: state.canInsertTable, action: () => this._editor.insertTable(2, 3) },
             { text: "Image…", enabled: state.canInsertImage, action: () => void this.promptAndInsertImage() },
