@@ -16,10 +16,11 @@ vi.mock('@lexical/clipboard', async (importOriginal) => ({
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     $createRangeSelection, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isRootNode, $isTextNode, $setSelection,
-    CONTROLLED_TEXT_INSERTION_COMMAND, DELETE_CHARACTER_COMMAND, INSERT_LINE_BREAK_COMMAND, INSERT_PARAGRAPH_COMMAND,
-    KEY_ENTER_COMMAND, UNDO_COMMAND,
+    $createParagraphNode, $createTextNode, CONTROLLED_TEXT_INSERTION_COMMAND, DELETE_CHARACTER_COMMAND, INSERT_LINE_BREAK_COMMAND,
+    INSERT_PARAGRAPH_COMMAND, INSERT_TAB_COMMAND, KEY_ENTER_COMMAND, UNDO_COMMAND,
 } from 'lexical';
-import type { BaseSelection, ElementNode, LexicalEditor, LexicalNode, PointType, TextNode } from 'lexical';
+import type { BaseSelection, ElementNode, LexicalEditor, LexicalNode, PointType, RangeSelection, TextNode } from 'lexical';
+import { $insertGeneratedNodes } from '@lexical/clipboard';
 import { $isListNode } from '@lexical/list';
 import { $createTableSelectionFrom, $isTableCellNode, $isTableNode, $isTableRowNode } from '@lexical/table';
 import type { TableNode, TableRowNode } from '@lexical/table';
@@ -657,6 +658,112 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
         }
     });
 
+    /**
+     * Inserts what a paste or drop of copied content inserts: a word, or a paragraph holding it.
+     *
+     * @param editor - The editor.
+     * @param asBlock - Whether the word comes in a paragraph.
+     */
+    function insertCopied(editor: MarkdownEditor, asBlock: boolean): void {
+        lexicalOf(editor).update(() => {
+            const word = $createTextNode('zz');
+
+            $insertGeneratedNodes(lexicalOf(editor), [asBlock ? $createParagraphNode().append(word) : word], $getSelection()!);
+        }, { discrete: true });
+    }
+
+    describe('commands over a range that starts before a list (Q, E and S rows)', () => {
+        const TWO = '- one\n- two';
+        const BEFORE_LIST = { on: 'root', at: 0 } as Spot;
+        const ABOVE_LIST = { on: 'root', at: 1 } as Spot;
+        const tab = (editor: MarkdownEditor): void => { lexicalOf(editor).dispatchCommand(INSERT_TAB_COMMAND, undefined); };
+        const enter = (editor: MarkdownEditor): void => { lexicalOf(editor).dispatchCommand(KEY_ENTER_COMMAND, null); };
+        const lineBreak = (editor: MarkdownEditor): void => { lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false); };
+        const typeX = (editor: MarkdownEditor): void => { lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'x'); };
+        const copiedWord = (editor: MarkdownEditor): void => { insertCopied(editor, false); };
+        const copiedParagraph = (editor: MarkdownEditor): void => { insertCopied(editor, true); };
+
+        it.each([
+            ['Q1', TWO, BEFORE_LIST, ['two', 3], tab, '-'],
+            ['Q2', TWO, BEFORE_LIST, { on: 'root', at: 1 }, tab, '-'],
+            ['Q3', '- one\n  - two\n- three', BEFORE_LIST, ['three', 5], tab, '-'],
+            ['Q4', 'Above\n\n- one\n- two', ABOVE_LIST, ['two', 3], tab, 'Above'],
+            ['Q5', TWO, BEFORE_LIST, ['two', 3], copiedWord, '- zz'],
+            ['Q6', TWO, BEFORE_LIST, ['two', 3], copiedParagraph, '- zz'],
+            ['Q7', 'Above\n\n- one\n- two', ABOVE_LIST, ['two', 3], copiedParagraph, 'Above\n\nzz'],
+            ['Q8', TWO, BEFORE_LIST, ['two', 3], typeX, '- x'],
+            ['E1', TWO, { on: 'list', at: 0 }, ['two', 3], enter, ''],
+            ['E2', 'Above\n\n- one\n- two', { on: 'list', at: 0 }, ['two', 3], enter, 'Above'],
+            ['E3', 'Above\n\n- one\n- two', { on: 'list', at: 0 }, ['one', 3], enter, 'Above\n\n-\n- two'],
+            ['S2', TWO, BEFORE_LIST, ['two', 0], lineBreak, '- \\\n  two'],
+            ['S3', 'Above\n\n- one\n- two', ABOVE_LIST, ['two', 1], lineBreak, 'Above\n\n- wo'],
+        ] as Array<[string, string, Spot, Spot, (editor: MarkdownEditor) => void, string]>)('%s: %j, in both directions, saves what Delete then the command does', (_row, source, from, to, command, saved) => {
+            const placements: string[] = [];
+
+            for (const [anchor, focus] of [[from, to], [to, from]]) {
+                const editor = load(source);
+                const loaded = editor.getValue();
+
+                select(editor, anchor, focus);
+
+                expect(() => command(editor)).not.toThrow();
+                expect(editor.getValue()).toBe(saved);
+                expectRoundTrips(editor);
+                placements.push(`${caretOf(editor)} | ${rootTypes(editor).join(',')}`);
+                expectOneUndoStep(editor, loaded);
+
+                const deleted = load(source);
+
+                select(deleted, anchor, focus);
+                pressDelete(deleted);
+                command(deleted);
+
+                // Delete's own update settles the caret before the command runs; the save, caret and blocks are the same.
+                expect(deleted.getValue()).toBe(saved);
+                expect(placements[placements.length - 1]).toBe(`${caretOf(deleted)} | ${rootTypes(deleted).join(',')}`);
+            }
+        });
+
+        it('Q9: paste() over a range from just before a list, in both directions, saves what Delete then paste() does', async () => {
+            vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('zz');
+
+            for (const [anchor, focus] of [[BEFORE_LIST, ['two', 3]], [['two', 3], BEFORE_LIST]] as Array<[Spot, Spot]>) {
+                const editor = load(TWO);
+                const loaded = editor.getValue();
+
+                select(editor, anchor, focus);
+                await editor.paste();
+
+                expect(editor.getValue()).toBe('- zz');
+                expectRoundTrips(editor);
+
+                const placement = `${caretOf(editor)} | ${rootTypes(editor).join(',')}`;
+
+                expectOneUndoStep(editor, loaded);
+
+                const deleted = load(TWO);
+
+                select(deleted, anchor, focus);
+                pressDelete(deleted);
+                await deleted.paste();
+
+                expect(deleted.getValue()).toBe('- zz');
+                expect(placement).toBe(`${caretOf(deleted)} | ${rootTypes(deleted).join(',')}`);
+            }
+        });
+
+        it('S1: a line break over a range from just before a list to the end of its text is declined, range kept', () => {
+            const editor = load('Above\n\n- one\n- two');
+            const loaded = editor.getValue();
+
+            select(editor, ABOVE_LIST, ['two', 3]);
+
+            expect(() => lineBreak(editor)).not.toThrow();
+            expect(editor.getValue()).toBe(loaded);
+            expect(lexicalOf(editor).read(() => ($getSelection() as RangeSelection).isCollapsed())).toBe(false);
+        });
+    });
+
     describe('P12: the matrix', () => {
         // Vitest's default per-test timeout is 5s. A document's sweep loads a few thousand editors, which takes
         // about a second for the largest document alone and several times that with the whole suite beside it.
@@ -674,6 +781,7 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
             COLUMN_LIST,
             'Above\n\n| a | b |\n| --- | --- |\n| c | d |\n\nafter',
             '- one\n  - two\n- three',
+            '- one\n- two',
             '> quote\n\n```\ncode\n```\n\n# head',
         ];
 
@@ -781,6 +889,9 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
             ['INSERT_PARAGRAPH_COMMAND', (editor) => { lexicalOf(editor).dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined); }, false],
             ['INSERT_LINE_BREAK_COMMAND', (editor) => { lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false); }, false],
             ['typing x', (editor) => { lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'x'); }, false],
+            ['Tab', (editor) => { lexicalOf(editor).dispatchCommand(INSERT_TAB_COMMAND, undefined); }, false],
+            ['inserting a copied word', (editor) => { insertCopied(editor, false); }, false],
+            ['inserting a copied paragraph', (editor) => { insertCopied(editor, true); }, false],
             ['Delete', (editor) => { lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, false); }, true],
             ['Backspace', (editor) => { lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true); }, true],
         ];
@@ -917,6 +1028,16 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
         }
 
         /**
+         * A paragraph break, then a typed x.
+         *
+         * @param editor - The editor.
+         */
+        function breakThenType(editor: MarkdownEditor): void {
+            lexicalOf(editor).dispatchCommand(KEY_ENTER_COMMAND, null);
+            lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'x');
+        }
+
+        /**
          * Where a paragraph break and a typed x land over a range from a container point to the end of a text: the
          * save and the caret, with Delete pressed over the range first or not.
          *
@@ -924,10 +1045,12 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
          * @param point - The container point.
          * @param textIndex - Which text node, in depth-first order, the range ends at the end of.
          * @param isBackward - Whether the anchor is the text end rather than the container point.
-         * @param deletesFirst - Whether Delete removes the range before the break.
-         * @returns The save and the caret, or `null` when the run cannot be made.
+         * @param deletesFirst - Whether Delete removes the range before the command.
+         * @param act - The command run over the range. A paragraph break, then a typed x, when omitted.
+         * @param onlyBeforeList - Whether only a range that starts just before a list is compared.
+         * @returns The save, the caret and the root's block types, or `null` when the run cannot be made.
          */
-        function placementOf(source: string, point: ContainerPoint, textIndex: number, isBackward: boolean, deletesFirst: boolean): string | null {
+        function placementOf(source: string, point: ContainerPoint, textIndex: number, isBackward: boolean, deletesFirst: boolean, act: (editor: MarkdownEditor) => void = breakThenType, onlyBeforeList = false): string | null {
             const editor = load(source);
             let startsAtPoint = true;
             let comparable = true;
@@ -945,6 +1068,12 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
                     startsAtPoint = !(isBackward ? !selection.isBackward() : selection.isBackward());
 
                     comparable = $isRootNode(containers[point.index]) || $isMarkdownColumnNode(containers[point.index]);
+
+                    if (comparable && onlyBeforeList) {
+                        const container = containers[point.index] as ElementNode;
+
+                        comparable = $isListNode(container.getChildAtIndex(point.offset));
+                    }
                 }, { discrete: true });
 
                 // Only a range that begins at a point on the root or a column is compared.
@@ -957,8 +1086,7 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
                         pressDelete(editor);
                     }
 
-                    lexicalOf(editor).dispatchCommand(KEY_ENTER_COMMAND, null);
-                    lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'x');
+                    act(editor);
                 });
 
                 if (thrown === NO_BROWSER_SELECTION) {
@@ -996,6 +1124,35 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
             expect(failures).toEqual([]);
         }, MATRIX_TIMEOUT_MS);
 
+        /** The inserts a range from just before a list must not throw or differ from Delete on. */
+        const INSERTS = COMMANDS.filter(([name]) => ['Tab', 'inserting a copied word', 'inserting a copied paragraph'].includes(name));
+
+        it.each(DOCUMENTS)('an insert over a range from just before a list to the end of a text lands where Delete then the insert does: %j', (source) => {
+            const points = containerPointsOf(source);
+            const counted = load(source);
+            const textCount = lexicalOf(counted).read(() => $dfs().map(({ node }) => node).filter($isTextNode).length);
+            const failures: string[] = [];
+
+            counted.dispose();
+
+            for (const [name, run] of INSERTS) {
+                for (const point of points) {
+                    for (let textIndex = 0; textIndex < textCount; textIndex += 1) {
+                        for (const isBackward of [false, true]) {
+                            const inserted = placementOf(source, point, textIndex, isBackward, false, run, true);
+                            const afterDelete = placementOf(source, point, textIndex, isBackward, true, run, true);
+
+                            if (inserted !== null && afterDelete !== null && inserted !== afterDelete) {
+                                failures.push(`${name} from ${JSON.stringify(point)} to text ${textIndex}${isBackward ? ' (backward)' : ''}: ${JSON.stringify(inserted)} but Delete first gives ${JSON.stringify(afterDelete)}`);
+                            }
+                        }
+                    }
+                }
+            }
+
+            expect(failures).toEqual([]);
+        }, MATRIX_TIMEOUT_MS);
+
         it.each(DOCUMENTS)('a range from a container point to the end of a text is removed, in both directions: %j', (source) => {
             const points = containerPointsOf(source);
             const counted = load(source);
@@ -1006,7 +1163,7 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
 
             for (const [name, run, rangesOnly] of COMMANDS) {
                 // Collapsed Delete and Backspace are left out offline, and these ranges are never collapsed.
-                const removes = rangesOnly || ['Enter', 'INSERT_PARAGRAPH_COMMAND', 'typing x', 'cut'].includes(name);
+                const removes = rangesOnly || ['Enter', 'INSERT_PARAGRAPH_COMMAND', 'typing x', 'cut', 'Tab', 'inserting a copied word', 'inserting a copied paragraph'].includes(name);
 
                 if (!removes) {
                     continue;

@@ -287,3 +287,15 @@ The differences left, by cause:
 [^shift-enter]: The note in `markdown-editor-table-command-fixes` records that Shift+Enter over `root@1` to a text's end changes nothing while Enter removes the range. Lexical's `insertLineBreak` over a range whose start is a root point before a list removes nothing. Prediction is the precedent of `$guardedRemovalDeclinesLineBreak` for table-edge and stale-focus ranges: decline before removing when the break would be declined where the removal leaves the caret. After removing a range from before a list, that caret is at the start of what remains of the end's block, so `$lineBreakUnwritableAt(end)` (whose `rest` defaults to `end`) answers it. On the survey this gave the same outcome as today in every run: the runs that changed nothing still change nothing, now by rule, and the runs that inserted a break still do.
 
 [^not-fixed]: Matching Delete then Enter for a range between two container points needs to know where the list rules move the caret after Delete's update, which a command handler running inside one update does not see. These ranges come only from code (no click puts a point on a list or item), and Enter over them neither throws nor leaves an empty list or column: the matrix's round-trip and no-emptied-container checks pass for all of them. They are listed, not fixed.
+
+---
+
+## Implementation Notes
+
+- `insertCopied` sits once at the P-rows describe level, not inside P12, since the new Q/E/S describe shares it with the matrix.
+- `placementOf` gained `act` (default: break then type x) and `onlyBeforeList` parameters instead of a second near-copy for the insert test.
+- The Q/E/S rows are one `it.each` that also compares against Delete then the command for every row (caret and root types too), not only the save.
+- Not run: the audit loop and the move to `plans/implemented/` (orchestrator override); the rebase-clean checkpoint (branch stays on its start point); no build run, only typecheck, typecheck:test, lint, docs:api (0 warnings) and the full suite (568 files, 19,261 tests, green).
+- The plan's Architecture Decision and Critical Files missed the `MarkdownEditor.paste()` caller of `$removeGuardedRangeForInsert`; it changed too (a throw became `- zz`) and has its own row, Q9.
+- The Q/E/S describe sits after P13, directly before P12, not after P11b.
+- Shift+Enter's remove-first branch goes through `$removeGuardedRangeForInsert`, so there is one remove-first path.

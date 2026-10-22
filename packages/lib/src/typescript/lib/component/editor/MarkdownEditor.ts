@@ -2187,9 +2187,10 @@ function $standsBeforeList(point: PointType): boolean {
  * column, where a caret can be only while nothing is selected with it. Not
  * so for a range's start just before a list: the list item rules remove a
  * range from there with the items it covers (Backspace, paste and typing),
- * and the paragraph break removes it itself
- * ({@link $clearGuardedRangeBeforeParagraph}). An end just after a list is
- * moved into it.
+ * and the paragraph break, Tab, pasted or dropped nodes, `paste()` and
+ * Shift+Enter remove it themselves ({@link $clearGuardedRangeBeforeParagraph},
+ * {@link $removeGuardedRangeForInsert}, {@link $clearGuardedRangeBeforeLineBreak}).
+ * An end just after a list is moved into it.
  *
  * @param point - An element point of a range.
  * @param isStart - Whether it is the range's start rather than its end.
@@ -2431,9 +2432,12 @@ function $openBlockAtItemCaret(selection: BaseSelection | null): boolean {
  * place every such command goes through: removes a table-edge or stale-focus
  * range ({@link $removeGuardedRange}); removes a range with an end on a list
  * item or a list ({@link $isListContainerRange}) as well, since where its
- * removal leaves the caret is known only afterwards; and gives the caret as
- * it then stands a block when it is left between the blocks of a list item
- * or the items of a list ({@link $openBlockAtItemCaret}). Lexical's insert
+ * removal leaves the caret is known only afterwards, and a range that
+ * starts just before a list ({@link $isRangeStartingBeforeList}), which
+ * Lexical's insert would otherwise put text or nodes into the list itself
+ * at, and throw; and gives the caret as it then stands a block when it is
+ * left between the blocks of a list item or the items of a list
+ * ({@link $openBlockAtItemCaret}). Lexical's insert
  * would remove the range first too, and then throw for a caret left there,
  * with the range already gone.
  *
@@ -2443,9 +2447,9 @@ function $openBlockAtItemCaret(selection: BaseSelection | null): boolean {
  */
 function $removeGuardedRangeForInsert(selection: BaseSelection | null, caretStaysOutOf: ((node: LexicalNode) => boolean) | null = null): boolean {
     const removed = $removeGuardedRange(selection, caretStaysOutOf);
-    const endsOnListContainer = !removed && $isListContainerRange(selection);
+    const removesFirst = !removed && ($isListContainerRange(selection) || $isRangeStartingBeforeList(selection));
 
-    if (endsOnListContainer) {
+    if (removesFirst) {
         selection.removeText();
     }
 
@@ -2708,15 +2712,18 @@ function $clearGuardedRangeBeforeInsert(): boolean {
 /**
  * `INSERT_PARAGRAPH_COMMAND` listener: makes the selection ready for the
  * paragraph ({@link $removeGuardedRangeForInsert}), then lets Lexical insert
- * it at the now-collapsed caret. A range that starts just before a list is
- * removed here first ({@link $isRangeStartingBeforeList}), the way a range
- * ending on a list is: Lexical's own insert over a range whose anchor is the
- * point before the list inserts the paragraph and removes nothing, and over
- * the same range made backward removes it but leaves the caret at the
- * document's end, so the paragraph would not come where the range was. A
- * list the removal emptied is refilled with one blank item
+ * it at the now-collapsed caret. A range that starts just before a list
+ * ({@link $isRangeStartingBeforeList}) or ends on a list or item
+ * ({@link $isListContainerRange}) is removed here first. Lexical's own
+ * insert over a range whose anchor is the point before the list inserts
+ * the paragraph and removes nothing, and over the same range made backward
+ * removes it but leaves the caret at the document's end, so the paragraph
+ * would not come where the range was; and where a removal leaves the caret
+ * on a list or item is known only afterwards. A
+ * list or item the removal emptied is refilled
  * ({@link $openBlockAtItemCaret}) and Lexical's insert runs there, where
- * Enter leaves the list for a paragraph, as after Delete. A
+ * Enter leaves the list for a paragraph, as after Delete; a caret it leaves
+ * between blocks that stay gets its block, which is the paragraph. A
  * caret left between the blocks of a list item gets its paragraph here, as
  * Lexical gives one to a caret between two blocks of the root: its own
  * insert finds no block around a point on a list item to split.
@@ -2726,17 +2733,20 @@ function $clearGuardedRangeBeforeInsert(): boolean {
 function $clearGuardedRangeBeforeParagraph(): boolean {
     const selection = $getSelection();
     const isGuarded = $isTableEdgeRange(selection) || $isStaleFocusRange(selection);
-    const removesFirst = !isGuarded && $isRangeStartingBeforeList(selection);
+    const removesFirst = !isGuarded && ($isRangeStartingBeforeList(selection) || $isListContainerRange(selection));
 
     if (removesFirst) {
         selection.removeText();
 
-        // A list the range emptied is refilled with one empty item; Lexical's
-        // insert then runs there, and Enter on that blank item leaves the
-        // list for a paragraph, as it does after Delete.
-        $openBlockAtItemCaret(selection);
+        // A list or item the removal emptied is refilled, and Lexical's Enter
+        // runs at that blank item and leaves the list, as after Delete. A
+        // caret left between blocks that stay gets its block, which is what
+        // Enter does there.
+        const container = $listContainerAtCaret(selection);
+        const wasEmptied = container !== null && container.isEmpty();
+        const opened = $openBlockAtItemCaret(selection);
 
-        return false;
+        return opened && !wasEmptied;
     }
 
     return $removeGuardedRangeForInsert(selection);
@@ -2848,21 +2858,51 @@ function $guardedRemovalDeclinesLineBreak(selection: BaseSelection | null): bool
  * unless the removal would leave the caret where the break is declined
  * ({@link $guardedRemovalDeclinesLineBreak}). Shift+Enter is then declined
  * here, before anything is removed: a declined Shift+Enter changes nothing,
- * over these ranges as over any other.
+ * over these ranges as over any other. A range that starts just before a list
+ * is removed first, as Enter removes it, unless the break would be declined
+ * where that leaves the caret ({@link $beforeListRemovalDeclinesLineBreak});
+ * then nothing is removed.
  *
  * @returns Whether the break was declined; otherwise `false`, so the command's own handlers still run.
  */
 function $clearGuardedRangeBeforeLineBreak(): boolean {
     const selection = $getSelection();
+    const isGuarded = $isTableEdgeRange(selection) || $isStaleFocusRange(selection);
+    const removesFirst = !isGuarded && $isRangeStartingBeforeList(selection);
     // Between the blocks of a list item, or the items of a list, there is no line to break, and Lexical's insert
     // throws there: for a caret, and for a range that starts or ends there, before anything of it is removed.
-    const declined = $guardedRemovalDeclinesLineBreak(selection) || $startsOnListContainer(selection) || $isListContainerRange(selection);
+    const declined = $guardedRemovalDeclinesLineBreak(selection) || $startsOnListContainer(selection) || $isListContainerRange(selection)
+        || (removesFirst && $beforeListRemovalDeclinesLineBreak(selection));
 
-    if (!declined) {
-        $removeGuardedRange(selection);
+    if (declined) {
+        return true;
     }
 
-    return declined;
+    // A range from just before a list is removed first, as Enter removes it ({@link $clearGuardedRangeBeforeParagraph}).
+    if (removesFirst) {
+        $removeGuardedRangeForInsert(selection);
+
+        return false;
+    }
+
+    $removeGuardedRange(selection);
+
+    return false;
+}
+
+/**
+ * Whether Shift+Enter over a range that starts just before a list
+ * ({@link $isRangeStartingBeforeList}) would have its line break declined
+ * once the range is removed: the removal leaves the caret in the block the
+ * range ends in, ahead of what that block holds after the range.
+ *
+ * @param selection - A range that starts just before a list, left as it is.
+ * @returns Whether the break would be declined.
+ */
+function $beforeListRemovalDeclinesLineBreak(selection: RangeSelection): boolean {
+    const [, end] = $orderedPoints(selection);
+
+    return $lineBreakUnwritableAt(end);
 }
 
 /**
@@ -2932,7 +2972,8 @@ function $clearGuardedRangeBeforeTyping(): boolean {
 /**
  * `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` listener: removes the
  * table-edge or stale-focus range the pasted or dropped nodes are about to
- * replace, then lets the insertion run at the now-collapsed caret. With no
+ * replace, a range that ends on a list or item, and a range that starts
+ * just before a list ({@link $removeGuardedRangeForInsert}), then lets the insertion run at the now-collapsed caret. With no
  * nodes to insert — pasted HTML holding nothing the editor reads, such as an
  * image alone — the range is left as it is, as Lexical's insertion leaves
  * any other.
@@ -4437,9 +4478,11 @@ function registerTextOnlyBlockRules(editor: LexicalEditor): () => void {
  * {@link COMMAND_PRIORITY_CRITICAL}, ahead of every handler that removes
  * the range and of `@lexical/table`'s own Backspace and Delete handlers.
  * Each guard first settles a point where no caret can be
- * ({@link $settleSelectionOffContainers}). The paragraph-break guard also
- * removes a range that starts just before a list ahead of Lexical's insert,
- * so the break comes where the range was ({@link $clearGuardedRangeBeforeParagraph}).
+ * ({@link $settleSelectionOffContainers}). The paragraph-break, Tab,
+ * clipboard-insert and line-break guards also remove a range that starts
+ * just before a list ahead of Lexical's insert, so the insert comes where
+ * the range was ({@link $clearGuardedRangeBeforeParagraph},
+ * {@link $removeGuardedRangeForInsert}, {@link $clearGuardedRangeBeforeLineBreak}).
  * `DELETE_CHARACTER_COMMAND` alone has its two guards apart, either side of
  * {@link $joinIntoTextOnlyBlock} at {@link COMMAND_PRIORITY_HIGH}. The
  * table-edge guard runs ahead of it, at CRITICAL: that handler would join a
