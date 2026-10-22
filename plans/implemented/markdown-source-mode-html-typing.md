@@ -289,3 +289,320 @@ Notation: `⏎` is Enter (`"\n"` in `typeText`), `⌫` is Backspace (`"\b"`), `|
     `compositionStarted` and `dispatch` from the view. A stub carrying those fields runs
     them unchanged. The completion keymap is not simulated: completion needs a mounted
     view, and none of the asserted rows type Enter while a popup would be open.
+
+---
+
+## Implementation Notes
+
+### Deviation from an Architecture Decision: a list item's marker line
+
+**What the plan called for.** All five HTML indentation rules replaced with
+`() => null` ("Indentation rules return `null`").
+
+**What was done.** They are replaced with one function,
+`indentInsideMarkdownHtml` (`languages.ts`). It returns `null` everywhere
+except on a list item's marker line, where it returns the item's content
+column. Inside a blockquote it returns `null`.
+
+**Why.** The first audit found a regression the plan did not foresee:
+
+| Start (caret at `\|`) | Enter on the base branch | Enter with `() => null` | Enter now |
+|---|---|---|---|
+| `- <div>\|` over `··x`, `··</div>` | `··\|` | `\|` (column 0) | `··\|` |
+| `1. <div>\|` over `···x`, `···</div>` | `··\|` (one short) | `\|` | `···\|` |
+| `- a`, `··- <div>\|` over `····x` | `····\|` | `··\|` | `····\|` |
+
+A marker line has no leading whitespace to copy, so `null` put the new line
+at column 0, and text typed there leaves the item. That is the harm this plan
+removes, newly caused for `-` / `*` / `+` items. The base result was right for
+them only because the HTML rule's "line indentation plus one unit" equals a
+one-space bullet's content column; for an ordered item it was one short.
+
+The plan's premise was `[^keep-continuation]`: "the case only looked
+different because the auto-inserted `</div>` after the caret made the right
+side HTML too". That holds at the end of a document (rows M12 and M14, still
+as planned). It does not hold in a loaded document whose HTML block continues
+below the marker line: there both sides of the caret are HTML, Markdown's own
+Enter command declines, and the indentation lookup decides.
+
+**How it stays inside the plan's design.** The fix is still the HTML
+language's own indentation rules, inside the `"markdown"` loader. It does not
+re-implement lang-markdown's list-context logic, which is what the plan
+declined: it reads the `ListItem` node above the HTML node (the HTML tree is
+mounted in the Markdown one, so `parent` reaches it) and takes the column of
+the node after its `ListMark`. A line being typed is never re-indented: the
+rule answers only when the item's marker sits on the line of the position
+asked about, and `indentOnInput` asks at a line's start (row M25).
+
+**This was a design choice made without the user.** The audit skill asks to
+pause for one; a spawned worker cannot. The option taken restores the base
+branch's result for bullet items, so it is the one that changes least. The
+hand-back flags it.
+
+**Decided by the user on 2026-10-06: the marker-line exception is accepted
+as implemented.**
+
+**Known limit, unchanged from the base branch.** Enter inside HTML in a
+blockquote, with the block continuing below, does not continue the `>`: the
+base branch gave two spaces, this branch gives column 0, and both leave the
+quote. Indentation can only produce whitespace. Continuing the marker there
+needs an Enter command that knows the Markdown containers, which is the
+re-implementation the plan declined. The rule returns `null` in a blockquote
+so that it never adds indentation that would read as a code block outside the
+quote (row M26).
+
+### Rows added to `## Expected Behaviour` by the audits
+
+All offline, in the same `describe`. A `|` in the start document is the caret.
+
+| # | Start doc | Keys | After (asserted) |
+|---|---|---|---|
+| M18 | `<div>\n<sp` | none | `completionLabels(state)` includes `"span"`: the HTML language's own completion, kept by `html({ autoCloseTags: false }).support` (M16 only reaches `markdown()`'s source) |
+| M19 | `<div>\|</div>` | `⏎` | `<div>\n\|\n</div>` |
+| M20 | `- <div>\|\n··x\n··</div>` | `⏎` | `- <div>\n··\|\n··x\n··</div>` |
+| M21 | `1. <div>\|\n···x\n···</div>` | `⏎` | `1. <div>\n···\|\n···x\n···</div>` |
+| M22 | `- a\n··- <div>\|\n····x\n····</div>` | `⏎` | `- a\n··- <div>\n····\|\n····x\n····</div>` |
+| M23 | `- a\n··<div>\|\n··x\n··</div>` | `⏎` | `- a\n··<div>\n··\|\n··x\n··</div>` |
+| M24 | `<div>\|\nx\n</div>` | `⏎` | `<div>\n\|\nx\n</div>` |
+| M25 | `- <div>\n······foo\n······\|\n··x` | `</div>` | `- <div>\n······foo\n······</div>\|\n··x` |
+| M26 | `> - <div>\|\n>···x\n>···</div>` | `⏎` | `> - <div>\n\|\n>···x\n>···</div>` |
+| M27 | `<script>\nfunction f() {` | `⏎` | `<script>\nfunction f() {\n··\|` (the Non-Goal, pinned) |
+| M28 | `foo </span> bar` | none | `syntaxTree(state).resolveInner(6, 1).parent?.name` is `"CloseTag"`, not `"MismatchedCloseTag"`: the `"noMatch"` dialect the loader now sets itself |
+| M29 | `··<div class="a"` | `⏎` | `··<div class="a"\n··\|` (the `OpenTag` rule; indented by the review fixes below) |
+| M30 | `··<div>\n··x\n··</div` | `⏎` | `··<div>\n··x\n··</div\n··\|` (the `CloseTag` rule) |
+| M31 | `··<img src="a"\|/>` | `⏎` | `··<img src="a"\n··\|/>` (the `SelfClosingTag` rule) |
+| M32 | `- <div>\|</div>` | `⏎` | `- <div>\n··\|\n</div>` (a documented limit, see M19 below) |
+| M33 | `> <div>\|\n> x` | `⏎` | `> <div>\n\|\n> x` (a documented limit, see the blockquote note above) |
+
+M20–M22 were red before `indentInsideMarkdownHtml` and green after. M18,
+M25, M26 and M28 were each checked by breaking the line they guard (dropping
+the HTML support, answering on every line of an item, dropping the blockquote
+check, dropping the dialect): exactly that row failed. Each of the five node
+names the rule is registered on was dropped in turn as well: `OpenTag` fails
+only M29, `CloseTag` only M30, `SelfClosingTag` only M31, `Document` fails
+M1, M2 and M5, and `Element` failed nine rows then. With the rows the two
+review rounds added it fails eleven: M6, M14, M19, M21, M23 to M26, M33,
+M34 and M36.
+
+**M19 is accepted behaviour, with a known limit.** Enter between an adjacent
+open and close tag puts the close tag on its own line. This is CodeMirror's
+Enter between brackets; it follows the tags' `closedBy` prop, not the
+indentation rules. Turning it off would mean overriding that prop, which tag
+matching also reads. At the top level neither new line is indented, so the
+Markdown means the same. On a list item's marker line it does not:
+`- <div>|</div>` gives `- <div>\n··|\n</div>`. The middle line gets the
+item's content column from `indentInsideMarkdownHtml`, but the close tag's
+line gets the marker line's own indentation, which is none, and lands outside
+the item. `insertNewlineAndIndent` computes that second indentation itself,
+with no rule to override. The base branch does the same for a bullet item.
+`CodeEditor.md` states both.
+
+### Drift from the branches that landed below this one
+
+Three insert points had moved since the plan was drafted, because of the
+branches now under this one:
+
+- **`MarkdownEditor.md`.** The "Both surfaces are bound…" paragraph has
+  moved down the page from the plan's line 211, and moves again whenever a
+  branch below adds to the sections above it; it is found by its opening
+  words. The sentence from step 5 is appended to it unchanged.
+- **`changelog/next.md`.** `## Fixed` → `### Components` no longer ends with
+  the "`MarkdownEditor` saves `:::` columns" entry (the plan's line 540):
+  the entries of the context menu caret branch follow it. The new entry is
+  still the last bullet of the subsection, as step 6 asks, so it now follows
+  the last of those, "A read-only `MarkdownEditor` no longer lets the
+  browser edit its shown text". It is wrapped like its neighbours.
+- **`code-editor.test.ts`.** The new `describe` sits between the same two
+  `describe`s as planned; line numbers have moved.
+
+`CodeEditor.md` had not moved. The migration page (`migration/next.md`) gets
+no note: nothing here is a breaking change.
+
+### Docs wording beyond the plan's text
+
+- **`CodeEditor.md`.** The step-4 paragraph is unchanged. A list of cases
+  follows it, where Enter inside HTML does something other than keep the
+  line's indentation: a list item's marker line (with its condition: HTML
+  follows the caret; otherwise the list continues, row M12 — first written
+  as "the block continues below", which the review fixes below found too
+  narrow), a blockquote, an adjacent tag pair (M19, with its limit), nested
+  JavaScript and CSS (`<script>` / `<style>`, the plan's Non-Goal, and
+  `style` / `on…` attribute values), and, since round 2, a line indented
+  with a tab.
+- **`changelog/next.md`.** The step-6 entry gained the marker-line rule with
+  the same condition, and that an ordered item used to get two spaces there.
+  Its last sentence, "List and blockquote continuation on Enter is
+  unchanged", now also says what a user sees change: `- <div>` or `> <div>`
+  then Enter used to give an indented line over the auto-inserted close tag,
+  and now gets a new marker (rows M12 and M17).
+
+### Deviations in the test harness
+
+- **`typeCharacter` is split out of `typeText`.** The plan describes one
+  `typeText` that settles, dispatches keys and runs the input handlers. Typing
+  one character through the input handlers is its own function, which keeps
+  `typeText` to the per-key dispatch (CODE_CONVENTIONS, function decomposition).
+- **A `typed(languageId, startDoc, keys)` helper** wraps `buildTypingState` →
+  `typeText` → `show`, so each typing row is one assertion.
+- **`pressKey` passes a view stub cast to `EditorView`**, not a bare
+  `{ state, dispatch }`: a keymap binding's `run` is typed to take a view. The
+  stub carries exactly those two fields.
+- **A `|` in a start document marks the caret.** The plan puts the caret at
+  the end of the start document. Rows M19–M26 need it inside the document,
+  which is where the regression was. With no `|`, the caret is at the end.
+- **`TYPING_EXTENSIONS` follows `mount()` more closely than the plan's
+  list.** `closeBracketsKeymap` is in the keymap after `defaultKeymap`, and the
+  language extension comes after the three, as in `mount()`. No row's result
+  changed. `autocompletion()` stays out, as `[^harness]` says.
+
+### Red phase
+
+Run before the loader change, the step-1 command failed M1–M6, M12 and M14
+and passed M7–M11, M13, M15–M17, H1 and H2, as step 1 predicts. Each failing
+row produced the text in the plan's "Before" column.
+
+### Manual verification (V1, V3)
+
+Run in Chrome through the chrome-devtools MCP, against this worktree's dev
+server on port 8047 (`npx vite --port 8047 --strictPort` from `packages/lib`),
+on the demo's "MD Editor" tab with "Edit Markdown source" on. Keys were sent
+as key presses; the document and caret were read from the live `EditorView`.
+The server was stopped afterwards. Run twice: before the audit, and again
+after `indentInsideMarkdownHtml` (rows marked †).
+
+| Row | Keys | Result |
+|---|---|---|
+| M1 † | `<div>` Enter `:::` Enter `</div>` | `<div>\n:::\n</div>\|` — exact |
+| M2 | the `<details>` block of row M2 | the keys exactly, caret at end |
+| M3 | start `<div>\nfoo\n`, then `</` | `<div>\nfoo\n</\|` — exact |
+| M4 | continued with `div>` | `<div>\nfoo\n</div>\|` — exact |
+| M6 | start `<div>\n··foo`, then Enter `</div>` | `<div>\n··foo\n··</div>\|` — exact |
+| M12 | `- <div>` Enter | `- <div>\n- \|` — exact |
+| M14 † | continued with Backspace `:::` Enter `</div>` | `- <div>\n··:::\n··</div>\|` — exact |
+| M19 † | start `<div>\|</div>`, then Enter | `<div>\n\|\n</div>` — exact |
+| M20 † | start as row M20, then Enter `foo` | `- <div>\n··foo\|\n··x\n··</div>` — exact |
+| M21 † | start as row M21, then Enter | `1. <div>\n···\|\n···x\n···</div>` — exact |
+| V3 | `<di`, popup shown (`<div`, `<bdi`, …), then `v>` | popup closed; `<div>\|` |
+
+Where a row has a start document, it was set with a dispatch and the keys were
+then typed. As a control on the typing channel, `(` typed in the same editor
+gave `(|)`: `closeBrackets`' input handler runs on typed text there, so the
+missing `</div>` is the fix and not the way the keys were sent. Tag names in
+`<div>\n:::\n</div>` were still coloured.
+
+### Audit loop
+
+Three audit cycles ran, which is the audit skill's cap.
+
+| Cycle | BLOCKING | Fix |
+|---|---|---|
+| 1 | The marker-line regression above | `indentInsideMarkdownHtml`, rows M20–M26 |
+| 2 | `CodeEditor.md` stated the marker-line rule without its condition | The list of cases in `CodeEditor.md`; the changelog wording |
+| 3 | The `OpenTag`, `CloseTag` and `SelfClosingTag` rules had no test | Rows M29–M31 |
+
+The cycle-3 fix was made after the cap, so no audit of this run read it.
+The combined review of 2026-10-05 did, and confirmed rows M29–M31 by
+mutation: each fails only when its own node name is dropped from the rule.
+The plan was moved to `plans/implemented/` with that confirmation
+outstanding; it no longer is. The advisory findings of all three cycles were
+fixed too: rows M18, M19, M27, M28, M32 and M33, the harness's extension
+order, the named node type, the call hoisted out of the `if`, the docs
+wording, and the reworded commit messages.
+
+### Review fixes
+
+From the combined review of 2026-10-05 (items D-1 to D-4).
+
+- **Rows M29–M31 start on an indented line.** At column 0 they could not
+  tell `null` (keep the line's indentation) from a fixed `0`. Each now starts
+  two spaces in and expects the two spaces back. Checked by mutation: with
+  the rule answering `0` off a marker line, M29–M31 fail (with M6, M14, M23
+  and M25); with a node name dropped, `OpenTag` still fails only M29,
+  `CloseTag` only M30 and `SelfClosingTag` only M31.
+- **The item's content column is counted as Markdown counts it.**
+  `indentInsideMarkdownHtml` asked `context.column()`, which counts a tab
+  with the editor's `tabSize`; Markdown, and lang-markdown's own
+  continuation, count a tab to the next multiple of four. On a tab-indented
+  nested marker line (`\t- <div>`) in a `CodeEditor` whose `tabSize` is not
+  4 the new line got 4 columns (`tabSize` 2) or 10 (`tabSize` 8) where the
+  item's content is at 6. The column was then counted by a `markdownColumn`
+  of this branch's own, with `MARKDOWN_TAB_STOP`, both in `languages.ts`;
+  round 2 below replaces the function. `CodeEditor` is untouched.
+  Row M34, at `tabSize` 2, 4 and 8, written red first (2 and 8 failed).
+  `buildTypingState` and `typed` take an optional `tabSize`, set the way
+  `CodeEditor` sets it.
+- **`CodeEditor.md` and the changelog state the marker-line rule's real
+  condition.** "When the HTML block continues on the lines below it" was
+  narrower than the rule: it answers whenever HTML follows the caret, which
+  includes another tag on the same line. Row M35 pins that case
+  (`- <div>|<p>x</p>`). The blockquote bullet is reworded the same way, and
+  the marker-line bullet says how a tab is counted.
+- **The marker-line exception itself** was still open after this round: the
+  deviation at the top of these notes was a design choice made without the
+  user. Decided by the user on 2026-10-06: accepted as implemented.
+
+### Review fixes, round 2
+
+From the re-review of 2026-10-05/06 (items R-2 and R-5 to R-7).
+
+- **The tab-stop rule is pinned where a tab starts off a stop (R-2).** Row
+  M34 has its tab at column 0, where a tab reaching the next multiple of
+  four and a tab counted as four columns give the same answer, so counting
+  every tab as four left all rows green. Rows M36 (`·\t- <div>`, a space
+  before the tab: the content is at column 6, not 7) and M37 (`-\t<div>`,
+  a tab after the marker: column 4, not 5) run at `tabSize` 2, 4 and 8.
+  With every tab counted as four columns the six tests fail, and M34 does
+  not. The code was right; the test was missing.
+- **The column is counted by CodeMirror's `countColumn` (R-5).**
+  `markdownColumn` re-implemented `countColumn(text, 4, offset)` from
+  `@codemirror/state`, which lang-markdown itself calls with a literal 4.
+  The function is gone and `indentInsideMarkdownHtml` calls `countColumn`
+  with `MARKDOWN_TAB_STOP`. It is the one external package `languages.ts`
+  imports statically for its code (the file's other static imports are the
+  library's own modules, or types, as a third review round had the comment
+  there say), and `CodeEditor.ts` already imports it statically, so nothing
+  new reaches the base editor chunk. With the editor's `tabSize` passed in
+  place of the stop, M34, M36 and M37 fail at `tabSize` 2 and 8.
+- **Known limit, recorded and not fixed: a tab off the marker line (R-6).**
+  Where the rule has no opinion, Enter keeps the line's indentation, and
+  CodeMirror counts that indentation with the editor's `tabSize` and writes
+  it as spaces, here as on any Markdown line. Measured in the harness:
+  `- a\n··- b\n\t<div>|\n\tx\n\t</div>` then Enter gives two spaces at
+  `tabSize` 2, four at 4 and eight at 8, where Markdown reads the tab as
+  column 4; so at 2 the new line is indented less than the nested item's
+  content, and at 8 four columns more. It is the same class as the
+  marker-line column the
+  review fixes above corrected, and predates this branch. `CodeEditor.md`
+  lists it with the other cases. The follow-up plan
+  `markdown-language-enter-inside-html` is where it is to be fixed.
+- **These notes (R-7).** Four statements had gone stale and are corrected
+  in place: how many rows fail with `Element` dropped, the line number of
+  the `MarkdownEditor.md` paragraph and the count of changelog entries from
+  the branch below, both of which move with every change there and are no
+  longer given as numbers, and the marker-line condition in *Docs wording
+  beyond the plan's text*.
+
+### Seen along the way, not changed
+
+Backspace right after a typed `(` leaves `|)` in the live editor. `mount()`
+lists `closeBracketsKeymap` after `defaultKeymap` in one `keymap.of`, so
+`defaultKeymap`'s Backspace always handles the key first and
+`deleteBracketPair` never runs. This is in `CodeEditor.ts`, outside this plan.
+`CodeEditor.md`'s Keyboard section says Backspace deletes the pair.
+
+### Decided by the user on 2026-10-06
+
+- **The change applies to every `CodeEditor` with `language: "markdown"`,
+  with no option to turn it off** — the plan's decision *Change the
+  built-in default, not a per-host option*. Accepted as implemented.
+- **The list item marker-line indentation exception** — the deviation at
+  the top of these notes. Accepted as implemented.
+
+### Checks
+
+`typecheck`, `typecheck:test`, `lint`, the whole vitest suite, `docs:api`
+(zero warnings), `docs:llms:check` and `build:lib` pass. In the built
+`languages` chunk the three packages the loader uses are still dynamic
+`import()`s. Since round 2 the chunk also imports `@codemirror/state`
+statically, for `countColumn`; it is external to the build, and
+`CodeEditor` imports it the same way.

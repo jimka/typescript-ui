@@ -1272,6 +1272,24 @@ page resets to empty.
   editable; `setReadOnly(false)` restores what `setContentEditable` last
   asked for. No consumer action is needed.
 
+- **Typing HTML in Markdown source no longer adds or re-indents text.** In
+  `MarkdownEditor`'s `"source"` mode, and in any `CodeEditor` with
+  `language: "markdown"`, typing `<div>` inserted a `</div>` after the
+  caret. Typing `</` inside an open element completed the tag, so typing the
+  rest of `</div>` left `</div>div>`. Enter inside an HTML block indented
+  the next line, which can turn Markdown inside the block into a code block
+  or move it out of a list item. HTML is now typed as written: no close tag
+  is added, and Enter keeps the current line's indentation, as on any other
+  Markdown line. A list item's marker line has none to keep: when HTML
+  follows the caret, on that line or the lines below, the new line is
+  indented to the item's content, so it stays in the item. An ordered item
+  used to get two spaces there, one short of its content. Markdown's own
+  list and blockquote continuation is unchanged, and now also runs after a
+  `- <div>` or `> <div>` line the block ends on: with no close tag after
+  the caret, Enter adds a new marker there, as after any other text, and
+  Backspace turns a new list marker into indentation. No consumer action is
+  needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation

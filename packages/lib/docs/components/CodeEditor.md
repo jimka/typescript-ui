@@ -61,6 +61,16 @@ The library registers seven languages out of the box, each with a grammar and, w
 | `css` | `@codemirror/lang-css` | Prettier (`css` parser, via `prettier/plugins/postcss`) | syntax-error diagnostics |
 | `python` | `@codemirror/lang-python` | none — `format()` falls back to re-indenting | syntax-error diagnostics |
 
+The `markdown` language types HTML literally, because indentation changes what Markdown means (four spaces start a code block; in a list it decides the item). Typing `<div>` does not add `</div>`, typing `</` does not complete the tag, and Enter inside an HTML block keeps the current line's indentation, as on any other Markdown line. HTML is still highlighted, and tag completion still offers names when you type `<`. To get HTML auto-closing back, register your own `markdown` language with [`registerLanguage`](#registering-a-language).
+
+Enter inside HTML does something other than keep the line's indentation in these places:
+
+- **A list item's marker line** (`- <div>`) has no indentation to keep. When HTML follows the caret — more of the block on the lines below, or another tag on the same line (`- <div>|<p>x</p>`) — the new line is indented to the item's content, so it stays in the item. That column is counted as Markdown counts it, a tab before the marker reaching the next multiple of four whatever the editor's `tabSize`. When the block ends at the caret, Enter continues the list with a new marker, as after any item's first line.
+- **In a blockquote**, a new line with HTML after the caret gets neither the `>` nor, on a list item's marker line, the item's indentation.
+- **Between an adjacent open and close tag** (`<div>|</div>`), the close tag moves to its own line, as a closing bracket does. It takes the indentation of the line it was on, so on a list item's marker line it lands outside the item.
+- **Inside `<script>` and `<style>`, and inside a `style` or `on…` attribute value**, JavaScript and CSS keep their own indentation.
+- **On a line indented with a tab**, off a list item's marker line, the indentation Enter keeps is counted with the editor's `tabSize` and written as spaces, as on any other Markdown line. Markdown reads the tab as reaching the next multiple of four, so the two agree only while `tabSize` is 4 or unset: under a `\t<div>` line the new line gets two spaces with `tabSize: 2` and eight with `tabSize: 8`, neither of which is the column Markdown reads the tab at.
+
 Both the grammar and the formatter load through a dynamic `import()` the first time they're needed — selecting a language fetches only its grammar; calling `format()` additionally fetches that language's formatter (and, for the five Prettier-backed languages, the shared Prettier standalone bundle, fetched once and reused across them). A lint source loads the same way, the first time [`lint`](#construction) is turned on for that language.
 
 ### Language options
