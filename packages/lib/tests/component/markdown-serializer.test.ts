@@ -2011,7 +2011,7 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
         const dropped: Array<[string, () => LexicalNode[]]> = [
             ['a paragraph ending with a break', () => [p('a', br())]],
             ['a paragraph holding only a break', () => [p(br())]],
-            ['a quote ending with a break', () => [fill($createQuoteNode(), ['a', br()])]],
+            ['a quote ending with a break', () => [$createQuoteNode().append(fill($createParagraphNode(), ['a', br()]))]],
         ];
 
         for (const [name, build] of dropped) {

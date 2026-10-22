@@ -123,6 +123,21 @@ export interface MarkdownSourceColumnBlock {
     readonly block:  MarkdownSourceBlock;
 }
 
+/** A block of a loaded quote. */
+export interface MarkdownSourceQuoteBlock {
+    readonly kind:         "quoteBlock";
+    /** The quote it stood in. */
+    readonly quote:        NodeKey;
+    /** Its source without the quote's markers, as a top-level block's; its `load` is its quote's. */
+    readonly block:        MarkdownSourceBlock;
+    /** Its lines as written, markers kept. */
+    readonly quotedBody:   string;
+    /** The lines between it and the next block, or the quote's end, as written. */
+    readonly quotedAfter:  string;
+    /** The quote's lines before its first block, as written; read for the first block only. */
+    readonly quotedPrefix: string;
+}
+
 /**
  * The key a block of a column is stored under in {@link MarkdownSourceMap.parts}.
  * A table or a code block standing directly in a column is a column block and
@@ -136,9 +151,22 @@ export function columnBlockKey(node: NodeKey): NodeKey {
     return `column-block:${node}`;
 }
 
+/**
+ * The key a block of a quote is stored under in {@link MarkdownSourceMap.parts}.
+ * Kept apart from {@link columnBlockKey}: a block can be a block of a column
+ * and hold a part of its own, and a quote in a column holds blocks.
+ *
+ * @param node - The key of the block's node.
+ * @returns The key of its quote-block part.
+ */
+export function quoteBlockKey(node: NodeKey): NodeKey {
+    return `quote-block:${node}`;
+}
+
 /** A nested part of a loaded document. */
 export type MarkdownSourcePart =
-    | MarkdownSourceItem | MarkdownSourceRow | MarkdownSourceDelimiterRow | MarkdownSourceCodeFrame | MarkdownSourceColumnBlock;
+    | MarkdownSourceItem | MarkdownSourceRow | MarkdownSourceDelimiterRow | MarkdownSourceCodeFrame | MarkdownSourceColumnBlock
+    | MarkdownSourceQuoteBlock;
 
 /**
  * What a save needs to write a loaded document's unedited blocks as they were
@@ -159,8 +187,8 @@ export interface MarkdownSourceMap {
      * The nested parts of the loaded blocks, keyed by the node each was
      * loaded as: a list item, a table row, a table (its delimiter row), a
      * code block (its fence lines); a block of a column is keyed by
-     * {@link columnBlockKey} of its node, since the same node can hold a
-     * part of its own.
+     * {@link columnBlockKey} of its node, and a block of a quote by
+     * {@link quoteBlockKey}, since the same node can hold a part of its own.
      */
     readonly parts:  ReadonlyMap<NodeKey, MarkdownSourcePart>;
 }

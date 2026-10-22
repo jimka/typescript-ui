@@ -72,6 +72,32 @@ const KINDS: readonly Kind[] = [
     ['a code fence', '\\`\\`\\` ;cd', '\\``` cd', '```\ncd\n```'],
 ];
 
+/**
+ * One kind of block typing shortcut in a block that a quote or a list item
+ * holds: a name; Markdown whose escaped text reads as the shortcut's marker,
+ * complete, once the {@link REMOVED} character is gone; what the shortcut
+ * makes of it when its last character is typed; and the save of the marker
+ * as text.
+ */
+type HeldKind = readonly [name: string, source: string, applied: string, text: string];
+
+const HELD_KINDS: readonly HeldKind[] = [
+    ['a bullet in a quote', '> a\n>\n> \\- ;cd', '> a\n>\n> - cd', '> a\n>\n> \\- cd'],
+    ['a bullet written with a star in a quote', '> a\n>\n> \\* ;cd', '> a\n>\n> - cd', '> a\n>\n> \\* cd'],
+    ['a list number in a quote', '> a\n>\n> 3\\. ;cd', '> a\n>\n> 3. cd', '> a\n>\n> 3\\. cd'],
+    ['a heading in a quote', '> a\n>\n> \\## ;cd', '> a\n>\n> ## cd', '> a\n>\n> \\## cd'],
+    ['a quote in a quote', '> a\n>\n> \\> ;cd', '> a\n>\n> > cd', '> a\n>\n> \\> cd'],
+    ['a code fence in a quote', '> a\n>\n> \\`\\`\\` ;cd', '> a\n>\n> ```\n> cd\n> ```', '> a\n>\n> \\``` cd'],
+    ['a bullet in a nested quote', '> > a\n> >\n> > \\- ;cd', '> > a\n> >\n> > - cd', '> > a\n> >\n> > \\- cd'],
+    ['a bullet in a quote in a column', '::: columns\n> \\- ;cd\n|||\nx\n:::', '::: columns\n> - cd\n|||\nx\n:::', '::: columns\n> \\- cd\n|||\nx\n:::'],
+    ['a bullet in a list item\'s further paragraph', '- a\n\n  \\- ;cd', '- a\n\n  - cd', '- a\n\n  \\- cd'],
+    ['a heading in a list item\'s further paragraph', '- a\n\n  \\# ;cd', '- a\n\n  # cd', '- a\n\n  \\# cd'],
+    ['a quote in a list item\'s further paragraph', '- a\n\n  \\> ;cd', '- a\n\n  > cd', '- a\n\n  \\> cd'],
+    ['a code fence in a list item\'s further paragraph', '- a\n\n  \\`\\`\\` ;cd', '- a\n\n  ```\n  cd\n  ```', '- a\n\n  \\``` cd'],
+    ['a bullet in a nested list item\'s further paragraph', '- a\n  - b\n\n    \\- ;cd', '- a\n  - b\n\n    - cd', '- a\n  - b\n\n    \\- cd'],
+    ['a list number in a quote in a list item', '- a\n\n  > 1\\. ;cd', '- a\n\n  > 1. cd', '- a\n\n  > 1\\. cd'],
+];
+
 /** One way of removing a selection. */
 type Removal = 'Delete' | 'Backspace' | 'word delete' | 'line delete' | 'REMOVE_TEXT_COMMAND' | 'cut()';
 
@@ -393,6 +419,49 @@ const QUIET_REMOVALS: readonly QuietRemoval[] = [
     }],
 ];
 
+/**
+ * Types the character that completes a shortcut by an input method: the character goes into the text while the
+ * composition is on, and the update that ends the composition changes no text.
+ *
+ * @param source - The kind's Markdown.
+ * @param applied - What the shortcut makes of it.
+ */
+function expectCompositionEndCompletes(source: string, applied: string): void {
+    const editor = select(source, 1, false);
+    const typed = completingCharacter(editor);
+    const lexical = lexicalOf(editor);
+
+    remove(editor, 'Delete', true);
+
+    // An input method composes the character: Lexical puts it into the text node while the composition is on, when
+    // the shortcuts wait, and the update that ends the composition changes no text.
+    lexical.update(() => {
+        const selection = $getSelection();
+
+        if ($isRangeSelection(selection)) {
+            $setCompositionKey(selection.anchor.key);
+        }
+
+        $syncInsertedCharacter(typed);
+    }, { discrete: true });
+    expect(settledValue(editor)).not.toBe(applied);
+
+    lexical.update(() => {
+        const selection = $getSelection();
+
+        if ($isRangeSelection(selection)) {
+            $setCompositionKey(null);
+            selection.anchor.getNode().markDirty();
+            // The composition moved the caret when it put the character in; its end does not move it again.
+            $setSelection(selection.clone());
+        }
+    }, { discrete: true, tag: COMPOSITION_END_TAG });
+
+    expect(settledValue(editor)).toBe(applied);
+
+    editor.dispose();
+}
+
 describe('a Markdown typing shortcut is applied by typing alone (TY rows)', () => {
     it.each(KINDS)('TY1: a removal that leaves the caret right behind %s completes no shortcut', (_name, source, text) => {
         for (const removal of REMOVALS) {
@@ -440,40 +509,58 @@ describe('a Markdown typing shortcut is applied by typing alone (TY rows)', () =
         }
     });
 
+    it.each(HELD_KINDS)('TY21: typing the character that completes %s applies the shortcut as at the top level, on every route', (_name, source, applied, text) => {
+        for (const [route, type] of TYPING_ROUTES) {
+            const editor = select(source, 1, false);
+            const typed = completingCharacter(editor);
+
+            remove(editor, 'Delete', true);
+
+            const base = settledValue(editor);
+
+            type(editor, typed);
+            expect(settledValue(editor), route).toBe(applied);
+
+            // One undo takes the shortcut back and leaves the typed character, a second takes the character.
+            lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+            expect(settledValue(editor), `${route}, undone once`).toBe(text);
+            lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+            expect(settledValue(editor), `${route}, undone twice`).toBe(base);
+
+            // A redo puts the character back and applies nothing; a second puts the shortcut back.
+            lexicalOf(editor).dispatchCommand(REDO_COMMAND, undefined);
+            expect(settledValue(editor), `${route}, redone once`).toBe(text);
+            lexicalOf(editor).dispatchCommand(REDO_COMMAND, undefined);
+            expect(settledValue(editor), `${route}, redone twice`).toBe(applied);
+
+            editor.dispose();
+        }
+    });
+
+    it.each(HELD_KINDS)('TY22: a removal that leaves the caret right behind %s completes no shortcut', (_name, source, _applied, text) => {
+        for (const removal of REMOVALS) {
+            for (const [backward, inUpdate] of VARIANTS) {
+                const editor = select(source, 0, backward);
+                const context = `${removal}, backward ${backward}, in an update ${inUpdate}`;
+
+                remove(editor, removal, inUpdate);
+                expect(settledValue(editor), context).toBe(text);
+
+                // The removal is the one step there is: no shortcut ran as an update of its own after it.
+                lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+                expect(settledValue(editor), `${context}, undone`).toBe(source);
+
+                editor.dispose();
+            }
+        }
+    });
+
     it.each(KINDS)('TY3: the end of a composition, whose text went in while it was composed, completes %s', (_name, source, _text, applied) => {
-        const editor = select(source, 1, false);
-        const typed = completingCharacter(editor);
-        const lexical = lexicalOf(editor);
+        expectCompositionEndCompletes(source, applied);
+    });
 
-        remove(editor, 'Delete', true);
-
-        // An input method composes the character: Lexical puts it into the text node while the composition is on, when
-        // the shortcuts wait, and the update that ends the composition changes no text.
-        lexical.update(() => {
-            const selection = $getSelection();
-
-            if ($isRangeSelection(selection)) {
-                $setCompositionKey(selection.anchor.key);
-            }
-
-            $syncInsertedCharacter(typed);
-        }, { discrete: true });
-        expect(settledValue(editor)).not.toBe(applied);
-
-        lexical.update(() => {
-            const selection = $getSelection();
-
-            if ($isRangeSelection(selection)) {
-                $setCompositionKey(null);
-                selection.anchor.getNode().markDirty();
-                // The composition moved the caret when it put the character in; its end does not move it again.
-                $setSelection(selection.clone());
-            }
-        }, { discrete: true, tag: COMPOSITION_END_TAG });
-
-        expect(settledValue(editor)).toBe(applied);
-
-        editor.dispose();
+    it.each(HELD_KINDS)('TY23: the end of a composition, whose text went in while it was composed, completes %s', (_name, source, applied) => {
+        expectCompositionEndCompletes(source, applied);
     });
 
     it.each(KINDS)('TY4: pasting or dropping the character that completes %s completes no shortcut', async (_name, source, text) => {

@@ -253,7 +253,7 @@ describe('reference links load and save in their own form (RL rows)', () => {
 
         expect(editor.getValue()).toBe(source);
         expect(lexicalOf(editor).read(() => $getRoot().getChildren().map((node) => node.getType())))
-            .toEqual(['markdown-raw-block', 'paragraph']);
+            .toEqual(['markdown-quote', 'paragraph']);
         expect(references(editor)).toHaveLength(1);
     });
 
@@ -571,7 +571,8 @@ describe('definitions edited after load: the editor shows what the save reads as
 
         update(editor, () => $rawBlocks()[0]!.remove());
 
-        expect(expectShownAsSaved(editor)).toBe('!\\[a\\]\\[q\\] z');
+        // The quote stays, emptied, as an emptied list item does.
+        expect(expectShownAsSaved(editor)).toBe('>\n\n!\\[a\\]\\[q\\] z');
     });
 
     it('DEF7: a definition held in a list item is edited', () => {

@@ -478,6 +478,11 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         ['5.18', 'see [a][1] here\n\nmid\n\nmore\n\nend\n\n[1]: /one', 12, 12, 'bold', 'see [a][1] **here**\n\nmid\n\nmore\n\nend\n\n[1]: /one', at(13, 17)],
         ['5.19', '- one\n\ttwo', 8, 8, 'bulleted', 'one\ntwo', null],
         ['5.20', '- a\n\t- b c', 7, 7, 'bold', '- a\n  - **b** c', null],
+        // A quote is a quote node in the model, so a command acts in it as it acts on the WYSIWYG surface.
+        ['5.24', '> - one\n> - two', 5, 5, 'bulleted', '> one\n>\n> - two', null],
+        ['5.24', '> - one\n> - two', 5, 5, 'numbered', '> 1. one\n>\n> - two', null],
+        ['5.32', '> a\n>\n> b', 9, 9, 'quote', '> a\n\nb', null],
+        ['5.33', '> a\n>\n> b', 2, 2, 'h2', '> ## a\n>\n> b', null],
     ];
 
     it.each(ROWS.map((row) => [`${row[0]} ${row[4]}`, row] as const))('%s: gives the text, and the caret where the WYSIWYG command leaves it', (_title, [, doc, from, to, command, text, caret]) => {
@@ -531,7 +536,6 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
     });
 
     const DECLINES: Array<[id: string, doc: string, from: number, to: number, commands: string[], why: string]> = [
-        ['5.24', '> - one\n> - two', 5, 5, ['bulleted', 'numbered'], 'the selection touches a raw block'],
         ['5.25', 'one\n\n---\n\ntwo', 1, 11, ['bulleted'], 'the selection touches a raw block'],
         ['5.26', '<div>x</div>\n\ntwo', 6, 6, ['bulleted'], 'the selection touches a raw block'],
         ['5.27', 'one\n\ntwo', 4, 4, ['bold'], 'a caret on a blank line has no place'],
@@ -818,6 +822,38 @@ function holdsSplitBlock(doc: string): boolean {
     return unpaired;
 }
 
+/**
+ * Whether the last replacement of a command wrote a line whose container prefix holds a tab: such a line has no exact
+ * source place for a caret (the documented limit of a code line under a tab), so the caret falls back to the end of the
+ * replaced text and is left out of the comparison, as the text of such lines is left out of
+ * {@link standsInShapeWithoutSource}.
+ *
+ * @param text - The document after the command.
+ * @param replaced - The replacements the command made, each `[start, end, inserted, caret]`.
+ * @returns Whether a line the replacement covers has a tab in its prefix.
+ */
+function writesPrefixTabLine(text: string, replaced: unknown[][]): boolean {
+    const last = replaced[replaced.length - 1];
+
+    if (last === undefined) {
+        return false;
+    }
+
+    const start = last[0] as number;
+    const inserted = last[2] as string;
+    const lines = text.split('\n');
+    const marked = prefixTabLines(lines);
+    let lineStart = 0;
+
+    return lines.some((line, index) => {
+        const covers = lineStart <= start + inserted.length && start <= lineStart + line.length;
+
+        lineStart += line.length + 1;
+
+        return covers && marked[index] === true;
+    });
+}
+
 /** Documents of the shapes where a block shows nothing or a caret stands below the last block, each with the blocks around it. */
 const EDGE_DOCUMENTS: readonly DifferentialDocument[] = [
     '', '\n', '\n\n\n', ' ', '   \n', '#', '## ', '-', '- ', '-\n-', '-\n-\n-', '- a\n-', '-\n- a', '-\n  -', '1.\n2.', '* \n* ',
@@ -977,7 +1013,7 @@ describe('the corpus differential', () => {
                             differences.push(`${where}: ${JSON.stringify(run.text)} against ${JSON.stringify(mapped.value)}`);
                         } else if (run.replaced.length > 1) {
                             differences.push(`${where}: ${run.replaced.length} replacements`);
-                        } else if (run.caret !== null && mapped.hasExactCaret && !endsInDroppedSpace) {
+                        } else if (run.caret !== null && mapped.hasExactCaret && !endsInDroppedSpace && !writesPrefixTabLine(run.text, run.replaced)) {
                             const characters = charactersOfSourceCaret(run.text, run.caret);
 
                             if (JSON.stringify(characters) !== JSON.stringify(mapped.characters)) {

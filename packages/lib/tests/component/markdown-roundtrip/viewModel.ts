@@ -634,7 +634,7 @@ function editorBlock(node: LexicalNode): Block {
     }
 
     if ($isQuoteNode(node)) {
-        return { kind: 'quote', blocks: visibleBlocks([{ kind: 'paragraph', runs: editorRuns(node.getChildren()) }]) };
+        return { kind: 'quote', blocks: editorBlocks(node.getChildren()) };
     }
 
     if ($isCodeNode(node)) {

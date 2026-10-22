@@ -228,7 +228,7 @@ function rawBlockReadings(editor: MarkdownEditor): unknown[] {
 }
 
 /** The blocks that hold text only. */
-const TEXT_ONLY_BLOCKS: readonly string[] = ['paragraph', 'markdown-list-item-text', 'heading', 'quote', 'code', 'markdown-raw-block'];
+const TEXT_ONLY_BLOCKS: readonly string[] = ['paragraph', 'markdown-list-item-text', 'heading', 'code', 'markdown-raw-block'];
 
 /**
  * The blocks standing inside a block that holds text only (a paragraph in a
@@ -677,7 +677,7 @@ describe('a raw quote ending on a line without > that starts an HTML block keeps
         const source = '- a\n\n  > q\n\n  <div\n- z';
         const editor = load(source);
 
-        expect(shapeOf(editor)).toBe('list(markdown-list-item(markdown-list-item-text("a"), quote("q"), markdown-raw-block("<div")), markdown-list-item(markdown-list-item-text("z")))');
+        expect(shapeOf(editor)).toBe('list(markdown-list-item(markdown-list-item-text("a"), markdown-quote(paragraph("q")), markdown-raw-block("<div")), markdown-list-item(markdown-list-item-text("z")))');
         expectSaveKeepsDocument(editor, 'the load');
     });
 });
@@ -745,7 +745,7 @@ describe('a block never stays inside a block that holds text only', () => {
             source: 'p\n\n- w0\n\n  > q\n\n  ---\n- z',
             steps:  [{ key: 'Backspace', at: ['w0', 0] }],
             saved:  'pw0\n\n> q\n\n---\n\n- z',
-            shape:  'paragraph("pw0") | quote("q") | markdown-raw-block("---") | list(markdown-list-item(markdown-list-item-text("z")))',
+            shape:  'paragraph("pw0") | markdown-quote(paragraph("q")) | markdown-raw-block("---") | list(markdown-list-item(markdown-list-item-text("z")))',
         },
         {
             // A join joins text, here as outside a list: the item's text joins the quote, and its blocks follow into the item.
@@ -753,7 +753,7 @@ describe('a block never stays inside a block that holds text only', () => {
             source: '- a\n\n  > q0\n\n- w2\n\n  ::: {align=center}\n  f3\n  :::\n\n  <!-- c4 -->',
             steps:  [{ key: 'Backspace', at: ['w2', 0] }],
             saved:  '- a\n\n  > q0w2\n\n  ::: {align=center}\n  f3\n  :::\n\n  <!-- c4 -->',
-            shape:  'list(markdown-list-item(markdown-list-item-text("a"), quote("q0w2"), markdown-block(markdown-column(paragraph("f3"))), markdown-raw-block("<!-- c4 -->")))',
+            shape:  'list(markdown-list-item(markdown-list-item-text("a"), markdown-quote(paragraph("q0w2")), markdown-block(markdown-column(paragraph("f3"))), markdown-raw-block("<!-- c4 -->")))',
         },
         {
             name:   'K4: an item that is a heading, Backspace at the start of the next item',
@@ -789,7 +789,7 @@ describe('a block never stays inside a block that holds text only', () => {
             source: '> q\n\n- w0\n\n  ---\n- z',
             steps:  [{ key: 'Backspace', at: ['w0', 0] }],
             saved:  '> qw0\n\n---\n\n- z',
-            shape:  'quote("qw0") | markdown-raw-block("---") | list(markdown-list-item(markdown-list-item-text("z")))',
+            shape:  'markdown-quote(paragraph("qw0")) | markdown-raw-block("---") | list(markdown-list-item(markdown-list-item-text("z")))',
         },
         {
             name:   'K8: a heading, Delete at its end',
@@ -837,19 +837,18 @@ describe('a block never stays inside a block that holds text only', () => {
             name:   'K14: a range deleted from inside a code block into the text of an item holding two more blocks and a nested list',
             source: '```\ncode\n```\n\n- w0\n\n  > q\n\n  p\n\n  - n\n- z',
             steps:  [{ key: 'Backspace', at: ['code', 2], to: ['w0', 1] }],
-            shape:  'code("co0") | quote("q") | paragraph("p") | list(markdown-list-item(list(markdown-list-item(markdown-list-item-text("n")))), markdown-list-item(markdown-list-item-text("z")))',
+            shape:  'code("co0") | markdown-quote(paragraph("q")) | paragraph("p") | list(markdown-list-item(list(markdown-list-item(markdown-list-item-text("n")))), markdown-list-item(markdown-list-item-text("z")))',
         },
     ])('$name', runRow);
 
     it.each<[string, string, string]>([
-        ['K15: a paragraph', 'paragraph', 'paragraph("a") | markdown-raw-block("---") | paragraph("b") | quote("q") | paragraph("c")'],
-        ['K16: a heading', 'heading', 'heading("a") | markdown-raw-block("---") | paragraph("b") | quote("q") | paragraph("c")'],
-        ['K17: a quote', 'quote', 'quote("a") | markdown-raw-block("---") | paragraph("b") | quote("q") | paragraph("c")'],
-        ['K18: a code block', 'code', 'code("a") | markdown-raw-block("---") | paragraph("b") | quote("q") | paragraph("c")'],
-        ['K19: a raw block', 'markdown-raw-block', 'markdown-raw-block("<div>") | markdown-raw-block("---") | paragraph("b") | quote("q") | paragraph("c")'],
+        ['K15: a paragraph', 'paragraph', 'paragraph("a") | markdown-raw-block("---") | paragraph("b") | markdown-quote(paragraph("q")) | paragraph("c")'],
+        ['K16: a heading', 'heading', 'heading("a") | markdown-raw-block("---") | paragraph("b") | markdown-quote(paragraph("q")) | paragraph("c")'],
+        ['K18: a code block', 'code', 'code("a") | markdown-raw-block("---") | paragraph("b") | markdown-quote(paragraph("q")) | paragraph("c")'],
+        ['K19: a raw block', 'markdown-raw-block', 'markdown-raw-block("<div>") | markdown-raw-block("---") | paragraph("b") | markdown-quote(paragraph("q")) | paragraph("c")'],
     ])('%s given blocks between its text leaves its first text and has the rest follow it, text in paragraphs', (_name, type, shape) => {
         // No key leaves text after a block in such a container; the rule holds for it all the same.
-        const editor = load({ 'paragraph': 'a', 'heading': '# a', 'quote': '> a', 'code': '```\na\n```', 'markdown-raw-block': '<div>' }[type]!);
+        const editor = load({ 'paragraph': 'a', 'heading': '# a', 'code': '```\na\n```', 'markdown-raw-block': '<div>' }[type]!);
 
         lexicalOf(editor).update(() => {
             const container = $getRoot().getFirstChildOrThrow<ElementNode>();
@@ -859,6 +858,20 @@ describe('a block never stays inside a block that holds text only', () => {
         }, { discrete: true });
 
         expect(shapeOf(editor)).toBe(shape);
+        expectSaveKeepsDocument(editor, 'the blocks put in');
+    });
+
+    it('K17: a quote holds the blocks put into it, text between them in paragraphs', () => {
+        const editor = load('> a');
+
+        lexicalOf(editor).update(() => {
+            const container = $getRoot().getFirstChildOrThrow<ElementNode>();
+            const quote = $createQuoteNode().append($createTextNode('q'));
+
+            container.splice(container.getChildrenSize(), 0, [$createMarkdownRawBlockNode('---'), $createTextNode('b'), quote, $createTextNode('c')]);
+        }, { discrete: true });
+
+        expect(shapeOf(editor)).toBe('markdown-quote(paragraph("a"), markdown-raw-block("---"), paragraph("b"), markdown-quote(paragraph("q")), paragraph("c"))');
         expectSaveKeepsDocument(editor, 'the blocks put in');
     });
 
@@ -887,7 +900,7 @@ describe('a block never stays inside a block that holds text only', () => {
             text.splice(text.getChildrenSize(), 0, [$createMarkdownRawBlockNode('---'), $createTextNode('b'), quote, $createTextNode('c')]);
         }, { discrete: true });
 
-        expect(shapeOf(editor)).toBe('list(markdown-list-item(markdown-list-item-text("a"), markdown-raw-block("---"), paragraph("b"), quote("q"), paragraph("c")), markdown-list-item(markdown-list-item-text("z")))');
+        expect(shapeOf(editor)).toBe('list(markdown-list-item(markdown-list-item-text("a"), markdown-raw-block("---"), paragraph("b"), markdown-quote(paragraph("q")), paragraph("c")), markdown-list-item(markdown-list-item-text("z")))');
         expect(expectSaveKeepsDocument(editor, 'the blocks put in')).toBe('- a\n\n  ---\n\n  b\n\n  > q\n\n  c\n\n- z');
     });
 
@@ -1074,7 +1087,7 @@ describe('a task item joined to the block before it leaves its blocks after that
             source: '# h\n\n- [x] w4\n\n  > q5\n- d',
             steps:  [{ key: 'Delete', at: ['h', 1] }],
             saved:  '# h\\[x\\] w4\n\n> q5\n\n- d',
-            shape:  'heading("h[x] w4") | quote("q5") | list(markdown-list-item(markdown-list-item-text("d")))',
+            shape:  'heading("h[x] w4") | markdown-quote(paragraph("q5")) | list(markdown-list-item(markdown-list-item-text("d")))',
         },
         {
             name:   'J2: Delete at the end of a paragraph',
@@ -1087,7 +1100,7 @@ describe('a task item joined to the block before it leaves its blocks after that
             source: '- [x] w4\n\n  > q5\n- d',
             steps:  [{ key: 'command', run: (editor) => editor.setBlockType('h2'), at: ['w4', 1] }],
             saved:  '## \\[x\\] w4\n\n> q5\n\n- d',
-            shape:  'heading("[x] w4") | quote("q5") | list(markdown-list-item(markdown-list-item-text("d")))',
+            shape:  'heading("[x] w4") | markdown-quote(paragraph("q5")) | list(markdown-list-item(markdown-list-item-text("d")))',
         },
     ])('$name', runRow);
 });
@@ -1192,7 +1205,7 @@ describe('an item moved out of its nested list leaves the blocks after that list
             source: '- a\n  - b\n\n    > q\n\n  c\n- d',
             steps:  [{ key: 'outdent', at: ['b', 1] }],
             saved:  '- a\n\n- b\n\n  > q\n\n  c\n\n- d',
-            shape:  'list(markdown-list-item(markdown-list-item-text("a")), markdown-list-item(markdown-list-item-text("b"), quote("q"), paragraph("c")), markdown-list-item(markdown-list-item-text("d")))',
+            shape:  'list(markdown-list-item(markdown-list-item-text("a")), markdown-list-item(markdown-list-item-text("b"), markdown-quote(paragraph("q")), paragraph("c")), markdown-list-item(markdown-list-item-text("d")))',
         },
         {
             name:   'U8: a nested item with no block after its list moves out as before (control)',
@@ -1213,9 +1226,10 @@ describe('an item moved out of its nested list leaves the blocks after that list
             '- a\n\n```\nb\n```\n\nc\n\n- d', 'list(markdown-list-item(markdown-list-item-text("a"))) | code("b") | paragraph("c") | list(markdown-list-item(markdown-list-item-text("d")))'],
         ['U13: a quote over a range from the nested item\'s quote to the outer item\'s headings',
             '- a\n  - b\n\n    > q\n\n  ## g\n\n  ## h\n- d', (editor) => editor.setBlockType('quote'), ['q', 1], ['h', 1],
-            // `b` is not in the selection: its item stays where it is, and each selected block takes the type in place.
-            '- a\n  - b\n\n    > q\n\n  > g\n\n  > h\n\n- d',
-            'list(markdown-list-item(markdown-list-item-text("a"), list(markdown-list-item(markdown-list-item-text("b"), quote("q"))), quote("g"), quote("h")), '
+            // `b` is not in the selection: its item stays where it is. `q` already stands in a quote and stays there; the two
+            // headings, which stand in none, go into one quote.
+            '- a\n  - b\n\n    > q\n\n  > ## g\n  >\n  > ## h\n\n- d',
+            'list(markdown-list-item(markdown-list-item-text("a"), list(markdown-list-item(markdown-list-item-text("b"), markdown-quote(paragraph("q")))), markdown-quote(heading("g"), heading("h"))), '
             + 'markdown-list-item(markdown-list-item-text("d")))'],
         ['U14: two levels deep', '- a\n  - m\n    - b\n\n    c\n\n  e\n- d', (editor) => editor.setBlockType('h2'), ['b', 1], ['b', 1],
             '- a\n\n  - m\n\n## b\n\nc\n\ne\n\n- d', ''],
@@ -1754,14 +1768,14 @@ describe('a block type or a list toggle in a list item acts on the block the car
             source: '- one\n\n  > q\n\n  | h |\n  | --- |\n  | c |\n\n  ::: {align=center}\n  f\n  :::\n\n  <div>x</div>\n\n- two',
             steps:  [{ key: 'command', run: (editor) => editor.toggleUnorderedList(), at: ['one', 1] }],
             saved:  'one\n\n> q\n\n| h |\n| --- |\n| c |\n\n::: {align=center}\nf\n:::\n\n<div>x</div>\n\n- two',
-            shape:  'paragraph("one") | quote("q") | table(tablerow(tablecell(paragraph("h"))), tablerow(tablecell(paragraph("c")))) | markdown-block(markdown-column(paragraph("f"))) | markdown-raw-block("<div>x</div>") | list(markdown-list-item(markdown-list-item-text("two")))',
+            shape:  'paragraph("one") | markdown-quote(paragraph("q")) | table(tablerow(tablecell(paragraph("h"))), tablerow(tablecell(paragraph("c")))) | markdown-block(markdown-column(paragraph("f"))) | markdown-raw-block("<div>x</div>") | list(markdown-list-item(markdown-list-item-text("two")))',
         },
         {
             name:   'H11: the other list kind toggled there keeps all four in the item',
             source: '- one\n\n  > q\n\n  | h |\n  | --- |\n  | c |\n\n  ::: {align=center}\n  f\n  :::\n\n  <div>x</div>\n\n- two',
             steps:  [{ key: 'command', run: (editor) => editor.toggleOrderedList(), at: ['one', 1] }],
             saved:  '1. one\n\n   > q\n\n   | h |\n   | --- |\n   | c |\n\n   ::: {align=center}\n   f\n   :::\n\n   <div>x</div>\n\n- two',
-            shape:  'list(markdown-list-item(markdown-list-item-text("one"), quote("q"), table(tablerow(tablecell(paragraph("h"))), tablerow(tablecell(paragraph("c")))), markdown-block(markdown-column(paragraph("f"))), markdown-raw-block("<div>x</div>"))) | list(markdown-list-item(markdown-list-item-text("two")))',
+            shape:  'list(markdown-list-item(markdown-list-item-text("one"), markdown-quote(paragraph("q")), table(tablerow(tablecell(paragraph("h"))), tablerow(tablecell(paragraph("c")))), markdown-block(markdown-column(paragraph("f"))), markdown-raw-block("<div>x</div>"))) | list(markdown-list-item(markdown-list-item-text("two")))',
         },
         {
             name:   'H12: the blocks after the item\'s first nested list stay in the list, in an item with no text',
@@ -3087,7 +3101,7 @@ describe('a raw block outside a list item is written so that it reads where it s
             source: DEEP_QUOTE,
             steps:  [{ key: 'Backspace', at: ['  <div', 2] }, { key: 'Backspace', at: [' <div', 1] }],
             saved:  'p\n\n> q\n\n<div\n\n\nz',
-            shape:  'paragraph("p") | quote("q") | markdown-raw-block("<div") | paragraph("z")',
+            shape:  'paragraph("p") | markdown-quote(paragraph("q")) | markdown-raw-block("<div") | paragraph("z")',
             comparesWithViewer: false,
         },
         {
@@ -3122,7 +3136,7 @@ describe('a raw block outside a list item is written so that it reads where it s
             source: '> q\n<div',
             steps:  [{ key: 'Enter', at: ['<div', 4] }, { key: 'type', text: 'z' }],
             saved:  '> q\n\n<div\n\n\nz',
-            shape:  'quote("q") | markdown-raw-block("<div") | paragraph("z")',
+            shape:  'markdown-quote(paragraph("q")) | markdown-raw-block("<div") | paragraph("z")',
             comparesWithViewer: false,
         },
         {
@@ -3334,9 +3348,9 @@ describe('a raw block outside a list item is written so that it reads where it s
         },
         {
             name:   'RT3: a code line of one space in a quote stays when the quote is edited (control)',
-            source: '>```\n>  ',
-            steps:  [{ key: 'type', text: 'x', at: ['>```', 4] }],
-            saved:  '>```x\n>  ',
+            source: '> a\n>\n>```\n>  ',
+            steps:  [{ key: 'type', text: 'x', at: ['a', 1] }],
+            saved:  '> ax\n>\n>```\n>  ',
             comparesWithViewer: false,
         },
         // RK — a raw block that was not edited is saved byte for byte, its whitespace included: at the top level it
@@ -3795,8 +3809,8 @@ describe('a range that takes a list item\'s text whole joins that item away (CI 
             shape: 'paragraph() | paragraph("rr") | list(markdown-list-item(markdown-list-item-text("z")))' },
         { name: 'CI82: Delete leaves the emptied heading', source: H, steps: [{ key: 'Delete', at: ['ab', 0], to: ['pq', 2] }], saved: '#\n\nrr\n\n- z',
             shape: 'heading() | paragraph("rr") | list(markdown-list-item(markdown-list-item-text("z")))' },
-        { name: 'CI83: a quote', source: '> ab\n\n- cd\n\n  pq\n\n  rr\n- z', steps: [back(['ab', 0], ['pq', 2])], saved: 'rr\n\n- z',
-            shape: 'paragraph() | paragraph("rr") | list(markdown-list-item(markdown-list-item-text("z")))' },
+        { name: 'CI83: a quote', source: '> ab\n\n- cd\n\n  pq\n\n  rr\n- z', steps: [back(['ab', 0], ['pq', 2])], saved: '>\n\nrr\n\n- z',
+            shape: 'markdown-quote(paragraph()) | paragraph("rr") | list(markdown-list-item(markdown-list-item-text("z")))' },
         { name: 'CI84: an emptied first paragraph goes', source: 'ab\n\n- cd\n\n  pq\n\n  rr\n- z', steps: [back(['ab', 0], ['pq', 2])], saved: 'rr\n\n- z',
             shape: 'paragraph("rr") | list(markdown-list-item(markdown-list-item-text("z")))' },
         { name: 'CI85: the range ends at the end of a code block: it is a text-only-edge range too',

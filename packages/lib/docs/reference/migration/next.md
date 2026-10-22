@@ -571,3 +571,37 @@ named reference as literal text on purpose escapes its `&`:
 
 A `#fragment` link to a heading whose text holds a reference changes to the
 new id.
+
+## `MarkdownEditor.setBlockType("quote")` toggles
+
+**What changed and why.** A quote now holds blocks, as Markdown's does, so
+the quote is no longer a block type among the others: it is a container
+the blocks stand in.
+
+| Call | Before | Now |
+|---|---|---|
+| `setBlockType("quote")` on two paragraphs | two quotes | one quote holding both |
+| `setBlockType("quote")` in a quote | nothing | the blocks leave the quote |
+| `setBlockType("paragraph")` in a quote | the quote becomes a paragraph | the paragraph stays in the quote |
+| `setBlockType("h2")` in a quote | the quote becomes a heading | a heading in the quote |
+| `toggleUnorderedList()` in a quote | the quote becomes a list item | a list in the quote |
+| `insertTable()` in a quote | the table after, before or between the halves of the quote, which split around it, by where the caret was | the table in the quote |
+
+A block typing shortcut typed at the start of the paragraph of a quote of one
+paragraph now builds inside the quote, as it does in a quote of several blocks.
+Lexical's own shortcuts replaced such a quote before:
+
+| Typed at the start of `b` in `> b` | Before | Now |
+|---|---|---|
+| `- ` | `- b` | `> - b` |
+| `# ` | `# b` | `> # b` |
+| a code fence and a space | a code block outside the quote | a code block inside the quote |
+| `> ` | `> b` | `> > b` |
+
+`setBlockType("quote")` over a raw Markdown block puts it into a quote and keeps
+it raw (`> <div>x</div>`); it used to escape the block's text.
+
+**Who needs to act.** Code that removes a quote with
+`setBlockType("paragraph")` calls `setBlockType("quote")` instead. A toolbar
+that wires its Quote button to `setBlockType("quote")` needs no change: the
+button now toggles.

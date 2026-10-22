@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { $createParagraphNode, $createTextNode, $getRoot, $isTextNode, UNDO_COMMAND } from 'lexical';
+import {
+    $createParagraphNode, $createRangeSelection, $createTextNode, $getRoot, $isTextNode, $setSelection, CONTROLLED_TEXT_INSERTION_COMMAND,
+    KEY_ENTER_COMMAND, UNDO_COMMAND,
+} from 'lexical';
 import type { ElementNode, LexicalEditor, LexicalNode, TextNode } from 'lexical';
 import { $dfs } from '@lexical/utils';
 import { $createListItemNode, $isListItemNode, ListItemNode } from '@lexical/list';
@@ -108,6 +111,39 @@ function append(editor: MarkdownEditor, text: string, suffix: string = '!'): voi
 
         node.setTextContent(node.getTextContent() + suffix);
     });
+}
+
+/**
+ * Puts the caret at an offset of the first text node holding exactly `text`, and presses Enter there.
+ *
+ * @param editor - The editor.
+ * @param text - The text node's text.
+ * @param offset - The caret's offset in it.
+ */
+function pressEnterAt(editor: MarkdownEditor, text: string, offset: number): void {
+    update(editor, () => {
+        $textNode(text).select(offset, offset);
+    });
+    lexicalOf(editor).dispatchCommand(KEY_ENTER_COMMAND, null);
+}
+
+/**
+ * Types `typed` over the whole of the first text node holding exactly `text`.
+ *
+ * @param editor - The editor.
+ * @param text - The text node's text.
+ * @param typed - What is typed.
+ */
+function typeOver(editor: MarkdownEditor, text: string, typed: string): void {
+    update(editor, () => {
+        const node = $textNode(text);
+        const selection = $createRangeSelection();
+
+        selection.anchor.set(node.getKey(), 0, 'text');
+        selection.focus.set(node.getKey(), node.getTextContentSize(), 'text');
+        $setSelection(selection);
+    });
+    lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, typed);
 }
 
 /**
@@ -679,4 +715,42 @@ describe('7. undo', () => {
 
         expect(editor.getValue()).toBe(lines('* one', '    * inner!', '    * more', '* two'));
     });
+});
+
+describe('8. quote blocks', () => {
+    runRows([
+        {
+            id: '8.1', source: lines('>first  _x_', '>', '>   second', '> ', '>third'), edit: (editor) => append(editor, 'second'),
+            saved: lines('>first  _x_', '>', '> second!', '>', '>third'),
+        },
+        {
+            id: '8.2', source: lines('> a', '>', '> * one', '>     * inner', '>', '>  > nested *q*') + '\n', edit: (editor) => append(editor, 'a'),
+            saved: lines('> a!', '>', '> * one', '>     * inner', '>', '>  > nested *q*') + '\n',
+        },
+        {
+            id: '8.3', source: lines('- a', '', '  >b _c_', '  >', '  >d', '- e'), edit: (editor) => append(editor, 'e'),
+            saved: lines('- a', '', '  >b _c_', '  >', '  >d', '', '- e!'),
+        },
+        {
+            id: '8.4', source: lines('> x _y_', '>', '> > p', '> >', '> > q'), edit: (editor) => append(editor, 'q'),
+            saved: lines('> x _y_', '>', '> > p', '> >', '> > q!'),
+        },
+        {
+            id: '8.5', source: lines('>  * a', '>  * b', '>', '> para'), edit: (editor) => pressEnterAt(editor, 'para', 2),
+            saved: lines('>  * a', '>  * b', '>', '> pa', '>', '> ra'),
+        },
+        {
+            id: '8.6', source: lines('> _a_', '>', '> b', '>', '> *c*'), edit: (editor) => typeOver(editor, 'b', 'X'),
+            saved: lines('> _a_', '>', '> X', '>', '> *c*'),
+        },
+        {
+            id: '8.7', source: lines('> a', '>', '>```', '>  '), edit: (editor) => append(editor, 'a', 'x'),
+            saved: lines('> ax', '>', '>```', '>  '),
+        },
+        {
+            id: '8.8', source: lines('>\ta', '>', '>\tb'), edit: (editor) => append(editor, 'b'),
+            saved: lines('> a', '>', '> b!'),
+        },
+        { id: '8.9', source: lines('>a', '>', '>b'), edit: () => undefined, saved: lines('>a', '>', '>b') },
+    ]);
 });
