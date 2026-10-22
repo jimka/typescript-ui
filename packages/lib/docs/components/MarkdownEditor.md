@@ -54,7 +54,7 @@ The editor edits, and emits, only the constructs the [`Markdown`](/components/Ma
 | Strikethrough | `~~struck~~` |
 | Underline | `++underlined++` |
 | Coloured / sized / font-styled span | `[text]{color=... font=... size=...}`; a loaded span keeps its attributes' order and any it does not style with |
-| Link | `[text](url)` |
+| Link | `[text](url)`; text entered at a link's very start or end — typed, pasted, or composed with an input method — is ordinary text outside the link |
 | Reference link | `[text][label]`, `[label][]`, `[label]` as written — see [Reference links](#reference-links) |
 | Table | pipe rows plus a `\| --- \|` delimiter row |
 | Table column width | delimiter cell's trailing `{width=240}` |

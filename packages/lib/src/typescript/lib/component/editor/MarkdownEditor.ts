@@ -30,6 +30,7 @@ import {
     $getChildCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection, COMMAND_PRIORITY_LOW,
     INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND, $getNodeByKey, $addUpdateTag, $setState,
     HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG, BEFORE_INPUT_COMMAND, INPUT_COMMAND, COMMAND_PRIORITY_EDITOR, COMPOSITION_END_TAG,
+    COMPOSITION_START_COMMAND, $getEditor,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
@@ -664,6 +665,84 @@ function $moveRangeEdgesOutOfLinks(selection: RangeSelection): void {
     if (endLink !== null && $isAtLinkStart(end, endLink)) {
         end.set(endLink.getParentOrThrow().getKey(), endLink.getIndexWithinParent(), "element");
     }
+}
+
+/**
+ * The position just outside a link for a text point that touches the link's
+ * edge: an element point on the link's parent, before the link for a point
+ * at the link's start, after it for a point at the link's end or at the
+ * start of the text that follows the link.
+ *
+ * @param point - A text point.
+ * @returns The parent and the child index of the position, or `null` when the point touches no link's edge.
+ */
+function $pointOutsideLinkEdge(point: PointType): [parent: ElementNode, index: number] | null {
+    const node = point.getNode();
+    const link = $findEnclosingLinkNode(node);
+
+    if (link === null) {
+        const followsLink = point.offset === 0 && $isLinkNode(node.getPreviousSibling());
+
+        return followsLink ? [node.getParentOrThrow(), node.getIndexWithinParent()] : null;
+    }
+
+    const atStart = $isAtLinkStart(point, link);
+    const atEnd = $isAtLinkEnd(point, link);
+    const index = link.getIndexWithinParent();
+
+    if (atStart) {
+        return [link.getParentOrThrow(), index];
+    }
+
+    return atEnd ? [link.getParentOrThrow(), index + 1] : null;
+}
+
+/**
+ * `COMPOSITION_START_COMMAND` guard: moves a collapsed caret that touches a
+ * link's edge onto the same position just outside the link, so that the text
+ * an input method composes there is plain text outside the link, as a typed
+ * character is.
+ *
+ * @remarks
+ * Works around Lexical's composition handling (0.46.0–0.49.0) at the edge
+ * of an inline element that refuses text there. Chromium inserts composed
+ * text outside an `<a>` at its inner edge, in a text node Lexical did not
+ * create; Lexical removes that node, the composition dies without a
+ * `compositionend`, and the editor keeps waiting for one. Lexical opens a
+ * text node of its own for a composition that starts at an element point,
+ * which is where this moves the caret. Remove when the canary in
+ * `markdown-editor-command-crashes.test.ts` fails.
+ *
+ * Does nothing while a composition is already running, as Lexical opens no
+ * text node then.
+ *
+ * @returns Always `false`, so Lexical's own handler still runs.
+ */
+function $moveCaretOutOfLinkEdge(): boolean {
+    // Lexical opens a text node only when no composition is running; match it.
+    const isRunning = $getEditor().isComposing();
+
+    if (isRunning) {
+        return false;
+    }
+
+    const selection = $getSelection();
+    const isTextCaret = $isRangeSelection(selection) && selection.isCollapsed() && selection.anchor.type === "text";
+
+    if (!isTextCaret) {
+        return false;
+    }
+
+    const outside = $pointOutsideLinkEdge(selection.anchor);
+
+    if (outside !== null) {
+        const [parent, index] = outside;
+
+        selection.anchor.set(parent.getKey(), index, "element");
+        selection.focus.set(parent.getKey(), index, "element");
+    }
+
+    return false;
 }
 
 /**
@@ -8618,6 +8697,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         this._unregister = mergeRegister(
             unregisterWritableStateRules,
             typedTextMarks.unregister,
+            editor.registerCommand(COMPOSITION_START_COMMAND, $moveCaretOutOfLinkEdge, COMMAND_PRIORITY_CRITICAL),
             registerRichText(editor),
             registerList(editor),
             registerTablePlugin(editor),

@@ -543,3 +543,15 @@ All in headless Chromium against the demo's **MD Editor** page, tip `a11d86be6`.
 [^fuzz]: `markdown-edit-fuzz.test.ts` and the scratch harnesses dispatch `CONTROLLED_TEXT_INSERTION_COMMAND`, the delete commands, `KEY_ENTER_COMMAND`, `PASTE_COMMAND`, indent and outdent, undo and redo. None dispatches `COMPOSITION_START_COMMAND`. The run made while drafting had this change and the change of `markdown-editor-typing-shortcuts-only-for-typing` together in one copy: all 71 output files were byte-identical to the baselines (`fuzz-p2/`, `lif-p2/`, `lifx-p2/`, `r7-p2/` in `$K/plans3/text-input/`).
 
 [^placeholder]: Measured (`l7.log`): at an image's edge on the tip the three `"change"` values of a one-step composition are U+200B followed by `![alt](…) now`, then `に![alt](…) now`, then `日本![alt](…) now`; with the change a link's edge gives the same three with the link in place of the image.
+
+---
+
+## Implementation Notes
+
+- Owner sign-off (2026-10-14) taken as recommended: text composed at the end of a link that ends its block goes after the link.
+- Code placed by symbol on the newer base (875dbd3a3): the import, the two functions after `$moveRangeEdgesOutOfLinks`' successor anchor (before the blockquote/list finder JSDoc), and the registration right before `registerRichText(editor)`. No behavioural deviation.
+- The plan's step 1 expected 14 failing rows (I1 to I14); exactly those failed before the change, and all 109 tests in the file pass after.
+- The seeded fuzz differential check was not run: it is a no-op here, because no harness dispatches COMPOSITION_START_COMMAND. `npm run docs:api` ran clean.
+- Not run: the Windows IME check, and the Firefox/Safari/macOS hand checks.
+- Run and passing: typecheck and typecheck:test (exit 0), lint (no errors), the full suite (564 files, 18806 tests), and the scripted Chromium browser check (ALL ROWS PASS).
+- The audit loop and the move to plans/implemented/ were skipped on the orchestrator's instruction.
