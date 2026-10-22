@@ -1013,17 +1013,15 @@ describe('MarkdownEditor mode', () => {
 describe('MarkdownEditor source-mode command no-ops', () => {
     const SOURCE_VALUE = '# Title\n\nhello world\n';
 
-    // Phases 1 and 2 gave every other command a real source-mode edit; these
-    // 14 are the plan's Non-Goals backlog — permanently guarded with the
-    // plain `if (this.isSourceMode()) { return this; }` this block was
-    // originally written to cover, since each needs its own design
-    // (`setTextColor`/`setFontFamily`/`setFontSize`'s styled-span merge
-    // rules, `setBlockAlignment`/`setColumnCount`'s `:::` fence rewrite, and
-    // the nine table-structure commands' parsed pipe grid).
+    // Every other command now has a real source-mode edit; these 11 are the
+    // backlog — permanently guarded with the plain
+    // `if (this.isSourceMode()) { return this; }` this block was originally
+    // written to cover, since each needs its own design
+    // (`setBlockAlignment`/`setColumnCount`'s `:::` fence rewrite, and the
+    // nine table-structure commands' parsed pipe grid). The three style
+    // setters left this table once they learnt to write the styled span —
+    // see `'MarkdownEditor source-mode styled spans'`.
     const COMMANDS: Record<string, (editor: MarkdownEditor) => unknown> = {
-        setTextColor:          (editor) => editor.setTextColor('#c00'),
-        setFontFamily:         (editor) => editor.setFontFamily('serif'),
-        setFontSize:           (editor) => editor.setFontSize('1.2em'),
         setBlockAlignment:     (editor) => editor.setBlockAlignment('center'),
         setColumnCount:        (editor) => editor.setColumnCount(2),
         insertTableRow:        (editor) => editor.insertTableRow(),
@@ -1386,12 +1384,9 @@ describe('MarkdownEditor source-mode block commands', () => {
             .toContain('| --- | --- | --- |');
     });
 
-    it('the 14 backlog commands still no-op', () => {
+    it('the 11 backlog commands still no-op', () => {
         const editor = new MarkdownEditor('hello', { mode: 'source' });
 
-        editor.setTextColor('#c00');
-        editor.setFontFamily('serif');
-        editor.setFontSize('1.2em');
         editor.setBlockAlignment('center');
         editor.setColumnCount(2);
         editor.insertTableRow();
@@ -1415,6 +1410,159 @@ describe('MarkdownEditor source-mode block commands', () => {
         })();
 
         for (const doc of ['**hello** world', '++hello++ world', '## hello', '- a\n- b', tableSkeleton]) {
+            const editor = new MarkdownEditor(doc, { mode: 'source' });
+
+            editor.setMode('wysiwyg');
+
+            expect(normalize(editor.getValue()), doc).toBe(normalize(doc));
+        }
+    });
+});
+
+// Offline, `CodeEditor.getSelection()` reports a collapsed caret at offset 0,
+// so a command with no injected view acts on the document's first word — and a
+// SECOND command in the same test still sees that same offset-0 caret. Every
+// case needing the caret elsewhere injects a duck-typed view and asserts the
+// dispatched transaction, exactly as the source-mode cases above do.
+describe('MarkdownEditor source-mode styled spans', () => {
+    /** The styled span the merge / clear cases act on — its length is the range the rewrite replaces. */
+    const SPAN = '[hello]{color=#cc0000}';
+    /** The document those cases inject a view over: that span, then plain text. */
+    const SPANNED = `${SPAN} world`;
+
+    it('a colour reaches the source text', () => {
+        const editor = new MarkdownEditor('hello world', { mode: 'source' });
+
+        expect(editor.setTextColor('#cc0000').getValue()).toBe('[hello]{color=#cc0000} world');
+    });
+
+    it('a font family reaches the source text', () => {
+        const editor = new MarkdownEditor('hello world', { mode: 'source' });
+
+        expect(editor.setFontFamily('Georgia, serif').getValue()).toBe('[hello]{font="Georgia, serif"} world');
+    });
+
+    it('a second attribute merges into the span rather than nesting inside it', () => {
+        const editor = new MarkdownEditor(SPANNED, { mode: 'source' });
+        const dispatch = vi.fn();
+        codeEditorOf(editor)._view = {
+            state: EditorState.create({ doc: SPANNED, selection: { anchor: 1, head: 6 } }),
+            dispatch, focus: vi.fn(),
+        };
+
+        editor.setFontSize('1.2em');
+
+        expect(dispatch).toHaveBeenCalledTimes(1);
+        expect(dispatch.mock.calls[0]![0].changes)
+            .toEqual({ from: 0, to: SPAN.length, insert: '[hello]{color=#cc0000 size=1.2em}' });
+        expect(dispatch.mock.calls[0]![0].selection).toEqual({ anchor: 1, head: 6 });
+    });
+
+    it('clearing the last attribute takes the whole span away', () => {
+        const editor = new MarkdownEditor(SPANNED, { mode: 'source' });
+        const dispatch = vi.fn();
+        codeEditorOf(editor)._view = {
+            state: EditorState.create({ doc: SPANNED, selection: { anchor: 1, head: 6 } }),
+            dispatch, focus: vi.fn(),
+        };
+
+        editor.setTextColor(null);
+
+        expect(dispatch).toHaveBeenCalledTimes(1);
+        expect(dispatch.mock.calls[0]![0].changes).toEqual({ from: 0, to: SPAN.length, insert: 'hello' });
+        expect(dispatch.mock.calls[0]![0].selection).toEqual({ anchor: 0, head: 5 });
+    });
+
+    it('never builds the Lexical editor', () => {
+        const editor = new MarkdownEditor('hello world', { mode: 'source' });
+
+        editor.setTextColor('#cc0000');
+        editor.setFontFamily('Georgia, serif');
+        editor.setFontSize('1.2em');
+
+        expect(lexicalOf(editor)).toBeNull();
+    });
+
+    // The WYSIWYG side refuses a style inside a link, so the source side has to
+    // refuse it too — see the matching WYSIWYG case earlier in this file.
+    it('a selection inside a link still refuses', () => {
+        const editor = new MarkdownEditor('see [docs](/d)', { mode: 'source' });
+        const dispatch = vi.fn();
+        codeEditorOf(editor)._view = {
+            state: EditorState.create({ doc: 'see [docs](/d)', selection: { anchor: 5, head: 9 } }),
+            dispatch, focus: vi.fn(),
+        };
+
+        editor.setTextColor('#cc0000');
+
+        expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it('read-only refuses and signals, leaving the value unchanged', () => {
+        const editor = new MarkdownEditor('hello world', { mode: 'source', readOnly: true });
+        let readonlyEdits = 0;
+        codeEditorOf(editor).on('readonlyedit', () => { readonlyEdits += 1; });
+
+        editor.setTextColor('#cc0000');
+
+        expect(editor.getValue()).toBe('hello world');
+        expect(readonlyEdits).toBe(1);
+    });
+
+    it('restores focus after a handled command', () => {
+        const editor = new MarkdownEditor('hello world', { mode: 'source' });
+        const focusSpy = vi.spyOn(codeEditorOf(editor), 'focus');
+
+        editor.setTextColor('#cc0000');
+
+        expect(focusSpy).toHaveBeenCalledOnce();
+    });
+
+    it('restores focus even when the transform declines', () => {
+        const editor = new MarkdownEditor('see [docs](/d)', { mode: 'source' });
+        const dispatch = vi.fn();
+        codeEditorOf(editor)._view = {
+            state: EditorState.create({ doc: 'see [docs](/d)', selection: { anchor: 5, head: 9 } }),
+            dispatch, focus: vi.fn(),
+        };
+        const focusSpy = vi.spyOn(codeEditorOf(editor), 'focus');
+
+        editor.setTextColor('#cc0000');
+
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(focusSpy).toHaveBeenCalledOnce();
+    });
+
+    it('setTextColor inside a wider bold run declines, leaving the document untouched', () => {
+        const text = '**hello world**';
+        const editor = new MarkdownEditor(text, { mode: 'source' });
+        const dispatch = vi.fn();
+        codeEditorOf(editor)._view = {
+            state: EditorState.create({ doc: text, selection: { anchor: 8, head: 13 } }),
+            dispatch, focus: vi.fn(),
+        };
+
+        editor.setTextColor('#cc0000');
+
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(editor.getValue()).toBe(text);
+    });
+
+    // The dialect guarantee: what source mode writes survives a switch
+    // byte-for-byte. The emphasis case is why the brackets go OUTSIDE the
+    // markers — `**[hello]{…}**` loses the bold on this very switch — and why a
+    // selection inside a WIDER run is declined outright rather than written in
+    // either position.
+    it('round-trips its own output through a mode switch', () => {
+        const documents = [
+            '[hello]{color=#cc0000} world',
+            '[hello]{color=#cc0000 size=1.2em} world',
+            '[hello]{font="Georgia, serif"} world',
+            'a [**hello**]{color=#cc0000} b',
+            '[hello ]{size=1.2em}[world]{color=#2563eb size=1.2em}',
+        ];
+
+        for (const doc of documents) {
             const editor = new MarkdownEditor(doc, { mode: 'source' });
 
             editor.setMode('wysiwyg');

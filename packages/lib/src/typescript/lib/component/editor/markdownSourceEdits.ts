@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { resolveImageSpec, formatAttributes } from "~/component/display/markdownAttributes.js";
+import {
+    formatAttributes, parseAttributes, resolveImageSpec, resolveSpanStyle, spanStyleToAttributes,
+} from "~/component/display/markdownAttributes.js";
 
 /**
  * A source-mode edit: the range of the pre-edit text to replace, the
@@ -413,6 +415,671 @@ export function linkSource(url: string | null): MarkdownSourceTransform {
 
 /** Removes the link enclosing the current selection. Equivalent to `linkSource(null)`. */
 export const REMOVE_LINK_SOURCE: MarkdownSourceTransform = linkSource(null);
+
+/** The span attribute key for each kebab-case CSS property the three style setters patch. */
+const ATTRIBUTE_KEY_BY_CSS_PROPERTY: Record<string, string | undefined> = {
+    "color":       "color",
+    "font-family": "font",
+    "font-size":   "size",
+};
+
+/**
+ * One `[text]{key=value …}` styled span — `markdownStyleTransformers.ts`'s
+ * `STYLED_TEXT.importRegExp` itself, made global. Requiring `{` immediately
+ * after `]` is what keeps a `[text](url)` link out of the match.
+ */
+const STYLED_SPAN_PATTERN = /\[([^[\]]+)\]\{([^{}]*)\}/g;
+
+/**
+ * One `![alt](src){…}` image, its optional trailing size group included the
+ * way `markdownImageTransformer.ts`'s `importRegExp` reads it, or one
+ * `[text](url)` link — a bracket construct a styled span may not overlap.
+ */
+const BRACKET_CONSTRUCT_PATTERN = /!\[[^[\]]*\]\([^()]*\)(?:\{[^{}]*\})?|\[[^[\]]*\]\([^()]*\)/g;
+
+/** A `{…}` attribute group, stripped from a line before {@link STRUCTURAL_LINE} tests it. */
+const ATTRIBUTE_GROUP = /\{[^{}]*\}/g;
+
+/**
+ * A line whose own syntax a styled span would break, tested once its `{…}`
+ * groups are stripped: a `:::` fence line, whose opener carries the region's
+ * `{align=… gap=…}` group, or a line of nothing but `|`, `:`, `-` and
+ * whitespace — a table delimiter row with its `{width=…}` cells, and coarsely
+ * also a `|||` column separator or a `---` thematic break, none of which holds
+ * text a span could style.
+ */
+const STRUCTURAL_LINE = /^[ \t]*(?::::|[|:\- \t]*$)/;
+
+/** One located styled span: the whole construct's range, its visible text's range, and its attributes. */
+interface StyledSpanMatch {
+    start:      number;
+    end:        number;
+    textStart:  number;
+    textEnd:    number;
+    attributes: Record<string, string>;
+}
+
+/**
+ * Finds every `[text]{key=value …}` styled span in the document, skipping a
+ * match that contains a newline — the importer reads one line at a time, so a
+ * construct spanning a line break is never read back as a span.
+ *
+ * @param text - The full document text.
+ * @returns The located spans, in document order.
+ */
+function findStyledSpans(text: string): StyledSpanMatch[] {
+    STYLED_SPAN_PATTERN.lastIndex = 0;
+
+    const spans: StyledSpanMatch[] = [];
+    let match: RegExpExecArray | null;
+
+    while ((match = STYLED_SPAN_PATTERN.exec(text)) !== null) {
+        // A match carrying a newline is not a span this module can rewrite.
+        // Skipping it here is only safe because `resolveSpanRange` refuses any
+        // range that touches one (see `overlapsUnparseableStyledSpan`) — without
+        // that gate the group would be treated as plain text and re-bracketed.
+        if (match[0].includes("\n")) {
+            continue;
+        }
+
+        const start = match.index;
+
+        spans.push({
+            start,
+            end:        start + match[0].length,
+            textStart:  start + 1,
+            textEnd:    start + 1 + match[1]!.length,
+            attributes: parseAttributes(match[2]!),
+        });
+    }
+
+    return spans;
+}
+
+/**
+ * Whether the line holding `[from, to)` carries any emphasis marker character
+ * **outside** that range.
+ *
+ * This is the refusal that keeps the styled span from damaging a document, and
+ * it is deliberately coarse. Deciding which `*` or `++` is emphasis and which is
+ * arithmetic or a language name needs the inline structure of the line — a
+ * Markdown parser, which this module deliberately is not (see the plan's
+ * *Potential Challenges*). Three successive narrower rules, each reasoning from
+ * marker positions near the selection, each missed a shape that corrupted the
+ * document: a selection inside a wider run, one between two separate runs, and
+ * one swallowing a closing run while its partner stayed outside.
+ *
+ * So the condition is not "is this emphasis?" but the question this module can
+ * answer soundly: *is there any marker out there at all that bracketing this
+ * range could orphan?* When no marker sits outside the range, every marker on
+ * the line falls inside the rewritten text. That alone keeps a run whole only
+ * when the rewrite emits one group; a rewrite over several units can still cut
+ * a run wrapping an existing span, which {@link unitsCouldSplitMarkerRun}
+ * refuses.
+ *
+ * The cost is heavy over-declining: styling any word on a line that carries a
+ * `*`, `~`, `+` or `` ` `` character anywhere outside the range is refused,
+ * whether that character is emphasis or not — a `*`/`+` list bullet, a `~` in
+ * a path and the `+` of `1 + 1` all count — even where the edit would have
+ * been safe. That is the deliberate trade — a false decline costs one
+ * unavailable action, a false accept costs the user their text, irrecoverably
+ * (the emphasis re-imports as escaped literals and the `]{…}` syntax becomes
+ * visible prose).
+ *
+ * @param text - The full document text.
+ * @param from - 0-based start of the extruded range.
+ * @param to - 0-based end (exclusive) of the extruded range.
+ * @returns Whether a marker character on the range's line falls outside it.
+ */
+function lineCarriesMarkersOutside(text: string, from: number, to: number): boolean {
+    const line = expandToWholeLines(text, from, to);
+
+    for (let index = line.start; index < line.end; index += 1) {
+        if ((index < from || index >= to) && MARKER_CHARACTERS.has(text[index]!)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Whether `[from, to)` overlaps a `[text]{…}` group carrying a newline — a
+ * span this module cannot rewrite, and must therefore refuse rather than
+ * treat as plain text.
+ *
+ * {@link findStyledSpans} drops such a match, so without this check nothing
+ * downstream knows the brackets are there: the range reads as unstyled text
+ * and gets a second span written around it, producing the nested
+ * `[[x]{…}]{…}` that `STYLED_TEXT`'s `[^[\]]+` inner pattern cannot read
+ * back. Refusing keeps the document parseable; the user can rejoin the line
+ * and retry.
+ *
+ * @param text - The full document text.
+ * @param from - 0-based start of the range.
+ * @param to - 0-based end (exclusive) of the range.
+ * @returns Whether an unrewritable styled span intersects the range.
+ */
+function overlapsUnparseableStyledSpan(text: string, from: number, to: number): boolean {
+    STYLED_SPAN_PATTERN.lastIndex = 0;
+
+    let match: RegExpExecArray | null;
+
+    while ((match = STYLED_SPAN_PATTERN.exec(text)) !== null) {
+        if (match[0].includes("\n") && match.index < to && from < match.index + match[0].length) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Whether `[from, to)` overlaps a `[text](url)` link or an `![alt](src){…}`
+ * image — alt, destination or trailing size group — the two constructs a
+ * styled span may neither nest inside nor clip. Both
+ * {@link BRACKET_CONSTRUCT_PATTERN} and the link commands' own
+ * {@link LINK_PATTERN} are scanned, so a link the link commands recognise —
+ * one with a `(…)` title, say — is refused too.
+ *
+ * @param text - The full document text.
+ * @param from - 0-based start of the range.
+ * @param to - 0-based end (exclusive) of the range.
+ * @returns Whether a bracket construct intersects the range.
+ */
+function overlapsBracketConstruct(text: string, from: number, to: number): boolean {
+    for (const pattern of [BRACKET_CONSTRUCT_PATTERN, LINK_PATTERN]) {
+        pattern.lastIndex = 0;
+
+        let match: RegExpExecArray | null;
+
+        while ((match = pattern.exec(text)) !== null) {
+            if (match.index < to && from < match.index + match[0].length) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Whether the line holding `[from, to)` is a {@link STRUCTURAL_LINE} — a
+ * `:::` fence line or a table delimiter row, whose `{…}` attribute groups a
+ * styled span would break (`{width=[240]{…}}` is no longer a width, so the
+ * row stops being a delimiter row and the whole table reads as a paragraph).
+ *
+ * @param text - The full document text.
+ * @param from - 0-based start of the range.
+ * @param to - 0-based end (exclusive) of the range.
+ * @returns Whether the range sits on such a line.
+ */
+function onStructuralLine(text: string, from: number, to: number): boolean {
+    const line = expandToWholeLines(text, from, to);
+
+    return STRUCTURAL_LINE.test(text.slice(line.start, line.end).replace(ATTRIBUTE_GROUP, ""));
+}
+
+/**
+ * Resolves the range {@link spanStyleSource} acts on: refuse a raw range
+ * containing a newline (a span cannot cross one in this dialect); normalise with
+ * {@link normalizeRange}; extrude any emphasis-marker run flanking the result
+ * symmetrically, so the brackets land OUTSIDE it; then refuse an overlap with a
+ * link or image ({@link overlapsBracketConstruct}), an overlap with a `[…]{…}`
+ * group carrying a newline ({@link overlapsUnparseableStyledSpan}), a range on
+ * a fence line or table delimiter row ({@link onStructuralLine}), a range
+ * holding or cutting into a table cell's paragraph break
+ * ({@link touchesCellParagraphBreak}), and a range whose line carries an
+ * emphasis marker outside it ({@link lineCarriesMarkersOutside}).
+ *
+ * The extrusion is a correctness requirement, not a cosmetic one: Lexical's
+ * importer applies the outermost match first, so `**[hello]{…}**` builds the
+ * span's replacement text node inside the bold node — and that fresh node
+ * carries no format, silently dropping the bold on the next mode switch.
+ * `[**hello**]{…}` takes the other branch, and is also the form the export
+ * writes, since it wraps the formatted text INSIDE the brackets.
+ *
+ * @param text - The full document text.
+ * @param from - 0-based start of the raw selection.
+ * @param to - 0-based end (exclusive) of the raw selection.
+ * @returns The range to act on, or `null` when the span syntax cannot be
+ *   written around it — a range spanning a line break, one clipping a link or
+ *   image, one touching a `[…]{…}` group this module cannot rewrite, one on a
+ *   fence line or table delimiter row, one touching a table cell's paragraph
+ *   break, or one whose line carries an emphasis marker outside it.
+ */
+function resolveSpanRange(text: string, from: number, to: number): { from: number; to: number } | null {
+    if (text.slice(from, to).includes("\n")) {
+        return null;
+    }
+
+    const range = normalizeRange(text, from, to);
+
+    if (range === null) {
+        return null;
+    }
+
+    let start = range.from;
+    let end = range.to;
+
+    while (start > 0 && end < text.length && text[start - 1] === text[end] && MARKER_CHARACTERS.has(text[end]!)) {
+        start -= 1;
+        end += 1;
+    }
+
+    if (overlapsBracketConstruct(text, start, end) || overlapsUnparseableStyledSpan(text, start, end)) {
+        return null;
+    }
+
+    if (onStructuralLine(text, start, end) || touchesCellParagraphBreak(text, start, end)) {
+        return null;
+    }
+
+    if (lineCarriesMarkersOutside(text, start, end)) {
+        return null;
+    }
+
+    return { from: start, to: end };
+}
+
+/**
+ * Translates the kebab-case CSS patch the three style setters build into the
+ * dialect's shorter attribute keys.
+ *
+ * @param patch - The CSS patch.
+ * @returns The attribute patch, or `null` when the patch names a CSS property
+ *   the span syntax has no attribute key for.
+ */
+function toAttributePatch(patch: Record<string, string | null>): Record<string, string | null> | null {
+    const attributePatch: Record<string, string | null> = {};
+
+    for (const [property, value] of Object.entries(patch)) {
+        const key = ATTRIBUTE_KEY_BY_CSS_PROPERTY[property];
+
+        if (key === undefined) {
+            return null;
+        }
+
+        attributePatch[key] = value;
+    }
+
+    return attributePatch;
+}
+
+/** One stretch of *visible* text inside the rewritten range, with the attributes it carries. */
+interface StyledUnit {
+    from:       number;
+    to:         number;
+    attributes: Record<string, string>;
+}
+
+/**
+ * Walks `[start, end)` left to right into an alternating list of units: each
+ * span contributes its text range with its own attributes, and every stretch
+ * between spans contributes itself with none. The span syntax itself (`[`,
+ * `]`, `{…}`) belongs to no unit — it is re-emitted rather than carried.
+ *
+ * @param start - The rewritten range's start.
+ * @param end - The rewritten range's end (exclusive).
+ * @param spans - Every styled span in the document.
+ * @returns The units, in document order.
+ */
+function collectStyledUnits(start: number, end: number, spans: StyledSpanMatch[]): StyledUnit[] {
+    const units: StyledUnit[] = [];
+    let cursor = start;
+
+    for (const span of spans) {
+        if (span.start < start || span.end > end) {
+            continue;
+        }
+
+        if (cursor < span.start) {
+            units.push({ from: cursor, to: span.start, attributes: {} });
+        }
+
+        units.push({ from: span.textStart, to: span.textEnd, attributes: span.attributes });
+        cursor = span.end;
+    }
+
+    if (cursor < end) {
+        units.push({ from: cursor, to: end, attributes: {} });
+    }
+
+    return units;
+}
+
+/** One run of visible text the rewrite re-emits, with the attributes it carries. */
+interface StyledPiece {
+    text:       string;
+    attributes: Record<string, string>;
+    patched:    boolean;
+}
+
+/**
+ * Splits one unit into its three pieces at the selection's boundaries, already
+ * clamped into the unit — which is also what handles a selection boundary
+ * landing inside a span's own syntax: an offset inside `[` clamps to the
+ * text's start and one inside `]{…}` to its end, so that span's text is simply
+ * not patched.
+ *
+ * @param text - The full document text.
+ * @param unit - The unit to split.
+ * @param selectionFrom - The selection's start, clamped into the unit.
+ * @param selectionTo - The selection's end, clamped into the unit.
+ * @returns The before / selected / after pieces, in that order.
+ */
+function splitUnitAtSelection(
+    text: string, unit: StyledUnit, selectionFrom: number, selectionTo: number,
+): StyledPiece[] {
+    return [
+        { text: text.slice(unit.from, selectionFrom),  attributes: unit.attributes, patched: false },
+        { text: text.slice(selectionFrom, selectionTo), attributes: unit.attributes, patched: true },
+        { text: text.slice(selectionTo, unit.to),       attributes: unit.attributes, patched: false },
+    ];
+}
+
+/** The span attribute keys the dialect models, the ones {@link ATTRIBUTE_KEY_BY_CSS_PROPERTY} maps to. */
+const MODELLED_ATTRIBUTE_KEYS: ReadonlySet<string | undefined> = new Set(Object.values(ATTRIBUTE_KEY_BY_CSS_PROPERTY));
+
+/**
+ * Resolves the attribute set one piece is emitted with: its own attributes,
+ * with `patch` merged in when the piece is patched. The dialect's own keys go
+ * through the `resolveSpanStyle` / `spanStyleToAttributes` pair
+ * `markdownStyleTransformers.ts`'s `STYLED_TEXT.export` uses — which drops an
+ * invalid value exactly as that export drops it, and orders the keys
+ * `color`, `font`, `size`; a key the dialect does not model is the author's,
+ * so it is kept as written, after them.
+ *
+ * @param piece - The piece to resolve.
+ * @param patch - The attribute patch, applied only when `piece.patched`.
+ * @returns The resolved attributes; empty when the piece carries none.
+ */
+function resolvePieceAttributes(piece: StyledPiece, patch: Record<string, string | null>): Record<string, string> {
+    const merged = { ...piece.attributes };
+
+    if (piece.patched) {
+        for (const [key, value] of Object.entries(patch)) {
+            if (value === null) {
+                delete merged[key];
+            } else {
+                merged[key] = value;
+            }
+        }
+    }
+
+    const unmodelled = Object.entries(merged).filter(([key]) => !MODELLED_ATTRIBUTE_KEYS.has(key));
+
+    return { ...spanStyleToAttributes(resolveSpanStyle(merged)), ...Object.fromEntries(unmodelled) };
+}
+
+/** Adjacent pieces sharing one resolved attribute set, emitted together as one span or one bare stretch. */
+interface StyledRun {
+    text:        string;
+    attributes:  Record<string, string>;
+    /** Offset within `text` of the run's first patched character, or `-1` when no patched piece joined it. */
+    patchedFrom: number;
+    /** Offset within `text` just past the run's last patched character. */
+    patchedTo:   number;
+}
+
+/**
+ * Groups the pieces into runs, joining each non-empty piece onto the previous
+ * run when both resolve to the same attribute set. Lexical keeps one text node
+ * per distinct style and merges equal neighbours, so emitting equal
+ * neighbours as separate spans would write bytes the WYSIWYG export never
+ * would — fragmenting a span on a redundant press, and re-normalising on the
+ * next mode switch.
+ *
+ * @param pieces - Every piece of the rewritten range, in document order.
+ * @param patch - The attribute patch, applied to the patched pieces.
+ * @returns The runs, in document order.
+ */
+function groupPiecesIntoRuns(pieces: StyledPiece[], patch: Record<string, string | null>): StyledRun[] {
+    const runs: StyledRun[] = [];
+
+    for (const piece of pieces) {
+        if (piece.text === "") {
+            continue;
+        }
+
+        const attributes = resolvePieceAttributes(piece, patch);
+        let run = runs[runs.length - 1];
+
+        if (run === undefined || formatAttributes(run.attributes) !== formatAttributes(attributes)) {
+            run = { text: "", attributes, patchedFrom: -1, patchedTo: -1 };
+            runs.push(run);
+        }
+
+        if (piece.patched) {
+            if (run.patchedFrom === -1) {
+                run.patchedFrom = run.text.length;
+            }
+
+            run.patchedTo = run.text.length + piece.text.length;
+        }
+
+        run.text += piece.text;
+    }
+
+    return runs;
+}
+
+/**
+ * Re-emits one run: bare text when its attribute set is empty, else
+ * `[text]{…}`. Every group goes out through the same three calls
+ * `STYLED_TEXT.export` makes (the first two in {@link resolvePieceAttributes},
+ * `formatAttributes` here), so the bytes written for one group are the bytes
+ * WYSIWYG would have written for the same style — which is what makes a span
+ * authored in source mode survive a switch to WYSIWYG and back unchanged.
+ *
+ * @param run - The run to emit.
+ * @returns The emitted Markdown, or `null` to decline the whole edit when a
+ *   bracketed emission would carry a `[` or `]`, which the dialect's span text
+ *   cannot hold.
+ */
+function emitRun(run: StyledRun): string | null {
+    if (Object.keys(run.attributes).length === 0) {
+        return run.text;
+    }
+
+    return /[[\]]/.test(run.text) ? null : `[${run.text}]{${formatAttributes(run.attributes)}}`;
+}
+
+/**
+ * Grows `range` into the range the rewrite replaces: out over every span it
+ * intersects, so a span the selection only clips is re-emitted whole, and then
+ * over every span abutting that, so a neighbour that ends up equally styled
+ * can be emitted as one span with it ({@link groupPiecesIntoRuns}).
+ *
+ * @param range - The range to patch, from {@link resolveSpanRange}.
+ * @param spans - Every styled span in the document, in document order.
+ * @returns The rewritten range's `[start, end)`.
+ */
+function growOverStyledSpans(
+    range: { from: number; to: number }, spans: StyledSpanMatch[],
+): { start: number; end: number } {
+    const touched = spans.filter((span) => span.start < range.to && range.from < span.end);
+    let start = Math.min(range.from, ...touched.map((span) => span.start));
+    let end = Math.max(range.to, ...touched.map((span) => span.end));
+
+    // `spans` is in document order, so one backward pass grows `start` over a
+    // chain of abutting spans and one forward pass grows `end`.
+    for (let index = spans.length - 1; index >= 0; index -= 1) {
+        if (spans[index]!.end === start) {
+            start = spans[index]!.start;
+        }
+    }
+
+    for (const span of spans) {
+        if (span.start === end) {
+            end = span.end;
+        }
+    }
+
+    return { start, end };
+}
+
+/**
+ * Whether re-emitting `units` could cut an emphasis or code marker run in two.
+ * Each unit goes out as its own group, so a run wrapping an existing span —
+ * `**hello [world]{…}**` — would have its opening and closing markers land in
+ * different brackets and read back as literal characters. Like
+ * {@link lineCarriesMarkersOutside} this cannot tell a run from a literal
+ * marker, so it answers coarsely: more than one unit, and a marker character
+ * in any unit's text.
+ *
+ * @param text - The full document text.
+ * @param units - The rewritten range's units, from {@link collectStyledUnits}.
+ * @returns Whether the rewrite must decline.
+ */
+function unitsCouldSplitMarkerRun(text: string, units: StyledUnit[]): boolean {
+    if (units.length < 2) {
+        return false;
+    }
+
+    return units.some((unit) => {
+        const characters = [...text.slice(unit.from, unit.to)];
+
+        return characters.some((character) => MARKER_CHARACTERS.has(character));
+    });
+}
+
+/**
+ * Emits the runs as the replacement for the range starting at `start`, and
+ * finds where the patched text lands in the rewritten document.
+ *
+ * A bracketed run is checked against the backslash escapes around it, the
+ * same rule the inline toggles apply to their markers (`C:\**Users**`): a `[`
+ * written straight after an escaping backslash (`C:\[Users]{…}`), or a `]`
+ * written straight after a run text ending in one (`[a\]{…}`), is a literal
+ * bracket, so the span would not read back and its syntax would show as
+ * prose — and the backslash would stop escaping what it escaped before.
+ *
+ * @param text - The full document text.
+ * @param runs - The runs, from {@link groupPiecesIntoRuns}.
+ * @param start - The rewritten range's start, unchanged by the edit.
+ * @returns The replacement text and the selection over the patched text
+ *   (`null` when no run carries patched text), or `null` when a run declines
+ *   or a bracket would land escaped.
+ */
+function emitRuns(
+    text: string, runs: StyledRun[], start: number,
+): { insert: string; selection: { from: number; to: number } | null } | null {
+    const before = text.slice(0, start);
+    let insert = "";
+    let selectionFrom = -1;
+    let selectionTo = -1;
+
+    for (const run of runs) {
+        const emitted = emitRun(run);
+
+        if (emitted === null) {
+            return null;
+        }
+
+        const bracketed = emitted !== run.text;
+
+        if (bracketed) {
+            const preceding = before + insert;
+
+            if (isEscaped(preceding, preceding.length) || isEscaped(run.text, run.text.length)) {
+                return null;
+            }
+        }
+
+        if (run.patchedFrom !== -1) {
+            // A bracketed emission holds its text one `[` in; a bare one
+            // holds it at its own start. `start` is the unchanged prefix's
+            // end, so this is already an offset into the POST-edit text.
+            const textAt = start + insert.length + (bracketed ? 1 : 0);
+
+            if (selectionFrom === -1) {
+                selectionFrom = textAt + run.patchedFrom;
+            }
+
+            selectionTo = textAt + run.patchedTo;
+        }
+
+        insert += emitted;
+    }
+
+    return { insert, selection: selectionFrom === -1 ? null : { from: selectionFrom, to: selectionTo } };
+}
+
+/**
+ * Rewrites the styled spans around `range` with `patch` merged into the
+ * selected part of each, over the range {@link growOverStyledSpans} gives. The
+ * selection left behind lands on the user's own text inside the brackets,
+ * from the first patched piece's text to the last one's.
+ *
+ * @param text - The full document text.
+ * @param range - The range to patch, from {@link resolveSpanRange}.
+ * @param patch - The attribute patch.
+ * @returns The edit, or `null` when the rewrite could cut a marker run in two,
+ *   when a run declines, when a bracket would land escaped, when the rewrite
+ *   equals what it replaces, or when the selection patched no visible text at
+ *   all.
+ */
+function rewriteStyledSpans(
+    text: string, range: { from: number; to: number }, patch: Record<string, string | null>,
+): MarkdownSourceEdit | null {
+    const spans = findStyledSpans(text);
+    const { start, end } = growOverStyledSpans(range, spans);
+    const units = collectStyledUnits(start, end, spans);
+
+    if (unitsCouldSplitMarkerRun(text, units)) {
+        return null;
+    }
+
+    const pieces = units.flatMap((unit) => {
+        const pieceFrom = Math.min(Math.max(range.from, unit.from), unit.to);
+        const pieceTo = Math.min(Math.max(range.to, unit.from), unit.to);
+
+        return splitUnitAtSelection(text, unit, pieceFrom, pieceTo);
+    });
+
+    const emitted = emitRuns(text, groupPiecesIntoRuns(pieces, patch), start);
+
+    // Nothing patched (every boundary clamped out of every unit's text) leaves
+    // no selection to report, and a rewrite equal to what it replaces is a
+    // no-op the caller should not spend an undo step on.
+    if (emitted === null || emitted.selection === null || emitted.insert === text.slice(start, end)) {
+        return null;
+    }
+
+    return { from: start, to: end, insert: emitted.insert, selection: emitted.selection };
+}
+
+/**
+ * Applies a colour/font/size patch to the raw Markdown around the selection,
+ * writing the dialect's `[text]{key=value …}` styled span. Merges into an
+ * existing span rather than nesting inside it, splits one that is only partly
+ * selected, and removes the whole `{…}` group when the patch clears its last
+ * attribute.
+ *
+ * @param patch - Kebab-case CSS property names (`color`, `font-family`,
+ *   `font-size`) mapped to their new value, or `null` to remove that property
+ *   — the same bag `MarkdownEditor`'s three style setters build.
+ * @returns The edit rule, which yields `null` for a patch this dialect cannot
+ *   express and for a selection the span syntax cannot be written around.
+ */
+export function spanStyleSource(patch: Record<string, string | null>): MarkdownSourceTransform {
+    return (text, from, to) => {
+        const range = resolveSpanRange(text, from, to);
+
+        if (range === null) {
+            return null;
+        }
+
+        const attributePatch = toAttributePatch(patch);
+
+        if (attributePatch === null) {
+            return null;
+        }
+
+        return rewriteStyledSpans(text, range, attributePatch);
+    };
+}
 
 /** One matched inline-format pair: the opening and the closing marker characters it consumes. */
 interface MarkerPair {
@@ -1120,6 +1787,28 @@ function isBlank(line: string): boolean {
  */
 function unlessNoOp(text: string, edit: MarkdownSourceEdit): MarkdownSourceEdit | null {
     return text.slice(edit.from, edit.to) === edit.insert ? null : edit;
+}
+
+/**
+ * Expands a raw `[from, to)` range to cover every whole line it touches —
+ * back to the start of `from`'s line, forward to the end of `to`'s line
+ * (before that line's own trailing newline, if any).
+ *
+ * @param text - The full document text.
+ * @param from - 0-based start of the raw range.
+ * @param to - 0-based end (exclusive) of the raw range.
+ * @returns The expanded `[start, end)` range.
+ */
+function expandToWholeLines(text: string, from: number, to: number): { start: number; end: number } {
+    let start = from;
+
+    while (start > 0 && text[start - 1] !== "\n") { start -= 1; }
+
+    let end = to;
+
+    while (end < text.length && text[end] !== "\n") { end += 1; }
+
+    return { start, end };
 }
 
 /**
