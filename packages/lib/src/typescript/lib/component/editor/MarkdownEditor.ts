@@ -63,7 +63,7 @@ import { mergeRegister, $getNearestNodeOfType, $handleIndentAndOutdent } from "@
 import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent } from "@lexical/selection";
 import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
-import { $serializeBlock, $serializeInlineNodes, $serializeMarkdown, $writtenListMarker } from "~/component/editor/markdownSerializer.js";
+import { $serializeBlock, $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $writtenListMarker } from "~/component/editor/markdownSerializer.js";
 import {
     $breakRuleContainerOf, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
     $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $selectionHasFormat, $takeBlocksOutOf, RUN_EDGE_TAG,
@@ -361,12 +361,14 @@ function createBlockNode(type: MarkdownBlockType): ElementNode {
 /**
  * `$setBlocksType`'s after-create hook for a conversion to a code block:
  * copies the block's format and indent, as the default hook does, and
- * replaces its inline content with that content's Markdown, so the code
- * block shows — and saves — the source of the formatting, links and images
- * it cannot hold, and nothing is lost. A list item's text is written as an
- * item's text is, so a task marker it opens with goes into the code as it
- * was written (`[ ] `). A raw block or a code block already holds only its
- * text and is left as it is.
+ * replaces its inline content with that content's Markdown as the block's
+ * own save writes it, so the code block shows — and saves — the source of
+ * the formatting, links and images it cannot hold, and nothing is lost. A
+ * heading's text is written as its own line holds it (`### +alpha` gives
+ * `+alpha`, with none of the escapes a paragraph's line start needs). A
+ * list item's text is written as an item's text is, so a task marker it
+ * opens with goes into the code as it was written (`[ ] `). A raw block or
+ * a code block already holds only its text and is left as it is.
  *
  * @param block - The block being converted; its children move into `code`.
  * @param code - The new code block.
@@ -378,7 +380,7 @@ function $copyBlockAsCodeSource(block: ElementNode, code: ElementNode): void {
         return;
     }
 
-    const markdown = $serializeInlineNodes(block.getChildren(), $isMarkdownListItemTextNode(block));
+    const markdown = $serializeBlockContent(block);
 
     block.clear();
 

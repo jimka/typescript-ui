@@ -802,4 +802,18 @@ describe('a Markdown typing shortcut is applied by typing alone (TY rows)', () =
 
         editor.dispose();
     });
+
+    // A code fence typed at the start of a heading's text moves that text into the code block as it shows: the block
+    // takes in plain text as it is, as a code block takes in any text that joins it.
+    it('TY20: a code fence typed at the start of a heading\'s text makes a code block holding the text the heading shows', () => {
+        const editor = select('### \\`\\`\\` ;+alpha', 1, false);
+        const typed = completingCharacter(editor);
+
+        remove(editor, 'Delete', true);
+        dispatch(editor, CONTROLLED_TEXT_INSERTION_COMMAND, typed, true);
+
+        expect(settledValue(editor)).toBe('```\n+alpha\n```');
+
+        editor.dispose();
+    });
 });

@@ -885,6 +885,16 @@ describe('MarkdownDocumentPanel Insert dropdown', () => {
 
         expect(numberPanel.getValue()).toContain('1. word');
     });
+
+    it('"Code block" makes a heading\'s text the code as the heading\'s line holds it', () => {
+        const panel = new MarkdownDocumentPanel();
+
+        panel.setValue('### +alpha');
+        selectStart(panel.getEditor());
+        findItem(resolveItems(findMenuButton(panel, 'Insert…').getMenuItems()), 'Code block').action!();
+
+        expect(panel.getValue()).toBe('```\n+alpha\n```');
+    });
 });
 
 describe('MarkdownDocumentPanel Table dropdown', () => {
