@@ -59,8 +59,23 @@ moves the least distance that shows the whole row, and never sideways, so a list
 keyboard move or type-ahead, a scrolling panel around the list then scrolls as well, up or down
 only, so the row is also in view of the page. A key pressed while a pane or section around the
 list is still opening scrolls the list alone. `setFocusedIndex` is a state setter and scrolls
-the list alone; call `FocusReveal.reveal(list.getElement())` after it to bring the list into view
-of the panels around it. `setSelectedIndex` and `setValue` do not scroll.
+the list alone. To bring the focused row into view of the panels around the list too, hand the
+row's element to `FocusReveal.reveal` after it:
+
+```typescript
+import { DOM, FocusReveal } from '@jimka/typescript-ui/core';
+
+list.setFocusedIndex(index);
+
+const rowId = list.getFocusedRowId();
+const row   = rowId === null ? null : DOM.source.getElementById(rowId);
+
+if (row !== null) {
+    FocusReveal.reveal(row);
+}
+```
+
+`setSelectedIndex` and `setValue` do not scroll.
 
 Navigation and type-ahead skip disabled rows entirely — see [Disabled rows](#disabled-rows) below.
 
