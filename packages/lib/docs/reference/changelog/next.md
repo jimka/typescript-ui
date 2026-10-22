@@ -1905,6 +1905,21 @@ page resets to empty.
   such as `&#35;`, which shows as the character it stands for. No consumer
   action is needed.
 
+- **`MarkdownEditor` joins a list item away when a selection takes its
+  text whole.** A selection from one item's text into a later block of
+  another item — its second paragraph, a heading, a table, a nested item —
+  removed that item's text and left the rest in a bullet with no text line
+  (`- ab`, `- cd` holding `pq` and a nested item, deleted from `a│b` to
+  `p│q`, gave `- aq` and `- - nn`). The same selection ending in the item's
+  own text moved the rest into the item before. The two now agree, on every
+  edit that removes or replaces the selection: the item goes and what is
+  left of it follows into the item before, as when its text is joined. An
+  item nested in it whose text the selection takes too is joined away the
+  same way. Enter over such a selection now acts at the caret its removal
+  leaves, as Enter after Delete does. A selection that starts in a table
+  cell, in a `:::` column the list is not in, or between two blocks joins
+  nothing and leaves the item as before. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation

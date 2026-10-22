@@ -1286,3 +1286,34 @@ describe('a paste into a raw block that leaves the caret on an empty line keeps 
         expectUndoRestores(editor, source);
     });
 });
+
+describe('a paste over a range that takes a list item\'s text whole goes in at the caret its removal leaves (CI rows)', () => {
+    /** A second item holding a paragraph, a nested list and a paragraph. */
+    const A = '- ab\n- cd\n\n  pq\n  - nn\n\n  rr\n- z';
+    /** A second item holding two paragraphs. */
+    const B = '- ab\n- cd\n\n  pq\n\n  rr\n- z';
+    const ITEMS: Clipboard = { name: 'list', source: '- k\n- m\n\nzz', from: ['k', 0], to: ['m', 1], types: ['list'] };
+    const WORD: Clipboard = { name: 'bold word', source: 'x **zp** y', from: ['zp', 0], to: ['zp', 2], types: ['text'] };
+
+    it.each<[string, Clipboard | string, string, string]>([
+        ['CI60: paragraphs', PARAGRAPHS, A, '- aP1\n\nP2q\n\n- - nn\n\n  rr\n\n- z'],
+        ['CI61: paragraphs, a paragraph left', PARAGRAPHS, B, '- aP1\n\nP2q\n\nrr\n\n- z'],
+        ['CI62: items', ITEMS, A, '- a\n\n- k\n\n- mq\n  - nn\n\n  rr\n\n- z'],
+        ['CI63: a bold word', WORD, A, '- a**zp**q\n  - nn\n\n  rr\n\n- z'],
+        ['CI64: the text zc', 'zc', A, '- azcq\n  - nn\n\n  rr\n\n- z'],
+        ['CI65: the text T1, a line end, T2', 'T1\nT2', A, '- aT1\n\n- T2q\n  - nn\n\n  rr\n\n- z'],
+    ])('%s', (_name, clipboard, source, saved) => {
+        const editor = load(source);
+
+        selectText(editor, ['ab', 1], ['pq', 1]);
+
+        if (typeof clipboard === 'string') {
+            pasteText(editor, clipboard);
+        } else {
+            pasteNodes(editor, copyOf(clipboard));
+        }
+
+        expect(expectSaveKeepsDocument(editor)).toBe(saved);
+        expectUndoRestores(editor, load(source).getValue());
+    });
+});

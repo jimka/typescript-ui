@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
     $createRangeSelection, $createTextNode, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isTextNode, $setSelection,
-    CONTROLLED_TEXT_INSERTION_COMMAND, DELETE_CHARACTER_COMMAND, DELETE_LINE_COMMAND, INDENT_CONTENT_COMMAND, INSERT_LINE_BREAK_COMMAND,
+    CONTROLLED_TEXT_INSERTION_COMMAND, DELETE_CHARACTER_COMMAND, DELETE_LINE_COMMAND, DELETE_WORD_COMMAND, INDENT_CONTENT_COMMAND, INSERT_LINE_BREAK_COMMAND, REMOVE_TEXT_COMMAND,
     $getNodeByKey, INSERT_TAB_COMMAND, KEY_BACKSPACE_COMMAND, KEY_ENTER_COMMAND, OUTDENT_CONTENT_COMMAND, UNDO_COMMAND,
 } from 'lexical';
 import type { ElementNode, LexicalEditor, LexicalNode, PointType, RangeSelection, TextNode } from 'lexical';
@@ -3655,5 +3655,251 @@ describe('a raw block outside a list item is written so that it reads where it s
     // which no row above can hold: code under a quote is measured from the margin, so its own spaces stay.
     it('RM14: the block-list form of a quote and indented code, indented as a whole, keeps the code\'s own spaces', () => {
         expect(rawBlockInBlockList('  > q\n\n      code')).toBe('> q\n\n      code');
+    });
+});
+
+describe('a range that takes a list item\'s text whole joins that item away (CI rows)', () => {
+    /** A second item holding a paragraph, a nested list and a paragraph. */
+    const A = '- ab\n- cd\n\n  pq\n  - nn\n\n  rr\n- z';
+    /** A second item holding two paragraphs. */
+    const B = '- ab\n- cd\n\n  pq\n\n  rr\n- z';
+    /** A heading that opens the document, then the list of {@link B}. */
+    const H = '# ab\n\n- cd\n\n  pq\n\n  rr\n- z';
+
+    /** Selects from `from` to between two blocks of the list item whose text is `text`: an element point on the item. */
+    const selectToItem = (from: TextPoint, text: string, offset: number) => (editor: MarkdownEditor): void => {
+        lexicalOf(editor).update(() => {
+            const item = $textNode(text).getParentOrThrow().getParentOrThrow();
+            const selection = $createRangeSelection();
+
+            selection.anchor.set($textNode(from[0]).getKey(), from[1], 'text');
+            selection.focus.set(item.getKey(), offset, 'element');
+            $setSelection(selection);
+        }, { discrete: true });
+    };
+
+    /** A Backspace over the range from `at` to `to`. */
+    const back = (at: TextPoint, to: TextPoint): Step => ({ key: 'Backspace', at, to });
+
+    it.each<Row>([
+        { name: 'CI1: the decision\'s own case', source: A, steps: [back(['ab', 1], ['pq', 1])], saved: '- aq\n  - nn\n\n  rr\n\n- z',
+            shape: 'list(markdown-list-item(markdown-list-item-text("aq"), list(markdown-list-item(markdown-list-item-text("nn"))), paragraph("rr")), markdown-list-item(markdown-list-item-text("z")))' },
+        { name: 'CI2: the same with Delete, backward', source: A, steps: [{ key: 'Delete', at: ['pq', 1], to: ['ab', 1] }], saved: '- aq\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI3: ends at the block\'s start', source: A, steps: [back(['ab', 1], ['pq', 0])], saved: '- apq\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI4: ends at the block\'s end', source: A, steps: [back(['ab', 1], ['pq', 2])], saved: '- a\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI5: a paragraph is left', source: B, steps: [back(['ab', 1], ['pq', 1])], saved: '- aq\n\n  rr\n\n- z' },
+        { name: 'CI6: ends in a nested item\'s text', source: A, steps: [back(['ab', 1], ['nn', 1])], saved: '- an\n\n  rr\n\n- z' },
+        { name: 'CI7: a heading is left', source: '- ab\n- cd\n\n  pq\n\n  ## hh\n- z', steps: [back(['ab', 1], ['pq', 2])], saved: '- a\n\n  ## hh\n\n- z' },
+        { name: 'CI8: items between are removed whole', source: '- ab\n- m1\n\n  m2\n- m3\n  - m4\n- cd\n\n  pq\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '- aq\n\n  rr\n\n- z' },
+        { name: 'CI9: two texts taken, the range ends in the inner item\'s block', source: '- ab\n- cd\n  - nn\n\n    pq\n\n    ss\n  - mm\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '- aq\n\n  ss\n\n  - mm\n\n  rr\n\n- z' },
+        { name: 'CI10: one text taken, the range ends in the inner item\'s text', source: '- ab\n- cd\n  - nn\n\n    pq\n\n    ss\n  - mm\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['nn', 1])], saved: '- an\n\n  pq\n\n  ss\n\n  - mm\n\n  rr\n\n- z' },
+        { name: 'CI11: starts in a further paragraph of an item', source: '- ab\n\n  st\n- cd\n\n  pq\n\n  rr\n- z',
+            steps: [back(['st', 1], ['pq', 1])], saved: '- ab\n\n  sq\n\n  rr\n\n- z' },
+        { name: 'CI12: starts in an item nested in the item before', source: '- t\n  - ab\n- cd\n\n  pq\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '- t\n  - aq\n\n  rr\n\n- z' },
+        { name: 'CI13: the same, two texts taken: blocks keep their depth', source: '- t\n  - ab\n- cd\n  - nn\n\n    pq\n\n    ss\n  - mm\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '- t\n  - aq\n\n    ss\n\n  - mm\n\n  rr\n\n- z' },
+        { name: 'CI14: starts in a list of another marker', source: '+ ab\n\n- cd\n\n  pq\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '+ aq\n\n  rr\n\n- z' },
+        { name: 'CI15: starts in a paragraph before the list', source: 'ab\n\n- cd\n\n  pq\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: 'aq\n\nrr\n\n- z' },
+        { name: 'CI16: starts in a heading before the list', source: '# ab\n\n- cd\n\n  pq\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '# aq\n\nrr\n\n- z' },
+        { name: 'CI17: starts in a code block before the list', source: '```\nab\n```\n\n- cd\n\n  pq\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '```\naq\n```\n\nrr\n\n- z' },
+        { name: 'CI18: starts in a raw block before the list', source: '<div>\nab\n</div>\n\n- cd\n\n  pq\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '<div>\naq\n\nrr\n\n- z' },
+        { name: 'CI19: ends in a heading', source: '- ab\n- cd\n\n  ## pq\n\n  rr\n- z', steps: [back(['ab', 1], ['pq', 1])], saved: '- aq\n\n  rr\n\n- z' },
+        { name: 'CI20: ends in a quote', source: '- ab\n- cd\n\n  > pq\n\n  rr\n- z', steps: [back(['ab', 1], ['pq', 1])], saved: '- aq\n\n  rr\n\n- z' },
+        { name: 'CI21: ends in a code block', source: '- ab\n- cd\n\n  ```\n  pq\n  ```\n\n  rr\n- z', steps: [back(['ab', 1], ['pq', 1])], saved: '- aq\n\n  rr\n\n- z' },
+        { name: 'CI22: ends in a raw block', source: '- ab\n- cd\n\n  <div>\n  pq\n  </div>\n\n  rr\n- z', steps: [back(['ab', 1], ['pq', 1])],
+            saved: '- aq\\\n  \\</div>\n\n  rr\n\n- z' },
+        { name: 'CI23: ends in a `:::` block: it follows into the first item', source: '- ab\n- cd\n\n  ::: {align=center}\n  pq\n  :::\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '- a\n\n  ::: {align=center}\n  q\n  :::\n\n  rr\n\n- z' },
+        { name: 'CI24: ends in an item of a list inside such a block: that inner item stays',
+            source: '- ab\n- cd\n\n  ::: {align=center}\n  - ef\n\n    pq\n\n    rr\n  :::\n\n  tt\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '- a\n\n  ::: {align=center}\n  - q\n\n    rr\n  :::\n\n  tt\n\n- z' },
+        { name: 'CI25: task items', source: '- [ ] ab\n- [x] cd\n\n  pq\n  - [ ] nn\n\n  rr\n- [ ] z', steps: [back(['ab', 1], ['pq', 1])],
+            saved: '- [ ] aq\n  - [ ] nn\n\n  rr\n\n- [ ] z' },
+        { name: 'CI26: an ordered list is renumbered', source: '1. ab\n2. cd\n\n   pq\n   1. nn\n\n   rr\n3. z', steps: [back(['ab', 1], ['pq', 1])],
+            saved: '1. aq\n   1. nn\n\n   rr\n\n2. z' },
+        { name: 'CI27: an ordered list that starts at 5', source: '5. ab\n6. cd\n\n   pq\n\n   rr\n7. z', steps: [back(['ab', 1], ['pq', 1])],
+            saved: '5. aq\n\n   rr\n\n6. z' },
+        { name: 'CI28: ends between the text and the first block', source: A,
+            steps: [{ key: 'command', run: selectToItem(['ab', 1], 'cd', 1) }, { key: 'Backspace' }], saved: '- a\n\n  pq\n\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI29: ends between the first block and the nested list', source: A,
+            steps: [{ key: 'command', run: selectToItem(['ab', 1], 'cd', 2) }, { key: 'Backspace' }], saved: '- a\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI30: the taken text holds nothing', source: '- ab\n- cd\n\n  ## pq\n  - nn\n\n  rr\n- z',
+            steps: [back(['cd', 0], ['cd', 2]), back(['ab', 1], ['pq', 1])], saved: '- aq\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI31: an item that opens with a nested list: the inner item\'s blocks become its own', source: '- ab\n- - cd\n\n    pq\n\n    rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '- aq\n- rr\n- z' },
+        { name: 'CI39: the blocks around the list are saved as they were written',
+            source: 'Title\n=====\n\n* k\n* l\n\n- ab\n- cd\n\n  pq\n\n  rr\n- z\n\n~~~js\nlet  x\n~~~\n\n| a   |  b |\n|:----|---:|\n| 1   |  2 |',
+            steps: [back(['ab', 1], ['pq', 1])],
+            saved: 'Title\n=====\n\n* k\n* l\n\n- aq\n\n  rr\n\n- z\n\n~~~js\nlet  x\n~~~\n\n| a   |  b |\n|:----|---:|\n| 1   |  2 |' },
+    ])('$name', runRow);
+
+    it.each<Row>([
+        { name: 'CI32: ends in the item\'s text: the join rule (control)', source: A, steps: [back(['ab', 1], ['cd', 1])], saved: '- ad\n\n  pq\n\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI33: takes everything the item holds (control)', source: A, steps: [back(['ab', 1], ['rr', 2])], saved: '- a\n\n- z' },
+        { name: 'CI34: a nested first item keeps its nested list, in an item with no text', source: '- ab\n  - cd\n\n    pq\n    - nn\n\n    rr\n  - e\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '- aq\n  - - nn\n\n    rr\n\n  - e\n- z' },
+        { name: 'CI35: the same for a list\'s first item after a paragraph', source: 'ab\n\n- cd\n\n  pq\n  - nn\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: 'aq\n\n- - nn\n\n  rr\n\n- z' },
+        { name: 'CI36: starts in a table cell: nothing joins', source: '| h |\n| --- |\n| ab |\n\n- cd\n\n  pq\n  - nn\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '- q\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI37: starts in a `:::` column: nothing joins', source: '::: {align=center}\nab\n:::\n\n- cd\n\n  pq\n  - nn\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '::: {align=center}\na\n:::\n\n- q\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI38: an item that opens with a heading is not joined away', source: '- ab\n- # cd\n\n  pq\n\n  rr\n- z',
+            steps: [back(['ab', 1], ['pq', 1])], saved: '- aq\n\n- rr\n\n- z' },
+        { name: 'CI66: starts in the item it ends in: Lexical\'s own join', source: A, steps: [back(['cd', 1], ['pq', 1])],
+            saved: '- ab\n\n- cq\n  - nn\n\n  rr\n\n- z' },
+    ])('$name', runRow);
+
+    it.each<Row>([
+        { name: 'CI40: type x', source: A, steps: [{ key: 'type', text: 'x', at: ['ab', 1], to: ['pq', 1] }], saved: '- axq\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI41: Enter', source: A, steps: [{ key: 'Enter', at: ['ab', 1], to: ['pq', 1] }], saved: '- a\n\n- q\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI42: Enter to the end of a block, then type', source: A,
+            steps: [{ key: 'Enter', at: ['ab', 1], to: ['pq', 2] }, { key: 'type', text: 'Q' }], saved: '- a\n\n- Q\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI43: Shift+Enter', source: A, steps: [{ key: 'Shift+Enter', at: ['ab', 1], to: ['pq', 1] }], saved: '- a\\\n  q\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI44: Shift+Enter with nothing after the caret: declined', source: A, steps: [{ key: 'Shift+Enter', at: ['ab', 1], to: ['pq', 2] }],
+            saved: '- ab\n- cd\n\n  pq\n  - nn\n\n  rr\n- z' },
+        { name: 'CI45: cut()', source: A, steps: [{ key: 'command', at: ['ab', 1], to: ['pq', 1], run: (editor) => { void editor.cut(); } }],
+            saved: '- aq\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI46: insertImage()', source: A,
+            steps: [{ key: 'command', at: ['ab', 1], to: ['pq', 1], run: (editor) => { editor.insertImage('/i.png', { alt: 'i' }); } }],
+            saved: '- a![i](/i.png)q\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI47: Enter over all of a text and a paragraph, then type', source: B,
+            steps: [{ key: 'Enter', at: ['ab', 0], to: ['pq', 2] }, { key: 'type', text: 'Q' }], saved: '- Qrr\n\n- z' },
+        { name: 'CI48: the same, nothing left', source: '- ab\n- cd\n\n  pq\n- z',
+            steps: [{ key: 'Enter', at: ['ab', 0], to: ['pq', 2] }, { key: 'type', text: 'Q' }], saved: 'Q\n\n- z' },
+        { name: 'CI49: the same, a nested list left', source: A,
+            steps: [{ key: 'Enter', at: ['ab', 0], to: ['pq', 2] }, { key: 'type', text: 'Q' }], saved: 'Q\n\n- - nn\n\n  rr\n\n- z' },
+        { name: 'CI50: Backspace over all of a text and a paragraph, then type', source: B,
+            steps: [back(['ab', 0], ['pq', 2]), { key: 'type', text: 'Q' }], saved: '- Qrr\n\n- z' },
+        { name: 'CI51: the same, a nested list left', source: A,
+            steps: [back(['ab', 0], ['pq', 2]), { key: 'type', text: 'Q' }], saved: '- Q\n  - nn\n\n  rr\n\n- z' },
+        // The range ends on the item itself (an element point between its text and its first block): Enter removes it
+        // through the guard like every other route, and the item's blocks follow into the new item.
+        { name: 'CI91: Enter over a range that ends between the text and the first block', source: A,
+            steps: [{ key: 'command', run: selectToItem(['ab', 1], 'cd', 1) }, { key: 'Enter' }], saved: '- a\n\n- pq\n  - nn\n\n  rr\n\n- z' },
+        { name: 'CI92: Enter over a range that ends between the first block and the nested list', source: A,
+            steps: [{ key: 'command', run: selectToItem(['ab', 1], 'cd', 2) }, { key: 'Enter' }], saved: '- a\n\n- - nn\n\n  rr\n\n- z' },
+    ])('$name', runRow);
+
+    it.each<Row>([
+        { name: 'CI81: Backspace makes the emptied heading a paragraph', source: H, steps: [back(['ab', 0], ['pq', 2])], saved: 'rr\n\n- z',
+            shape: 'paragraph() | paragraph("rr") | list(markdown-list-item(markdown-list-item-text("z")))' },
+        { name: 'CI82: Delete leaves the emptied heading', source: H, steps: [{ key: 'Delete', at: ['ab', 0], to: ['pq', 2] }], saved: '#\n\nrr\n\n- z',
+            shape: 'heading() | paragraph("rr") | list(markdown-list-item(markdown-list-item-text("z")))' },
+        { name: 'CI83: a quote', source: '> ab\n\n- cd\n\n  pq\n\n  rr\n- z', steps: [back(['ab', 0], ['pq', 2])], saved: 'rr\n\n- z',
+            shape: 'paragraph() | paragraph("rr") | list(markdown-list-item(markdown-list-item-text("z")))' },
+        { name: 'CI84: an emptied first paragraph goes', source: 'ab\n\n- cd\n\n  pq\n\n  rr\n- z', steps: [back(['ab', 0], ['pq', 2])], saved: 'rr\n\n- z',
+            shape: 'paragraph("rr") | list(markdown-list-item(markdown-list-item-text("z")))' },
+        { name: 'CI85: the range ends at the end of a code block: it is a text-only-edge range too',
+            source: '# ab\n\n- cd\n\n  ```\n  pq\n  ```\n\n  rr\n- z', steps: [back(['ab', 0], ['pq', 2])], saved: 'rr\n\n- z',
+            shape: 'paragraph() | paragraph("rr") | list(markdown-list-item(markdown-list-item-text("z")))' },
+        { name: 'CI86: what is typed next goes into the paragraph', source: H, steps: [back(['ab', 0], ['pq', 2]), { key: 'type', text: 'Q' }],
+            saved: 'Q\n\nrr\n\n- z' },
+        { name: 'CI87: a heading that is not the first block stays a heading', source: 'top\n\n# ab\n\n- cd\n\n  pq\n\n  rr\n- z',
+            steps: [back(['ab', 0], ['pq', 2])], saved: 'top\n\n#\n\nrr\n\n- z' },
+        { name: 'CI88: a word delete settles nothing, as in Lexical', source: H,
+            steps: [{ key: 'command', at: ['ab', 0], to: ['pq', 2], run: (editor) => { lexicalOf(editor).dispatchCommand(DELETE_WORD_COMMAND, true); } }],
+            saved: '#\n\nrr\n\n- z' },
+        { name: 'CI89: what is left starts at a nested list: as today', source: '# ab\n\n- cd\n\n  pq\n  - nn\n\n  rr\n- z',
+            steps: [back(['ab', 0], ['pq', 2])], saved: '- - nn\n\n  rr\n\n- z',
+            shape: 'paragraph() | list(markdown-list-item(list(markdown-list-item(markdown-list-item-text("nn"))), paragraph("rr")), markdown-list-item(markdown-list-item-text("z")))' },
+        { name: 'CI90: no list item in the range: Lexical\'s own Backspace (control)', source: '# ab\n\npq\n\nrr', steps: [back(['ab', 0], ['pq', 2])], saved: 'rr',
+            shape: 'paragraph() | paragraph("rr")' },
+    ])('$name', runRow);
+
+    // The guards of the steps: each row fails when its guard is taken out of $joinCoveredItemTexts or its listener.
+    it.each<Row>([
+        { name: 'CI93: the range ends right after the text of an item holding nothing else: Backspace', source: '- ab\n- cd\n- z',
+            steps: [{ key: 'command', run: selectToItem(['ab', 1], 'cd', 1) }, { key: 'Backspace' }], saved: '- a\n- z' },
+        { name: 'CI94: the same with Delete', source: '- ab\n- cd\n- z',
+            steps: [{ key: 'command', run: selectToItem(['ab', 1], 'cd', 1) }, { key: 'Delete' }], saved: '- a\n- z' },
+        { name: 'CI95: the same, typing', source: '- ab\n- cd\n- z',
+            steps: [{ key: 'command', run: selectToItem(['ab', 1], 'cd', 1) }, { key: 'type', text: 'x' }], saved: '- ax\n- z' },
+        { name: 'CI96: the end is a point after the item\'s only block', source: '- ab\n- cd\n\n  pq\n- z',
+            steps: [{ key: 'command', run: selectToItem(['ab', 1], 'cd', 2) }, { key: 'Backspace' }], saved: '- a\n\n- z' },
+        { name: 'CI97: the end is a point before the item\'s text: the item is not joined away', source: '- ab\n- cd\n\n  pq\n- z',
+            steps: [{ key: 'command', run: selectToItem(['ab', 1], 'cd', 0) }, { key: 'Backspace' }], saved: '- a\n\n- cd\n\n  pq\n\n- z' },
+    ])('$name', runRow);
+
+    // $isPlainlyRemovedRange leaves a plainly removed range to Lexical on the delete commands, except a cross-item one.
+    it.each<[string, string, TextPoint]>([
+        ['CI98: ends at the end of a code block', '- ab\n- cd\n\n  ```\n  pq\n  ```\n\n  rr\n- z', ['pq', 2]],
+        ['CI99: ends at the start of a code block', '- ab\n- cd\n\n  ```\n  pq\n  ```\n\n  rr\n- z', ['pq', 0]],
+        ['CI100: ends at the end of a raw block', '- ab\n- cd\n\n  <div>\n  pq\n  </div>\n\n  rr\n- z', ['pq', 2]],
+        ['CI101: ends at the start of a raw block', '- ab\n- cd\n\n  <div>\n  pq\n  </div>\n\n  rr\n- z', ['pq', 0]],
+    ])('%s: a word delete and REMOVE_TEXT_COMMAND remove it as Backspace does, with no bullet left empty', (_name, source, to) => {
+        const expected = load(source);
+
+        press(expected, { key: 'Backspace', at: ['ab', 1], to });
+
+        for (const command of [DELETE_WORD_COMMAND, REMOVE_TEXT_COMMAND]) {
+            const editor = load(source);
+
+            press(editor, { key: 'command', at: ['ab', 1], to, run: () => { lexicalOf(editor).dispatchCommand(command as never, (command === DELETE_WORD_COMMAND ? false : null) as never); } });
+
+            expect(editor.getValue()).toBe(expected.getValue());
+            expect(editor.getValue()).not.toContain('\n- rr');
+            expectSaveKeepsDocument(editor, 'the removal');
+        }
+    });
+
+    // insertTable() removes a table-edge range itself; one that is a cross-item range too joins the item away first.
+    it.each<Row>([
+        { name: 'CI102: Delete over a range into a table of the later item, nested under it', source: 'ab\n\n- cd\n\n  | h |\n  | --- |\n  | pq |\n  - nn\n\n  rr\n- z',
+            steps: [{ key: 'Delete', at: ['ab', 1], to: ['pq', 1] }], saved: 'a\n\nrr\n\n- z' },
+        { name: 'CI103: insertTable over the range of CI102 joins the item away first', source: 'ab\n\n- cd\n\n  | h |\n  | --- |\n  | pq |\n  - nn\n\n  rr\n- z',
+            steps: [{ key: 'command', at: ['ab', 1], to: ['pq', 1], run: (editor) => { editor.insertTable(1, 1); } }],
+            saved: 'a\n\n|  |\n| --- |\n\nrr\n\n- z' },
+        { name: 'CI105: insertTable over a range that takes two item texts', source: '- ab\n- cd\n  - nn\n\n    | h |\n    | --- |\n    | pq |\n\n    ss\n- z',
+            steps: [{ key: 'command', at: ['ab', 1], to: ['pq', 1], run: (editor) => { editor.insertTable(1, 1); } }],
+            saved: '- a\n\n|  |\n| --- |\n\n- ss\n- z' },
+        { name: 'CI104: insertImage over a range into a table of the later item', source: '- ab\n- cd\n\n  | h |\n  | --- |\n  | pq |\n\n  rr\n- z',
+            steps: [{ key: 'command', at: ['ab', 1], to: ['pq', 1], run: (editor) => { editor.insertImage('/i.png', { alt: 'i' }); } }],
+            saved: '- a![i](/i.png)\n\n  rr\n\n- z' },
+    ])('$name', runRow);
+
+    it.each<[string, string, TextPoint, string, TextPoint]>([
+        ['CI52: a paragraph, a nested list and a paragraph after the text', A, ['ab', 1], 'cd', ['pq', 1]],
+        ['CI53: a paragraph after the text', B, ['ab', 1], 'cd', ['pq', 2]],
+        ['CI54: a heading the range ends in', '- ab\n- cd\n\n  ## pq\n\n  rr\n- z', ['ab', 1], 'cd', ['pq', 1]],
+        ['CI55: from a code block before the list', '```\nab\n```\n\n- cd\n\n  pq\n\n  rr\n- z', ['ab', 1], 'cd', ['pq', 1]],
+        ['CI56: from a list of another marker', '+ ab\n\n- cd\n\n  pq\n\n  rr\n- z', ['ab', 1], 'cd', ['pq', 1]],
+        ['CI57: from an item nested in the item before', '- t\n  - ab\n- cd\n\n  pq\n\n  rr\n- z', ['ab', 1], 'cd', ['pq', 1]],
+        ['CI58: a nested first item', '- ab\n  - cd\n\n    pq\n    - nn\n\n    rr\n  - e\n- z', ['ab', 1], 'cd', ['pq', 1]],
+        ['CI59: into a fence', '- ab\n- cd\n\n  ::: {align=center}\n  pq\n  :::\n\n  rr\n- z', ['ab', 1], 'cd', ['pq', 1]],
+    ])('%s: one removal gives what removing up to the end of the item\'s text and then the rest gives', (_name, source, from, text, to) => {
+        const direct = load(source);
+
+        press(direct, { key: 'Backspace', at: from, to });
+
+        const stepped = load(source);
+        const lexical = lexicalOf(stepped);
+
+        selectText(stepped, from, [text, text.length]);
+        lexical.update(() => {
+            lexical.dispatchCommand(DELETE_CHARACTER_COMMAND, false);
+
+            const selection = $getSelection();
+            const isRange = $isRangeSelection(selection);
+
+            // The first removal left a caret at the range's start: the rest runs from there to the range's end.
+            if (isRange) {
+                selection.focus.set($textNode(to[0]).getKey(), to[1], 'text');
+            }
+
+            lexical.dispatchCommand(DELETE_CHARACTER_COMMAND, false);
+        }, { discrete: true });
+
+        expect(direct.getValue()).toBe(stepped.getValue());
+        expect(shapeOf(direct)).toBe(shapeOf(stepped));
     });
 });

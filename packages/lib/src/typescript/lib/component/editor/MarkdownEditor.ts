@@ -27,7 +27,7 @@ import {
     INSERT_PARAGRAPH_COMMAND, INSERT_LINE_BREAK_COMMAND, INSERT_TAB_COMMAND, COPY_COMMAND, CUT_COMMAND, CUT_TAG,
     COMMAND_PRIORITY_CRITICAL,
     $caretFromPoint, $normalizeCaret, $setPointFromCaret, KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND, $isRootOrShadowRoot,
-    $getChildCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection, COMMAND_PRIORITY_LOW,
+    $getChildCaret, $isSiblingCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection, COMMAND_PRIORITY_LOW,
     INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND, $getNodeByKey, $addUpdateTag, $setState,
     HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG, BEFORE_INPUT_COMMAND, INPUT_COMMAND, COMMAND_PRIORITY_EDITOR, COMPOSITION_END_TAG,
     COMPOSITION_START_COMMAND, $getEditor, $insertNodeToNearestRootAtCaret, SKIP_DOM_SELECTION_TAG,
@@ -87,6 +87,7 @@ import {
     $createMarkdownListItemTextNode, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $liftItemOut, $movePointsBetween, $outdentItem,
     $splitItemAfterText, $splitItemBefore,
 } from "~/component/editor/markdownListItemNode.js";
+import type { MarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
 import { EDITOR_THEME, ensureMarkdownEditorClassRules } from "~/component/editor/editorTheme.js";
 import {
     MarkdownBlockNode, $createMarkdownBlockNode, $isMarkdownBlockNode, $createMarkdownColumnNode, $isMarkdownColumnNode,
@@ -1845,9 +1846,11 @@ function $removeStaleFocusRange(selection: RangeSelection): void {
 }
 
 /**
- * Whether Lexical's removal of a range from `start` to `end`, each in a
- * block of its own, joins what the end's block holds after `end` onto the
- * start's block, so that it follows a caret left at `start`.
+ * Whether Lexical's removal of a range from a point in `startNode` to a
+ * point in `endNode`, each in a block of its own, joins what the end's block
+ * holds after the end onto the start's block, so that it follows a caret
+ * left at the start. Told for nodes, so it can be asked about a block the
+ * selection does not end in.
  *
  * @remarks
  * Lexical's range removal (0.49.0) joins two blocks at most, one on each
@@ -1869,13 +1872,13 @@ function $removeStaleFocusRange(selection: RangeSelection): void {
  * `markdown-editor-command-crashes.test.ts` holds a canary (U3) that fails
  * when it goes or changes what it matches.
  *
- * @param start - The range's start.
- * @param end - The range's end, in another block than `start`.
+ * @param startNode - The node the range's start is in.
+ * @param endNode - The node the range's end is in, in another block than `startNode`.
  * @returns Whether the end's block's rest joins the start's block.
  */
-function $removalJoinsEndBlockRest(start: PointType, end: PointType): boolean {
-    const startBlock = $findEnclosingBlock(start.getNode());
-    const endBlock = $findEnclosingBlock(end.getNode());
+function $removalJoinsEndBlockRest(startNode: LexicalNode, endNode: LexicalNode): boolean {
+    const startBlock = $findEnclosingBlock(startNode);
+    const endBlock = $findEnclosingBlock(endNode);
 
     if (startBlock === null || endBlock === null) {
         return false;
@@ -1900,8 +1903,8 @@ function $removalJoinsEndBlockRest(start: PointType, end: PointType): boolean {
 
 /**
  * Whether Shift+Enter over `selection`, a range {@link $removeJoiningRange}
- * removes — a text-only-edge range or a stale-focus range that is no
- * table-edge range —, would have its line break declined once the range is
+ * removes — a text-only-edge range, a stale-focus range or a cross-item
+ * range that is no table-edge range —, would have its line break declined once the range is
  * removed: whether the caret the removal leaves — at the range's start,
  * followed by the rest of the end's block when the removal joins it there
  * ({@link $removalJoinsEndBlockRest}) — is where a save cannot write a break
@@ -1932,7 +1935,7 @@ function $removalJoinsEndBlockRest(start: PointType, end: PointType): boolean {
  */
 function $joiningRemovalDeclinesLineBreak(selection: RangeSelection): boolean {
     const [start, end] = $orderedPoints(selection);
-    const joinsRest = $removalJoinsEndBlockRest(start, end);
+    const joinsRest = $removalJoinsEndBlockRest(start.getNode(), end.getNode());
     const emptied = $rawBlockEmptiedFrom(start);
     const endBlock = $findEnclosingBlock(end.getNode());
 
@@ -2707,37 +2710,160 @@ function $isTextOnlyEdgeRange(selection: BaseSelection | null): selection is Ran
 }
 
 /**
+ * The texts of the list items a range joins away, the outermost first: of
+ * each item the range ends inside and does not start inside, the text the
+ * item opens with, when the range ends after that text and its removal up to
+ * the text's end would join the text onto the block the range starts in
+ * ({@link $removalJoinsEndBlockRest}).
+ *
+ * @remarks
+ * Lexical's range removal takes every node the range covers whole out of its
+ * parent without calling the node's `remove`, and calls `remove` on the block
+ * the range ends in alone. The join rule of a list item
+ * (`MarkdownListItemTextNode.remove`) therefore runs when a range ends in
+ * the item's text and not when it ends in a later block of the item, where
+ * the text is one of the covered nodes.
+ *
+ * @param selection - The range.
+ * @returns The item texts, none when the range joins no item away.
+ */
+function $itemTextsRangeTakesWhole(selection: RangeSelection): MarkdownListItemTextNode[] {
+    const [start, end] = $orderedPoints(selection);
+    const startNode = start.getNode();
+    const endNode = end.getNode();
+    const texts: MarkdownListItemTextNode[] = [];
+
+    // Walked from the end outwards and put in front, so the outermost text comes first.
+    for (const item of [endNode, ...endNode.getParents()]) {
+        const text = $isMarkdownListItemNode(item) ? item.getFirstChild() : null;
+        const holdsStart = item.is(startNode) || item.isParentOf(startNode);
+        const endsBeforeText = item.is(endNode) && end.offset === 0;
+        const isEnteredItemText = $isMarkdownListItemTextNode(text) && !holdsStart && !endsBeforeText;
+        const holdsEnd = isEnteredItemText && (text.is(endNode) || text.isParentOf(endNode));
+        const isJoinedAway = isEnteredItemText && !holdsEnd && $removalJoinsEndBlockRest(startNode, text);
+
+        if (isJoinedAway) {
+            texts.unshift(text);
+        }
+    }
+
+    return texts;
+}
+
+/**
+ * Whether `selection` is a *cross-item range*: a range that is not collapsed
+ * and joins at least one list item away ({@link $itemTextsRangeTakesWhole}).
+ *
+ * @param selection - The selection to test.
+ * @returns Whether it is a cross-item range.
+ */
+function $isCrossItemRange(selection: BaseSelection | null): selection is RangeSelection {
+    const isRange = $isRangeSelection(selection) && !selection.isCollapsed();
+
+    if (!isRange) {
+        return false;
+    }
+
+    return $itemTextsRangeTakesWhole(selection).length > 0;
+}
+
+/**
+ * A caret for `point` that names a node the steps of
+ * {@link $joinCoveredItemTexts} do not remove: the node after the point when
+ * there is one, else the node before it. A point on a list item is lost when
+ * that item is joined away; the caret finds the same place again wherever
+ * the item's blocks went.
+ *
+ * @param point - The point.
+ * @returns The caret.
+ */
+function $caretKeepingItsPlace(point: PointType): PointCaret<CaretDirection> {
+    const before = $caretFromPoint(point, "previous");
+    const namesNodeAfter = point.type === "text" || $isSiblingCaret(before);
+
+    return namesNodeAfter ? before : $caretFromPoint(point, "next");
+}
+
+/**
+ * Joins away each list item whose text `selection` takes whole, the
+ * outermost first: removes the range from its start to the end of that text,
+ * which Lexical ends by removing the text, so the text's own `remove` moves
+ * what the item held after it. Leaves `selection` a range from the same
+ * start to the same end, for the caller to remove. Does nothing to a range
+ * that takes no item's text whole.
+ *
+ * @remarks
+ * The end is kept as a caret ({@link $caretKeepingItsPlace}) computed before
+ * the first step, because a step can remove the node a point of the
+ * selection is on. Pass the editor's own selection, never a clone.
+ *
+ * @param selection - The range; collapsed at the range's start when the steps removed all of it.
+ */
+function $joinCoveredItemTexts(selection: RangeSelection): void {
+    const texts = $itemTextsRangeTakesWhole(selection);
+
+    if (texts.length === 0) {
+        return;
+    }
+
+    const [start, end] = $orderedPoints(selection);
+    const endCaret = $caretKeepingItsPlace(end);
+    const startAt: [NodeKey, number, "text" | "element"] = [start.key, start.offset, start.type];
+
+    // Forward from here on: the anchor is the range's start, and each removal leaves it there.
+    selection.anchor.set(...startAt);
+
+    for (const text of texts) {
+        $setPointFromCaret(selection.focus, $normalizeCaret($getChildCaret(text, "previous")));
+        $removeJoiningRange(selection);
+
+        const isEndLeft = endCaret.origin.isAttached();
+
+        // The range ended right after the text of an item holding nothing else: it is removed.
+        if (!isEndLeft) {
+            return;
+        }
+
+        $setPointFromCaret(selection.focus, endCaret);
+    }
+}
+
+/**
  * Whether `selection` is a *guarded range*: one of the shapes
  * {@link $removeGuardedRange} removes itself — a table-edge range
  * ({@link $isTableEdgeRange}), a text-only-edge range
- * ({@link $isTextOnlyEdgeRange}) or a stale-focus range
- * ({@link $isStaleFocusRange}). Every listener that asks whether a range is
+ * ({@link $isTextOnlyEdgeRange}), a stale-focus range
+ * ({@link $isStaleFocusRange}) or a cross-item range
+ * ({@link $isCrossItemRange}). Every listener that asks whether a range is
  * guarded asks here, so none misses a shape.
  *
  * @param selection - The selection to test.
  * @returns Whether it is a guarded range.
  */
 function $isGuardedRange(selection: BaseSelection | null): selection is RangeSelection {
-    return $isTableEdgeRange(selection) || $isTextOnlyEdgeRange(selection) || $isStaleFocusRange(selection);
+    return $isTableEdgeRange(selection) || $isTextOnlyEdgeRange(selection) || $isStaleFocusRange(selection)
+        || $isCrossItemRange(selection);
 }
 
 /**
- * Removes a guarded range that is no table-edge range, by the first of
- * three removals that applies: a range that starts in a raw Markdown block
- * or a code block and ends outside it has the rest of the end's block
- * joined as its Markdown ({@link $deleteRangeFromTextOnlyBlock}); a
- * stale-focus range is removed without tripping Lexical's fault
- * ({@link $removeStaleFocusRange}); any other — a range that ends in a
- * text-only block where no text node is cut: at the start or the end of a
- * line of a raw Markdown block, or of a code block's text — is removed by
- * Lexical's own removal.
+ * Removes a range that is no table-edge range, by the first of three
+ * removals that applies: a range that starts in a raw Markdown block or a
+ * code block and ends outside it has the rest of the end's block joined as
+ * its Markdown ({@link $deleteRangeFromTextOnlyBlock}); a stale-focus range
+ * is removed without tripping Lexical's fault
+ * ({@link $removeStaleFocusRange}); any other is removed by Lexical's own
+ * removal. That last one is a guarded range that ends in a text-only block
+ * where no text node is cut (at the start or the end of a line of a raw
+ * Markdown block, or of a code block's text), or the range
+ * {@link $joinCoveredItemTexts} removes for one list item's text, which
+ * ends at the end of that text and is usually no guarded range.
  *
  * @remarks
  * The join is ahead of the stale-focus removal: a range from a raw block
  * into a later block's word is both shapes, and the stale-focus removal is
  * Lexical's merge, which joins that block's rest as its text.
  *
- * @param selection - A guarded range that is no table-edge range; collapsed at the removal point afterwards.
+ * @param selection - A range that is no table-edge range; collapsed at the removal point afterwards.
  */
 function $removeJoiningRange(selection: RangeSelection): void {
     const joinedAsMarkdown = $deleteRangeFromTextOnlyBlock(selection);
@@ -2764,7 +2890,10 @@ function $removeJoiningRange(selection: RangeSelection): void {
  * {@link $removeTableEdgeRange}, any other through
  * {@link $removeJoiningRange}. In that order: a table-edge range that
  * starts in a raw Markdown block or ends inside a later block's word is one
- * of the other shapes too, and must lose the whole table. Leaves any other
+ * of the other shapes too, and must lose the whole table. Before either, a
+ * cross-item range has each list item whose text it takes whole joined away
+ * ({@link $joinCoveredItemTexts}), so the list item's own join rule runs once
+ * for each. Leaves any other
  * selection alone, for the caller's own Lexical call to handle.
  *
  * Each raw Markdown block that held an end of the range and is still in the
@@ -2813,6 +2942,9 @@ function $removeGuardedRange(selection: BaseSelection | null, caretStaysOutOf: (
     // Read before the removal: afterwards the two ends are one caret.
     const rawBlocks = [selection.anchor, selection.focus].map((point) => $findMatchingParent(point.getNode(), $isMarkdownRawBlockNode));
     const isTableEdge = $isTableEdgeRange(selection);
+
+    // Before either removal: each then meets a range that takes no item's text whole.
+    $joinCoveredItemTexts(selection);
 
     if (isTableEdge) {
         $removeTableEdgeRange(selection, caretStaysOutOf);
@@ -2936,7 +3068,7 @@ function $removeRangeBeforeImage(selection: RangeSelection): void {
 /**
  * Whether `selection` is a *plainly removed range*: a guarded range whose
  * removal is Lexical's own and nothing more — a text-only-edge range that is
- * neither a table-edge nor a stale-focus range and does not start in the
+ * neither a table-edge, a stale-focus nor a cross-item range and does not start in the
  * raw Markdown block or code block, so it ends in one where no text node is
  * cut: at the start or the end of a line of a raw block, or of a code
  * block's text. The delete commands leave such a range to their own handler
@@ -2950,7 +3082,8 @@ function $removeRangeBeforeImage(selection: RangeSelection): void {
  * @returns Whether it is a plainly removed range.
  */
 function $isPlainlyRemovedRange(selection: BaseSelection | null): boolean {
-    const isTextOnlyEdgeAlone = $isTextOnlyEdgeRange(selection) && !$isTableEdgeRange(selection) && !$isStaleFocusRange(selection);
+    const isTextOnlyEdgeAlone = $isTextOnlyEdgeRange(selection) && !$isTableEdgeRange(selection) && !$isStaleFocusRange(selection)
+        && !$isCrossItemRange(selection);
 
     if (!isTextOnlyEdgeAlone) {
         return false;
@@ -2964,10 +3097,12 @@ function $isPlainlyRemovedRange(selection: BaseSelection | null): boolean {
 
 /**
  * Listener for the commands whose whole effect on a range is removing it
- * (`DELETE_CHARACTER_COMMAND`, `DELETE_WORD_COMMAND`, `DELETE_LINE_COMMAND`,
- * `REMOVE_TEXT_COMMAND`): removes a guarded range itself
+ * (`DELETE_WORD_COMMAND`, `DELETE_LINE_COMMAND`, `REMOVE_TEXT_COMMAND`, and
+ * `DELETE_CHARACTER_COMMAND` through {@link $deleteCharacterOverGuardedRange},
+ * which calls it): removes a guarded range itself
  * ({@link $removeGuardedRange}), except a plainly removed one
- * ({@link $isPlainlyRemovedRange}), which it leaves alone.
+ * ({@link $isPlainlyRemovedRange}), which it leaves alone. A cross-item
+ * range is never a plainly removed one, so these commands remove it whole.
  *
  * @remarks
  * Lexical removes a plainly removed range as the guard would, and its
@@ -2984,6 +3119,39 @@ function $deleteGuardedRange(): boolean {
 
     // Left to the command's own handler, which removes it the same way; its Backspace also settles a first block the removal empties.
     return !isPlain && $removeGuardedRange(selection);
+}
+
+/**
+ * `DELETE_CHARACTER_COMMAND` listener: removes a guarded range as
+ * {@link $deleteGuardedRange} does, except a cross-item range. For one, it
+ * joins away the items whose text the range takes
+ * ({@link $joinCoveredItemTexts}) and then removes what is left as this
+ * command removes any range: a guarded one through the guard, any other
+ * through Lexical's own deletion, whose Backspace also settles a first block
+ * the removal empties.
+ *
+ * @param isBackward - `true` for Backspace, `false` for Delete.
+ * @returns Whether the selection was a guarded range, now removed.
+ */
+function $deleteCharacterOverGuardedRange(isBackward: boolean): boolean {
+    const selection = $getSelection();
+    const isCrossItem = $isCrossItemRange(selection);
+
+    if (!isCrossItem) {
+        return $deleteGuardedRange();
+    }
+
+    $joinCoveredItemTexts(selection);
+
+    const removed = $deleteGuardedRange();
+    // Collapsed already when the range ended right after the text of an item holding nothing else.
+    const isLeft = !removed && !selection.isCollapsed();
+
+    if (isLeft) {
+        selection.deleteCharacter(isBackward);
+    }
+
+    return true;
 }
 
 /**
@@ -3006,7 +3174,9 @@ function $clearGuardedRangeBeforeInsert(): boolean {
  * paragraph ({@link $removeGuardedRangeForInsert}), then lets Lexical insert
  * it at the now-collapsed caret. A range that starts just before a list
  * ({@link $isRangeStartingBeforeList}) or ends on a list or item
- * ({@link $isListContainerRange}) is removed here first. Lexical's own
+ * ({@link $isListContainerRange}) and is no guarded range
+ * ({@link $isGuardedRange}, which is removed through the guard) is removed
+ * here first. Lexical's own
  * insert over a range whose anchor is the point before the list inserts
  * the paragraph and removes nothing, and over the same range made backward
  * removes it but leaves the caret at the document's end, so the paragraph
@@ -3024,7 +3194,7 @@ function $clearGuardedRangeBeforeInsert(): boolean {
  */
 function $clearGuardedRangeBeforeParagraph(): boolean {
     const selection = $getSelection();
-    const isGuarded = $isTableEdgeRange(selection) || $isStaleFocusRange(selection);
+    const isGuarded = $isGuardedRange(selection);
     const removesFirst = !isGuarded && ($isRangeStartingBeforeList(selection) || $isListContainerRange(selection));
 
     if (removesFirst) {
@@ -3126,9 +3296,11 @@ function $tableEdgeRemovalDeclinesLineBreak(selection: RangeSelection): boolean 
  * Whether Shift+Enter over `selection` would have its line break declined
  * once the range is removed as {@link $removeGuardedRange} removes it: told
  * for a table-edge range by {@link $tableEdgeRemovalDeclinesLineBreak}, else
- * for a text-only-edge range or a stale-focus range by
- * {@link $joiningRemovalDeclinesLineBreak} — in the order the removal itself
- * takes the three shapes in.
+ * for a text-only-edge range, a stale-focus range or a cross-item range
+ * by {@link $joiningRemovalDeclinesLineBreak} — in the order the removal
+ * itself takes the shapes in. The steps that join list items away
+ * ({@link $joinCoveredItemTexts}) do not change the answer: they move blocks,
+ * and the decision reads only the start's block and the rest of the end's.
  *
  * @param selection - The selection, left as it is.
  * @returns Whether it is a guarded range and the break would be declined.
@@ -3140,7 +3312,7 @@ function $guardedRemovalDeclinesLineBreak(selection: BaseSelection | null): bool
         return $tableEdgeRemovalDeclinesLineBreak(selection);
     }
 
-    const isJoining = $isTextOnlyEdgeRange(selection) || $isStaleFocusRange(selection);
+    const isJoining = $isTextOnlyEdgeRange(selection) || $isStaleFocusRange(selection) || $isCrossItemRange(selection);
 
     return isJoining && $joiningRemovalDeclinesLineBreak(selection);
 }
@@ -3160,7 +3332,7 @@ function $guardedRemovalDeclinesLineBreak(selection: BaseSelection | null): bool
  */
 function $clearGuardedRangeBeforeLineBreak(): boolean {
     const selection = $getSelection();
-    const isGuarded = $isTableEdgeRange(selection) || $isStaleFocusRange(selection);
+    const isGuarded = $isGuardedRange(selection);
     const removesFirst = !isGuarded && $isRangeStartingBeforeList(selection);
     // Between the blocks of a list item, or the items of a list, there is no line to break, and Lexical's insert
     // throws there: for a caret, and for a range that starts or ends there, before anything of it is removed.
@@ -4956,12 +5128,15 @@ function $settleSelectionBeforeEnter(): boolean {
 }
 
 /**
- * Registers the guards for the three range shapes Lexical's own removal
+ * Registers the guards for the four range shapes Lexical's own removal
  * mishandles — a table-edge range ({@link $isTableEdgeRange}), a
- * text-only-edge range ({@link $isTextOnlyEdgeRange}) and a stale-focus
- * range ({@link $isStaleFocusRange}) — on every command that removes or
+ * text-only-edge range ({@link $isTextOnlyEdgeRange}), a stale-focus
+ * range ({@link $isStaleFocusRange}) and a cross-item range
+ * ({@link $isCrossItemRange}) — on every command that removes or
  * replaces a range: each removes such a range itself, ahead of the
- * command's own handler. `COPY_COMMAND`, which removes nothing, has one for
+ * command's own handler. `DELETE_CHARACTER_COMMAND` has a listener of its
+ * own ({@link $deleteCharacterOverGuardedRange}); the other three delete
+ * commands share {@link $deleteGuardedRange}. `COPY_COMMAND`, which removes nothing, has one for
  * a table-edge range too, so a copy copies what a cut removes.
  *
  * @remarks
@@ -5001,7 +5176,7 @@ function registerRangeGuards(editor: LexicalEditor): () => void {
         editor.registerCommand(KEY_ENTER_COMMAND, $settleSelectionBeforeEnter, COMMAND_PRIORITY_CRITICAL),
         guard(KEY_BACKSPACE_COMMAND, $backspaceOverTableEdgeRange),
         guard(KEY_DELETE_COMMAND, $deleteKeyOverTableEdgeRange),
-        guard(DELETE_CHARACTER_COMMAND, $deleteGuardedRange),
+        guard(DELETE_CHARACTER_COMMAND, $deleteCharacterOverGuardedRange),
         guard(DELETE_WORD_COMMAND, $deleteGuardedRange),
         guard(DELETE_LINE_COMMAND, $deleteGuardedRange),
         guard(REMOVE_TEXT_COMMAND, $deleteGuardedRange),
@@ -9005,6 +9180,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             const hadRange = $isRangeSelection(initial);
 
             if (isTableEdge) {
+                // A range that also takes a list item's text whole joins that item away first, as every removal does.
+                $joinCoveredItemTexts(initial);
                 $removeTableEdgeRange(initial, $holdsNoTable);
             } else if (!hadRange) {
                 $getRoot().selectEnd();
