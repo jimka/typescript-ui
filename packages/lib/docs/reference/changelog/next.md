@@ -1974,6 +1974,28 @@ page resets to empty.
   moves it to a column where it spans the same width. `MarkdownEditor`'s
   source mode gets the same keys. No consumer action is needed.
 
+- **`MarkdownEditor` no longer slows down by the square of a document's
+  length in most edits.** In WYSIWYG mode a document holding a few hundred
+  raw blocks or link reference definitions took a minute to load; a document
+  holding about two thousand `:::` blocks took seconds for every typed
+  letter; a paste of many blocks, a format or a block type over many blocks,
+  and a list toggle or a block type over a long list took time that grew
+  with the square of their number. These now grow with the number. Some
+  edits still grow faster than the document: an update that changes many
+  blocks which each hold a reference link reads the document's definitions
+  for each of them (a paste of 1,000 reference links with their 1,000
+  definitions still takes about 28 seconds), and blocks of thousands of
+  lines cost more than their length. What is saved is unchanged. No
+  consumer action is needed.
+
+- **`MarkdownEditor`: a list toggle over several runs of blocks keeps a
+  loose list loose.** `toggleUnorderedList()` and `toggleOrderedList()` over
+  blocks standing between three or more lists of one marker wrote the joined
+  list tight when only a later one of those lists was loose, and so took the
+  blank lines from a list the selection did not touch. The joined list is
+  now loose when one of the lists is, as documented. No consumer action is
+  needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation

@@ -27,7 +27,7 @@ import { lexMarkdownWithDefinitions, linkLabelKey } from "~/component/display/ma
 import { holdsLineContent } from "~/component/display/markdownLineContent.js";
 import {
     $definitionsSource, $documentDefinitions, $headingWritesOneLine, $itemReadsLoose, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown,
-    $runsReadingOtherwise, $serializeBlock, $writtenListMarker, definitionsOfSource, keptImageShown, NO_DEFINITIONS_SOURCE, rawBlockStandsInItem,
+    $runsReadingOtherwise, $serializeBlock, $writesSomething, $writtenListMarker, definitionsOfSource, keptImageShown, NO_DEFINITIONS_SOURCE, rawBlockStandsInItem,
 } from "~/component/editor/markdownSerializer.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import {
@@ -954,6 +954,14 @@ function $keepColumnInFence(column: MarkdownColumnNode): void {
 
 // ---------------------------------------------------------------- raw blocks
 
+/** The elements whose raw blocks a changed block has checked whole in one update. */
+interface BlocksCheckedWhole {
+    /** The committed state the update started from. */
+    readonly from:    EditorState;
+    /** The keys of the elements checked whole. */
+    readonly parents: Set<NodeKey>;
+}
+
 /**
  * Shows the raw blocks beside `node` as their save writes them
  * ({@link $showRawBlocksAsWritten}), for a block whose own change can change
@@ -981,10 +989,15 @@ function $showSiblingRawBlocksAsWritten(node: LexicalNode): void {
  * in place.
  *
  * @param node - The raw block.
+ * @param $showSiblings - The check of the raw block's siblings: of every
+ *   raw block among them, unless the caller keeps track of what an update
+ *   has checked already, as the node transforms do.
  */
-export function $showRawBlockAsSaved(node: MarkdownRawBlockNode): void {
+export function $showRawBlockAsSaved(
+    node: MarkdownRawBlockNode, $showSiblings: (node: LexicalNode) => void = $showSiblingRawBlocksAsWritten,
+): void {
     const steps = [
-        $moveBlocksOutAfter, $showSiblingRawBlocksAsWritten, $showBlankRawBlockAsParagraph, $showRawBlockAsItsBlocks,
+        $moveBlocksOutAfter, $showSiblings, $showBlankRawBlockAsParagraph, $showRawBlockAsItsBlocks,
         $readListAgainAroundRawBlock,
     ];
 
@@ -1036,19 +1049,68 @@ function $showBlankRawBlockAsParagraph(node: MarkdownRawBlockNode): void {
  * @returns The unregister function.
  */
 function registerRawBlockRules(editor: LexicalEditor): () => void {
+    let checkedWhole: BlocksCheckedWhole | null = null;
+
+    /**
+     * Shows the raw blocks a changed block can have made a save write as a
+     * paragraph as that paragraph. The first changed block of a parent in
+     * an update checks every raw block of the parent
+     * ({@link $showSiblingRawBlocksAsWritten}), which also takes in what
+     * the update's command changed elsewhere in it; each later one checks
+     * the raw blocks its own change reaches
+     * ({@link $showRawBlocksBeforeAsWritten}). An update that changes many
+     * blocks of one parent, such as a load or a paste, therefore checks each
+     * raw block a fixed number of times, not once for each changed block.
+     * That bound does not hold for a run of changed empty paragraphs after a
+     * raw block: none of them ends the reach back to it, so each checks it.
+     *
+     * @param node - The block that changed.
+     */
+    const $showSiblingsOnceWhole = (node: LexicalNode): void => {
+        const parent = node.getParent();
+
+        if (parent === null) {
+            return;
+        }
+
+        const from = editor.getEditorState();
+
+        if (checkedWhole?.from !== from) {
+            checkedWhole = { from, parents: new Set() };
+        }
+
+        const key = parent.getKey();
+        const isCheckedWhole = checkedWhole.parents.has(key);
+
+        if (!isCheckedWhole) {
+            checkedWhole.parents.add(key);
+            $showSiblingRawBlocksAsWritten(node);
+
+            return;
+        }
+
+        $showRawBlocksBeforeAsWritten(node);
+    };
+
     return mergeRegister(
         editor.registerNodeTransform(RootNode, $showRawBlocksAsWritten),
         editor.registerNodeTransform(MarkdownColumnNode, $showColumnRawBlocksAsWritten),
         editor.registerNodeTransform(ListItemNode, $showRawBlocksAsWritten),
-        editor.registerNodeTransform(MarkdownRawBlockNode, $showRawBlockAsSaved),
-        editor.registerNodeTransform(ParagraphNode, $showSiblingRawBlocksAsWritten),
-        editor.registerNodeTransform(MarkdownListItemTextNode, $showSiblingRawBlocksAsWritten),
+        editor.registerNodeTransform(MarkdownRawBlockNode, (node) => {
+            $showRawBlockAsSaved(node, $showSiblingsOnceWhole);
+        }),
+        editor.registerNodeTransform(ParagraphNode, $showSiblingsOnceWhole),
+        editor.registerNodeTransform(MarkdownListItemTextNode, $showSiblingsOnceWhole),
         editor.registerNodeTransform(TextNode, (text) => {
             const parent = text.getParent();
 
             if ($isMarkdownRawBlockNode(parent)) {
-                $showRawBlockAsSaved(parent);
+                $showRawBlockAsSaved(parent, $showSiblingsOnceWhole);
             }
+        }),
+        // An undo can bring back the very state an update started from; the next update starts afresh.
+        editor.registerUpdateListener(() => {
+            checkedWhole = null;
         }),
     );
 }
@@ -1254,6 +1316,44 @@ function $showColumnRawBlocksAsWritten(column: ElementNode): void {
     for (const child of column.getChildren()) {
         if ($isListNode(child)) {
             child.getChildren().filter($isListItemNode).forEach($showColumnRawBlocksAsWritten);
+        }
+    }
+}
+
+/**
+ * Turns into a paragraph each raw block that a change of one block can have
+ * made a save write as one ({@link $rawBlockWritesAsParagraph}): the block
+ * itself, when it is a raw block, and the raw blocks before it up to the
+ * nearest block that writes something. A raw block is written as a paragraph
+ * by what follows it, and a raw block further back already had that nearer
+ * block after it. They are turned in document order, as
+ * {@link $showRawBlocksAsWritten} turns them.
+ *
+ * @param node - The block that changed.
+ */
+function $showRawBlocksBeforeAsWritten(node: LexicalNode): void {
+    const reached: MarkdownRawBlockNode[] = [];
+
+    for (let block: LexicalNode | null = node; block !== null; block = block.getPreviousSibling()) {
+        const current: LexicalNode = block;
+        const isRawBlock = $isMarkdownRawBlockNode(current);
+
+        if (isRawBlock) {
+            reached.unshift(current);
+        }
+
+        const endsReach = !current.is(node) && $isElementNode(current) && $writesSomething(current);
+
+        if (endsReach) {
+            break;
+        }
+    }
+
+    for (const raw of reached) {
+        const asParagraph = $rawBlockWritesAsParagraph(raw);
+
+        if (asParagraph) {
+            raw.replace($createParagraphNode(), true);
         }
     }
 }
