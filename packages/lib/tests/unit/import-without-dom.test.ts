@@ -32,10 +32,12 @@ function sourceSpecifier(exportKey: string): string {
 
 // Vitest's default per-test timeout is 5s. A cold import of `./glyphs`
 // transforms roughly 2,860 glyph modules and measured close to 6s while
-// drafting this guard; every other entry took well under a second. 30s
-// leaves headroom on a slower machine — a derived value isn't possible here,
-// since transform time depends on the machine and the module-transform cache.
-const ENTRY_IMPORT_TIMEOUT_MS = 30_000;
+// drafting this guard; every other entry took well under a second. When
+// `npm test` runs every test file at once on a many-core machine the same
+// import passed 30s, so 90s leaves headroom under that load — a derived value
+// isn't possible here, since transform time depends on the machine, its load
+// and the module-transform cache.
+const ENTRY_IMPORT_TIMEOUT_MS = 90_000;
 
 describe('import without a DOM', () => {
     it('G1. this file really runs with no DOM present', () => {

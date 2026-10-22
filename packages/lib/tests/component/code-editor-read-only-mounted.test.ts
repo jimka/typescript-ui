@@ -11,7 +11,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { EditorSelection } from '@codemirror/state';
 import { keymap } from '@codemirror/view';
 import type { EditorView } from '@codemirror/view';
-import { foldAll, foldedRanges, language } from '@codemirror/language';
+import { foldAll, foldedRanges, forceParsing, language } from '@codemirror/language';
 import { startCompletion } from '@codemirror/autocomplete';
 import { SearchQuery, findNext, replaceAll, replaceNext, setSearchQuery } from '@codemirror/search';
 import { CodeEditor } from '~/component/editor/CodeEditor';
@@ -248,6 +248,9 @@ describe('CodeEditor read-only, mounted', () => {
         replaceAll(view);
         expect(view.state.doc.toString()).toBe('function f() {\n  return f;\n}');
 
+        // CodeMirror parses for a limited time per slice, so on a busy machine the tree can still be unfinished
+        // here and foldAll finds nothing to fold; parse to the end first, as `forceParsing` does for a view.
+        forceParsing(view, view.state.doc.length, Infinity);
         foldAll(view);
         expect(foldedRanges(view.state).size).toBe(1);
     });
