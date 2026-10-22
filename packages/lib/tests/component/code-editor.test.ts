@@ -19,7 +19,7 @@ import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState, EditorSelection, Prec, StateEffect } from '@codemirror/state';
 import type { Extension, Transaction, TransactionSpec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
-import { codeFolding, foldEffect, foldedRanges, ensureSyntaxTree, syntaxTree, indentOnInput, indentUnit, language as languageFacet } from '@codemirror/language';
+import { codeFolding, foldable, foldEffect, foldedRanges, ensureSyntaxTree, syntaxTree, indentOnInput, indentUnit, language as languageFacet } from '@codemirror/language';
 import { SearchQuery, getSearchQuery, setSearchQuery } from '@codemirror/search';
 import { CompletionContext, closeBrackets, completionKeymap, deleteBracketPair } from '@codemirror/autocomplete';
 import { deleteCharBackward, indentWithTab } from '@codemirror/commands';
@@ -27,7 +27,9 @@ import { lintKeymap } from '@codemirror/lint';
 import { basicSetup } from 'codemirror';
 import type { CompletionSource } from '@codemirror/autocomplete';
 import { json } from '@codemirror/lang-json';
+import { commonmarkLanguage } from '@codemirror/lang-markdown';
 import { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics';
+import { tabDocuments } from './markdown-roundtrip/tabDocuments';
 import type { SqlLanguageOptions } from '~/component/editor/languages';
 import type { MenuItemConfig } from '~/component/container/MenuItem';
 import { Notification } from '~/overlay/Notification';
@@ -3800,6 +3802,64 @@ describe('built-in markdown language typing', () => {
         return treeOutline(syntaxTree(state).topNode as unknown as OutlineNode);
     }
 
+    /**
+     * Lists the syntax nodes the built-in `"markdown"` language gives a document, as `Name[from,to]`.
+     *
+     * @param doc - The document.
+     * @returns Every node, in tree order, joined by spaces.
+     */
+    async function syntaxNodes(doc: string): Promise<string> {
+        const state = settle(await buildTypingState('markdown', doc));
+        const nodes: string[] = [];
+
+        syntaxTree(state).iterate({ enter: (node) => { nodes.push(`${node.name}[${node.from},${node.to}]`); } });
+
+        return nodes.join(' ');
+    }
+
+    /**
+     * Lists the lines of a document that the built-in `"markdown"` language can fold, and what each folds.
+     *
+     * @param doc - The document.
+     * @returns One `line:from-to` entry per foldable line.
+     */
+    async function foldableLines(doc: string): Promise<string[]> {
+        const state = settle(await buildTypingState('markdown', doc));
+        const folds: string[] = [];
+
+        for (let number = 1; number <= state.doc.lines; number++) {
+            const line = state.doc.line(number);
+            const range = foldable(state, line.from, line.to);
+
+            if (range !== null) {
+                folds.push(`${number}:${range.from}-${range.to}`);
+            }
+        }
+
+        return folds;
+    }
+
+    /** Markdown's tab stop, in columns (CommonMark §2.2), as `MARKDOWN_TAB_STOP` in `languages.ts`. */
+    const MARKDOWN_TAB_STOP = 4;
+
+    /**
+     * Writes every tab of a document as the spaces that reach its tab stop, counted from its line's start.
+     *
+     * @param doc - The document.
+     * @returns The document without tabs.
+     */
+    function withTabsAsSpaces(doc: string): string {
+        return doc.split('\n').map((line) => {
+            let spaced = '';
+
+            for (const char of line) {
+                spaced += char === '\t' ? ' '.repeat(MARKDOWN_TAB_STOP - (spaced.length % MARKDOWN_TAB_STOP)) : char;
+            }
+
+            return spaced;
+        }).join('\n');
+    }
+
     it('TAB1: a tab after two spaces continues an item as a paragraph', async () => {
         expect(await languageOutline('- a\n\n  \tb')).toBe('ul[li[p p]]');
     });
@@ -3826,6 +3886,145 @@ describe('built-in markdown language typing', () => {
 
     it('TAB7: a tab after one space indents a code line', async () => {
         expect(await languageOutline(' \tfoo')).toBe('code');
+    });
+
+    // TAB8–TAB34: a tab after a heading's # run, or after a quote's >, reads as the viewer reads it (markdown-source-mode-tab-highlighting).
+    it('TAB8: a tab after the # run makes a heading', async () => {
+        expect(await languageOutline('#\tFoo')).toBe('h1');
+    });
+
+    it('TAB9: a tab after a later quote marker nests an item under the item above', async () => {
+        expect(await languageOutline('> - a\n>\t- b')).toBe('quote[ul[li[p ul[li[p]]]]]');
+    });
+
+    it('TAB10: a tab after a later quote marker continues the item above', async () => {
+        expect(await languageOutline('> - a\n>\n>\tb')).toBe('quote[ul[li[p p]]]');
+    });
+
+    it('TAB11: a line after a blank quoted line stays in an ordered item', async () => {
+        expect(await languageOutline('>\t1. a\n>\n>\t   b')).toBe('quote[ol[li[p p]]]');
+    });
+
+    it('TAB12: a heading after a tab ends a paragraph', async () => {
+        expect(await languageOutline('a\n#\tb\nc')).toBe('p h1 p');
+    });
+
+    it('TAB13: a heading after a tab in a list item', async () => {
+        expect(await languageOutline('- #\th')).toBe('ul[li[h1]]');
+    });
+
+    it('TAB14: a heading after a tab in a quote', async () => {
+        expect(await languageOutline('> #\th')).toBe('quote[h1]');
+    });
+
+    it('TAB15: a heading after two tabs, with a closing run', async () => {
+        expect(await languageOutline('##\t\tFoo ##')).toBe('h2');
+    });
+
+    it('TAB16: an empty heading after a tab', async () => {
+        expect(await languageOutline('#\t')).toBe('h1');
+    });
+
+    it('TAB17: seven # and a tab are text', async () => {
+        expect(await languageOutline('#######\tx')).toBe('p');
+    });
+
+    it('TAB18: a heading after a tab indented by four spaces is code', async () => {
+        expect(await languageOutline('    #\tx')).toBe('code');
+    });
+
+    it("TAB19: a tab after the first quote marker leaves the item's content at column 6", async () => {
+        expect(await languageOutline('>\t- a\n>\n>     b')).toBe('quote[ul[li[p p]]]');
+    });
+
+    it('TAB20: a tab after a later quote marker and two spaces start code', async () => {
+        expect(await languageOutline('> x\n>\n>\t  code')).toBe('quote[p code]');
+    });
+
+    it('TAB21: a one-column tab after a quote marker is its space', async () => {
+        expect(await languageOutline('  >\t- a\n  >\t  b')).toBe('quote[ul[li[p]]]');
+    });
+
+    it('TAB22: a heading after a tab has the nodes of a heading after a space', async () => {
+        expect(await syntaxNodes('#\tFoo *b* #')).toBe(await syntaxNodes('# Foo *b* #'));
+    });
+
+    it('TAB23: a heading after a tab folds its section', async () => {
+        expect(await foldableLines('#\tA\ntext\n#\tB\nmore')).toEqual(['1:3-8', '3:12-17']);
+    });
+
+    it('TAB24: Enter after an item in a quote opened by a tab starts the next item', async () => {
+        expect(await typed('markdown', '>\t- a|', '\n')).toBe('>\t- a\n>   - |');
+    });
+
+    it('TAB25: Enter after an ordered item in a quote opened by a tab numbers the next', async () => {
+        expect(await typed('markdown', '>\t1. a|', '\n')).toBe('>\t1. a\n>   2. |');
+    });
+
+    it("TAB26: Enter on an item's later paragraph in a quote keeps the item's column", async () => {
+        expect(await typed('markdown', '>\t1. a\n>\n>\t   b|', '\n')).toBe('>\t1. a\n>\n>\t   b\n>      |');
+    });
+
+    it('TAB27: Enter on a quoted code line opened by a tab copies its prefix', async () => {
+        expect(await typed('markdown', '> x\n>\n>\t  code|', '\n')).toBe('> x\n>\n>\t  code\n>\t  |');
+    });
+
+    it('TAB28: Enter after a nested item in a quote starts a nested item', async () => {
+        expect(await typed('markdown', '> - a\n>\t- b|', '\n')).toBe('> - a\n>\t- b\n>   - |');
+    });
+
+    it("TAB29: Backspace after an empty item's marker in a quote removes the marker", async () => {
+        expect(await typed('markdown', '>\t- |', '\b')).toBe('>\t|');
+    });
+
+    it("TAB30: Backspace after an empty nested item's marker in a quote removes the marker", async () => {
+        expect(await typed('markdown', '> - a\n>\t- |', '\b')).toBe('> - a\n>\t|');
+    });
+
+    // TAB31 and TAB32: @codemirror/lang-markdown's own Enter takes a space after > but not a tab. Its result is pinned, not fixed.
+    it("TAB31: pinned: Enter on an item's later paragraph after a tab leaves the quote", async () => {
+        expect(await typed('markdown', '> - a\n>\n>\tb|', '\n')).toBe('> - a\n>\n>\tb\n|');
+    });
+
+    it('TAB32: pinned: Enter on an empty nested item after a tab does nothing', async () => {
+        expect(await typed('markdown', '> - a\n>\t- |', '\n')).toBe('> - a\n>\t- |');
+    });
+
+    // TAB35 and TAB36: @codemirror/lang-markdown's character-based Enter now reads the corrected tree, and on these
+    // shapes its result differs from the one the stock tree gave. Pinned, not fixed.
+    it("TAB35: pinned: Enter on a line of text under an item opened after a quote's tab starts a quote line", async () => {
+        expect(await typed('markdown', '   >\t-\tx\n\t---|', '\n')).toBe('   >\t-\tx\n\t---\n>|');
+    });
+
+    it('TAB36: pinned: Enter after a task item under a quote opened by a tab', async () => {
+        expect(await typed('markdown', '   >\t- x\n    1. [ ] |', '\n')).toBe('   >\t- x\n    1. [ ]\n>      |');
+    });
+
+    // Green on the base and after this plan. It checks that this language's parser changes no other: the stock
+    // commonmarkLanguage still reads both documents its own way. Red means @lezer/markdown changed that reading:
+    // markdownTabStops.ts may then be partly or wholly unneeded.
+    it('TAB33: the stock commonmarkLanguage keeps its own readings', async () => {
+        await getLanguage('markdown')!.loadExtension();
+
+        const outline = (doc: string): string => treeOutline(commonmarkLanguage.parser.parse(doc).topNode as unknown as OutlineNode);
+
+        expect(outline('> - a\n>\t- b')).toBe('quote[ul[li[p] li[p]]]');
+        expect(outline('#\tFoo')).toBe('p');
+    });
+
+    it('TAB34: every drawn tab document reads as the same document with its tabs written as spaces', async () => {
+        const differing: string[] = [];
+
+        for (const doc of tabDocuments(3_000)) {
+            const reading = await languageOutline(doc);
+            const spacedReading = await languageOutline(withTabsAsSpaces(doc));
+
+            if (reading !== spacedReading) {
+                differing.push(JSON.stringify(doc));
+            }
+        }
+
+        expect(differing).toEqual([]);
     });
 
     it('M35: Enter between two tags on an item marker line indents the rest of the line to the item content', async () => {
