@@ -2751,8 +2751,7 @@ function keptPieces(token: Token, context: InlineContext, inTableCell: boolean =
 
 /**
  * Gives a container's runs the source they cover in its `raw`: each run's
- * source becomes the stretch of `raw` it stands at, a bracket escape
- * `marked` dropped from link text included, and the container's syntax
+ * source is the stretch of `raw` it stands at, and the container's syntax
  * before and after its content joins the first and last run's source, so
  * the sources joined are the `raw`.
  *
@@ -2765,14 +2764,13 @@ function withRawSources<P extends NestedLinkPiece>(raw: string, span: { start: n
     let cursor = span.start;
 
     for (const piece of pieces) {
-        const end = escapedEnd(raw, cursor, piece.source);
+        const stands = raw.startsWith(piece.source, cursor);
 
-        if (end === null) {
+        if (!stands) {
             return null;
         }
 
-        piece.source = raw.slice(cursor, end);
-        cursor = end;
+        cursor += piece.source.length;
     }
 
     pieces[0]!.source = raw.slice(0, span.start) + pieces[0]!.source;
@@ -2783,55 +2781,16 @@ function withRawSources<P extends NestedLinkPiece>(raw: string, span: { start: n
 
 /**
  * Finds a container token's content in its `raw`: where the children's
- * text stands, read as `marked` gives it — which, in a link's text, has
- * dropped the escape of each bracket (`\[` reads `[`).
+ * `raw`s, joined, stand.
  *
  * @param raw - The token's `raw`.
  * @param content - Its children's `raw`, joined.
  * @returns The content's `[start, end)` in `raw`, or `null` when it is not found.
  */
 function contentSpan(raw: string, content: string): { start: number; end: number } | null {
-    const exact = raw.indexOf(content);
+    const start = raw.indexOf(content);
 
-    if (exact !== -1) {
-        return { start: exact, end: exact + content.length };
-    }
-
-    for (let start = 0; start < raw.length; start++) {
-        const end = escapedEnd(raw, start, content);
-
-        if (end !== null) {
-            return { start, end };
-        }
-    }
-
-    return null;
-}
-
-/**
- * Matches text against `raw` from an offset, where `raw` may hold a bracket
- * escaped (`\[`, `\]`) that the text holds bare, as `marked` unescapes
- * the brackets of link text.
- *
- * @param raw - The source.
- * @param from - Where in it the text starts.
- * @param text - The text to match.
- * @returns The end of the match in `raw`, or `null` when the text does not stand there.
- */
-function escapedEnd(raw: string, from: number, text: string): number | null {
-    let at = from;
-
-    for (const char of text) {
-        if (raw[at] === "\\" && raw[at + 1] === char && (char === "[" || char === "]")) {
-            at += 2;
-        } else if (raw[at] === char) {
-            at += 1;
-        } else {
-            return null;
-        }
-    }
-
-    return at;
+    return start === -1 ? null : { start, end: start + content.length };
 }
 
 /**

@@ -496,6 +496,9 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         ['5.16', '>\tfoo bar\n>\tbaz', 3, 3, 'bold', '> **foo** bar\n> baz', null],
         ['5.17', 'a &#35; b and more', 16, 16, 'bold', 'a # b and **more**', at(12, 16)],
         ['5.18', 'see [a][1] here\n\nmid\n\nmore\n\nend\n\n[1]: /one', 12, 12, 'bold', 'see [a][1] **here**\n\nmid\n\nmore\n\nend\n\n[1]: /one', at(13, 17)],
+        ['link text holding escaped brackets keeps them as written, bold', '[a \\[b\\] word](/u)', 10, 10, 'bold', '[a \\[b\\] **word**](/u)', null],
+        ['link text holding escaped brackets that name a defined label stays a link, bold', '[a \\[b\\] word](/u)\n\n[b]: /d', 10, 10, 'bold', '[a \\[b\\] **word**](/u)\n\n[b]: /d', null],
+        ['link text holding an image and escaped brackets that name a defined label stays a link, bold', '[![i](/i.png)\\[x\\] word](/u)\n\n[x]: /d', 20, 20, 'bold', '[![i](/i.png)\\[x\\] **word**](/u)\n\n[x]: /d', null],
         ['5.19', '- one\n\ttwo', 8, 8, 'bulleted', 'one\ntwo', null],
         ['5.20', '- a\n\t- b c', 7, 7, 'bold', '- a\n  - **b** c', null],
         // A quote is a quote node in the model, so a command acts in it as it acts on the WYSIWYG surface.
@@ -557,6 +560,27 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         ['a range starting on a blank line before an image item', '- a\n\n- ![i](u)', 4, 13, 'h2', '- a\n\n## ![i](u)', null],
         ['a range ending on a top-level blank line after an image', '![i](u)\n\nb', 0, 8, 'h2', '## ![i](u)\n\nb', null],
         ['a code block\'s empty line in an item is the code block\'s', '- a\n\n  ```\n  x\n\n  y\n  ```', 15, 15, 'h2', '- a\n\n  x\\\n  \\\n  y\n  ---', at(16)],
+        // An item taken out of its lists leaves its nested items in the list, one level out, as on the WYSIWYG surface:
+        // never an item with no text holding them (`- - b`).
+        ['a heading on an item over a nested task item', '- a\n  - [x] b', 0, 0, 'h2', '## a\n\n- [x] b', null],
+        ['a heading on an item over a nested task item, the caret after the marker', '- a\n  - [x] b', 2, 2, 'h2', '## a\n\n- [x] b', null],
+        ['a heading on a nested item, a task item after it', '- x\n  - a\n  - [x] b', 4, 4, 'h2', '- x\n\n## a\n\n- [x] b', null],
+        ['a heading on an item over a nested list, an item after it', '- a\n  - b\n- z', 0, 0, 'h2', '## a\n\n- b\n- z', null],
+        ['a paragraph from an item over a nested list', '- a\n  - b\n- z', 0, 0, 'paragraph', 'a\n\n- b\n- z', null],
+        ['a quote from an item over a nested list', '- a\n  - b\n- z', 0, 0, 'quote', '> a\n\n- b\n- z', null],
+        ['the list toggled off on an item over a nested list', '- a\n  - b\n- z', 0, 0, 'bulleted', 'a\n\n- b\n- z', null],
+        ['a heading on an item over a numbered nested list keeps it numbered', '- a\n  1. b', 0, 0, 'h2', '## a\n\n1. b', null],
+        ['a heading on a nested item with nothing after it', '- a\n  - b', 4, 4, 'h2', '- a\n\n## b', null],
+        // A code line in a list item or a quote that starts with a tab shows the tab, so its source is found and a command
+        // on the text around it edits only that text.
+        ['an item\'s text before a fenced code line that starts with a tab', '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two', 2, 5, 'bold', '- **one**\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two', null],
+        ['an item\'s text after a fenced code line that starts with a tab', '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two', 33, 36, 'link', '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- [two](https://example.com/x)', null],
+        ['an item\'s text before a fenced code line with a tab after a marker character', '- a\n\n  ```\n  -\told\n  +\tnew\n  ```', 2, 3, 'bold', '- **a**\n\n  ```\n  -\told\n  +\tnew\n  ```', null],
+        ['a quote\'s text before a fenced code line that starts with a tab', '> a\n>\n> ```\n> \tbb\n> ```', 2, 3, 'bold', '> **a**\n>\n> ```\n> \tbb\n> ```', null],
+        ['an ordered item\'s text before a fenced code line that starts with a tab', '1. a\n\n   ```\n   \tbb\n   ```', 3, 4, 'bold', '1. **a**\n\n   ```\n   \tbb\n   ```', null],
+        // A tab the item's content column cuts across reads as the columns left of it, and the save writes those as spaces.
+        ['an item\'s text before a fenced code line whose tab the item cuts across', '- one\n\n  ```\n \tbb\n  ```', 2, 5, 'bold', '- **one**\n\n  ```\n    bb\n  ```', null],
+        ['an item\'s text before an indented code line of two tabs', '- a\n\n\t\tcode', 2, 3, 'bold', '- **a**\n\n  ```\n    code\n  ```', null],
     ];
 
     it.each(ROWS.map((row) => [`${row[0]} ${row[4]}`, row] as const))('%s: gives the text, and the caret where the WYSIWYG command leaves it', (_title, [, doc, from, to, command, text, caret]) => {
@@ -659,6 +683,9 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         ['5.28', '```\ncode\n```', 6, 6, ['bold'], 'the WYSIWYG command declines in a code block'],
         ['5.29', 'hello world', 0, 11, ['paragraph'], 'the WYSIWYG command changes nothing'],
         ['5.31', '> a\n\t- -\nb', 3, 3, ['bold'], 'the walk does not find the source there'],
+        // `marked` reads a line without `>` after a quote's heading into the quote, as code, where CommonMark ends the
+        // quote; the code keeps the spaces the line's tab stands for, which the source does not hold.
+        ['a lazy code line holding a tab in a quote', '> # h\n      -\tx', 4, 5, ['bold'], 'the walk does not find the source there'],
         // A blank line between the blocks of a container names no block, as between top-level blocks.
         ['the blank line of a loose list', '- a\n\n- b', 4, 4, ['h2', 'bold', 'bulleted', 'image'], 'the blank line of a loose list'],
         ['the blank line of a loose numbered list', '1. a\n\n2. b', 5, 5, ['h2'], 'the blank line of a loose numbered list'],
@@ -924,7 +951,7 @@ describe('the model is loaded and settled as the WYSIWYG editor is', () => {
 
 /**
  * Whether a caret stands in one of the shapes whose source the editor does not find, so that a source-mode command
- * there does nothing where the WYSIWYG command acts: a code or HTML line whose container prefix holds a tab, a
+ * there does nothing where the WYSIWYG command acts: an HTML line or an indented code line whose container prefix holds a tab, a
  * paragraph line made of list markers and tabs, a task item's checkbox followed by two spaces in a loose list, and a
  * list item's text that begins as a repeated link reference definition. The shape is looked for in the top-level block
  * around the caret, but for a repeated label, which is a property of the whole document.
@@ -940,7 +967,7 @@ function standsInShapeWithoutSource(doc: string, at: number): boolean {
     const labels = [...doc.matchAll(/^\s*\[([^\]]+)\]:/gm)].map((match) => match[1]);
     const repeatsLabel = new Set(labels).size < labels.length;
     const hasPrefixTab = prefixTabLines(stretch.split('\n')).some(Boolean);
-    const holdsCodeWithPrefixTab = hasPrefixTab && (stretch.includes('```') || /<\/?(?:div|pre)>/.test(stretch) || /^[ >]*(?:(?:[-*+]|\d+[.)])\t[ \t]+|[ ]*\t[ ]*\t[ \t]*)\S/m.test(stretch));
+    const holdsCodeWithPrefixTab = hasPrefixTab && (/<\/?(?:div|pre)>/.test(stretch) || /^[ >]*(?:(?:[-*+]|\d+[.)])\t[ \t]+|[ ]*\t[ ]*\t[ \t]*)\S/m.test(stretch));
     const holdsMarkerLine = /^[ \t]*-\t-\t*$/m.test(stretch);
     const holdsWideCheckbox = /\[[ xX]\] {2,}\S/.test(stretch);
 

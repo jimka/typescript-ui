@@ -22,7 +22,7 @@ import { $dfs } from '@lexical/utils';
 import { EDITOR_NODES } from '~/component/editor/editorNodes';
 import {
     $createMarkdownListItemTextNode, $indentItem, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $liftItemOut, $outdentItem,
-    $splitItemBefore, MarkdownListItemNode, MarkdownListItemTextNode,
+    $releaseOpeningLists, $splitItemBefore, MarkdownListItemNode, MarkdownListItemTextNode,
 } from '~/component/editor/markdownListItemNode';
 import { registerWritableStateRules } from '~/component/editor/markdownWritable';
 
@@ -249,7 +249,44 @@ describe('the list operations on hand-built trees (S1 to S8)', () => {
         const lifted = update(editor, () => $liftItemOut($itemOf('b')).map(shape));
 
         expect(lifted).toEqual(['p(b)', 'p(c)']);
-        expect(shapeOf(editor)).toBe('p(x), ul(i(t(a))), p(b), p(c), ul(i(ul(i(t(n))), p(e)), i(t(z)))');
+        expect(shapeOf(editor)).toBe('p(x), ul(i(t(a))), p(b), p(c), ul(i(t(n), p(e)), i(t(z)))');
+    });
+
+    /**
+     * The item of the document's first list at an index.
+     *
+     * @param index - The index.
+     * @returns The item.
+     */
+    const $firstListItemAt = (index: number): MarkdownListItemNode => $getRoot().getFirstChildOrThrow<ListNode>().getChildAtIndex(index) as MarkdownListItemNode;
+
+    it('$releaseOpeningLists gives the place of an item that opens with a nested list to that list\'s items, one level out', () => {
+        const editor = editorHolding(() => [ul(i(t('a')), i(ul(i(t('b1')), i(t('b2')))), i(t('z')))]);
+
+        update(editor, () => { $releaseOpeningLists($firstListItemAt(1)); });
+        expect(shapeOf(editor)).toBe('ul(i(t(a)), i(t(b1)), i(t(b2)), i(t(z)))');
+    });
+
+    it('$releaseOpeningLists moves the blocks the item holds after its nested list to the last of the released items', () => {
+        const editor = editorHolding(() => [ul(i(ul(i(t('b'))), p('p')), i(t('z')))]);
+
+        update(editor, () => { $releaseOpeningLists($firstListItemAt(0)); });
+        expect(shapeOf(editor)).toBe('ul(i(t(b), p(p)), i(t(z)))');
+    });
+
+    it('$releaseOpeningLists leaves a nested list of another kind a list of its own, the item\'s list split around it', () => {
+        const editor = editorHolding(() => [ul(i(t('a')), i($createListNode('number').splice(0, 0, [i(t('b'))])), i(t('z')))]);
+
+        update(editor, () => { $releaseOpeningLists($firstListItemAt(1)); });
+        expect(shapeOf(editor)).toBe('ul(i(t(a))), ul(i(t(b))), ul(i(t(z)))');
+        expect(editor.read(() => $getRoot().getChildren().map((list) => (list as ListNode).getListType()))).toEqual(['bullet', 'number', 'bullet']);
+    });
+
+    it('$releaseOpeningLists leaves an item that opens with its text as it is', () => {
+        const editor = editorHolding(() => [ul(i(t('a'), ul(i(t('b')))), i(t('z')))]);
+
+        update(editor, () => { $releaseOpeningLists($firstListItemAt(0)); });
+        expect(shapeOf(editor)).toBe('ul(i(t(a), ul(i(t(b)))), i(t(z)))');
     });
 
     it('S7: $liftItemOut moves the block an item opens with out as it is', () => {

@@ -412,6 +412,41 @@ page resets to empty.
   an image with no address; the command now declines it, as a pasted `<img>`
   with no `src` pastes as nothing. The `Markdown` viewer still draws
   `![a]()` as an `<img src="">`, as CommonMark reads it.
+- **`++` underlines only where it can open and close, as `~~` strikes.**
+  `C++ and C++` showed `C` and an underlined ` and C`, in the viewer, the
+  editor and source mode. A `++` now opens only when no space follows it
+  and closes only when no space precedes it, by GFM's rule for `~~`, whose
+  punctuation half applies too: a `++` followed by punctuation opens only
+  after whitespace or punctuation, and one preceded by punctuation closes
+  only before whitespace or punctuation, so `x++(a)++y` is now text. Code
+  spans and links inside an underline are kept whole, underline may hold a
+  `+`, and a run of three or more `+` is text. The editor no longer
+  underlines a selection's edge spaces, as for bold, and saves
+  `C++ and C++` without backslashes. A document with spaces just inside the
+  marks (`++ a ++`) now shows the marks as text. Underlined text at a
+  line's start no longer keeps its leading whitespace, which Markdown drops
+  there: the editor writes it outside the marks, as for bold, so underlined
+  ` a` saves as `++a++`. No consumer action is needed.
+- **`MarkdownEditor` moves a list item's nested items into the item's place
+  when the item leaves its list.** Making a list item's text a heading, a
+  paragraph, a quote or a code block, toggling its list off, Enter on its
+  emptied text and Backspace at its start left its nested list in an item
+  with no text, saved `- - b` and shown as an empty bullet. The nested
+  items now take the item's place, as siblings, at the level where the
+  item's outermost list stood (`- a`, `  - b` with a heading on `a` saves
+  `## a` and `- b`; a nested item lifted out of every list sends its own
+  nested items to that level, not under its parent), and the blocks after
+  the nested list go to the last of them. In source mode too. No consumer
+  action is needed.
+- **`Markdown` and `MarkdownEditor` read an escaped bracket in a link's or
+  image's text as a bracket.** `[see \[1\]](/u)` showed as plain text
+  wherever `[1]` was defined, an image's alt text lost such brackets
+  (`![a \[1\] b](/i.png)` had the alt `a 1 b`), and a code span in link
+  text lost the backslash before a bracket. They now read as CommonMark
+  specifies, as source mode already showed them. Brackets typed into a
+  link's text, beside an image too, save with one backslash and reload as
+  typed; a link holding an image and typed `[x]` no longer loses its link
+  on reload. No consumer action is needed.
 
 ### Core
 
@@ -566,24 +601,25 @@ page resets to empty.
   two raw list blocks an edit brings together save with a `[//]: #` line
   between them, which shows nothing. No consumer action is needed.
 
-- **`MarkdownEditor` makes nothing a save cannot write as shown.** Shift+Enter
-  does nothing at the end of a block or in a level 3–6 heading, and a break an
-  edit leaves there is removed (or, in such a heading — or a level 1 or 2
-  heading saved on one line, when a line of its setext form would end it —
-  shows as the space it saves as). Bold, italic and strikethrough applied over
-  edge spaces cover the text only — the toolbar, the context menu and the next
-  toggle then read the selection as formatted, so a second press takes the
-  format off — and a format, style or link whose result Markdown could not hold
-  as shown — emphasis opening with punctuation after a letter (`x**(a)**b`),
-  underline over a `+`, a colour over a bracket — is declined, from the
-  toggles, the keyboard and the typing shortcuts alike; after a paste, a
-  deletion or typing such edges lose the format instead, so a space typed
-  after bold text shows plain until the next word joins the bold. Lists of different bullet
-  characters or delimiters stay two lists, as the viewer reads them, and a
-  list's looseness follows its save; a table stays rectangular with every
-  cell aligned by its column, and a heading or list pasted into a cell becomes
-  its lines of text; an HTML block left open before other blocks shows as the
-  paragraph it saves as. No consumer action is needed.
+- **`MarkdownEditor` makes nothing a save cannot write as shown.**
+  Shift+Enter does nothing at the end of a block or in a level 3–6 heading,
+  and a break an edit leaves there is removed (or, in such a heading — or a
+  level 1 or 2 heading saved on one line, when a line of its setext form
+  would end it — shows as the space it saves as). Bold, italic,
+  strikethrough and underline applied over edge spaces cover the text only
+  — the toolbar, the context menu and the next toggle then read the
+  selection as formatted, so a second press takes the format off — and a
+  format, style or link whose result Markdown could not hold as shown —
+  emphasis opening with punctuation after a letter (`x**(a)**b`), a colour
+  over a bracket — is declined, from the toggles, the keyboard and the
+  typing shortcuts alike; after a paste, a deletion or typing such edges
+  lose the format instead, so a space typed after bold text shows plain
+  until the next word joins the bold. Lists of different bullet characters
+  or delimiters stay two lists, as the viewer reads them, and a list's
+  looseness follows its save; a table stays rectangular with every cell
+  aligned by its column, and a heading or list pasted into a cell becomes
+  its lines of text; an HTML block left open before other blocks shows as
+  the paragraph it saves as. No consumer action is needed.
 
 - **`Markdown` merges a table cell only into a whole rectangle.** A `<<`
   extends only a cell begun in its own row, and a `^^` extends the cell
@@ -1193,6 +1229,17 @@ page resets to empty.
   inserted at the start left it before. The block holding the caret is now
   split only where the caret is inside its content, and a table that ends
   its container is followed by an empty paragraph. No consumer action is
+  needed.
+
+- **`MarkdownEditor` leaves no empty bullet when it inserts or pastes a
+  block in a list item.** `insertHorizontalRule()`, `insertTable()` and a
+  pasted rule or table in a nested item's text, or at the end of an item's
+  text over its nested list, left the nested list under a new empty bullet
+  (`- - b`); the block now goes into the item, in front of its nested list.
+  In a task item's text the second half lost its checkbox and now gets an
+  unchecked one, as after Enter; with the caret right after the checkbox,
+  which a click on the text's start gives, the checkbox became the text
+  `[x]` and the block now goes above the item. No consumer action is
   needed.
 
 - **`mergeTableCells()` leaves a usable table.** An empty first cell no
@@ -1920,7 +1967,21 @@ page resets to empty.
   code block still moves the closing bracket to its own line, now with the
   prefix on both new lines, and does so inside `<script>` and `<style>` in a
   blockquote or list item as well. Markdown's own list and blockquote
-  continuation is unchanged. No consumer action is needed.
+  continuation is unchanged. Enter in the indentation of an indented code
+  block's first line, where Home puts the caret, turned the line into a
+  paragraph or changed its indentation; it now moves the whole line down, as
+  on the block's other lines. No consumer action is needed.
+
+- **Enter that renumbers a Markdown list keeps each item's later lines in
+  the item.** In `MarkdownEditor`'s `"source"` mode and any `CodeEditor`
+  with `language: "markdown"`, Enter that added an item renumbered the items
+  below it, and an item going from 9 to 10 (or 99 to 100) left its later
+  paragraphs, nested lists and code one column short, so they read outside
+  the list or as code. They now move with the item's text, in the same undo
+  step: the lines the viewer reads as part of the item move, so an item with
+  nothing after its marker ends at a blank line right after the marker line,
+  and a later blank line does not end an item that has content. No consumer
+  action is needed.
 
 - **A read-only `CodeEditor` can no longer be edited from the keyboard or
   the completion list.** `readOnly` relied on each editing command checking
@@ -2159,18 +2220,23 @@ page resets to empty.
   `Markdown` and `MarkdownEditor` read a tab that starts a later line of a
   list item as four columns wherever it started, read the rest of a line
   after `>` and a tab from column zero, and took characters, not columns,
-  off the lines under a fenced code block indented by one to three spaces. A
-  line indented by two spaces and a tab under `- a` was a code block, an
+  off the lines under a fenced code block indented by one to three spaces.
+  A line indented by two spaces and a tab under `- a` was a code block, an
   item nested by a space and a tab put its text one column too far right,
   `>`, a space and a tab made the rest of the line code, and a fence
   indented by one space dropped a line's leading tab. A tab now reaches the
-  next multiple of four columns from the start of its line. One reading
-  still differs from CommonMark: inside a list item or blockquote, a tab in
-  the indentation of a code or HTML line, or right after a marker character
-  that starts such a line, is read as the spaces that reach its tab stop. So
-  is a tab after a marker character that starts a paragraph continuation
-  line, which changes only the whitespace the tab stands for in that
-  paragraph. No consumer action is needed.
+  next multiple of four columns from the start of its line, and a code line
+  inside a list item or blockquote keeps a tab its container leaves whole,
+  so an edit elsewhere in the item no longer saves that tab as spaces, and
+  source-mode commands act beside such a line. One reading still differs
+  from CommonMark: a line without `>` indented as code after a heading in a
+  quote is read into the quote as its code, and its tabs show as the spaces
+  that reach their tab stops. A tab in the indentation of an HTML line
+  inside a list item or blockquote, or right after a marker character that
+  starts such a line, is read as the spaces that reach its tab stop. So is
+  a tab after a marker character that starts a paragraph continuation line,
+  which changes only the whitespace the tab stands for in that paragraph.
+  No consumer action is needed.
 
 - **`MarkdownEditor`'s WYSIWYG surface no longer shows the blanks a
   paragraph line opens with.** CommonMark strips the whitespace a paragraph

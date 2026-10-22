@@ -704,12 +704,18 @@ describe('a paste into the text of a list item that holds blocks leaves them as 
     // item's blocks with it, goes to a new item, and follows the pasted blocks out of the list from there.
     const ITEM: Target = { name: 'item holding a paragraph', source: '- bcd\n\n  p2\n- z' };
     const QUOTE_ITEM: Target = { name: 'item holding a quote and a paragraph', source: '- bcd\n\n  > q\n\n  p2\n- z' };
+    const NESTED_LIST_ITEM: Target = { name: 'item holding a nested list', source: '- bcd\n  - n\n- z' };
 
     it.each<[string, Target, Clipboard, number, string]>([
         ['paragraphs inside the text', ITEM, PARAGRAPHS, 1, '- bP1\n\nP2cd\n\np2\n\n- z'],
         ['paragraphs at the end of the text', ITEM, PARAGRAPHS, 3, '- bcdP1\n\nP2\n\np2\n\n- z'],
         ['a list inside the text', ITEM, LIST, 1, '- b\n- x\n- y\n\nP2cd\n\np2\n\n- z'],
         ['paragraphs inside the text, before a quote', QUOTE_ITEM, PARAGRAPHS, 1, '- bP1\n\nP2cd\n\n> q\n\np2\n\n- z'],
+        // At the end of the text of an item holding a nested list the pasted blocks go into the item, in front of the
+        // nested list: split there, the item would leave the nested list in an item with no text (`- - n`).
+        ['a table and a paragraph at the end of the text, before a nested list', NESTED_LIST_ITEM, TABLE, 3, '- bcd\n\n  | h |\n  | --- |\n  | c |\n\n  P2\n\n  - n\n\n- z'],
+        ['paragraphs at the end of the text, before a nested list', NESTED_LIST_ITEM, PARAGRAPHS, 3, '- bcdP1\n\n  P2\n\n  - n\n\n- z'],
+        ['a fence at the end of the text, before a nested list', NESTED_LIST_ITEM, FENCE, 3, '- bcd\n\n  ::: {align=center}\n  **f**\n  :::\n\n  P2\n\n  - n\n\n- z'],
     ])('%s', (_name, target, clipboard, offset, saved) => {
         const editor = pasteInto(target, clipboard, offset);
 

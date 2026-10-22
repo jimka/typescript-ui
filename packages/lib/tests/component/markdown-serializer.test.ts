@@ -456,11 +456,18 @@ describe('$serializeMarkdown — inline', () => {
         expect(serialize(() => [p(text('a``b', ['code']))])).toBe('`a``b`');
     });
 
-    it('S25: a + inside underlined text is written outside the underline', () => {
+    it('S25: a + inside underlined text stays inside the underline', () => {
         const output = serialize(() => [p(text('a', ['underline']), text('+', ['underline']), text('b', ['underline']))]);
 
-        expect(output).toBe('++a++\\+++b++');
-        expect(viewerModel(output).blocks).toEqual([para(run('a', ['underline']), run('+'), run('b', ['underline']))]);
+        expect(output).toBe('++a+b++');
+        expect(viewerModel(output).blocks).toEqual([para(run('a+b', ['underline']))]);
+    });
+
+    it('S26: a + at the edge of underlined text is escaped, so its run stays two long', () => {
+        const output = serialize(() => [p(text('C++', ['underline']), ' and ', text('+a', ['underline']))]);
+
+        expect(output).toBe('++C\\+\\+++ and ++\\+a++');
+        expect(viewerModel(output).blocks).toEqual([para(run('C++', ['underline']), run(' and '), run('+a', ['underline']))]);
     });
 });
 
@@ -525,7 +532,7 @@ describe('$serializeMarkdown — escaping', () => {
     const cases: Array<[string, string, string]> = [
         ['E1', 'snake_case_word', 'snake_case_word'],
         ['E2', '_init_ and *x*', '\\_init\\_ and \\*x\\*'],
-        ['E3', 'a ++ b ++ c', 'a \\+\\+ b \\+\\+ c'],
+        ['E3', 'a ++ b ++ c', 'a ++ b ++ c'],
         ['E4', 'see <b> and a < b', 'see \\<b> and a < b'],
         ['E5', 'https://e.com/a_b', 'https\\://e.com/a_b'],
         ['E6', '1. not a list', '1\\. not a list'],
@@ -1024,17 +1031,17 @@ describe('$serializeMarkdown — constructs the viewer would read into the text'
         expect(viewerModel(output).blocks).toEqual([para(run('Wow!'), run('t', [], { href: '/u', title: null }))]);
     });
 
-    it('a ( or { after a ] is escaped and a bracket pair is written \\\\[…\\\\]: marked unescapes brackets in link text before reading it', () => {
+    it('a ( or { after a ] is escaped and a bracket pair keeps its escapes, which read as text', () => {
         const output = serialize(() => [p(fill($createLinkNode('/u'), ['[a](b) [c]{color=red}']))]);
 
-        expect(output).toBe('[\\\\[a\\\\]\\(b) \\\\[c\\\\]\\{color=red}](/u)');
+        expect(output).toBe('[\\[a\\]\\(b) \\[c\\]\\{color=red}](/u)');
         expect(viewerModel(output).blocks).toEqual([para(run('[a](b) [c]{color=red}', [], { href: '/u', title: null }))]);
     });
 
-    it('a backslash before a bracket in a code span inside a link is doubled', () => {
+    it('a backslash before a bracket in a code span inside a link is written as it is', () => {
         const output = serialize(() => [p(fill($createLinkNode('/u'), [text('\\[', ['code'])]))]);
 
-        expect(output).toBe('[`\\\\[`](/u)');
+        expect(output).toBe('[`\\[`](/u)');
         expect(viewerModel(output).blocks).toEqual([para(run('\\[', ['code'], { href: '/u', title: null }))]);
     });
 
@@ -1049,10 +1056,10 @@ describe('$serializeMarkdown — constructs the viewer would read into the text'
         )]);
     });
 
-    it('underline closes before a link whose destination holds a +', () => {
+    it('underline goes around a link whose destination holds a +', () => {
         const output = serialize(() => [p(fill($createLinkNode('/a+b'), [text('t', ['underline'])]))]);
 
-        expect(output).toBe('[++t++](/a+b)');
+        expect(output).toBe('++[t](/a+b)++');
         expect(viewerModel(output).blocks).toEqual([para(run('t', ['underline'], { href: '/a+b', title: null }))]);
     });
 
@@ -1078,7 +1085,6 @@ describe('$serializeMarkdown — mark changes inside a word', () => {
     // block is read back, and written another way: a pair with `_`, underline outermost, or the marks reopened.
     const cases: Array<[string, () => LexicalNode[], string]> = [
         ['bold to italic', () => [p(text('a', ['bold']), text('b', ['bold', 'italic']), text('c', ['italic']))], '__a*b*__*c*'],
-        ['bold underline between letters', () => [p('a', text('b', ['bold', 'underline']), 'c')], 'a++**b**++c'],
         ['strike closing after italic before a letter', () => [p(text('a', ['strikethrough']), text('b', ['strikethrough', 'italic']), 'c')], '~~a~~*~~b~~*c'],
     ];
 
@@ -1439,7 +1445,7 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
         });
 
         it('stays escaped otherwise', () => {
-            expect(serialize(() => [p(fill($createLinkNode('/u'), ['[', text('a', ['code']), ']']))])).toBe('[\\\\[`a`\\\\]](/u)');
+            expect(serialize(() => [p(fill($createLinkNode('/u'), ['[', text('a', ['code']), ']']))])).toBe('[\\[`a`\\]](/u)');
         });
     });
 
@@ -1738,7 +1744,7 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
         const cases: Array<[string, () => LexicalNode[], string]> = [
             ['strike, the image first in the block', () => [p(image(), text(' 2', ['strikethrough']))], '~~![](g) 2~~'],
             ['italic, after a space', () => [p('x ', image(), text(' 2', ['italic']))], 'x *![](g) 2*'],
-            ['underline, after a word', () => [p('x', image(), text(' 2', ['underline']))], 'x++![](g) 2++'],
+            ['underline, after a space', () => [p('x ', image(), text(' 2', ['underline']))], 'x ++![](g) 2++'],
             ['strike already open before the image', () => [p(
                 text('a', ['strikethrough']), image(), text(' 2', ['strikethrough']),
             )], '~~a![](g) 2~~'],
@@ -1756,6 +1762,7 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
 
         it('a delimiter cannot open between a word and the image, so the space stays unmarked there', () => {
             expect(serialize(() => [p('a', image(), text(' 2', ['strikethrough']))])).toBe('a![](g) ~~2~~');
+            expect(serialize(() => [p('a', image(), text(' 2', ['underline']))])).toBe('a![](g) ++2++');
         });
 
         it('text split into nodes of one format is written as the one node it shows as', () => {
@@ -1821,9 +1828,7 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
             ['a bold link after a word', () => [p('A fuzz', fill($createLinkNode('/u'), [text('x', ['bold'])]))]],
             ['italic, then bold italic code', () => [p(text('o', ['italic']), text('[', ['bold', 'italic', 'code']))]],
             ['italic, then bold italic underlined tilde', () => [p(text('a', ['italic']), text('~', ['bold', 'italic', 'underline']))]],
-            ['bold underlined text before a word (CommonMark ++**bu**++ loaded and saved)', () => [p(text('bu', ['bold', 'underline']), 'zq')]],
             ['bold to italic inside a word', () => [p(text('a', ['bold']), text('b', ['bold', 'italic']), text('c', ['italic']))]],
-            ['bold underline between letters', () => [p('a', text('b', ['bold', 'underline']), 'c')]],
             ['strike closing after italic before a letter', () => [p(text('a', ['strikethrough']), text('b', ['strikethrough', 'italic']), 'c')]],
             ['italic over an image right before a word', () => [p(text('a', ['italic']), image(), 'b')]],
             // `marked` hides a `<…>` stretch from emphasis pairing, whatever lies between: an unescaped `<` before
@@ -1910,41 +1915,38 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
 
         it('a block whose reading no writing can keep is written the first way', () => {
             expect(serialize(() => [p(text('(a)', ['bold']), 'b')])).toBe('**(a)**b');
+            // No delimiter next to `**` can open or close between it and a letter: bold underlined text before a
+            // word, or between two letters, has no writing.
+            expect(serialize(() => [p(text('bu', ['bold', 'underline']), 'zq')])).toBe('**++bu++**zq');
+            expect(serialize(() => [p('a', text('b', ['bold', 'underline']), 'c')])).toBe('a**++b++**c');
         });
     });
 
-    describe('underline keeps the whitespace it covers inside its delimiters', () => {
-        // The underline grammar (`++([^+]+)++`) has no flanking rule, so whitespace at the edge of underlined text, or
-        // underlined whitespace alone, stays underlined; emphasis and strikethrough cannot open before or close after
-        // whitespace, so theirs is written outside their delimiters.
-        const cases: Array<[string, () => LexicalNode[], string]> = [
-            ['leading whitespace', () => [p('b', text(' a', ['underline']))], 'b++ a++'],
-            ['trailing whitespace', () => [p(text('a ', ['underline']), 'b')], '++a ++b'],
-            ['whitespace alone', () => [p('a', text(' ', ['underline']), 'b')], 'a++ ++b'],
-            ['whitespace alone after an underlined word', () => [p(text('a', ['underline']), text(' ', ['underline']), 'b')], '++a ++b'],
-            ['an underlined space after italic underlined text', () => [p(text('a', ['italic', 'underline']), text(' ', ['underline']), 'b')], '++*a* ++b'],
-            ['an underlined space before bold underlined text', () => [p('x', text(' ', ['underline']), text('a', ['bold', 'underline']))], 'x++ **a**++'],
-            ['trailing whitespace with italic running on', () => [p(text('a ', ['italic', 'underline']), text('b', ['italic']))], '*++a ++b*'],
+    describe('underline writes the whitespace at its edges outside its delimiters, as strikethrough does', () => {
+        // `++` follows the flanking rules of `~~`: it cannot open before whitespace nor close after it, so whitespace at
+        // the edge of underlined text, or underlined whitespace alone, is written without the underline. The editor
+        // keeps underline off such whitespace ($keepMarksOffEdgeWhitespace); these trees are built around it.
+        const cases: Array<[string, () => LexicalNode[], string, Block[]]> = [
+            ['leading whitespace', () => [p('b', text(' a', ['underline']))], 'b ++a++', [para(run('b '), run('a', ['underline']))]],
+            ['trailing whitespace', () => [p(text('a ', ['underline']), 'b')], '++a++ b', [para(run('a', ['underline']), run(' b'))]],
+            ['whitespace alone', () => [p('a', text(' ', ['underline']), 'b')], 'a b', [para(run('a b'))]],
+            ['an underlined space after italic underlined text', () => [p(text('a', ['italic', 'underline']), text(' ', ['underline']), 'b')], '++*a*++ b',
+                [para(run('a', ['italic', 'underline']), run(' b'))]],
+            ['an underlined space before bold underlined text', () => [p('x', text(' ', ['underline']), text('a', ['bold', 'underline']))], 'x **++a++**',
+                [para(run('x '), run('a', ['bold', 'underline']))]],
+            ['trailing whitespace with italic running on', () => [p(text('a ', ['italic', 'underline']), text('b', ['italic']))], '*++a++ b*',
+                [para(run('a', ['italic', 'underline']), run(' b', ['italic']))]],
+            ['strikethrough, for comparison', () => [p(text('a ', ['strikethrough']), 'b')], '~~a~~ b', [para(run('a', ['strike']), run(' b'))]],
         ];
 
-        for (const [name, build, expected] of cases) {
+        for (const [name, build, expected, reading] of cases) {
             it(`${name}: written ${JSON.stringify(expected)}`, () => {
-                const editor = editorWith(build);
-                const output = serialized(editor);
+                const output = serialize(build);
 
                 expect(output).toBe(expected);
-                expect(viewerModel(output).blocks).toEqual(editorSurfaceModel(editor));
+                expect(viewerModel(output).blocks).toEqual(reading);
             });
         }
-
-        it('the edge whitespace of italic underlined text keeps its underline; its italic cannot be written', () => {
-            // A closing `*` cannot follow whitespace, nor an opening one precede it, so no Markdown italicises a space
-            // at the edge of italic text: the space keeps only the underline the grammar can hold.
-            const output = serialize(() => [p(text('a ', ['italic', 'underline']), 'b')]);
-
-            expect(output).toBe('++*a* ++b');
-            expect(viewerModel(output).blocks).toEqual([para(run('a', ['italic', 'underline']), run(' ', ['underline']), run('b'))]);
-        });
     });
 
     it('a body row wider than the header widens the table with empty header cells, so no cell is dropped', () => {
@@ -2172,7 +2174,11 @@ describe('$serializeMarkdown — lean escapes', () => {
         ['L37', '1.5 l', '1.5 l'],
         ['L38', 'a⏎2. x', 'a\\\n2\\. x'],
         ['L39', 'a ++ b', 'a ++ b'],
-        ['L40', 'a ++ b ++ c', 'a \\+\\+ b \\+\\+ c'],
+        ['L40', 'a ++ b ++ c', 'a ++ b ++ c'],
+        ['L41', 'C++ and C++', 'C++ and C++'],
+        ['L42', 'Use C++ or C++20.', 'Use C++ or C++20.'],
+        ['L43', 'a ++b++ c', 'a \\+\\+b\\+\\+ c'],
+        ['L44', 'C++ and ++b++', 'C\\+\\+ and \\+\\+b\\+\\+'],
     ];
 
     for (const [id, input, expected] of paragraphs) {
@@ -2245,7 +2251,7 @@ describe('$serializeMarkdown — lean escapes', () => {
     });
 
     it('J14: brackets in link text keep their escapes', () => {
-        expectSave(() => [p($createLinkNode('/u').append($createTextNode('[a]')))], '[\\\\[a\\\\]](/u)');
+        expectSave(() => [p($createLinkNode('/u').append($createTextNode('[a]')))], '[\\[a\\]](/u)');
     });
 
     it('J15: a "]" after a link keeps its escape', () => {

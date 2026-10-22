@@ -68,12 +68,12 @@ const MAX_ORDERED_LIST_NUMBER = 999_999_999;
  * block the save writes as a paragraph, or as several blocks, shows as
  * them ({@link registerRawBlockRules}), a block whose source kept as written
  * reads differently once the document's link reference definitions change
- * shows as it now reads ({@link registerDefinitionRules}), no bold, italic or strikethrough is
- * left where its delimiter cannot stand at a run's edge by a deletion, a
- * paste, a split or typing, and a construct kept as written that an edit
- * takes apart shows as the ordinary text it saves as
- * ({@link registerRunEdgeRules}), and a bracket in styled text or a `+` in
- * underlined text shows without them ({@link $keepUnwritableCharactersPlain}),
+ * shows as it now reads ({@link registerDefinitionRules}), no bold, italic,
+ * strikethrough or underline is left where its delimiter cannot stand at a
+ * run's edge by a deletion, a paste, a split or typing, and a construct kept
+ * as written that an edit takes apart shows as the ordinary text it saves as
+ * ({@link registerRunEdgeRules}), and a bracket in styled text shows without
+ * its style ({@link $keepUnwritableCharactersPlain}),
  * a `:::` column stands only in its fence ({@link $keepColumnInFence}), and
  * no block stays inside a block that holds text only ({@link $keepBlocksOutOfText}).
  * Call right after creating the editor, before any document is loaded.
@@ -2097,8 +2097,8 @@ function $opensTaskItem(block: ElementNode, node: LexicalNode): boolean {
 
 /**
  * How many spaces and tabs a plain text starts with: none for any other
- * node — a source run, a code span, underlined or styled text (written
- * after syntax of its own, {@link $writesSyntaxBeforeText}), a link, an
+ * node — a source run, a code span, styled text (written after syntax of
+ * its own, {@link $writesSyntaxBeforeText}), a link, an
  * image.
  *
  * @param node - The inline node.
@@ -2731,7 +2731,7 @@ function $editedLeaves(editor: LexicalEditor, container: ElementNode, node: Text
  * caret after typing, or the runs of a kept construct an edit made ordinary
  * text — so they take formats the save can write and what is shown is
  * saved; the rest of the block is never touched. When typing, whitespace
- * between two parts of a bold, italic or struck run takes that format,
+ * between two parts of a bold, italic, struck or underlined run takes that format,
  * joining them ({@link $joinRunsAcrossWhitespace}). The format comes off
  * whitespace at such a run's edge ({@link $trimRunEdges}): a space typed
  * after bold text shows plain until the next word, typed bold, joins the
@@ -2768,7 +2768,7 @@ function $tidyRuns(container: ElementNode, near: ReadonlySet<string>, typing: bo
 }
 
 /**
- * Takes bold, italic and strikethrough off the whitespace at the edges of
+ * Takes bold, italic, strikethrough and underline off the whitespace at the edges of
  * the runs that hold one of the given leaves ({@link $trimRunEdges}).
  *
  * @param container - The block.
@@ -2791,7 +2791,7 @@ function $keepNearMarksFlanking(container: ElementNode, near: ReadonlySet<string
     const touches = (run: TextNode[]): boolean => run.some((leaf) => near.has(leaf.getKey()));
 
     for (const format of FLANKED_FORMATS) {
-        const delimiter = format === "strikethrough" ? "~" : "*";
+        const delimiter = FLANKED_DELIMITERS[format]!;
         let changed = true;
 
         while (changed) {
@@ -3009,7 +3009,7 @@ function $dissolveKeptRun(node: LexicalNode): string {
 }
 
 /**
- * Gives whitespace between two parts of a bold, italic or struck run that
+ * Gives whitespace between two parts of a bold, italic, struck or underlined run that
  * format, so they join: whitespace typed at a run's edge takes no format,
  * and the word typed after it with the format on brings it back into the
  * run. Only a plain text node of whitespace whose neighbours in the same
@@ -3059,21 +3059,18 @@ function $dissolveMisreadKeptConstructs(container: ElementNode, tidy: (dissolved
 // ---------------------------------------------------------------- characters a format cannot hold
 
 /**
- * Takes the span style off each `[` and `]` of a styled text, and the
- * underline off each `+` of an underlined one: the styled span's grammar
- * (`[^[\]]+`) cannot hold a bracket, nor underline's (`++([^+]+)++`) a plus
- * sign, so the save writes them outside the span or the underline, and the
- * editor shows them so as soon as they are typed or pasted there. The
- * format and style commands decline to make such text in the first place
- * ({@link $editWritably}); this keeps every other edit honest.
+ * Takes the span style off each `[` and `]` of a styled text: the styled
+ * span's grammar (`[^[\]]+`) cannot hold a bracket, so the save writes them
+ * outside the span, and the editor shows them so as soon as they are typed
+ * or pasted there. The style commands decline to make such text in the
+ * first place ({@link $editWritably}); this keeps every other edit honest.
  *
  * @param node - A text node that changed.
  */
 function $keepUnwritableCharactersPlain(node: TextNode): void {
     const text = node.getTextContent();
     const styled = node.getStyle() !== "";
-    const underlined = node.hasFormat("underline");
-    const unwritable = (char: string): boolean => (styled && (char === "[" || char === "]")) || (underlined && char === "+");
+    const unwritable = (char: string): boolean => styled && (char === "[" || char === "]");
     const offsets = text.split("").flatMap((char, index) => (unwritable(char) ? [index, index + 1] : []));
 
     if (offsets.length === 0) {
@@ -3084,11 +3081,7 @@ function $keepUnwritableCharactersPlain(node: TextNode): void {
         const char = part.getTextContent();
 
         if (char.length === 1 && unwritable(char)) {
-            if (char === "+") {
-                part.toggleFormat("underline");
-            } else {
-                part.setStyle("");
-            }
+            part.setStyle("");
         }
     }
 }
@@ -3097,11 +3090,14 @@ function $keepUnwritableCharactersPlain(node: TextNode): void {
 
 /**
  * The formats whose delimiters CommonMark's flanking rules (GFM
- * strikethrough's too) keep from standing next to whitespace inside them:
- * an opening one cannot be followed by whitespace, a closing one preceded
- * by it. Underline's grammar has no such rule, and code is a span.
+ * strikethrough's and the dialect's underline's too) keep from standing
+ * next to whitespace inside them: an opening one cannot be followed by
+ * whitespace, a closing one preceded by it. Code is a span.
  */
-const FLANKED_FORMATS: readonly TextFormatType[] = ["bold", "italic", "strikethrough"];
+const FLANKED_FORMATS: readonly TextFormatType[] = ["bold", "italic", "strikethrough", "underline"];
+
+/** The character each flanked format's delimiter is written with. */
+const FLANKED_DELIMITERS: Readonly<Partial<Record<TextFormatType, string>>> = { bold: "*", italic: "*", strikethrough: "~", underline: "+" };
 
 /** Where a selection point sits: the child indices from the root to its node, its offset and type. */
 interface PointPath {
@@ -3113,14 +3109,14 @@ interface PointPath {
 /**
  * Runs an edit of the selected text — a format, a style, a link, a typing
  * shortcut's format — so that it never leaves what a save cannot write as
- * shown. Bold, italic and strikethrough are first taken off whitespace at
+ * shown. Bold, italic, strikethrough and underline are first taken off whitespace at
  * either edge of each run of them in the blocks the edit touched
  * ({@link $keepMarksOffEdgeWhitespace}), which trims a selection's edge
  * spaces off the format and clears a format put on whitespace alone. Then,
  * when a block the edit touched no longer reads back as shown
  * ({@link $readsBackAsShown}) though it did before — emphasis whose content
  * starts with punctuation right after a letter or ends with it right before
- * one (`x**(a)**b`), underline over a `+`, a styled span holding a bracket —
+ * one (`x**(a)**b`), a styled span holding a bracket —
  * the edit is declined: those blocks get their content back as it was
  * (their own nodes kept), and the selection where it was, with the format
  * and style pending at it. The declining
@@ -3370,8 +3366,8 @@ interface SelectedStretch {
  * Whether a selection has a format on, as the format toggles, the toolbar
  * and the context menu read it. A range is read from its text, whichever way
  * it was made, for all five formats: the format is on when every counted
- * character carries it. Underline and code count every selected character;
- * bold, italic and strikethrough never stay on whitespace at a run's edge
+ * character carries it. Code counts every selected character; bold,
+ * italic, strikethrough and underline never stay on whitespace at a run's edge
  * ({@link $keepMarksOffEdgeWhitespace}), so whitespace where the run the
  * toggle would make could end does not count: at either end of each stretch
  * of selected text that run cannot end inside ({@link $selectedStretches}).
@@ -3401,10 +3397,10 @@ export function $selectionHasFormat(selection: RangeSelection, format: TextForma
 
 /**
  * The characters of a selection a format counts on, as one flag each: `1`
- * where the character carries the format, `0` where not. For bold, italic
- * and strikethrough that leaves out the whitespace at either end of each
- * stretch of selected text ({@link $selectedStretches}), which they never
- * stay on; underline and code count every selected character.
+ * where the character carries the format, `0` where not. For bold, italic,
+ * strikethrough and underline that leaves out the whitespace at either end
+ * of each stretch of selected text ({@link $selectedStretches}), which they
+ * never stay on; code counts every selected character.
  *
  * @param selection - The selection.
  * @param format - The format.
@@ -3607,7 +3603,7 @@ interface LeafGroups {
 }
 
 /**
- * Takes bold, italic and strikethrough off the whitespace at either edge of
+ * Takes bold, italic, strikethrough and underline off the whitespace at either edge of
  * each run of them in a block, since a delimiter cannot stand against
  * whitespace inside it; whitespace between two parts of a run keeps it. A
  * run is consecutive text carrying the format, across a link or styled span
@@ -3658,7 +3654,7 @@ function $markRuns(container: ElementNode, format: TextFormatType): TextNode[][]
 }
 
 /**
- * Takes bold, italic and strikethrough off the punctuation at a run's edge
+ * Takes bold, italic, strikethrough and underline off the punctuation at a run's edge
  * where a delimiter could not stand: an opening delimiter before
  * punctuation needs whitespace or punctuation before it, a closing one
  * after punctuation needs it after (CommonMark's flanking rules, which GFM
@@ -3675,7 +3671,7 @@ function $markRuns(container: ElementNode, format: TextFormatType): TextNode[][]
  */
 function $keepMarksFlanking(container: ElementNode, tildeIsLetter: boolean = true): void {
     for (const format of FLANKED_FORMATS) {
-        const delimiter = format === "strikethrough" ? "~" : "*";
+        const delimiter = FLANKED_DELIMITERS[format]!;
         let changed = true;
 
         while (changed) {

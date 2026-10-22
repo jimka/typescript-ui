@@ -137,8 +137,25 @@ function parseStrikethroughMark(cx: InlineContext, next: number, pos: number): n
         return -1;
     }
 
-    const before        = cx.slice(pos - 1, pos);
-    const after         = cx.slice(markEnd, markEnd + 1);
+    const { opens, closes } = delimiterFlanking(cx, pos, markEnd);
+
+    return cx.addDelimiter(STRIKETHROUGH_DELIMITER, pos, markEnd, opens, closes);
+}
+
+/**
+ * Whether a delimiter can open and whether it can close, by CommonMark's
+ * flanking rule for `*`, which GFM's `~~` and the dialect's `++` follow: it
+ * opens unless whitespace follows it, or punctuation does with neither
+ * whitespace nor punctuation before it; it closes by the mirror rule.
+ *
+ * @param cx - The inline parse state.
+ * @param from - Where the delimiter starts.
+ * @param to - Where it ends.
+ * @returns Whether it is left-flanking (`opens`) and right-flanking (`closes`).
+ */
+function delimiterFlanking(cx: InlineContext, from: number, to: number): { opens: boolean; closes: boolean } {
+    const before        = cx.slice(from - 1, from);
+    const after         = cx.slice(to, to + 1);
     const blankBefore   = BLANK_OR_EDGE.test(before);
     const blankAfter    = BLANK_OR_EDGE.test(after);
     const punctBefore   = PUNCTUATION.test(before);
@@ -146,22 +163,21 @@ function parseStrikethroughMark(cx: InlineContext, next: number, pos: number): n
     const opens         = !blankAfter && (!punctAfter || blankBefore || punctBefore);
     const closes        = !blankBefore && (!punctBefore || blankAfter || punctAfter);
 
-    return cx.addDelimiter(STRIKETHROUGH_DELIMITER, pos, markEnd, opens, closes);
+    return { opens, closes };
 }
 
-/**
- * `++underline++` as the viewer reads it (`markdownExtensions.ts`'s
- * underline tokenizer): `++`, text holding no `+`, `++`. Sticky, so it is
- * tried at one position of the inline text.
- */
-const UNDERLINE = /\+\+([^+]+)\+\+/y;
+/** The delimiter `++` adds: matched pairs wrap their content in an `Underline` node and become `UnderlineMark`s. */
+const UNDERLINE_DELIMITER = { resolve: "Underline", mark: "UnderlineMark" };
 
 /** The length of each `++` mark. */
 const UNDERLINE_MARK_LENGTH = 2;
 
 /**
- * `++underline++`: an `Underline` node holding two `UnderlineMark`s and the
- * text between them, read inline. The marks take the inline-mark tag.
+ * `++underline++`, read as the viewer reads it (`markdownExtensions.ts`'s
+ * underline tokenizer) and as {@link MARKDOWN_STRIKETHROUGH} reads `~~`: a
+ * run of exactly two `+` that can open or close by the same flanking rule as
+ * `*`. Matched pairs make an `Underline` node; the marks take the
+ * inline-mark tag, the text keeps the text colour.
  */
 export const MARKDOWN_UNDERLINE: MarkdownConfig = {
     defineNodes: [
@@ -170,40 +186,40 @@ export const MARKDOWN_UNDERLINE: MarkdownConfig = {
     ],
     parseInline: [{
         name: "Underline",
-        parse: parseUnderline,
+        parse: parseUnderlineMark,
         after: "Emphasis",
     }],
 };
 
 /**
- * Reads an underline that starts at a position.
+ * Adds a `++` delimiter at a position, when a run of exactly two `+` starts
+ * there. The parser is tried at a run's first `+` (an escaped `+` before it
+ * is part of its escape), and a run of another length is passed over whole as
+ * text, so no `++` is read inside it.
  *
  * @param cx - The inline parse state.
  * @param next - The character code at `pos`.
  * @param pos - The position.
- * @returns The end of the underline, or `-1` when none starts here.
+ * @returns The end of the delimiter or of the run passed over, or `-1` when no `+` stands here.
  */
-function parseUnderline(cx: InlineContext, next: number, pos: number): number {
+function parseUnderlineMark(cx: InlineContext, next: number, pos: number): number {
     if (next !== PLUS) {
         return -1;
     }
 
-    UNDERLINE.lastIndex = pos - cx.offset;
+    let runEnd = pos + 1;
 
-    const match = UNDERLINE.exec(cx.text);
-
-    if (match === null) {
-        return -1;
+    while (cx.char(runEnd) === PLUS) {
+        runEnd++;
     }
 
-    const end       = pos + match[0].length;
-    const textStart = pos + UNDERLINE_MARK_LENGTH;
+    if (runEnd - pos !== UNDERLINE_MARK_LENGTH) {
+        return runEnd;
+    }
 
-    return cx.addElement(cx.elt("Underline", pos, end, [
-        cx.elt("UnderlineMark", pos, textStart),
-        ...parseNestedInline(cx, match[1]!, textStart),
-        cx.elt("UnderlineMark", end - UNDERLINE_MARK_LENGTH, end),
-    ]));
+    const { opens, closes } = delimiterFlanking(cx, pos, runEnd);
+
+    return cx.addDelimiter(UNDERLINE_DELIMITER, pos, runEnd, opens, closes);
 }
 
 /**
@@ -291,8 +307,8 @@ const COLUMN_SEPARATOR = "|||";
 
 /**
  * How many nested inline parses {@link parseNestedInline} has running. The
- * text of a nested parse (a table cell, the text of an underline) starts
- * mid-line, so its start is not a line start; only a line break inside it is.
+ * text of a nested parse (a table cell) starts mid-line, so its start is not
+ * a line start; only a line break inside it is.
  */
 let _nestedInlineDepth = 0;
 

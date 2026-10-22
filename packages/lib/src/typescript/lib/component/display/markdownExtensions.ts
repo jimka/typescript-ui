@@ -51,11 +51,206 @@ export interface MdImageToken {
     attributeText: string;
 }
 
+/** The length of each `++` mark of an underline. */
+const UNDERLINE_MARK_LENGTH = 2;
+
+/** A run of `+`, the candidates for an underline's closing mark. */
+const PLUS_RUN = /\++/g;
+
+/** A Unicode punctuation or symbol character: what `marked`'s flanking rules count as punctuation. */
+const FLANKING_PUNCTUATION = /^[\p{P}\p{S}]$/u;
+
+/** One whitespace character, as a delimiter's neighbour. */
+const FLANKING_WHITESPACE = /^\s$/;
+
+/**
+ * `marked`'s own patterns for the stretches its emphasis and strikethrough
+ * pairing skips: a reference (masked only when its label is defined), a
+ * backslash escape of punctuation, and an inline link or image, a code span
+ * or an inline tag or autolink.
+ */
+const REFERENCE_SEARCH = MarkedLexer.rules.inline.gfm.reflinkSearch;
+const ESCAPED_PUNCTUATION = MarkedLexer.rules.inline.gfm.anyPunctuation;
+const PAIRING_SKIPPED = MarkedLexer.rules.inline.gfm.blockSkip;
+
+/**
+ * Tells whether a delimiter's neighbour is blank: whitespace, or the edge of
+ * the text (`""`).
+ *
+ * @param char - The neighbour.
+ * @returns `true` for whitespace or no character.
+ */
+function isBlankNeighbour(char: string): boolean {
+    return char === "" || FLANKING_WHITESPACE.test(char);
+}
+
+/**
+ * Tells whether a `++` between two characters can open an underline:
+ * CommonMark's left-flanking rule, which GFM's `~~` follows too. It is not
+ * followed by whitespace, and when punctuation follows it, whitespace,
+ * punctuation or the edge of the text precedes it.
+ *
+ * @param before - The character before the `++` (`""` at the edge).
+ * @param after - The character after it (`""` at the edge).
+ * @returns `true` when it is left-flanking.
+ */
+function opensUnderline(before: string, after: string): boolean {
+    return !isBlankNeighbour(after) && (!FLANKING_PUNCTUATION.test(after) || isBlankNeighbour(before) || FLANKING_PUNCTUATION.test(before));
+}
+
+/**
+ * Tells whether a `++` between two characters can close an underline:
+ * CommonMark's right-flanking rule, the mirror of {@link opensUnderline}.
+ *
+ * @param before - The character before the `++` (`""` at the edge).
+ * @param after - The character after it (`""` at the edge).
+ * @returns `true` when it is right-flanking.
+ */
+function closesUnderline(before: string, after: string): boolean {
+    return !isBlankNeighbour(before) && (!FLANKING_PUNCTUATION.test(before) || isBlankNeighbour(after) || FLANKING_PUNCTUATION.test(after));
+}
+
+/**
+ * Masks the stretches of an inline text that `marked` hides from its own
+ * emphasis and strikethrough pairing, as `marked` masks them, so a `++` in
+ * them never closes an underline: a defined reference, a backslash escape,
+ * an inline link or image, a code span, an inline tag or autolink. Each mask
+ * keeps the length of what it replaces, and keeps punctuation at its edges,
+ * as the stretch has, so a `++` next to it flanks as it does next to the
+ * stretch. An escape is masked with `!`, not with the `+` `marked` uses,
+ * which would read as an underline mark here.
+ *
+ * @param src - The inline text, from an underline's opening `++` on.
+ * @param links - The document's link reference definitions.
+ * @returns The masked text, as long as `src`.
+ */
+function maskedForPairing(src: string, links: Links): string {
+    const bracketed = (stretch: string): string => "[" + "a".repeat(stretch.length - 2) + "]";
+
+    const references = src.replace(REFERENCE_SEARCH, (stretch) => {
+        const labelStart = stretch.lastIndexOf("[");
+        const defined = Object.hasOwn(links, linkLabelKey(stretch.slice(labelStart + 1, -1)));
+
+        return defined ? bracketed(stretch) : stretch;
+    });
+
+    return references.replace(ESCAPED_PUNCTUATION, (escape) => "!".repeat(escape.length)).replace(PAIRING_SKIPPED, bracketed);
+}
+
+/**
+ * What the underline tokenizer reads of one inline text, once: `marked`
+ * tries the tokenizer at each `++` of the text in turn, each time on the rest
+ * of the text and with the same token list, so every try reads the text the
+ * first try was given — as `marked`'s own `~~` search reads the end of the
+ * text it masks once.
+ */
+interface InlineTextReading {
+    /** The inline text from the first `++` the tokenizer was tried at on. */
+    readonly text: string;
+    /** The character before `text` (the last of the token read before it), or `""` at the inline text's start. */
+    readonly before: string;
+    /** The underline pairs of `text` ({@link underlinePairs}), read on the first try that needs them. */
+    closers: ReadonlyMap<number, number> | null;
+}
+
+/** The reading of each inline text the underline tokenizer is tried in, keyed by the token list its lex fills. */
+const INLINE_TEXT_READINGS = new WeakMap<readonly Token[], InlineTextReading>();
+
+/**
+ * The reading of the inline text a try of the underline tokenizer stands
+ * in, and where the try stands in it: the reading a first try in the same
+ * lex made, or a new one. The text before the try is read from the reading,
+ * never from the token list: a text token there grows as `marked` joins text
+ * to it, and reading its end at every try would copy it each time.
+ *
+ * @param src - The inline text, from the `++` tried on.
+ * @param tokens - The token list the inline lex fills.
+ * @returns The reading, and the index of `src`'s start in its text.
+ */
+function inlineTextReading(src: string, tokens: readonly Token[]): { reading: InlineTextReading; offset: number } {
+    let reading = INLINE_TEXT_READINGS.get(tokens);
+
+    if (reading === undefined || reading.text.length < src.length) {
+        reading = { text: src, before: tokens.at(-1)?.raw.at(-1) ?? "", closers: null };
+        INLINE_TEXT_READINGS.set(tokens, reading);
+    }
+
+    return { reading, offset: reading.text.length - src.length };
+}
+
+/**
+ * Pairs the `++` marks of a masked inline text, as `marked` pairs `~~`: a
+ * `++` that can open is closed by the first right-flanking `++` after it at
+ * which every `++` between that can only open has been closed. A `++` that
+ * can both open and close closes when something is open before it. A run of
+ * one `+`, or of three or more, neither opens nor closes. One pass: the
+ * marks that can open wait on a stack with the depth of open marks they
+ * leave, and a closing mark closes every waiting one whose depth it takes the
+ * count below.
+ *
+ * @param masked - The text, masked ({@link maskedForPairing}).
+ * @returns For each `++` that can open, by its index, the index of its closing `++`.
+ */
+function underlinePairs(masked: string): Map<number, number> {
+    const closers = new Map<number, number>();
+    const waiting: Array<{ index: number; depth: number }> = [];
+    let depth = 0;
+
+    for (const run of masked.matchAll(PLUS_RUN)) {
+        if (run[0].length !== UNDERLINE_MARK_LENGTH) {
+            continue;
+        }
+
+        const before = masked.charAt(run.index - 1);
+        const after = masked.charAt(run.index + UNDERLINE_MARK_LENGTH);
+        const closes = closesUnderline(before, after);
+        const opens = opensUnderline(before, after);
+
+        if (!closes && !opens) {
+            continue;
+        }
+
+        depth += closes ? -1 : 1;
+
+        while (waiting.length > 0 && depth < waiting[waiting.length - 1]!.depth) {
+            closers.set(waiting.pop()!.index, run.index);
+        }
+
+        if (opens) {
+            waiting.push({ index: run.index, depth });
+        }
+    }
+
+    return closers;
+}
+
+/**
+ * The length of the run of `+` a text starts with.
+ *
+ * @param src - The text.
+ * @returns The number of `+` at its start.
+ */
+function leadingPlusRun(src: string): number {
+    let length = 0;
+
+    while (src.charAt(length) === "+") {
+        length += 1;
+    }
+
+    return length;
+}
+
 /**
  * `++text++` — an inline-format-style extension so nested emphasis
  * (`**++b++**`) works with no special-casing: the tokenizer recurses into its
  * inner text through `this.lexer.inlineTokens`, exactly as `marked`'s
- * built-in `strong`/`em` do.
+ * built-in `strong`/`em` do. Its marks pair as `marked` pairs GFM's `~~`: a
+ * run of exactly two `+` (an escaped `+` before it is no part of the run)
+ * opens when it is left-flanking ({@link opensUnderline}) and closes at the
+ * right-flanking run that pairs with it ({@link underlinePairs}), outside
+ * code spans, links and tags, so `C++ and C++` stays text. Like `~~` and
+ * `*`, it may stand inside a word (`a++b++c`). The pairs of an inline text
+ * are read once ({@link inlineTextReading}), so lexing stays linear.
  */
 const UNDERLINE_EXTENSION: TokenizerExtension = {
     name:  "underline",
@@ -63,18 +258,41 @@ const UNDERLINE_EXTENSION: TokenizerExtension = {
     start(src) {
         return src.indexOf("++");
     },
-    tokenizer(src) {
-        const match = /^\+\+([^+]+)\+\+/.exec(src);
+    tokenizer(src, tokens) {
+        const after = src.charAt(UNDERLINE_MARK_LENGTH);
+        // Read first, so a `++` before whitespace (`C++ and`) declines at once.
+        const mayOpen = leadingPlusRun(src) === UNDERLINE_MARK_LENGTH && !isBlankNeighbour(after);
 
-        if (match === null) {
+        if (!mayOpen) {
             return undefined;
         }
 
+        const { reading, offset } = inlineTextReading(src, tokens);
+        const before = offset > 0 ? reading.text.charAt(offset - 1) : reading.before;
+        // A `+` before the run makes it longer, unless that `+` is escaped.
+        const longerRun = before === "+" && tokens.at(-1)?.type !== "escape";
+        const opens = !longerRun && opensUnderline(before, after);
+
+        if (!opens) {
+            return undefined;
+        }
+
+        reading.closers ??= underlinePairs(maskedForPairing(reading.text, this.lexer.tokens.links));
+
+        const closerAt = reading.closers.get(offset);
+
+        if (closerAt === undefined) {
+            return undefined;
+        }
+
+        const closer = closerAt - offset;
+        const text = src.slice(UNDERLINE_MARK_LENGTH, closer);
+
         return {
             type:   "underline",
-            raw:    match[0],
-            text:   match[1],
-            tokens: this.lexer.inlineTokens(match[1]!),
+            raw:    src.slice(0, closer + UNDERLINE_MARK_LENGTH),
+            text,
+            tokens: this.lexer.inlineTokens(text),
         };
     },
 };
@@ -532,7 +750,7 @@ function htmlWithInputEndAsLineEnd(this: Tokenizer, src: string): Tokens.HTML | 
     return ended;
 }
 
-/** A pattern that matches nothing: `marked`'s unescape rule, switched off. */
+/** A pattern that matches nothing: `marked`'s unescape rules, switched off. */
 const MATCHES_NOTHING = /(?!)/gu;
 
 /**
@@ -543,10 +761,16 @@ const MATCHES_NOTHING = /(?!)/gu;
 const VIEWS_KEEPING_ESCAPES = new WeakMap<Tokenizer["rules"], Tokenizer>();
 
 /**
- * A view of the tokenizer whose `anyPunctuation` rule matches nothing, so the
- * destination, title and info string `marked` builds keep their backslash
- * escapes as written. The view shares everything else with the tokenizer,
- * through its prototype: its lexer, options and state.
+ * A view of the tokenizer whose two unescape rules match nothing, so what
+ * `marked` builds keeps its backslash escapes as written: `anyPunctuation`
+ * for a destination, title and info string, and `outputLinkReplace` for a
+ * link's or image's text. `marked` takes the backslash off each `\[` and
+ * `\]` of that text before lexing it, so an escaped pair read as a live one
+ * (`[\[x\]](/u)` held a reference `[x]` wherever `x` was defined, and the
+ * link was lost to it); kept, each escape is read by the inline lexer as
+ * CommonMark reads it, as a literal bracket. The view shares everything
+ * else with the tokenizer, through its prototype: its lexer, options and
+ * state.
  *
  * @param tokenizer - The tokenizer `marked` called.
  * @returns The view.
@@ -555,7 +779,11 @@ function keepingEscapes(tokenizer: Tokenizer): Tokenizer {
     let view = VIEWS_KEEPING_ESCAPES.get(tokenizer.rules);
 
     if (view === undefined) {
-        const rules = { ...tokenizer.rules, inline: { ...tokenizer.rules.inline, anyPunctuation: MATCHES_NOTHING } };
+        const rules = {
+            ...tokenizer.rules,
+            inline: { ...tokenizer.rules.inline, anyPunctuation: MATCHES_NOTHING },
+            other:  { ...tokenizer.rules.other, outputLinkReplace: MATCHES_NOTHING },
+        };
 
         view = Object.create(tokenizer, { rules: { value: rules } }) as Tokenizer;
         VIEWS_KEEPING_ESCAPES.set(tokenizer.rules, view);
@@ -723,7 +951,9 @@ function dialectImage(image: Tokens.Image, src: string): MdImageToken {
 /**
  * Reads every image form through `marked`'s own `link` and `reflink`
  * tokenizers: each runs `marked`'s method (the `link` slot through
- * {@link linkReadingReferences}) and, when the token it returns is an image,
+ * {@link linkReadingReferences}, the `reflink` slot on
+ * {@link keepingEscapes}'s view, so the text of either keeps its bracket
+ * escapes) and, when the token it returns is an image,
  * turns it into the dialect's `mdimage` token with any `{…}` group that
  * follows. A link, or a reference that names no definition, is returned as
  * `marked` read it.
@@ -735,7 +965,7 @@ const DIALECT_IMAGE_TOKENIZERS: TokenizerObject = {
         return token?.type === "image" ? dialectImage(token, src) as unknown as Tokens.Image : token;
     },
     reflink(src, links) {
-        const token = Tokenizer.prototype.reflink.call(this, src, links);
+        const token = Tokenizer.prototype.reflink.call(keepingEscapes(this), src, links);
 
         return token?.type === "image" ? dialectImage(token, src) as unknown as Tokens.Image : token;
     },
@@ -808,7 +1038,9 @@ function restoreListSource(list: Tokens.List, src: string): void {
  * so reads `- a` / (blank) / two spaces, a tab, `b` as code where CommonMark
  * reads a paragraph. Here each tab of a line's container prefix is written as
  * the spaces that reach its tab stop; every other tab is left to `marked`,
- * which keeps it. The `raw` of the list, its items and the containers and raw
+ * which keeps it, and a code line's text is read again from the source at
+ * the column the item's content starts at, which keeps a tab the item leaves
+ * whole. The `raw` of the list, its items and the containers and raw
  * blocks inside them are set back to the source ({@link restoreTokenSources}),
  * which the lexer and the editor's import measure with.
  *

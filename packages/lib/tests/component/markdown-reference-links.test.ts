@@ -630,7 +630,7 @@ describe('definitions edited after load: the editor shows what the save reads as
             lexicalOf(editor).dispatchCommand(PASTE_COMMAND, { clipboardData, preventDefault: () => {} } as unknown as ClipboardEvent);
         });
 
-        expect(expectShownAsSaved(editor)).toBe('[\\\\[x\\\\]\\\\[r\\\\]](u) and !\\[i\\]\\[s\\]\n\n[a]: /a\n[r]: /r\n[s]: /s');
+        expect(expectShownAsSaved(editor)).toBe('[\\[x\\]\\[r\\]](u) and !\\[i\\]\\[s\\]\n\n[a]: /a\n[r]: /r\n[s]: /s');
     });
 
     it('DEF11: undoing a removed definition shows the references as before, and later edits stay shown as saved', () => {
@@ -793,7 +793,7 @@ describe('stack fuzz round 2: references where the save could read them otherwis
     });
 });
 
-describe('bracket text in a link\'s text stays text, whatever the document defines (marked unescapes link-text brackets)', () => {
+describe('bracket text in a link\'s text stays text, whatever the document defines', () => {
     const cases: Array<[string, string]> = [
         ['a label in the full form', 'a [x][r] b'],
         ['a shortcut label', 'a [r] b'],
@@ -825,7 +825,19 @@ describe('bracket text in a link\'s text stays text, whatever the document defin
 
         update(editor, () => $referenceLinks()[0]!.getFirstChildOrThrow<TextNode>().setTextContent('a [x] b'));
 
-        expect(expectShownAsSaved(editor)).toBe('[a \\\\[x\\\\] b][r]\n\n[r]: /r\n[x]: /x');
+        expect(expectShownAsSaved(editor)).toBe('[a \\[x\\] b][r]\n\n[r]: /r\n[x]: /x');
+    });
+
+    it('a link loaded with escaped brackets naming a defined label shows as that link, and stays it once edited', () => {
+        const source = '[see \\[1\\]](/u)\n\n[1]: /one';
+        const editor = load(source);
+
+        expect(expectShownAsSaved(editor)).toBe(source);
+        expect(viewerModel(source).blocks[0]).toEqual({ kind: 'paragraph', runs: [{ kind: 'text', text: 'see [1]', marks: [], link: { href: '/u', title: null }, style: null }] });
+        update(editor, () => {
+            $dfs().map(({ node }) => node).find($isLinkNode)!.append($createTextNode(' more'));
+        });
+        expect(expectShownAsSaved(editor)).toBe('[see \\[1\\] more](/u)\n\n[1]: /one');
     });
 
     it('a link built in the editor holding a label stays text once a definition for it is added', () => {
@@ -839,7 +851,7 @@ describe('bracket text in a link\'s text stays text, whatever the document defin
         });
         retypeRawBlock(editor, '[x]: /x\n[y]: /y');
 
-        expect(expectShownAsSaved(editor)).toBe('[see \\\\[y\\\\]](https://u)\n\n[x]: /x\n[y]: /y');
+        expect(expectShownAsSaved(editor)).toBe('[see \\[y\\]](https://u)\n\n[x]: /x\n[y]: /y');
     });
 });
 

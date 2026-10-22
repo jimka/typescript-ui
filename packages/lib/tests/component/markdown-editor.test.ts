@@ -970,8 +970,8 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
             doc: '- one\n  - inner\n- three', from: 'inner', toggle: unordered, result: '- one\n\ninner\n\n- three',
         },
         {
-            name: 'a caret in an item holding a nested list takes the item out and leaves its nested list an item',
-            doc: '- one\n  - inner\n- three', from: 'one', toggle: unordered, result: 'one\n\n- - inner\n- three',
+            name: 'a caret in an item holding a nested list takes the item out and leaves the nested items in the list, one level out',
+            doc: '- one\n  - inner\n- three', from: 'one', toggle: unordered, result: 'one\n\n- inner\n- three',
         },
         {
             name: 'a caret in a numbered item nested in a bulleted list takes it out',
@@ -1173,8 +1173,8 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['X9', 'zero\n\n* one\n* two\n\nthree', 'zero', 'three', 'OL', '1. zero\n2. one\n3. two\n4. three'],
         ['X10', '- one\n\npara\n\n1. three', 'one', 'three', 'UL', '- one\n- para\n- three'],
         ['X10', '- one\n\npara\n\n1. three', 'one', 'three', 'OL', '1. one\n2. para\n3. three'],
-        ['X11', '- one\n  - inner\n\n    para\n\n  - last\n- two', 'para', null, 'UL', '- one\n  - inner\n- para\n- - last\n- two'],
-        ['X11', '- one\n  - inner\n\n    para\n\n  - last\n- two', 'para', null, 'OL', '- one\n  - inner\n\n1. para\n\n- - last\n- two'],
+        ['X11', '- one\n  - inner\n\n    para\n\n  - last\n- two', 'para', null, 'UL', '- one\n  - inner\n- para\n- last\n- two'],
+        ['X11', '- one\n  - inner\n\n    para\n\n  - last\n- two', 'para', null, 'OL', '- one\n  - inner\n\n1. para\n\n- last\n- two'],
         ['X12', '# head\n\n> quoted\n\npara', 'head', 'para', 'UL', '- head\n\n> - quoted\n\n- para'],
         ['X12', '# head\n\n> quoted\n\npara', 'head', 'para', 'OL', '1. head\n\n> 1. quoted\n\n1. para'],
         ['X13', '1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h\n9. i\n\nten', 'ten', null, 'OL', '1. a\n2. b\n3. c\n4. d\n5. e\n6. f\n7. g\n8. h\n9. i\n10. ten'],
@@ -1197,14 +1197,14 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['X33', '* one\n* two\n\n+ 1. aa\n+ bb', 'aa', null, 'UL', '* one\n* two\n* aa\n\n+ bb'],
         ['S1', '- one\n  - inner\n- three', 'inner', null, 'UL', '- one\n\ninner\n\n- three'],
         ['S1', '- one\n  - inner\n- three', 'inner', null, 'OL', '- one\n\n1. inner\n\n- three'],
-        ['S2', '- one\n  - inner\n- three', 'one', null, 'UL', 'one\n\n- - inner\n- three'],
-        ['S2', '- one\n  - inner\n- three', 'one', null, 'OL', '1. one\n\n- - inner\n- three'],
+        ['S2', '- one\n  - inner\n- three', 'one', null, 'UL', 'one\n\n- inner\n- three'],
+        ['S2', '- one\n  - inner\n- three', 'one', null, 'OL', '1. one\n\n- inner\n- three'],
         ['S3', '- one\n  - inner\n- three', 'one', 'inner', 'UL', 'one\n\ninner\n\n- three'],
         ['S3', '- one\n  - inner\n- three', 'one', 'inner', 'OL', '1. one\n2. inner\n\n- three'],
         ['S4', '- one\n  1. inner\n- three', 'inner', null, 'UL', '- one\n- inner\n- three'],
         ['S4', '- one\n  1. inner\n- three', 'inner', null, 'OL', '- one\n\ninner\n\n- three'],
-        ['S5', '- one\n  - a\n  - b\n- three', 'a', null, 'UL', '- one\n\na\n\n- - b\n- three'],
-        ['S5', '- one\n  - a\n  - b\n- three', 'a', null, 'OL', '- one\n\n1. a\n\n- - b\n- three'],
+        ['S5', '- one\n  - a\n  - b\n- three', 'a', null, 'UL', '- one\n\na\n\n- b\n- three'],
+        ['S5', '- one\n  - a\n  - b\n- three', 'a', null, 'OL', '- one\n\n1. a\n\n- b\n- three'],
         ['L1', '- one\n\n- two\n\n- three', 'two', null, 'UL', '- one\n\ntwo\n\n- three'],
         ['L1', '- one\n\n- two\n\n- three', 'two', null, 'OL', '- one\n\n1. two\n\n- three'],
         ['L2', '- one\n\n- two', 'one', 'two', 'UL', 'one\n\ntwo'],
@@ -1224,8 +1224,8 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['M11', '- one\n\n  > quoted\n\n- two', 'quoted', null, 'OL', '- one\n\n  > 1. quoted\n\n- two'],
         ['M16', '- # Foo\n- bar', 'Foo', null, 'UL', 'Foo\n\n- bar'],
         ['M16', '- # Foo\n- bar', 'Foo', null, 'OL', '1. Foo\n\n- bar'],
-        ['M19', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'second', null, 'UL', '- one\n\n- second\n\n- - inner\n\n  after\n\n- two'],
-        ['M19', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'second', null, 'OL', '- one\n\n1. second\n\n- - inner\n\n  after\n\n- two'],
+        ['M19', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'second', null, 'UL', '- one\n\n- second\n\n- inner\n\n  after\n\n- two'],
+        ['M19', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'second', null, 'OL', '- one\n\n1. second\n\n- inner\n\n  after\n\n- two'],
         ['M21', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'after', null, 'UL', '- one\n\n  second\n\n  - inner\n\n- after\n\n- two'],
         ['M21', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'after', null, 'OL', '- one\n\n  second\n\n  - inner\n\n1. after\n\n- two'],
         ['M23', '- a\n  - b\n\n  c\n\n- d', 'c', null, 'UL', '- a\n  - b\n\n- c\n\n- d'],
@@ -1304,19 +1304,19 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         // The code block leaves the list, as in the E24 rows; its tab is kept.
         ['E38', '- one\n\n  ```\n  a\tb\n  ```\n\n- two', 'one', null, 'UL', 'one\n\n```\na\tb\n```\n\n- two'],
         // What a list item holds after its text, a task item or a nested list among it, leaves the list with the text.
-        ['T9', '- [ ] one\n  - inner\n- three', 'one', null, 'UL', '\\[ \\] one\n\n- - inner\n- three'],
-        ['T9', '- [ ] one\n  - inner\n- three', 'one', null, 'OL', '1. [ ] one\n\n- - inner\n- three'],
+        ['T9', '- [ ] one\n  - inner\n- three', 'one', null, 'UL', '\\[ \\] one\n\n- inner\n- three'],
+        ['T9', '- [ ] one\n  - inner\n- three', 'one', null, 'OL', '1. [ ] one\n\n- inner\n- three'],
         ['T14', '- [ ] one\n\n  second\n\n- [x] two', 'one', null, 'UL', '\\[ \\] one\n\nsecond\n\n- [x] two'],
         ['T14', '- [ ] one\n\n  second\n\n- [x] two', 'one', null, 'OL', '1. [ ] one\n\n   second\n\n- [x] two'],
         ['T14', '- [ ] one\n\n  second\n\n- [x] two', 'one', null, 'h2', '## \\[ \\] one\n\nsecond\n\n- [x] two'],
         ['T14', '- [ ] one\n\n  second\n\n- [x] two', 'one', null, 'code', '```\n[ ] one\n```\n\nsecond\n\n- [x] two'],
-        ['T16', '- [x] one\n  - [ ] inner\n- two', 'one', null, 'UL', '\\[x\\] one\n\n- - [ ] inner\n- two'],
-        ['T16', '- [x] one\n  - [ ] inner\n- two', 'one', null, 'OL', '1. [x] one\n\n- - [ ] inner\n- two'],
+        ['T16', '- [x] one\n  - [ ] inner\n- two', 'one', null, 'UL', '\\[x\\] one\n\n- [ ] inner\n- two'],
+        ['T16', '- [x] one\n  - [ ] inner\n- two', 'one', null, 'OL', '1. [x] one\n\n- [ ] inner\n- two'],
         ['X23', '* one\n\n* two\n\n  held\n\n1) three\n\nlast', 'two', null, 'OL', '* one\n\n1) two\n\n   held\n\n2) three\n\nlast'],
         ['X24', '1. one\n\n   held\n\n* two\n* three', 'one', null, 'UL', '* one\n\n  held\n\n* two\n\n* three'],
         ['X25', 'zero\n\n1. one\n\n   held\n\n* two', 'zero', 'one', 'UL', '* zero\n\n* one\n\n  held\n\n* two'],
-        ['S6', '- o\n  - m\n    - x\n      - n\n    - y\n  - k', 'x', null, 'UL', '- o\n  - m\n\nx\n\n- - n\n  - y\n  - k'],
-        ['S6', '- o\n  - m\n    - x\n      - n\n    - y\n  - k', 'x', null, 'OL', '- o\n  - m\n\n1. x\n\n- - n\n  - y\n  - k'],
+        ['S6', '- o\n  - m\n    - x\n      - n\n    - y\n  - k', 'x', null, 'UL', '- o\n  - m\n\nx\n\n- n\n- y\n- k'],
+        ['S6', '- o\n  - m\n    - x\n      - n\n    - y\n  - k', 'x', null, 'OL', '- o\n  - m\n\n1. x\n\n- n\n- y\n- k'],
         ['M1', '- one\n\n  second\n\n- two', 'one', null, 'UL', 'one\n\nsecond\n\n- two'],
         ['M1', '- one\n\n  second\n\n- two', 'one', null, 'OL', '1. one\n\n   second\n\n- two'],
         ['M1', '- one\n\n  second\n\n- two', 'one', null, 'paragraph', 'one\n\nsecond\n\n- two'],
@@ -1346,19 +1346,19 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['M15', '- one\n\n  ```\n  code\n  ```\n\n- two', 'one', null, 'h2', '## one\n\n```\ncode\n```\n\n- two'],
         ['M17', '- # Foo\n\n  para\n\n- bar', 'Foo', null, 'UL', 'Foo\n\npara\n\n- bar'],
         ['M17', '- # Foo\n\n  para\n\n- bar', 'Foo', null, 'OL', '1. Foo\n\n   para\n\n- bar'],
-        ['M18', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'one', null, 'UL', 'one\n\nsecond\n\n- - inner\n\n  after\n\n- two'],
-        ['M18', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'one', null, 'OL', '1. one\n\n   second\n\n- - inner\n\n  after\n\n- two'],
-        ['M18', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'one', null, 'h2', '## one\n\nsecond\n\n- - inner\n\n  after\n\n- two'],
+        ['M18', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'one', null, 'UL', 'one\n\nsecond\n\n- inner\n\n  after\n\n- two'],
+        ['M18', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'one', null, 'OL', '1. one\n\n   second\n\n- inner\n\n  after\n\n- two'],
+        ['M18', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'one', null, 'h2', '## one\n\nsecond\n\n- inner\n\n  after\n\n- two'],
         ['M20', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'inner', null, 'UL', '- one\n\n  second\n\ninner\n\nafter\n\n- two'],
         ['M20', '- one\n\n  second\n\n  - inner\n\n  after\n\n- two', 'inner', null, 'OL', '- one\n\n  second\n\n1. inner\n\n   after\n\n- two'],
         ['M22', '- a\n  - b\n\n  c\n\n- d', 'b', null, 'UL', '- a\n\nb\n\nc\n\n- d'],
         ['M22', '- a\n  - b\n\n  c\n\n- d', 'b', null, 'OL', '- a\n\n1. b\n\n   c\n\n- d'],
         ['M22', '- a\n  - b\n\n  c\n\n- d', 'b', null, 'h2', '- a\n\n## b\n\nc\n\n- d'],
-        ['M24', '- o\n  - x\n    - n\n  - y\n\n  t\n\n- z', 'x', null, 'UL', '- o\n\nx\n\n- - n\n  - y\n\n  t\n\n- z'],
-        ['M24', '- o\n  - x\n    - n\n  - y\n\n  t\n\n- z', 'x', null, 'OL', '- o\n\n1. x\n\n- - n\n  - y\n\n  t\n\n- z'],
-        ['M24', '- o\n  - x\n    - n\n  - y\n\n  t\n\n- z', 'x', null, 'h2', '- o\n\n## x\n\n- - n\n  - y\n\n  t\n\n- z'],
-        ['M25', '- o\n  - x\n\n    p\n\n  - y\n- z', 'x', null, 'UL', '- o\n\nx\n\np\n\n- - y\n- z'],
-        ['M25', '- o\n  - x\n\n    p\n\n  - y\n- z', 'x', null, 'OL', '- o\n\n1. x\n\n   p\n\n- - y\n- z'],
+        ['M24', '- o\n  - x\n    - n\n  - y\n\n  t\n\n- z', 'x', null, 'UL', '- o\n\nx\n\n- n\n\n- y\n\n  t\n\n- z'],
+        ['M24', '- o\n  - x\n    - n\n  - y\n\n  t\n\n- z', 'x', null, 'OL', '- o\n\n1. x\n\n- n\n\n- y\n\n  t\n\n- z'],
+        ['M24', '- o\n  - x\n    - n\n  - y\n\n  t\n\n- z', 'x', null, 'h2', '- o\n\n## x\n\n- n\n\n- y\n\n  t\n\n- z'],
+        ['M25', '- o\n  - x\n\n    p\n\n  - y\n- z', 'x', null, 'UL', '- o\n\nx\n\np\n\n- y\n- z'],
+        ['M25', '- o\n  - x\n\n    p\n\n  - y\n- z', 'x', null, 'OL', '- o\n\n1. x\n\n   p\n\n- y\n- z'],
         ['M26', '- one\n\n  > q\n\n  | h |\n  | --- |\n  | c |\n\n  ::: {align=center}\n  f\n  :::\n\n- two', 'one', null, 'UL', 'one\n\n> q\n\n| h |\n| --- |\n| c |\n\n::: {align=center}\nf\n:::\n\n- two'],
         ['M26', '- one\n\n  > q\n\n  | h |\n  | --- |\n  | c |\n\n  ::: {align=center}\n  f\n  :::\n\n- two', 'one', null, 'OL', '1. one\n\n   > q\n\n   | h |\n   | --- |\n   | c |\n\n   ::: {align=center}\n   f\n   :::\n\n- two'],
         ['M27', '- one\n\n  ---\n\n- two', 'one', null, 'UL', 'one\n\n---\n\n- two'],
@@ -1376,9 +1376,9 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['C3', '::: columns\n- one\n\n  second\n\n- two\n|||\nRight\n:::', 'one', null, 'OL', '::: columns\n1. one\n\n   second\n\n- two\n|||\nRight\n:::'],
         // A task item's marker re-opens a plain item, so a block or nested item inside a task item that more of the item
         // follows is rows of their own — the item's own text is rows T9, T14 and T16.
-        ['T19', '- [x] alpha\n  - beta\n  - gamma\n- delta', 'beta', null, 'UL', '- [x] alpha\n\nbeta\n\n- - gamma\n- delta'],
-        ['T19', '- [x] alpha\n  - beta\n  - gamma\n- delta', 'beta', null, 'OL', '- [x] alpha\n\n1. beta\n\n- - gamma\n- delta'],
-        ['T19', '- [x] alpha\n  - beta\n  - gamma\n- delta', 'beta', null, 'h2', '- [x] alpha\n\n## beta\n\n- - gamma\n- delta'],
+        ['T19', '- [x] alpha\n  - beta\n  - gamma\n- delta', 'beta', null, 'UL', '- [x] alpha\n\nbeta\n\n- gamma\n- delta'],
+        ['T19', '- [x] alpha\n  - beta\n  - gamma\n- delta', 'beta', null, 'OL', '- [x] alpha\n\n1. beta\n\n- gamma\n- delta'],
+        ['T19', '- [x] alpha\n  - beta\n  - gamma\n- delta', 'beta', null, 'h2', '- [x] alpha\n\n## beta\n\n- gamma\n- delta'],
         ['T20', '- [x] alpha\n\n  beta\n\n  gamma\n- delta', 'beta', null, 'UL', '- [x] alpha\n\n- beta\n\n  gamma\n\n- delta'],
         ['T20', '- [x] alpha\n\n  beta\n\n  gamma\n- delta', 'beta', null, 'OL', '- [x] alpha\n\n1. beta\n\n   gamma\n\n- delta'],
         ['T20', '- [x] alpha\n\n  beta\n\n  gamma\n- delta', 'beta', null, 'h2', '- [x] alpha\n\n  ## beta\n\n  gamma\n\n- delta'],
@@ -1408,7 +1408,7 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         // block before it in the item.
         ['E24', '- one\n\n\tsecond\n- two', 'one', null, 'UL', 'one\n\nsecond\n\n- two'],
         ['E24', '- one\n\n\tsecond\n- two', 'one', null, 'h2', '## one\n\nsecond\n\n- two'],
-        ['E27', '- one\n\t- nested\n- two', 'one', null, 'UL', 'one\n\n- - nested\n- two'],
+        ['E27', '- one\n\t- nested\n- two', 'one', null, 'UL', 'one\n\n- nested\n- two'],
         // Text opening with an unescaped `[ ] `, which a new item would read as a task marker (the editor writes
         // `\\[ \\]`), and the block before such text in a list item, which the item's marker would re-open as one.
         ['E28', '- aa\n- bb\n\n[ ] mid', 'mid', null, 'UL', '- aa\n- bb\n- \\[ \\] mid'],
@@ -3007,8 +3007,8 @@ describe('MarkdownEditor source-mode line commands read the viewer\'s blocks', (
             run: (editor) => editor.setBlockType('h2'), result: '## a\n\nb',
         },
         {
-            name: 'a quote from a list item keeps its nested list in the item', doc: '- a\n  - b\n- c', select: [2, 2],
-            run: (editor) => editor.setBlockType('quote'), result: '> a\n\n- - b\n- c',
+            name: 'a quote from a list item leaves its nested items in the list, one level out', doc: '- a\n  - b\n- c', select: [2, 2],
+            run: (editor) => editor.setBlockType('quote'), result: '> a\n\n- b\n- c',
         },
         {
             name: 'a code block from a list item takes the item\'s indented content along', doc: '10. a\n\n    b', select: [4, 4],
@@ -8302,12 +8302,12 @@ describe('MarkdownEditor link, format and paste command fixes', () => {
 
     describe('D: a command declined after trying puts back all the selection carried', () => {
         const CASES: Array<{ name: string; markdown: string; text: string; offset: number; run: (editor: MarkdownEditor) => void; pending?: boolean }> = [
-            { name: 'D1: toggleUnderline() over a plus', markdown: '**a+b** x', text: 'a+b', offset: 1, run: (editor) => editor.toggleUnderline() },
+            { name: 'D1: toggleUnderline() in code between letters', markdown: 'x`(a)`b', text: '(a)', offset: 1, run: (editor) => editor.toggleUnderline() },
             { name: 'D2: setTextColor() over a bracket', markdown: '**a]b** x', text: 'a]b', offset: 1, run: (editor) => editor.setTextColor('#f00') },
             { name: 'D3: toggleBold() in code beside parentheses', markdown: 'x`(a)`b', text: '(a)', offset: 1, run: (editor) => editor.toggleBold() },
             { name: 'D4: toggleLink() with a URL holding a line break', markdown: 'hello world', text: 'hello world', offset: 8, run: (editor) => editor.toggleLink('a\nb') },
             {
-                name: 'D5: D1 with a format and a style pending at the caret', markdown: '**a+b** x', text: 'a+b', offset: 1,
+                name: 'D5: D1 with a format and a style pending at the caret', markdown: 'x`(a)`b', text: '(a)', offset: 1,
                 run: (editor) => editor.toggleUnderline(), pending: true,
             },
         ];
@@ -8347,16 +8347,16 @@ describe('MarkdownEditor link, format and paste command fixes', () => {
             });
         }
 
-        /** Runs `run` at a range over `a+b`, which no format can be saved on, and checks it changed and reported nothing. */
+        /** Runs `run` at a range over code between two letters, which underline cannot be saved on, and checks it changed and reported nothing. */
         function expectRangeLeftAlone(run: (editor: MarkdownEditor) => void): void {
-            const editor = editorOf('a+b x');
+            const editor = editorOf('x`(a)`b');
 
-            selectFromCode(editor, 'a+b x', 0, 'a+b x', 3);
+            selectFromCode(editor, '(a)', 0, '(a)', 3);
 
             const place = selectionPlaceOf(editor);
-            const untouched = editorOf('a+b x');
+            const untouched = editorOf('x`(a)`b');
 
-            selectFromCode(untouched, 'a+b x', 0, 'a+b x', 3);
+            selectFromCode(untouched, '(a)', 0, '(a)', 3);
 
             const undoDepth = undoDepthOf(untouched);
             const reported = vi.fn();
@@ -8365,13 +8365,13 @@ describe('MarkdownEditor link, format and paste command fixes', () => {
             editor.on('selectionstate', reported);
             run(editor);
 
-            expect(editor.getValue()).toBe('a+b x');
+            expect(editor.getValue()).toBe('x`(a)`b');
             expect(selectionPlaceOf(editor)).toBe(place);
             expect(reported).not.toHaveBeenCalled();
             expect(undoDepthOf(editor)).toBe(undoDepth);
         }
 
-        it('D6: toggleUnderline() over a range holding a plus is left as it was (control)', () => {
+        it('D6: toggleUnderline() over a range of code between letters is left as it was (control)', () => {
             expectRangeLeftAlone((editor) => editor.toggleUnderline());
         });
 

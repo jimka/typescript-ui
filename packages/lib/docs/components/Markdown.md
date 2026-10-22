@@ -50,7 +50,7 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | `\` or two trailing spaces at a line end | `<br>` — a hard line break; a plain line end inside a paragraph is a soft break and the lines flow together |
 | `**bold**`, `*italic*` | `<strong>`, `<em>` |
 | `~~struck~~` | `<del>` |
-| `++underlined++` | `<u>` |
+| `++underlined++` | `<u>`: its `++` marks pair as `~~` does, so `C++ and C++` stays text and `a++b++c` underlines `b`. |
 | `[text]{color=... font=... size=...}` | `<span>` with the resolved, validated style — see [Extension syntax](#extension-syntax) |
 | `` `inline code` `` | `<code>` |
 | fenced ```` ``` ```` block | `<pre>` › `<code>` (literal text, newlines preserved), or a syntax-highlighted `CodeEditor` for a supported language — see [Syntax highlighting](#syntax-highlighting-in-fenced-code-blocks) |
@@ -58,7 +58,7 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | `- [ ] task`, `- [x] done` | an `<li>` whose text — in a loose list, whose first paragraph — starts with a read-only checkbox (`role="checkbox"`), checked for `[x]` and `[X]`; the marker needs text after it on its line |
 | `> quote` | `<blockquote>` |
 | `---`, `***` or `___` | `<hr>` — a horizontal rule, also in a list item, a quote and a `:::` column |
-| `[text](url)` | `<a href target="_blank" rel="noopener noreferrer">`; a link written around a link (`[[a](/in)](/out)`) is no link, and its brackets and destination show as text around the inner link |
+| `[text](url)` | `<a href target="_blank" rel="noopener noreferrer">`; a link written around a link (`[[a](/in)](/out)`) is no link, and its brackets and destination show as text around the inner link; an escaped bracket in its text is text (`[see \[1\]](/u)` is one link even where `[1]` is defined) |
 | `[text][label]`, `[label][]`, `[label]` | `<a>` whose href is the matching reference definition's URL; labels match by Unicode case folding with outer spaces ignored, and an undefined label renders as literal text |
 | `[label]: url "title"` | nothing — the definition only supplies a URL, wherever it sits (top level, blockquote, list item, `:::` fence) |
 | `&copy;`, `&amp;`, `&#35;`, `&#x23;` | the character the reference names (`©`, `&`, `#`) — in text, a link's or an image's destination and title, an image's alt text, and a code fence's info string; a name the HTML list does not hold (`&notaname;`), a name without its `;` (`&copy`), and any reference in a code span, a code block, an autolink, an HTML block, an HTML tag's attributes, or the text between an inline `<code>`, `<pre>`, `<kbd>` or `<script>` tag and its end tag are shown as typed |
@@ -95,7 +95,9 @@ A tab in a line's indentation counts as CommonMark counts it: it reaches the nex
 
 A tab after the first character of a line's text is kept as a tab: in a paragraph, a code span, a code block and an HTML block, inside a list item as well. A marker character that starts a line counts as a marker when tabs are counted, wherever the line stands: on a paragraph continuation line such as `-→-→b c` the tabs are read as the spaces to their stop, which changes only the whitespace they stand for in that paragraph.
 
-One reading differs from CommonMark. Inside a list item or a blockquote, a tab in the leading run of spaces, tabs, `>` markers and list markers of a code or HTML line is shown as the spaces that reach its tab stop. `··→bb` in a fenced code block of a `- ` item shows as `··bb`, and `··-→old` shows as `-·old`. CommonMark keeps both tabs.
+A code line inside a list item or a blockquote reads from the column the container's content starts at, as CommonMark reads it. A tab the container leaves whole stays a tab in the code, and a tab the container cuts across reads as the columns left of it, as spaces. `··→bb` in a fenced code block of a `- ` item is the code line `→bb`, `··-→old` is `-→old`, and `·→bb` is `··bb`.
+
+One reading differs from CommonMark. A line without `>` indented as code after a heading in a quote is read into the quote as its code, where CommonMark ends the quote before it; the tabs of such a line show as the spaces that reach their tab stops. A tab in the leading run of an HTML line inside a list item or a blockquote is likewise shown as the spaces that reach its tab stop.
 
 ### Link resolution
 
@@ -144,7 +146,7 @@ the reader actually scrolls to.
 
 ### Extension syntax
 
-CommonMark and GFM have no syntax for underline, colour, font, size, table column widths, merged table cells, block alignment, or column regions, so the dialect adds a small extension syntax of its own — `++text++` for underline, `[text]{key=value ...}` for a coloured/sized/font-styled span, a delimiter cell's trailing `{width=240}` for a column width, a body cell's `<<` / `^^` for a merge continuation, and `::: {align=... gap=...}` … `:::` for a block-level fence wrapping one or more explicit column regions. `MarkdownEditor` produces the same syntax when a document is edited, so a document round-trips between the two components unchanged.
+CommonMark and GFM have no syntax for underline, colour, font, size, table column widths, merged table cells, block alignment, or column regions, so the dialect adds a small extension syntax of its own — `++text++` for underline (its marks pair by the flanking rules GFM uses for `~~`: a run of exactly two `+` opens only when no whitespace follows it and closes only when none precedes it, with the punctuation half of that rule too: `x++(a)++y` is text, and `Use C++ or C++20.` shows its plus signs), `[text]{key=value ...}` for a coloured/sized/font-styled span, a delimiter cell's trailing `{width=240}` for a column width, a body cell's `<<` / `^^` for a merge continuation, and `::: {align=... gap=...}` … `:::` for a block-level fence wrapping one or more explicit column regions. `MarkdownEditor` produces the same syntax when a document is edited, so a document round-trips between the two components unchanged.
 
 Inside a `:::` fence, a line whose trimmed form is exactly `|||` ends one column region and starts the next — the number of columns is simply the number of `|||`-separated sections, so it can never disagree with what the editor shows. A `|||` line only counts at the fence's own nesting level: inside a nested `:::` fence, or inside a fenced code block (which ends only at its own closing fence, so a ```` ``` ```` line inside a ```` ```` ```` block is still code), it is ordinary content. A line that is the separator preceded by a backslash (`\|||`) is unescaped to a literal `|||` line of content instead of splitting — the escape a paragraph whose text is literally `|||` needs to round-trip correctly. The exporter writes the keyword `columns` in the opening line whenever a region has more than one column (`::: columns`, or `::: columns {gap=2em}` with attributes); the keyword carries no value and both parsers ignore it — it exists only so a two-column region with no attributes still has a non-empty opening line. Any other text on the opening line outside its first `{…}` group — the `tip Title` of `::: tip Title` — is ignored the same way: the fence renders as a plain region, not as a titled callout. `MarkdownEditor` keeps that text as written when it saves the fence.
 

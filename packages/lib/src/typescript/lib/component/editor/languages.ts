@@ -25,6 +25,7 @@ import { registerLanguage } from "~/component/editor/LanguageRegistry.js";
 import type { LanguageOptions } from "~/component/editor/LanguageRegistry.js";
 import { formatWithPrettier } from "~/component/editor/formatters/prettier.js";
 import { formatWithSql } from "~/component/editor/formatters/sql.js";
+import { keepingRenumberedItemContent } from "~/component/editor/markdownItemRenumbering.js";
 import { atMarkdownTabStops } from "~/component/editor/markdownTabStopCommands.js";
 import type { SyntaxNode } from "~/component/editor/markdownTabStopCommands.js";
 import { MARKDOWN_TAB_STOPS, readQuoteContinuationTabs } from "~/component/editor/markdownTabStops.js";
@@ -209,7 +210,7 @@ function indentInsideMarkdownHtml(context: TreeIndentContext): number | null {
  * from the ancestors of the syntax node in front of the caret.
  */
 type CaretBlocks = {
-    /** Inside a fenced or an indented code block. */
+    /** Inside a fenced or an indented code block, or in the indentation of an indented one's first line. */
     code: boolean;
     /** Inside an HTML block or an HTML comment block. */
     htmlBlock: boolean;
@@ -253,7 +254,40 @@ function caretBlocksAt(state: EditorState, pos: number): CaretBlocks {
         }
     }
 
+    blocks.code = blocks.code || inIndentedCodeFirstIndentation(state, pos);
+
     return blocks;
+}
+
+/**
+ * Whether a caret stands in the indentation of an indented code block's
+ * first line, with only spaces and tabs between it and the code's text. The
+ * block's node starts where its four columns of indentation end, or after a
+ * tab that crosses that column, so the node in front of such a caret is
+ * outside the block, also where Home puts the caret, in front of the text. On
+ * the block's later lines the node holds the indentation, so with this test
+ * Enter acts on the first line as on them: the whole line moves down.
+ *
+ * @param state - The editor state.
+ * @param pos - The caret position.
+ * @returns `true` when only spaces and tabs stand between the caret and the first line of an indented code block.
+ */
+function inIndentedCodeFirstIndentation(state: EditorState, pos: number): boolean {
+    const line      = state.doc.lineAt(pos);
+    const rest      = line.text.slice(pos - line.from);
+    const textStart = pos + rest.search(/[^ \t]|$/);
+
+    if (textStart === line.to) {
+        return false;
+    }
+
+    for (let node: SyntaxNode | null = syntaxTree(state).resolveInner(textStart, 1); node; node = node.parent) {
+        if (node.name === "CodeBlock") {
+            return node.from >= pos;
+        }
+    }
+
+    return false;
 }
 
 /**
@@ -333,7 +367,8 @@ function isBetweenPair(state: EditorState, pos: number): boolean {
  * Decides whether insertNewlineKeepPrefix handles Enter for a selection
  * range, and with which prefix. It does in four places:
  *
- * 1. in a code block, fenced or indented, at any depth;
+ * 1. in a code block, fenced or indented, at any depth, the indentation of
+ *    an indented block's first line included;
  * 2. inside HTML that sits in a blockquote or list item, with HTML on both
  *    sides of the range;
  * 3. at the end of an HTML block in a blockquote or list item, on a line
@@ -625,14 +660,16 @@ registerLanguage({
 
         // Markdown's own Enter and Backspace, bound here in place of
         // markdown()'s keymap (addKeymap: false) so they count a tab as
-        // Markdown does (see atMarkdownTabStops). insertNewlineKeepPrefix is
+        // Markdown does (see atMarkdownTabStops), and so Enter keeps the
+        // content of the items it renumbers (see
+        // keepingRenumberedItemContent). insertNewlineKeepPrefix is
         // tried first: in an indented code block and at the end of an HTML
         // block Markdown's own command takes the key and drops the line's
         // indentation. Prec.high puts all three ahead of the editor's
         // bindings, where markdown() puts its own keymap.
         const markdownKeys = keymap.of([
             { key: "Enter", run: insertNewlineKeepPrefix(support.language) },
-            { key: "Enter", run: atMarkdownTabStops(insertNewlineContinueMarkup) },
+            { key: "Enter", run: keepingRenumberedItemContent(atMarkdownTabStops(insertNewlineContinueMarkup)) },
             { key: "Backspace", run: atMarkdownTabStops(deleteMarkupBackward) },
         ]);
 

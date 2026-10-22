@@ -452,7 +452,7 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
         ['> x [a \\]¦ b](/u) y', '[[x ‹a ]¦ b› y]]'],
         ['> x [**a** \\] `c¦d` e](/u) y', '[[x ‹{1:a} ] {16:c¦d} e› y]]'],
         ['> [![i](u.png) \\[¦b](/u) c', '[[‹<markdown-image> [¦b› c]]'],
-    ])('SP11: a link text that holds an escaped bracket, which `marked` reads without its backslash, has its source found: %j', (marked, expected) => {
+    ])('SP11: a link text that holds an escaped bracket has its source found: %j', (marked, expected) => {
         expect(placeOf(marked)).toBe(expected);
     });
 
@@ -724,6 +724,26 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
     // The offsets right before that `>` (`- > a\\\n  ¦>  cd`, `1. > a\\\n   ¦>  cd`) give a place after the break, against the
     // rule: a known issue, left as it is, and not tested here. The code block rows only pin the answer: a code block in
     // a list item is placed by its own text, whatever its line starts with.
+    // A code line inside a list item or quote that starts with a tab shows that tab (or, where the container cuts it,
+    // the columns left of it as spaces), so its source is found and the blocks around it keep their places.
+    it.each<[string, string | null]>([
+        ['¦- one\n\n  ```\n  aa\n  \tbb\n  ```', '[[[¦one][aa\n\tbb]]]'],
+        ['- one¦\n\n  ```\n  aa\n  \tbb\n  ```', '[[[one¦][aa\n\tbb]]]'],
+        ['- one\n\n  ```\n  aa\n  ¦\tbb\n  ```', '[[[one][aa\n¦\tbb]]]'],
+        ['- one\n\n  ```\n  aa\n  \t¦bb\n  ```', '[[[one][aa\n\t¦bb]]]'],
+        ['- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- tw¦o', '[[[one][aa\n\tbb]][[tw¦o]]]'],
+        ['- a\n\n  ```\n  -\t¦old\n  ```', '[[[a][-\t¦old]]]'],
+        ['> ```\n> \tb¦b\n> ```', '[[\tb¦b]]'],
+        ['¦- one\n\n  ```\n  aa\n \tbb\n  ```', '[[[¦one][aa\n  bb]]]'],
+        ['- one\n\n  ```\n  aa\n ¦\tbb\n  ```', '[[[one][aa\n¦  bb]]]'],
+        ['- one\n\n  ```\n  aa\n \t¦bb\n  ```', '[[[one][aa\n  ¦bb]]]'],
+        ['¦- a\n\n\t\tcode', '[[[¦a][  code]]]'],
+        ['- a\n\n\t\tco¦de', '[[[a][  co¦de]]]'],
+        [' ```\n\tx¦\n ```', '[   x¦]'],
+    ])('a code line in a list item or quote that starts with a tab has its source found: %j', (marked, expected) => {
+        expect(placeOf(marked)).toBe(expected);
+    });
+
     it.each<[string, string | null]>([
         ['- > a\\\n ¦ >  cd', '[[[[a¦⏎cd]]]]'],
         ['1. > a\\\n ¦  >  cd', '[[[[a¦⏎cd]]]]'],
@@ -916,9 +936,9 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
     }, 120_000);
 
     // A tab document reads as its spaces form (the container prefix's tabs written as the spaces they stand for), so
-    // an offset has a place in one exactly when it has one in the other. The documents left out hold a code, HTML,
-    // task or table block, whose text shows the spaces a tab stands for (rows T30 to T33), or a line of markers and
-    // tabs that is text (row T42).
+    // an offset has a place in one exactly when it has one in the other. The documents left out hold a code block,
+    // whose text keeps a tab that the spaces form writes as spaces (rows T30 to T33), an HTML, task or table block,
+    // whose text shows the spaces a tab stands for, or a line of markers and tabs that is text (row T42).
     it('SP20: over the generated tab documents, the places agree with the spaces form', () => {
         const differing: string[] = [];
 
@@ -995,10 +1015,10 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
             const labels = [...text.matchAll(/^\s*\[([^\]]+)\]:/gm)].map((match) => match[1]);
             const repeatsLabel = new Set(labels).size < labels.length;
 
-            // A code or HTML line of an item whose prefix holds a tab shows the tab as the spaces to its stop (rows T30 to T33),
-            // in a fence, a tag, or after a run of blanks that holds a tab and goes on: `- foo`, a blank line, two tabs.
+            // An HTML line of an item whose prefix holds a tab shows the tab as the spaces to its stop, in a tag, or after a
+            // run of blanks that holds a tab and goes on: `- foo`, a blank line, two tabs. (A fenced code line keeps its tab.)
             const hasPrefixTab = prefixTabLines(text.split('\n')).some(Boolean);
-            const holdsCodeWithPrefixTab = hasPrefixTab && (text.includes('```') || /<\/?(?:div|pre)>/.test(text) || /^[ >]*(?:(?:[-*+]|\d+[.)])\t[ \t]+|[ ]*\t[ ]*\t[ \t]*)\S/m.test(text));
+            const holdsCodeWithPrefixTab = hasPrefixTab && (/<\/?(?:div|pre)>/.test(text) || /^[ >]*(?:(?:[-*+]|\d+[.)])\t[ \t]+|[ ]*\t[ ]*\t[ \t]*)\S/m.test(text));
 
             // A paragraph line made of markers and tabs (row T42) shows its tabs as the spaces they are read as.
             const holdsMarkerLine = /^[ \t]*-\t-\t*$/m.test(text);

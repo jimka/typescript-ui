@@ -2,7 +2,7 @@
 
 import { $findMatchingParent, $isElementNode, $isLineBreakNode, $isTextNode } from "lexical";
 import type { ElementNode, LexicalNode, TextNode } from "lexical";
-import type { Token, Tokens } from "marked";
+import type { Tokens } from "marked";
 import { $isCodeNode } from "@lexical/code";
 import { $isListItemNode } from "@lexical/list";
 import { $isTableCellNode, $isTableNode, $isTableRowNode } from "@lexical/table";
@@ -10,12 +10,13 @@ import type { TableNode } from "@lexical/table";
 import { $dfs } from "@lexical/utils";
 import { COLUMN_SEPARATOR, lineEndAt } from "~/component/display/markdownAttributes.js";
 import { lexMarkdownLinkDefinitions } from "~/component/display/markdownExtensions.js";
+import { MARKDOWN_TAB_STOP, tabWidthAt } from "~/component/display/markdownTabs.js";
 import { $isMarkdownTaskCheckboxNode } from "~/component/editor/markdownTaskCheckboxNode.js";
 import { $isMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
 import type { MarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
 import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import type { MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
-import { analyzeMarkdownSource, contentOffset, MARK_LETTERS } from "~/component/editor/markdownSourceTokens.js";
+import { analyzeMarkdownSource, MARK_LETTERS } from "~/component/editor/markdownSourceTokens.js";
 import type { SourceAnalysis, SourceBlockNode, SourceEntry, SourceInline } from "~/component/editor/markdownSourceTokens.js";
 
 /**
@@ -155,13 +156,11 @@ export type BetweenBlocksPlace = "next" | "previous" | "none";
  * nothing, and where the block holds, beside the offset or after it,
  * something whose source is not found ({@link $placeAmongUnits}): what
  * the lexer hands back otherwise than the source holds it. Those are a
- * tab in the container prefix of a code line or an HTML line, or of a
- * paragraph line made of list markers and tabs, which shows as the spaces the
- * tab stands for; a task item's checkbox written with more than one space
+ * tab in the container prefix of an HTML line, of a code line `marked` reads
+ * into a quote that CommonMark ends (a lazy line), or of a paragraph line made
+ * of list markers and tabs, which shows as the spaces the tab stands for; a task item's checkbox written with more than one space
  * after it in a list whose items stand apart, whose blanks the lexer drops; a list item's text that begins as a link reference definition
- * repeating a label, which the lexer drops. (A link text holding
- * an escaped bracket is such text too, and its source is found another way:
- * {@link leavesOfUnescapedLinks}.)
+ * repeating a label, which the lexer drops.
  *
  * @param text - The Markdown the block was built of, with the blocks beside it.
  * @param offset - The offset in `text`.
@@ -715,10 +714,8 @@ function locateByEntries(walk: UnitWalk, analysis: SourceAnalysis, length: numbe
 
     const from = first?.entryStart ?? 0;
     const to = last?.entryEnd ?? 0;
-    const inLinks = leavesOfUnescapedLinks(walk, analysis);
-
     for (let index = from; index < to && !walk.isLost; index += 1) {
-        const entry = inLinks.get(analysis.entries[index]!) ?? analysis.entries[index]!;
+        const entry = analysis.entries[index]!;
         const isBreak = showsAsCellParagraphBreak(walk, analysis.entries, index);
 
         if (isBreak) {
@@ -732,131 +729,6 @@ function locateByEntries(walk: UnitWalk, analysis: SourceAnalysis, length: numbe
 
     locateUnclaimedRawBlocks(walk);
     locateUnclaimedEmptySources(walk);
-}
-
-/**
- * The leaves of the links whose text the analysis does not find, each with
- * its source found. `marked` takes the backslash off an escaped bracket in
- * a link's text before it reads that text, so the tokens of the text are
- * not in the source as they stand and the analysis leaves them without
- * offsets. The text is in the source all the same, after the link's `[`,
- * with those backslashes in it ({@link offsetsOfLinkText}), and each
- * leaf's place in the text follows from its tokens ({@link leafSpans}).
- *
- * @param walk - The block's units; takes the links as found.
- * @param analysis - The analysis of the block's Markdown.
- * @returns For each such leaf, the leaf with its source offsets.
- */
-function leavesOfUnescapedLinks(walk: UnitWalk, analysis: SourceAnalysis): Map<SourceEntry, SourceEntry> {
-    const leaves = new Map<SourceEntry, SourceEntry>();
-    const links = new Map<SourceInline, SourceInline>();
-    const unfound = analysis.inlines.filter((inline) => inline.type === "link" && inline.innerStart === NOT_FOUND && walk.text[inline.start] === "[");
-
-    for (const link of unfound) {
-        const tokens = (link.token as Tokens.Link).tokens;
-        const inside = analysis.entries.filter((entry) => entry.kind === "leaf" && entry.ancestors.includes(link));
-        const offsets = offsetsOfLinkText(walk.text, link.start + 1, link.end, tokens.map((token) => token.raw).join(""));
-        const spans: Array<readonly [number, number]> = [];
-        const isSpanned = leafSpans(tokens, 0, spans) && spans.length === inside.length;
-
-        if (offsets !== null && isSpanned) {
-            const textEnd = offsets.length === 0 ? link.start + 1 : offsets[offsets.length - 1]! + 1;
-            const found = { ...link, innerStart: link.start + 1, innerEnd: textEnd };
-
-            links.set(link, found);
-            inside.forEach((leaf, at) => {
-                const [start, end] = spans[at]!;
-                const ancestors = leaf.ancestors.map((ancestor) => (ancestor === link ? found : ancestor));
-
-                leaves.set(leaf, { ...leaf, start: offsets[start]!, end: offsets[end - 1]! + 1, ancestors });
-            });
-        }
-    }
-
-    walk.inlines = analysis.inlines.map((inline) => links.get(inline) ?? inline);
-
-    return leaves;
-}
-
-/**
- * Where each character of a link's text, as `marked` reads it, stands in
- * the source: the text as written, without the backslash before an escaped
- * bracket.
- *
- * @param text - The block's Markdown.
- * @param from - The offset after the link's `[`.
- * @param to - The offset the link ends at.
- * @param read - The link's text as `marked` reads it.
- * @returns Each character's offset, or `null` when the source does not hold the text so.
- */
-function offsetsOfLinkText(text: string, from: number, to: number, read: string): number[] | null {
-    const offsets: number[] = [];
-    let at = from;
-
-    for (const char of read.split("")) {
-        const isEscaped = text[at] === "\\" && text[at + 1] === char && (char === "[" || char === "]");
-
-        at += isEscaped ? 1 : 0;
-
-        if (at >= to || text[at] !== char) {
-            return null;
-        }
-
-        offsets.push(at);
-        at += 1;
-    }
-
-    return text[at] === "]" ? offsets : null;
-}
-
-/**
- * Where each leaf of a run of inline tokens stands in the run's text, in
- * the order and the number the analysis gives the leaves in: a character
- * of plain text at itself, the characters of a code span or an escape and
- * any other atom at the whole token, and the leaves of a token that holds
- * tokens inside its content ({@link contentOffset}).
- *
- * @param tokens - The tokens.
- * @param from - The offset of the first token in the run's text.
- * @param spans - Receives each leaf's `[start, end)` in the run's text.
- * @returns Whether every token's content is where its syntax puts it.
- */
-function leafSpans(tokens: readonly Token[], from: number, spans: Array<readonly [number, number]>): boolean {
-    let at = from;
-
-    for (const token of tokens) {
-        const children = (token as { tokens?: Token[] }).tokens;
-        const whole: readonly [number, number] = [at, at + token.raw.length];
-        const shown = (token as { text?: string }).text ?? "";
-        const isPlain = token.type === "text" && children === undefined;
-        const isAtom = token.type === "codespan" || token.type === "escape" || (isPlain && shown !== token.raw);
-        const holdsContent = token.type === "codespan" || !(isPlain || isAtom);
-        const content = holdsContent ? contentOffset(token, children ?? []) : 0;
-
-        const isWritten = isPlain ? !isAtom : token.type === "codespan" && token.raw.slice(content, content + shown.length) === shown;
-
-        if (isWritten) {
-            // Each character at itself; two code units of one code point are one leaf of a code span.
-            const leaves = isPlain ? shown.split("") : [...shown];
-            const starts = leaves.map((_, index) => at + content + leaves.slice(0, index).join("").length);
-
-            spans.push(...leaves.map((leaf, index): readonly [number, number] => [starts[index]!, starts[index]! + leaf.length]));
-        } else if (isAtom) {
-            spans.push(...[...shown].map(() => whole));
-        } else if (children === undefined || children.length === 0) {
-            spans.push(whole);
-        } else {
-            const isSpanned = content !== NOT_FOUND && leafSpans(children, at + content, spans);
-
-            if (!isSpanned) {
-                return false;
-            }
-        }
-
-        at += token.raw.length;
-    }
-
-    return true;
 }
 
 /**
@@ -973,11 +845,10 @@ function locateVerbatim(walk: UnitWalk, from: number, skipsFirstLine: boolean): 
 
     for (const line of units.map((unit) => unit.char).join("").split("\n")) {
         const lineEnd = lineEndAt(walk.text, lineStart);
-        const written = walk.text.slice(lineStart, lineEnd);
-        const textEnd = written.endsWith(line) ? lineEnd : lineStart + written.trimEnd().length;
+        const offsets = offsetsOfVerbatimLine(walk.text.slice(lineStart, lineEnd), line);
 
-        isShown = isShown && written.slice(0, textEnd - lineStart).endsWith(line);
-        found.push(...line.split("").map((_, column) => textEnd - line.length + column), lineEnd);
+        isShown = isShown && offsets !== null;
+        found.push(...(offsets ?? []).map((offset) => lineStart + offset), lineEnd);
         lineStart = lineEnd + 1;
     }
 
@@ -990,6 +861,76 @@ function locateVerbatim(walk: UnitWalk, from: number, skipsFirstLine: boolean): 
     }
 
     return isShown;
+}
+
+/**
+ * Where each character of a shown line of a code block or raw block stands in
+ * the written line it ends (before the blanks that end that line, which a load
+ * drops from the last line of a fence left open). A code line that starts in
+ * the middle of a tab (the container and the block took some of its columns)
+ * shows the columns left of that tab as spaces ({@link offsetsAfterCutTab}).
+ *
+ * @param written - The source line, without its line end.
+ * @param line - The shown line.
+ * @returns The offset in `written` of each character of `line`, or `null` when `line` does not end `written`.
+ */
+function offsetsOfVerbatimLine(written: string, line: string): number[] | null {
+    const textEnd = written.endsWith(line) ? written.length : written.trimEnd().length;
+    const endsWritten = written.slice(0, textEnd).endsWith(line);
+
+    if (!endsWritten) {
+        return offsetsAfterCutTab(written, line);
+    }
+
+    return line.split("").map((_, column) => textEnd - line.length + column);
+}
+
+/**
+ * Where each character of a shown code line that starts in the middle of a tab
+ * stands in its written line: the one to three spaces it starts with that are
+ * the columns left of the tab stand at the tab, and the rest ends the written
+ * line. In `- one`, a blank line, a fence and the code line a space, a tab,
+ * `bb`, the code line shows two spaces and `bb`, and both spaces stand at the
+ * tab.
+ *
+ * @param written - The source line, without its line end.
+ * @param line - The shown line.
+ * @returns The offset in `written` of each character of `line`, or `null` when no tab is cut so.
+ */
+function offsetsAfterCutTab(written: string, line: string): number[] | null {
+    const spaces = /^ */.exec(line)![0].length;
+
+    // A cut tab leaves one to three of its columns: a whole one would be a tab in the code.
+    for (let cut = 1; cut < MARKDOWN_TAB_STOP && cut <= spaces; cut += 1) {
+        const rest = line.slice(cut);
+        const tab = written.length - rest.length - 1;
+        const isAfterTab = tab >= 0 && written.charAt(tab) === "\t" && written.endsWith(rest);
+        const isCut = isAfterTab && cut < tabWidthAt(columnOf(written, tab));
+
+        if (isCut) {
+            return [...Array<number>(cut).fill(tab), ...rest.split("").map((_, at) => tab + 1 + at)];
+        }
+    }
+
+    return null;
+}
+
+/**
+ * The column a character of a line stands at, a tab reaching the next tab stop.
+ *
+ * @param line - The line.
+ * @param index - The character's index.
+ * @returns Its column.
+ */
+function columnOf(line: string, index: number): number {
+    // Not CodeMirror's `countColumn`: this module, on the Lexical side, takes no CodeMirror import.
+    let column = 0;
+
+    for (const char of line.slice(0, index)) {
+        column += char === "\t" ? tabWidthAt(column) : 1;
+    }
+
+    return column;
 }
 
 /**

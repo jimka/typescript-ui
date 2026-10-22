@@ -832,7 +832,7 @@ export function $outdentItem(item: MarkdownListItemNode): boolean {
         list.remove();
     }
 
-    // An outer item that held nothing but this list (`- - a`, or what a text taken out of its list left) goes with it.
+    // An outer item that held nothing but this list (`- - a`) goes with it.
     const outerIsLeftEmpty = outer.isEmpty();
 
     if (outerIsLeftEmpty) {
@@ -882,9 +882,12 @@ export function $indentItem(item: MarkdownListItemNode): boolean {
 /**
  * Takes an item out of every list it is in. Its text becomes a paragraph
  * where the outermost list stood, the list split around it; the blocks up to
- * its first nested list follow that paragraph; the nested list and what
- * follows it stay in the list, in an item. An item that opens with a block
- * gives that block and the ones after it the same way, with no paragraph.
+ * its first nested list follow that paragraph; the nested list stays in the
+ * list, its items in the item's place at the level where the outermost
+ * list stood, and what follows it
+ * goes to the last of them ({@link $releaseOpeningLists}), so no item is
+ * left without text. An item that opens with a block gives that block and
+ * the ones after it the same way, with no paragraph.
  *
  * @param item - The item.
  * @returns The blocks moved out, the paragraph first when the item had a
@@ -945,7 +948,98 @@ export function $liftItemOut(item: MarkdownListItemNode): LexicalNode[] {
         $putPointBefore(point, standsBefore !== null && standsBefore.is(text) ? paragraph : standsBefore, last);
     }
 
+    // What stays in the list opens with the item's nested list: its items take the item's place, at the level where the outermost list stood.
+    const leftOpensWithList = item.isAttached() && $isListNode(item.getFirstChild());
+
+    if (leftOpensWithList) {
+        $releaseOpeningLists(item);
+    }
+
     return moved;
+}
+
+/**
+ * Takes away an item that holds no text and opens with a nested list, as a
+ * lift of its text out of the lists ({@link $liftItemOut}) leaves it: the
+ * items of the nested lists it opens with take its place, as siblings, at
+ * the level where the lifted item's outermost list stood (a nested item
+ * lifted out of every list sends them to the top, not under its parent), and
+ * the blocks it holds after those lists go to the end of the last of those
+ * items, so the document reads in the same order. A nested list of the kind
+ * of the list before it gives that list its items; one of another kind
+ * stands as a list of its own there, the item's list split around it.
+ *
+ * @param item - The item. Left as it is when it opens with no nested list.
+ */
+export function $releaseOpeningLists(item: MarkdownListItemNode): void {
+    const host = item.getParentOrThrow<ListNode>();
+    const children = item.getChildren();
+    const firstOther = children.findIndex((child) => !$isListNode(child));
+    const opening = (firstOther === -1 ? children : children.slice(0, firstOther)) as ListNode[];
+
+    if (opening.length === 0) {
+        return;
+    }
+
+    const held = children.slice(opening.length);
+    const following = item.getNextSiblings();
+    // The items after the item wait in a list of their own, so the item ends its list and what is released follows it.
+    const restList = following.length > 0 ? $copyNode(host) : null;
+
+    if (restList !== null) {
+        host.insertAfter(restList);
+        restList.splice(0, 0, following);
+    }
+
+    // The lists standing where the item stood, in order: its own list, then each opening list of another kind.
+    const lists: ListNode[] = [host];
+
+    for (const nested of opening) {
+        const previous = lists[lists.length - 1]!;
+        const joins = previous.getListType() === nested.getListType();
+
+        if (joins) {
+            previous.splice(previous.getChildrenSize(), 0, nested.getChildren());
+            $removeEmptiedList(nested);
+        } else {
+            previous.insertAfter(nested);
+            lists.push(nested);
+        }
+    }
+
+    const last = lists[lists.length - 1]!;
+    const lastItem = last.getLastChild();
+
+    if ($isMarkdownListItemNode(lastItem) && !lastItem.is(item) && held.length > 0) {
+        lastItem.splice(lastItem.getChildrenSize(), 0, held);
+    }
+
+    const rejoins = restList !== null && last.getListType() === host.getListType();
+
+    if (rejoins) {
+        last.splice(last.getChildrenSize(), 0, restList.getChildren());
+        $removeEmptiedList(restList);
+    }
+
+    $removePlainly(item, true);
+
+    for (const list of lists) {
+        $removeEmptiedList(list);
+    }
+}
+
+/**
+ * Removes a list that an edit has left without items, when it is still in
+ * the document.
+ *
+ * @param list - The list.
+ */
+function $removeEmptiedList(list: ListNode): void {
+    const isLeftEmpty = list.isAttached() && list.isEmpty();
+
+    if (isLeftEmpty) {
+        $removePlainly(list);
+    }
 }
 
 /**

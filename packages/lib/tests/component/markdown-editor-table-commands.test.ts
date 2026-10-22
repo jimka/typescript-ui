@@ -175,6 +175,9 @@ describe('insertTable() leaves no empty half of the block it splits (T rows)', (
     /** The table as a quote holds it: each line under the quote's marker. */
     const QUOTED_TABLE = TABLE.split('\n').map((line) => (line === '' ? '>' : `> ${line}`)).join('\n');
 
+    /** The table as a list item holds it: each line under the item's content indent. */
+    const ITEM_TABLE = TABLE.split('\n').map((line) => `  ${line}`).join('\n');
+
     /** Row name, the document, the caret, what is saved, the root's children after. */
     const rows: Array<[string, string, TextPoint, string, string[]]> = [
         ['T1: at the end of a quote', '> quote', ['quote', 5], `> quote\n>\n${QUOTED_TABLE}`, ['markdown-quote']],
@@ -199,6 +202,20 @@ describe('insertTable() leaves no empty half of the block it splits (T rows)', (
         [
             'T14: at the end of a quote in a column', '::: columns\n> q\n|||\nB\n:::', ['q', 1],
             `::: columns\n> q\n>\n${QUOTED_TABLE}\n|||\nB\n:::`, ['markdown-block'],
+        ],
+        // A nested list stays in its item: the table goes into the item that holds it, in front of the nested list or
+        // with that list split around it, and never leaves an item with no text holding the rest of it (`- - c`).
+        [
+            'inside a nested item\'s text: into the outer item, the nested list split around it', '- a\n  - bc', ['bc', 1],
+            `- a\n\n  - b\n\n${ITEM_TABLE}\n\n  - c`, ['list'],
+        ],
+        [
+            'at the start of a nested item\'s text: into the outer item', '- a\n  - bc', ['bc', 0],
+            `- a\n\n${ITEM_TABLE}\n\n  - bc`, ['list'],
+        ],
+        [
+            'at the end of an item\'s text: in front of the item\'s nested list', '- a\n  - b\n- z', ['a', 1],
+            `- a\n\n${ITEM_TABLE}\n\n  - b\n\n- z`, ['list'],
         ],
     ];
 
