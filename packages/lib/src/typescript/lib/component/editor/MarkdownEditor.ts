@@ -54,17 +54,17 @@ import {
     $insertTableColumnAtSelection, $deleteTableColumnAtSelection,
     $getTableColumnIndexFromTableCellNode, $isTableCellNode, $isTableRowNode,
     $isTableSelection, $mergeCells, $unmergeCell, $isTableNode,
-    INSERT_TABLE_COMMAND,
+    INSERT_TABLE_COMMAND, $computeTableMapSkipCellCheck, $createTableCellNode, $createTableNode, $createTableRowNode,
 } from "@lexical/table";
-import type { TableSelection } from "@lexical/table";
+import type { TableRowNode, TableSelection } from "@lexical/table";
 import { mergeRegister, $getNearestNodeOfType, $handleIndentAndOutdent } from "@lexical/utils";
 import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent } from "@lexical/selection";
 import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
 import { $serializeBlock, $serializeInlineNodes, $serializeMarkdown } from "~/component/editor/markdownSerializer.js";
 import {
-    $breakRuleContainerOf, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $lineBreakUnwritableAt, $moveBlocksOutAfter,
-    $orderedPoints, $selectedSlices, $selectionHasFormat, $takeBlocksOutOf, RUN_EDGE_TAG,
+    $breakRuleContainerOf, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
+    $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $selectionHasFormat, $takeBlocksOutOf, RUN_EDGE_TAG,
     registerWritableStateRules,
 } from "~/component/editor/markdownWritable.js";
 import { EMPTY_SOURCE_MAP } from "~/component/editor/markdownSourceMap.js";
@@ -1161,6 +1161,119 @@ function $pasteColumnsAsTheirBlocks(payload: CommandPayloadType<typeof SELECTION
 }
 
 /**
+ * Replaces each run of consecutive nodes that `isPart` accepts with the one
+ * node `$wrap` builds from the run, and keeps every other node in its place.
+ *
+ * @param nodes - The nodes, in order.
+ * @param isPart - Whether a node belongs in a run.
+ * @param $wrap - Builds the node that holds one run.
+ * @returns The nodes, each run replaced by its wrapper.
+ */
+function $wrapRuns<T extends LexicalNode>(
+    nodes: LexicalNode[], isPart: (node: LexicalNode) => node is T, $wrap: (run: T[]) => LexicalNode,
+): LexicalNode[] {
+    const wrapped: LexicalNode[] = [];
+    let run: T[] = [];
+
+    for (const node of nodes) {
+        const inRun = isPart(node);
+
+        if (inRun) {
+            run.push(node);
+
+            continue;
+        }
+
+        if (run.length > 0) {
+            wrapped.push($wrap(run));
+            run = [];
+        }
+
+        wrapped.push(node);
+    }
+
+    if (run.length > 0) {
+        wrapped.push($wrap(run));
+    }
+
+    return wrapped;
+}
+
+/**
+ * Builds the table that holds `rows`, each row brought to cells alone
+ * ({@link $keepRowsOfCells}) and filled at its end with empty cells up to
+ * the widest row, as `@lexical/table`'s own row and table transforms do for
+ * a table in the document. The table is still outside the document here,
+ * where no transform reaches it, and `@lexical/table`'s paste of a table
+ * into another table's cells reads it as a rectangle of cells: a short row
+ * throws there, or loses the cells past the first row's width, and a child
+ * that is no cell throws as soon as the table is measured. Rows that hold
+ * no cell at all get one, since nothing gives a row its first cell once it
+ * is in the document.
+ *
+ * @param rows - The rows, in order.
+ * @returns The table.
+ */
+function $tableHoldingRows(rows: TableRowNode[]): TableNode {
+    const table = $createTableNode().append(...rows);
+
+    $keepRowsOfCells(table);
+
+    const [map] = $computeTableMapSkipCellCheck(table, null, null);
+    // 1: a table row holds a cell at least.
+    const width = Math.max(1, ...map.map((row) => row.length));
+
+    rows.forEach((row, index) => {
+        const filled = (map[index] ?? []).filter((value) => value !== undefined).length;
+        const missing = Array.from({ length: width - filled }, () => $createTableCellNode().append($createParagraphNode()));
+
+        row.append(...missing);
+    });
+
+    return table;
+}
+
+/**
+ * `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` handler for table rows and
+ * cells pasted without their table. A range selection that stays inside one
+ * table copies the rows it covers without the table, and one that stays
+ * inside one row copies the cells without the row. Lexical's insert puts
+ * them in as blocks, and `@lexical/table` then removes a row outside a table
+ * and a cell outside a row with everything in them: the pasted content is
+ * lost, the block at the caret stays split in two, and a `:::` column or the
+ * document whose only block was the empty paragraph at the caret is left
+ * with no block. Wraps each run of pasted cells in a row and each run of
+ * rows in a table, and pastes the result instead, through
+ * `$insertGeneratedNodes`, so the other paste handlers and Lexical's insert
+ * treat it as any pasted table.
+ *
+ * @remarks
+ * `$insertGeneratedNodes` dispatches the command again, so a paste holding a
+ * bare row or cell runs every listener registered ahead of this one twice,
+ * as a paste holding a column does (see {@link $pasteColumnsAsTheirBlocks}).
+ *
+ * @param payload - The pasted nodes and the selection they are inserted at.
+ * @param editor - The editor the command was dispatched to.
+ * @returns Whether the paste held a bare row or cell, now pasted in a table.
+ */
+function $pasteTableRowsAndCellsAsTables(
+    payload: CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>, editor: LexicalEditor,
+): boolean {
+    const holdsBarePart = payload.nodes.some((node) => $isTableRowNode(node) || $isTableCellNode(node));
+
+    if (!holdsBarePart) {
+        return false;
+    }
+
+    const rows = $wrapRuns(payload.nodes, $isTableCellNode, (cells) => $createTableRowNode().append(...cells));
+    const blocks = $wrapRuns(rows, $isTableRowNode, $tableHoldingRows);
+
+    $insertGeneratedNodes(editor, blocks, payload.selection);
+
+    return true;
+}
+
+/**
  * Tells whether a node is a paragraph, heading or quote that a list item
  * holds after its text: a block Lexical pastes blocks into as one line of
  * text.
@@ -1328,6 +1441,17 @@ function $pasteBlocksIntoItemBlock(payload: CommandPayloadType<typeof SELECTION_
 }
 
 /**
+ * The last node a pasted node holds, at any depth: where Lexical's insert
+ * leaves the caret after the paste.
+ *
+ * @param node - The pasted node.
+ * @returns Its last descendant, or the node itself when it holds nothing.
+ */
+function $lastLeafOf(node: LexicalNode): LexicalNode {
+    return $isElementNode(node) ? node.getLastDescendant() ?? node : node;
+}
+
+/**
  * Puts pasted blocks in at a collapsed caret, as Lexical's insert does at
  * the top level: the caret's block is split ({@link $splitCaretBlockForPaste}),
  * the first pasted block's text joins the first half when it is a block of
@@ -1342,7 +1466,7 @@ function $pasteBlocksIntoItemBlock(payload: CommandPayloadType<typeof SELECTION_
  */
 function $insertPastedBlocksAt(selection: RangeSelection, caretBlock: ElementNode, blocks: LexicalNode[]): void {
     const last = blocks[blocks.length - 1]!;
-    const lastLeaf = $isElementNode(last) ? last.getLastDescendant() ?? last : last;
+    const lastLeaf = $lastLeafOf(last);
     // The second half of the split block; the first half is then the block before it, which a heading split at
     // its start replaces by an empty paragraph.
     const tail = $splitCaretBlockForPaste(selection, caretBlock);
@@ -1378,6 +1502,139 @@ function $insertPastedBlocksAt(selection: RangeSelection, caretBlock: ElementNod
     if (headIsLeftEmpty) {
         head.remove();
     }
+}
+
+/**
+ * Tells whether pasted nodes end in a block of text inside a table or a
+ * `:::` block: the last node of the paste stands in a block that a table
+ * cell or a column holds, each a region of its own to Lexical (a shadow
+ * root). That block is the one Lexical's insert joins the text after the
+ * caret to, when it joins it.
+ *
+ * @param nodes - The pasted nodes.
+ * @returns `true` when the paste ends in such a block.
+ */
+function $pasteEndsInTableOrFence(nodes: readonly LexicalNode[]): boolean {
+    const last = nodes[nodes.length - 1];
+
+    if (last === undefined) {
+        return false;
+    }
+
+    // None when the paste ends in a cell or a row that holds nothing: Lexical then joins nothing.
+    const lastBlock = $findMatchingParent($lastLeafOf(last), INTERNAL_$isBlock);
+
+    if (lastBlock === null) {
+        return false;
+    }
+
+    // Up to the pasted node and no further: a block taken out of a pasted column still names that column as its parent.
+    const regionOrLast = $findMatchingParent(lastBlock, (node) => node.is(last) || $isRootOrShadowRoot(node));
+
+    return regionOrLast !== null && $isRootOrShadowRoot(regionOrLast);
+}
+
+/**
+ * Tells whether a node holds nothing that a line of text shows: blank text,
+ * or an element holding nothing else, as a link is once a removed range has
+ * taken its text.
+ *
+ * @param node - The node.
+ * @returns `true` for blank text and for an element of nothing but such nodes.
+ */
+function $holdsBlankTextAlone(node: LexicalNode): boolean {
+    if ($isElementNode(node)) {
+        return node.getChildren().every($holdsBlankTextAlone);
+    }
+
+    return $isTextNode(node) && node.getTextContent().trim() === "";
+}
+
+/**
+ * Tells whether a block holds something after a collapsed caret: anything
+ * but blank text ({@link $holdsBlankTextAlone}). Blank text counts as none,
+ * as it does for Enter in an item's text
+ * ({@link $enterLeavesListAtBlankItemText}).
+ *
+ * @param selection - The collapsed selection, in the block.
+ * @param block - The block.
+ * @returns `true` when something of the block follows the caret.
+ */
+function $holdsSomethingAfterCaret(selection: RangeSelection, block: ElementNode): boolean {
+    const anchor = selection.anchor;
+    const restOfText = anchor.type === "text" ? anchor.getNode().getTextContent().slice(anchor.offset) : "";
+    const followedByBlankTextAlone = $nodesAfterPoint(anchor, block).every($holdsBlankTextAlone);
+
+    return restOfText.trim() !== "" || !followedByBlankTextAlone;
+}
+
+/**
+ * `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` listener for a paste at a list
+ * item's text that ends in a table or a `:::` block
+ * ({@link $pasteEndsInTableOrFence}), with something of the text after the
+ * caret. Splits the item at the caret first, as Enter does, and leaves the
+ * caret at the end of the first half, where the insert then goes on. What
+ * followed the caret is then the text of an item of its own after the
+ * pasted blocks and keeps the blocks its item held, as it does around a
+ * table inserted at that caret. A range is removed first, as Lexical's
+ * insert would remove it, since where the caret then stands is known only
+ * afterwards.
+ *
+ * @remarks
+ * Lexical's insert joins the second half of the block it splits to the last
+ * pasted block when the block says it merges when empty, which a list item's
+ * text says so that a pasted paragraph joins an empty item. It finds that
+ * last block by the last node of the paste, wherever it is: after a pasted
+ * table that is the last cell's paragraph, so the text after the caret went
+ * into the table's last cell, and after a `:::` block into its last block.
+ * No method of the item's text can tell Lexical otherwise: the question it
+ * is asked does not name the pasted block. At the end of the text, or with
+ * blank text alone after the caret, the caret is left as it is, and no
+ * empty item is left: Lexical drops an empty rest, and puts a blank one at
+ * the end of the last pasted cell or block, where the save writes nothing
+ * for it.
+ *
+ * @param payload - The pasted nodes and the selection they are inserted at.
+ * @returns Always `false`, so the insertion still runs.
+ */
+function $splitItemBeforePasteEndingInTableOrFence(payload: CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>): boolean {
+    const selection = payload.selection;
+    const endsInTableOrFence = $pasteEndsInTableOrFence(payload.nodes);
+
+    if (!$isRangeSelection(selection) || !endsInTableOrFence) {
+        return false;
+    }
+
+    const startBlock = $findEnclosingBlock($orderedPoints(selection)[0].getNode());
+    const coversRange = !selection.isCollapsed();
+
+    if (!$isMarkdownListItemTextNode(startBlock)) {
+        return false;
+    }
+
+    if (coversRange) {
+        selection.removeText();
+    }
+
+    const caretBlock = $findEnclosingBlock(selection.anchor.getNode());
+
+    // No removal was found that takes the caret out of the text it starts in; were there one, Lexical's insert takes the paste as it is.
+    if (!$isMarkdownListItemTextNode(caretBlock)) {
+        return false;
+    }
+
+    const holdsRestAfterCaret = $holdsSomethingAfterCaret(selection, caretBlock);
+
+    if (holdsRestAfterCaret) {
+        selection.insertParagraph();
+
+        const endOfFirstHalf = $normalizeCaret($getChildCaret(caretBlock, "previous"));
+
+        $setPointFromCaret(selection.anchor, endOfFirstHalf);
+        $setPointFromCaret(selection.focus, endOfFirstHalf);
+    }
+
+    return false;
 }
 
 /**
@@ -2738,8 +2995,39 @@ function $paragraphAfterTextOnlyBlockEnd(selection: RangeSelection): [MarkdownRa
 }
 
 /**
+ * The nodes of a block that follow a point in it, in document order: what
+ * the point's node holds after the point, when the point is on an element,
+ * and then what follows that node, and each node around it, up to the
+ * block. The rest of a text node the point is inside is not among them.
+ *
+ * @remarks
+ * A caret that no text node can take is a point on an element: on the block
+ * itself, or on an inline element in it. Lexical puts one on a link after
+ * an image that ends the link, so the end of a block is not always a point
+ * on the block or in its last text.
+ *
+ * @param point - The point, in the block.
+ * @param block - The block.
+ * @returns The nodes after the point; empty when the point's node ends the block.
+ */
+function $nodesAfterPoint(point: PointType, block: ElementNode): LexicalNode[] {
+    const pointNode = point.getNode();
+    const after: LexicalNode[] = point.type === "element" && $isElementNode(pointNode) ? pointNode.getChildren().slice(point.offset) : [];
+    let node: LexicalNode | null = pointNode;
+
+    while (node !== null && !node.is(block)) {
+        after.push(...node.getNextSiblings());
+        node = node.getParent();
+    }
+
+    return after;
+}
+
+/**
  * Whether a selection's anchor sits at the very end of a block, as
- * `MarkdownRawBlockNode.isSelectionAtEnd` tells for a raw block.
+ * `MarkdownRawBlockNode.isSelectionAtEnd` tells for a raw block: nothing of
+ * the block follows it, whichever node of the block the anchor is a point
+ * on or in ({@link $nodesAfterPoint}).
  *
  * @param block - The block.
  * @param selection - The selection.
@@ -2748,14 +3036,11 @@ function $paragraphAfterTextOnlyBlockEnd(selection: RangeSelection): [MarkdownRa
 function $isSelectionAtBlockEnd(block: ElementNode, selection: RangeSelection): boolean {
     const anchor = selection.anchor;
     const node = anchor.getNode();
+    const isInBlock = node.is(block) || block.isParentOf(node);
+    // A point on an element has what the element holds after it among the nodes after it.
+    const endsItsNode = anchor.type === "element" || anchor.offset === node.getTextContentSize();
 
-    if (anchor.type === "element") {
-        return node.is(block) && anchor.offset === block.getChildrenSize();
-    }
-
-    const last = block.getLastDescendant();
-
-    return last !== null && node.is(last) && anchor.offset === node.getTextContentSize();
+    return isInBlock && endsItsNode && $nodesAfterPoint(anchor, block).length === 0;
 }
 
 /**
@@ -3143,6 +3428,27 @@ function registerColumnPaste(editor: LexicalEditor): () => void {
 }
 
 /**
+ * Registers the paste handler that wraps table rows and cells pasted
+ * without their table in a table ({@link $pasteTableRowsAndCellsAsTables}).
+ *
+ * @remarks
+ * A command's listeners of one priority run in the order they were
+ * registered, and this one is at {@link COMMAND_PRIORITY_HIGH}. Call this
+ * before {@link registerItemBlockPaste} and
+ * {@link registerTextOnlyBlockRules}, so that every paste handler that
+ * decides where pasted blocks go sees a table, never a row or cell without
+ * one. It is called after {@link registerColumnPaste}, as that function
+ * asks of every paste handler; no result depends on the order of those
+ * two, since no copy holds a column together with a row or cell.
+ *
+ * @param editor - The editor.
+ * @returns The unregister function.
+ */
+function registerTablePartPaste(editor: LexicalEditor): () => void {
+    return editor.registerCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, $pasteTableRowsAndCellsAsTables, COMMAND_PRIORITY_HIGH);
+}
+
+/**
  * Listener of the three backward deletions (`DELETE_CHARACTER_COMMAND`,
  * `DELETE_WORD_COMMAND`, `DELETE_LINE_COMMAND`) for a caret at the start of
  * a block that stands after a container ending in a block with no line of
@@ -3423,13 +3729,37 @@ function registerListItemRules(editor: LexicalEditor): () => void {
  * A command's listeners of one priority run in the order they were
  * registered, and this one is at {@link COMMAND_PRIORITY_HIGH}. Call this
  * after {@link registerColumnPaste}, so that a pasted column is already the
- * blocks it holds.
+ * blocks it holds, and after {@link registerTablePartPaste}, so that pasted
+ * table rows and cells are already a table.
  *
  * @param editor - The editor.
  * @returns The unregister function.
  */
 function registerItemBlockPaste(editor: LexicalEditor): () => void {
     return editor.registerCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, $pasteBlocksIntoItemBlock, COMMAND_PRIORITY_HIGH);
+}
+
+/**
+ * Registers the paste listener that keeps the text after the caret of a
+ * list item's text out of a pasted table or `:::` block
+ * ({@link $splitItemBeforePasteEndingInTableOrFence}).
+ *
+ * @remarks
+ * A command's listeners of one priority run in the order they were
+ * registered, and this one is at {@link COMMAND_PRIORITY_HIGH}. Call this
+ * after {@link registerItemBlockPaste} and
+ * {@link registerTextOnlyBlockRules}, whose handlers take a paste whole, so
+ * that this listener runs only for a paste Lexical's own insert is about to
+ * make. It removes a selected range that starts in an item's text; run
+ * ahead of {@link $pasteIntoTextOnlyBlock}, that would take from it a range
+ * selected backwards from the start of a code block into an item's text,
+ * which it reads by the range's anchor.
+ *
+ * @param editor - The editor.
+ * @returns The unregister function.
+ */
+function registerItemTextPaste(editor: LexicalEditor): () => void {
+    return editor.registerCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, $splitItemBeforePasteEndingInTableOrFence, COMMAND_PRIORITY_HIGH);
 }
 
 /**
@@ -6666,9 +6996,11 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             registerMarkdownShortcutsOutsideRawBlocks(editor),
             editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
             registerColumnPaste(editor),
+            registerTablePartPaste(editor),
             registerItemBlockPaste(editor),
             registerListItemRules(editor),
             registerTextOnlyBlockRules(editor),
+            registerItemTextPaste(editor),
             registerRangeGuards(editor),
             registerWritableFormatCommand(editor),
             editor.registerUpdateListener(() => {

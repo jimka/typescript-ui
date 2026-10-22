@@ -814,7 +814,7 @@ function $endRowSpanAbove(claimed: Array<Array<PlacedCell | undefined>>, placed:
  *
  * @param table - The table.
  */
-function $keepRowsOfCells(table: TableNode): void {
+export function $keepRowsOfCells(table: TableNode): void {
     $unwrapAndFilterDescendants(table, $isTableRowNode);
 
     for (const row of table.getChildren().filter($isTableRowNode)) {

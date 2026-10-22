@@ -1399,6 +1399,23 @@ page resets to empty.
   `:::` block's last block, as after a table. A list pasted from a web
   page whose nested lists stand beside their items keeps them nested. No
   consumer action is needed.
+- **`MarkdownEditor` pastes table rows and cells copied without their table
+  as a table.** A range selection that stays inside one table, as code can
+  set one, copies the rows or cells it covers without the table (cells
+  selected with the mouse or the keys are copied as a table, and were not
+  affected). Pasting them pasted nothing and split the paragraph at the
+  caret in two; in a list item the text after the caret was lost, and in a
+  cell of another table that cell's text was split. A `:::` column, or a
+  document, whose only block was the empty paragraph at the caret was left
+  with no block at all. They now paste as a table holding them, as a
+  copied table does. No consumer action is needed.
+- **`MarkdownEditor` keeps the text after the caret out of a table pasted
+  at a list item's text.** A paste at a list item's text that ended in a
+  table or a `:::` block put the text after the caret into the table's
+  last cell, or the block's last paragraph, and took the blocks the item
+  held out of the list. That text is now an item of its own after the
+  pasted blocks and keeps those blocks, as it does when a table is
+  inserted at the same caret. No consumer action is needed.
 
 ### Core
 
