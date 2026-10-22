@@ -22,7 +22,7 @@ import {
 } from "@lexical/table";
 import type { TableSelection } from "@lexical/table";
 import { $isLinkNode, LinkNode } from "@lexical/link";
-import { $dfs, mergeRegister } from "@lexical/utils";
+import { $dfs, $unwrapAndFilterDescendants, mergeRegister } from "@lexical/utils";
 import { lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions } from "~/component/display/markdownExtensions.js";
 import {
     $definitionsSource, $headingWritesOneLine, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown, $runsReadingOtherwise,
@@ -45,6 +45,9 @@ import { $isCodeNode } from "@lexical/code";
  * heading form whose content can span lines; deeper headings are one line.
  */
 const SETEXT_MAX_LEVEL = 2;
+
+/** The highest number a CommonMark ordered list marker can write: nine digits. */
+const MAX_ORDERED_LIST_NUMBER = 999_999_999;
 
 /**
  * Registers the rules that keep the editor from making what a save cannot
@@ -147,8 +150,30 @@ function $normalizeList(list: ListNode): void {
         $joinLists(list, next);
     }
 
+    $keepNumbersWritable(list);
     $numberListItems(list);
     $keepLoosenessWritable(list);
+}
+
+/**
+ * Lowers an ordered list's start so its last item's number has at most the
+ * nine digits a CommonMark ordered list marker allows: an item Enter or a
+ * paste adds after `999999999.` would otherwise be numbered with ten, which
+ * Markdown reads as text, not as an item.
+ *
+ * @param list - The list.
+ */
+function $keepNumbersWritable(list: ListNode): void {
+    if (list.getListType() !== "number") {
+        return;
+    }
+
+    const numbered = list.getChildren().filter((item) => $isListItemNode(item) && !$isListNode(item.getFirstChild())).length;
+    const highestStart = Math.max(0, MAX_ORDERED_LIST_NUMBER - Math.max(0, numbered - 1));
+
+    if (list.getStart() > highestStart) {
+        list.setStart(highestStart);
+    }
 }
 
 /**
@@ -227,10 +252,12 @@ const BLANK_LINE_IN_TITLE = /\n[ \t]*\n/;
  * cell with an alignment of its own (cells pasted from another table).
  * `registerTablePlugin`'s own `TableNode` transform pads short rows, but only
  * when the table itself changes, so a change to a row or a cell marks its
- * table changed; and {@link $alignCellsByColumn} gives each body cell its
- * column's alignment, the header cell's, as the save writes it, keeps a row
- * span inside the table, and splits a header cell spanning columns or rows
- * (the header row is never merged in Markdown) into the cells it covers.
+ * table changed; and {@link $alignCellsByColumn} keeps the table to rows
+ * of cells (a paste can land in a row a cell spans down into), gives each
+ * body cell its column's alignment, the header cell's, as the save writes
+ * it, keeps a row span inside the table, and splits a header cell spanning
+ * columns or rows (the header row is never merged in Markdown) into the
+ * cells it covers.
  *
  * @param editor - The editor.
  * @returns The unregister function.
@@ -300,7 +327,8 @@ function $listItemLines(list: ListNode): ParagraphNode[] {
 }
 
 /**
- * Gives each body cell of a table the alignment of the column it starts in:
+ * Gives each body cell of a table the alignment of the column it starts in
+ * (once the table holds only rows of cells, {@link $keepRowsOfCells}):
  * the header cell's there, which is what the save's delimiter row writes;
  * keeps a cell from spanning rows past the table's last row, or onto a cell
  * of a lower row ({@link $keepRowSpansClear}); and splits a header cell that
@@ -309,6 +337,8 @@ function $listItemLines(list: ListNode): ParagraphNode[] {
  * @param table - The table.
  */
 function $alignCellsByColumn(table: TableNode): void {
+    $keepRowsOfCells(table);
+
     const rows = table.getChildren().filter($isTableRowNode);
 
     // A cell cannot span past the last row: the save writes no row for it to continue into.
@@ -328,6 +358,11 @@ function $alignCellsByColumn(table: TableNode): void {
 
     for (const row of map.slice(1)) {
         for (const value of row) {
+            // A position a row too short leaves empty under a cell spanning down from above: the table plugin pads it.
+            if (value === undefined) {
+                continue;
+            }
+
             const alignment = header[value.startColumn]?.cell.getFormatType() ?? "";
 
             if (value.startRow > 0 && value.cell.getFormatType() !== alignment) {
@@ -401,6 +436,23 @@ function $endRowSpanAbove(claimed: Array<Array<PlacedCell | undefined>>, placed:
 }
 
 /**
+ * Keeps a table to rows, and its rows to cells — the shape a table map is
+ * computed from — unwrapping anything else, as the table plugin's own row
+ * and table transforms do. An edit can leave something else in a row (a
+ * paste into a row a cell spans down into, which holds no cell), and when
+ * the table's transforms run before the row's, computing the map throws.
+ *
+ * @param table - The table.
+ */
+function $keepRowsOfCells(table: TableNode): void {
+    $unwrapAndFilterDescendants(table, $isTableRowNode);
+
+    for (const row of table.getChildren().filter($isTableRowNode)) {
+        $unwrapAndFilterDescendants(row, $isTableCellNode);
+    }
+}
+
+/**
  * Splits each header cell spanning columns or rows into the cells it
  * covers, its content kept in the first: Markdown merges body cells only
  * (`<<`, `^^`), so the save writes a header cell alone in its column, and an
@@ -421,7 +473,8 @@ function $unmergeHeaderCells(table: TableNode, rows: readonly TableRowNode[]): v
         const colSpan = cell.getColSpan();
 
         for (let row = 1; row < cell.getRowSpan(); row++) {
-            const next = (map[row] ?? []).find((value) => value.startRow === row && value.startColumn >= startColumn + colSpan);
+            const next = (map[row] ?? []).find((value) => value !== undefined && value.startRow === row
+                && value.startColumn >= startColumn + colSpan);
             const covered = Array.from({ length: colSpan }, () => $createTableCellNode().append($createParagraphNode()));
 
             if (next === undefined) {
@@ -991,13 +1044,34 @@ function $declinesLineBreak(): boolean {
     }
 
     const end = selection.isBackward() ? selection.anchor : selection.focus;
-    const container = $breakRuleContainerOf(end.getNode());
+
+    return $lineBreakUnwritableAt(end);
+}
+
+/**
+ * Whether a line break put at `point` is one a save could not write: the
+ * point is in a level 3–6 heading, or nothing with content would follow the
+ * break in its block. Never in a table cell, a code block or a raw block,
+ * which keep every break.
+ *
+ * @param point - The point the break would go in at.
+ * @param rest - For a break that follows an edit joining another block's
+ *   rest after `point`: the point of the document as it stands whose block
+ *   holds, after it, what will follow the break — or `null` when nothing
+ *   will. `point` itself when omitted, for a break put in as things stand.
+ * @returns `true` when the save could not write the break.
+ */
+export function $lineBreakUnwritableAt(point: PointType, rest: PointType | null = point): boolean {
+    const container = $breakRuleContainerOf(point.getNode());
 
     if (container === null) {
         return false;
     }
 
-    return $isOneLineHeading(container) || !$contentFollows(end, container);
+    const restBlock = rest === null ? null : $findEnclosingBlock(rest.getNode());
+    const isFollowed = rest !== null && restBlock !== null && $contentFollows(rest, restBlock);
+
+    return $isOneLineHeading(container) || !isFollowed;
 }
 
 /**
@@ -1282,9 +1356,33 @@ function $dropBreaksAtRunEnd(leaf: LexicalNode): boolean {
 
     if (kept !== text) {
         leaf.setTextContent(kept);
+        $keepSelectionInText(leaf);
     }
 
     return contentEnd > 0;
+}
+
+/**
+ * Moves a selection end past the end of a text node whose text just got
+ * shorter back to its end. Lexical's `setTextContent` leaves the selection
+ * as it was, and an offset past the end throws on the next read.
+ *
+ * @param text - The text node.
+ */
+function $keepSelectionInText(text: TextNode): void {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return;
+    }
+
+    const size = text.getTextContentSize();
+
+    for (const point of [selection.anchor, selection.focus]) {
+        if (point.type === "text" && point.key === text.getKey() && point.offset > size) {
+            point.set(point.key, size, "text");
+        }
+    }
 }
 
 // ---------------------------------------------------------------- run edges

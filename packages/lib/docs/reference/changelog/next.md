@@ -1034,6 +1034,42 @@ page resets to empty.
   after the quote could lose its first character, so `<div>` showed as
   `div>` and `1. g` as `. g`. No consumer action is needed.
 
+- **`MarkdownEditor` aligns and columns a selection that reaches into a table
+  or a `:::` column.** `setBlockAlignment` and `setColumnCount` threw when
+  the selection spanned two table cells, or ran from outside a `:::` fence
+  into one of its columns. With the caret in a table that was not the
+  document's first block, they wrapped an earlier block instead of the table.
+  They now wrap the whole table or fence the selection reaches.
+  `setColumnCount` also threw when it merged or dropped a column the
+  selection ended in and the fence then unwrapped; it now unwraps the fence.
+  No consumer action is needed.
+
+- **`MarkdownEditor.toggleLink(null)` no longer throws at a link's edge.** A
+  selection that ended exactly where a link starts, or started exactly where
+  one ends, made Lexical's link removal throw. A link with none of its text
+  selected is now left as it is. No consumer action is needed.
+
+- **`MarkdownEditor` no longer throws when deleting from the start of a
+  paragraph into a later one.** Deleting, typing over, cutting, pasting over
+  or pressing Enter on a selection that started at the beginning of a block
+  and ended inside a word of a later block could throw inside Lexical. The
+  document was then left partly edited. These edits now apply normally. No
+  consumer action is needed.
+
+- **`MarkdownEditor` keeps the caret inside text a save trims.** Deleting
+  the last line of a block converted from a code block (for example with
+  `setBlockType("quote")`) left the caret past the end of the trimmed text,
+  and the next edit or `getSelectionState()` threw. The caret now stays at
+  the text's end. No consumer action is needed.
+
+- **`MarkdownEditor` keeps ordered list numbers to nine digits.** Typing
+  `1234567890. ` (or pressing Enter after it) started an ordered list that
+  the save wrote as a paragraph, since a Markdown list marker holds at most
+  nine digits; the typing shortcut now starts a list only for one to nine
+  digits. An item added after `999999999.` now lowers the list's first
+  number so every item still has nine digits at most. No consumer action is
+  needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
