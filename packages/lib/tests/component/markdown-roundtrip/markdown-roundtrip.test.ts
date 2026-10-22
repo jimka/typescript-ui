@@ -6,6 +6,7 @@ import { assertCheck, canonicalSave, checkTitle, editorDefinitions, loadAndSave,
 import { editorSurfaceModel, linkTargets, viewerModel } from './viewModel';
 import { CORPUS } from './corpus';
 import { DIVERGENCES } from './corpus/divergences';
+import { ENTER_IN_CODE_CASES } from './corpus/enterInCode';
 import { ENTER_INSIDE_HTML_CASES } from './corpus/enterInsideHtml';
 import type { CorpusCase } from './corpus/types';
 import type { Block } from './viewModel';
@@ -110,9 +111,9 @@ for (const testCase of CORPUS) {
  *
  * @param blocks - The blocks of the document, or of one quote or list item.
  * @param container - The path of the quote or list item that holds `blocks`.
- * @returns Each such block's kind and the path of what holds it.
+ * @returns Each such block's kind, the path of what holds it, and a code block's text.
  */
-function leavesWithContainer(blocks: readonly Block[], container: string = ''): { kind: Block['kind']; container: string }[] {
+function leavesWithContainer(blocks: readonly Block[], container: string = ''): { kind: Block['kind']; container: string; text?: string }[] {
     return blocks.flatMap((block, index) => {
         if (block.kind === 'quote') {
             return leavesWithContainer(block.blocks, `${container}/${index}`);
@@ -122,7 +123,7 @@ function leavesWithContainer(blocks: readonly Block[], container: string = ''): 
             return block.items.flatMap((item, itemIndex) => leavesWithContainer(item, `${container}/${index}.${itemIndex}`));
         }
 
-        return [{ kind: block.kind, container }];
+        return [block.kind === 'code' ? { kind: block.kind, container, text: block.text } : { kind: block.kind, container }];
     });
 }
 
@@ -160,6 +161,34 @@ describe('what Enter leaves inside HTML stays in its blockquote or list item', (
             expect([...containers]).toHaveLength(1);
         } else {
             expect([...containers], `${name}: now read in one item — remove its entry (${known})`).not.toHaveLength(1);
+        }
+    });
+});
+
+/**
+ * The Enter-in-code cases the viewer reads with other text in the code block than `reads` gives, each with the
+ * reason. A listed case must not pass the check, so a fix turns its test red until the entry is removed.
+ */
+const READ_WITH_OTHER_CODE_TEXT: Readonly<Record<string, string>> = {
+    // The marker line is `-`, a tab, and the fence, so the item's content starts at column 4. The new line carries
+    // that line's prefix with the marker as a space: a space and the tab, which is column 4 too. The viewer counts
+    // the tab as four columns from column 1 and shows the line as one space of code.
+    'Enter after a fence opened on an item marker line with a tab after the marker': 'the viewer counts a tab that follows a space as four columns',
+};
+
+describe('what Enter leaves in a code block stays in the block and in its blockquote or list item', () => {
+    // A new line that lost its prefix would end the block: `> code` over an
+    // empty line is a quote and nothing in it is code any more, and a line
+    // at the margin under `- ```` leaves the item and its code block.
+    it.each(ENTER_IN_CODE_CASES.map((testCase) => [testCase.name, testCase] as const))('%s', (name, testCase) => {
+        const leaves = leavesWithContainer(viewerModel(testCase.source).blocks);
+        const read   = leaves.map((leaf) => (leaf.text === undefined ? [leaf.container, leaf.kind] : [leaf.container, leaf.kind, leaf.text]));
+        const known  = READ_WITH_OTHER_CODE_TEXT[name];
+
+        if (known === undefined) {
+            expect(read).toEqual(testCase.reads);
+        } else {
+            expect(read, `${name}: now read as written — remove its entry (${known})`).not.toEqual(testCase.reads);
         }
     });
 });

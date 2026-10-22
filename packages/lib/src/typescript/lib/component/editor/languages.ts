@@ -14,7 +14,7 @@
 import { syntaxTree } from "@codemirror/language";
 import type { Language, TreeIndentContext } from "@codemirror/language";
 import { countColumn, EditorSelection, Prec } from "@codemirror/state";
-import type { EditorState, SelectionRange, StateCommand } from "@codemirror/state";
+import type { ChangeSpec, EditorState, SelectionRange, StateCommand } from "@codemirror/state";
 import { keymap } from "@codemirror/view";
 import type { SqlLanguage } from "sql-formatter";
 import { registerLanguage } from "~/component/editor/LanguageRegistry.js";
@@ -167,10 +167,10 @@ const MARKDOWN_TAB_STOP = 4;
  * Inside a blockquote there is no opinion either way: spaces cannot continue
  * the quote, and deeper indentation outside it would read as a code block.
  *
- * Inside a blockquote or list item, continueContainersInsideHtml handles
- * Enter at a plain caret before this rule is asked. The rule still answers
- * for HTML outside both, when Enter replaces a selection, and when that
- * command passes the key on.
+ * Inside a blockquote or list item, insertNewlineKeepPrefix handles Enter
+ * before this rule is asked. The rule still answers for HTML outside both,
+ * and where that command passes the key on, as on an item's marker line
+ * that an HTML block ends on.
  *
  * @param context - The indentation query, positioned on an HTML node.
  * @returns The column to indent to, or `null` to keep the current line's indentation.
@@ -208,39 +208,55 @@ function indentInsideMarkdownHtml(context: TreeIndentContext): number | null {
 }
 
 /**
- * Whether continueContainersInsideHtml handles Enter at a selection range:
- * the range is a caret, the caret is outside Markdown on both sides (inside
- * HTML, or the JavaScript or CSS nested in it), and it sits in a blockquote
- * or list item. "Outside Markdown on both sides" is the exact opposite of the
- * test Markdown's own Enter command starts with, so the two commands never
- * want the same caret.
+ * The Markdown blocks around a caret that decide what Enter does there, read
+ * from the ancestors of the syntax node in front of the caret.
+ */
+type CaretBlocks = {
+    /** Inside a fenced or an indented code block. */
+    code: boolean;
+    /** Inside an HTML block or an HTML comment block. */
+    htmlBlock: boolean;
+    /** Inside a blockquote or a list item. */
+    container: boolean;
+};
+
+/** The start of a line, as containerPrefixAt reads it. */
+type LinePrefix = {
+    /** The text that starts a new line in the same blockquotes and list item. */
+    text: string;
+    /** Whether the line carries a list item's marker. */
+    hasListMark: boolean;
+};
+
+/** A line that holds spaces and tabs and nothing else, at least one of them. */
+const BLANK_INDENTED_LINE = /^[ \t]+$/;
+
+/** A line that holds nothing, or spaces and tabs only. */
+const BLANK_LINE = /^[ \t]*$/;
+
+/**
+ * Finds the Markdown blocks that hold the character in front of a position.
  *
  * @param state - The editor state.
- * @param markdownLanguage - The Markdown language the editor runs.
- * @param range - The selection range Enter was pressed on.
- * @returns `true` when the range is a caret inside HTML inside a blockquote or list item.
+ * @param pos - The position to look in front of.
+ * @returns Which kinds of block hold that character.
  */
-function isCaretInsideContainedHtml(state: EditorState, markdownLanguage: Language, range: SelectionRange): boolean {
-    if (!range.empty) {
-        return false;
-    }
-
-    const activeBefore = markdownLanguage.isActiveAt(state, range.from, -1);
-    const activeAfter  = markdownLanguage.isActiveAt(state, range.from, 1);
-
-    if (activeBefore || activeAfter) {
-        return false;
-    }
+function caretBlocksAt(state: EditorState, pos: number): CaretBlocks {
+    const blocks: CaretBlocks = { code: false, htmlBlock: false, container: false };
 
     // The HTML tree is mounted inside the Markdown one, so the ancestors of
     // an HTML node continue into the Markdown blocks that hold it.
-    for (let node: SyntaxNode | null = syntaxTree(state).resolveInner(range.from, -1); node; node = node.parent) {
-        if (node.name === "Blockquote" || node.name === "ListItem") {
-            return true;
+    for (let node: SyntaxNode | null = syntaxTree(state).resolveInner(pos, -1); node; node = node.parent) {
+        if (node.name === "FencedCode" || node.name === "CodeBlock") {
+            blocks.code = true;
+        } else if (node.name === "HTMLBlock" || node.name === "CommentBlock") {
+            blocks.htmlBlock = true;
+        } else if (node.name === "Blockquote" || node.name === "ListItem") {
+            blocks.container = true;
         }
     }
 
-    return false;
+    return blocks;
 }
 
 /**
@@ -252,17 +268,18 @@ function isCaretInsideContainedHtml(state: EditorState, markdownLanguage: Langua
  * the current line's whatever the editor's tab size is. Markdown counts a tab
  * as four columns; a copied tab is still that tab.
  *
- * Only the syntax tree says what is a marker: inside a `<pre>` block a line
- * may start with `>` or `-` as plain text.
+ * Only the syntax tree says what is a marker: inside a `<pre>` block or a
+ * code block a line may start with `>` or `-` as plain text.
  *
  * @param state - The editor state.
  * @param pos - The caret position.
- * @returns The prefix for the new line, or `null` when the caret is in front of a marker on its line.
+ * @returns The line's prefix, or `null` when the caret is in front of a marker on its line.
  */
-function containerPrefixAt(state: EditorState, pos: number): string | null {
-    const line  = state.doc.lineAt(pos);
-    let prefix  = "";
-    let markEnd = 0;
+function containerPrefixAt(state: EditorState, pos: number): LinePrefix | null {
+    const line      = state.doc.lineAt(pos);
+    let text        = "";
+    let markEnd     = 0;
+    let hasListMark = false;
 
     syntaxTree(state).iterate({
         from:  line.from,
@@ -277,8 +294,9 @@ function containerPrefixAt(state: EditorState, pos: number): string | null {
             const from = node.from - line.from;
             const to   = node.to - line.from;
 
-            prefix += line.text.slice(markEnd, from) + (isListMark ? " ".repeat(to - from) : line.text.slice(from, to));
-            markEnd = to;
+            text += line.text.slice(markEnd, from) + (isListMark ? " ".repeat(to - from) : line.text.slice(from, to));
+            markEnd     = to;
+            hasListMark = hasListMark || isListMark;
         },
     });
 
@@ -288,18 +306,25 @@ function containerPrefixAt(state: EditorState, pos: number): string | null {
 
     const rest = line.text.slice(markEnd);
 
-    return prefix + rest.slice(0, rest.search(/[^ \t]|$/));
+    return { text: text + rest.slice(0, rest.search(/[^ \t]|$/)), hasListMark };
 }
 
 /**
- * Whether the caret sits directly between an element's open tag and its close
- * tag, as in `<div>|</div>`.
+ * Whether the caret sits directly between a pair the editor's plain Enter
+ * splits over three lines: an empty `()`, `[]` or `{}`, or an element's open
+ * tag and its close tag, as in `<div>|</div>`.
  *
  * @param state - The editor state.
  * @param pos - The caret position.
- * @returns `true` when the open tag ends, and the close tag starts, at the caret.
+ * @returns `true` when the character or tag before the caret is closed by the one after it.
  */
-function isBetweenAdjacentTags(state: EditorState, pos: number): boolean {
+function isBetweenPair(state: EditorState, pos: number): boolean {
+    const beside = state.sliceDoc(Math.max(0, pos - 1), pos + 1);
+
+    if (beside === "()" || beside === "[]" || beside === "{}") {
+        return true;
+    }
+
     const around = syntaxTree(state).resolveInner(pos);
     const open   = around.childBefore(pos);
     const close  = around.childAfter(pos);
@@ -308,26 +333,110 @@ function isBetweenAdjacentTags(state: EditorState, pos: number): boolean {
 }
 
 /**
- * Builds the Enter command the built-in `"markdown"` language adds for a
- * caret inside HTML that sits in a blockquote or list item. Markdown's own
- * Enter command refuses a caret inside HTML, and the editor's plain Enter can
- * only write whitespace, so without this command the new line loses its `>`
- * and leaves the quote.
+ * Decides whether insertNewlineKeepPrefix handles Enter for a selection
+ * range, and with which prefix. It does in four places:
  *
- * The new line starts with the caret line's own prefix (see
- * containerPrefixAt). It never gets a new list marker, and the command never
- * removes a prefix. Between an adjacent open and close tag the close tag moves
- * to a line of its own, with the same prefix.
+ * 1. in a code block, fenced or indented, at any depth;
+ * 2. inside HTML that sits in a blockquote or list item, with HTML on both
+ *    sides of the range;
+ * 3. at the end of an HTML block in a blockquote or list item, on a line
+ *    that has text in front of the caret and no list marker;
+ * 4. on a line of only spaces and tabs that no blockquote or list item holds.
+ *
+ * Everywhere else Markdown's own Enter command, or the editor's, does the
+ * right thing already.
+ *
+ * @param state - The editor state.
+ * @param markdownLanguage - The Markdown language the editor runs.
+ * @param range - The selection range Enter was pressed on.
+ * @returns The prefix for the new line, or `null` to pass Enter on.
+ */
+function prefixForNewLine(state: EditorState, markdownLanguage: Language, range: SelectionRange): string | null {
+    const prefix = containerPrefixAt(state, range.from);
+
+    if (prefix === null) {
+        return null;
+    }
+
+    const blocks         = caretBlocksAt(state, range.from);
+    const line           = state.doc.lineAt(range.from);
+    const markdownBefore = markdownLanguage.isActiveAt(state, range.from, -1);
+    const markdownAfter  = markdownLanguage.isActiveAt(state, range.to, 1);
+    let handled: boolean;
+
+    if (blocks.code) {
+        handled = true;
+    } else if (!blocks.container) {
+        // At the end of the document the tree puts a trailing blank line
+        // outside the list it continues, so Markdown's own command passes
+        // it on.
+        handled = markdownBefore && BLANK_INDENTED_LINE.test(line.text);
+    } else if (markdownBefore) {
+        handled = false;
+    } else if (!markdownAfter) {
+        handled = true;
+    } else {
+        // HTML ends at the caret. On an item's marker line Markdown's own
+        // command continues the list, and on a line with no text it leaves
+        // the blockquote; both stay with it.
+        handled = blocks.htmlBlock && !prefix.hasListMark && range.from - line.from > prefix.text.length;
+    }
+
+    return handled ? prefix.text : null;
+}
+
+/**
+ * Builds the change that replaces a selection range with a line break and a
+ * prefix. Between a pair (see isBetweenPair) the closing half moves to a line
+ * of its own, with the same prefix.
+ *
+ * @param state - The editor state.
+ * @param range - The selection range Enter was pressed on.
+ * @param prefix - The text the new line starts with.
+ * @returns The change, and the caret after the prefix on the new line.
+ */
+function newLineWithPrefix(state: EditorState, range: SelectionRange, prefix: string): { changes: ChangeSpec; range: SelectionRange } {
+    const first   = state.doc.lineAt(range.from);
+    const last    = state.doc.lineAt(range.to);
+    const after   = last.text.slice(range.to - last.from);
+    const newLine = state.lineBreak + prefix;
+    const split   = range.empty && isBetweenPair(state, range.from);
+    // A line of only spaces and tabs is emptied, as the editor's plain Enter
+    // empties it: its whitespace moves to the new line with the caret.
+    const from    = BLANK_LINE.test(first.text) ? first.from : range.from;
+
+    return {
+        // Spaces and tabs after the caret are dropped, as the editor's
+        // plain Enter drops them: the prefix replaces them.
+        changes: { from, to: range.to + after.search(/[^ \t]|$/), insert: split ? newLine + newLine : newLine },
+        // A line break is one document position, whatever the length of
+        // the editor's line separator.
+        range:   EditorSelection.cursor(from + 1 + prefix.length),
+    };
+}
+
+/**
+ * Builds the Enter command the built-in `"markdown"` language adds for the
+ * places where a new line has to start with the caret line's own prefix to
+ * stay where it is: in a code block, in HTML inside a blockquote or list
+ * item, and on a blank indented line (see prefixForNewLine). Markdown's own
+ * Enter command passes most of them on, and the editor's plain Enter can only
+ * write whitespace, which it measures with the editor's tab size; so without
+ * this command the new line loses its `>`, or lands at another column than
+ * the one Markdown reads.
+ *
+ * The prefix is copied (see containerPrefixAt). The command never writes a
+ * new list marker and never removes a prefix. A selection is replaced by the
+ * line break.
  *
  * The command passes Enter on (returns `false`) in a read-only editor, for a
- * selection, for a caret Markdown's own command handles, for HTML outside
- * every blockquote and list item, and for a caret in front of a marker on its
+ * range outside those places, and for a caret in front of a marker on its
  * line. With several carets it acts only when it can act on all of them.
  *
  * @param markdownLanguage - The Markdown language the editor runs.
  * @returns The command, for an Enter key binding.
  */
-function continueContainersInsideHtml(markdownLanguage: Language): StateCommand {
+function insertNewlineKeepPrefix(markdownLanguage: Language): StateCommand {
     return ({ state, dispatch }) => {
         if (state.readOnly) {
             return false;
@@ -336,9 +445,7 @@ function continueContainersInsideHtml(markdownLanguage: Language): StateCommand 
         let declined = false;
 
         const changes = state.changeByRange((range) => {
-            const pos      = range.from;
-            const eligible = isCaretInsideContainedHtml(state, markdownLanguage, range);
-            const prefix   = eligible ? containerPrefixAt(state, pos) : null;
+            const prefix = prefixForNewLine(state, markdownLanguage, range);
 
             if (prefix === null) {
                 declined = true;
@@ -346,19 +453,7 @@ function continueContainersInsideHtml(markdownLanguage: Language): StateCommand 
                 return { range };
             }
 
-            const line    = state.doc.lineAt(pos);
-            const after   = line.text.slice(pos - line.from);
-            const newLine = state.lineBreak + prefix;
-            const split   = isBetweenAdjacentTags(state, pos);
-
-            return {
-                // Spaces and tabs after the caret are dropped, as the editor's
-                // plain Enter drops them: the prefix replaces them.
-                changes: { from: pos, to: pos + after.search(/[^ \t]|$/), insert: split ? newLine + newLine : newLine },
-                // A line break is one document position, whatever the length
-                // of the editor's line separator.
-                range:   EditorSelection.cursor(pos + 1 + prefix.length),
-            };
+            return newLineWithPrefix(state, range, prefix);
         });
 
         if (declined) {
@@ -400,10 +495,11 @@ registerLanguage({
 
         const support = markdown({ htmlTagLanguage: literalHtml });
 
-        // Prec.high puts this Enter binding beside Markdown's own, ahead of
-        // the editor's. It comes second, so Markdown's own command is still
-        // tried first.
-        return [support, Prec.high(keymap.of([{ key: "Enter", run: continueContainersInsideHtml(support.language) }]))];
+        // Listed ahead of the support, so this Enter binding is tried before
+        // Markdown's own: in an indented code block and at the end of an HTML
+        // block Markdown's own command takes the key and drops the line's
+        // indentation. Prec.high puts both ahead of the editor's bindings.
+        return [Prec.high(keymap.of([{ key: "Enter", run: insertNewlineKeepPrefix(support.language) }])), support];
     },
     loadFormatter: async () => formatWithPrettier("markdown", async () => [await import("prettier/plugins/markdown")]),
 });

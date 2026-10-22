@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { CodeEditor, setRevealHighlight, revealHighlightField, codeEditorKeymap } from '~/component/editor/CodeEditor';
+import { CodeEditor, setRevealHighlight, revealHighlightField, codeEditorKeymap, buildReadOnlyExtension } from '~/component/editor/CodeEditor';
 import type { CodeEditorChange, CodeEditorCursorPosition, CodeEditorSelection } from '~/component/editor/CodeEditor';
 import { registerLanguage, getLanguage, listLanguages } from '~/component/editor/LanguageRegistry';
 import type { Formatter } from '~/component/editor/LanguageRegistry';
@@ -16,9 +16,10 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM, setQuerySelectorResult, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState, EditorSelection, Prec, StateEffect } from '@codemirror/state';
-import type { Extension, Transaction } from '@codemirror/state';
+import type { Extension, Transaction, TransactionSpec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
-import { codeFolding, foldEffect, ensureSyntaxTree, syntaxTree, indentOnInput, indentUnit } from '@codemirror/language';
+import { codeFolding, foldEffect, foldedRanges, ensureSyntaxTree, syntaxTree, indentOnInput, indentUnit, language as languageFacet } from '@codemirror/language';
+import { SearchQuery, getSearchQuery, setSearchQuery } from '@codemirror/search';
 import { CompletionContext, closeBrackets, completionKeymap, deleteBracketPair } from '@codemirror/autocomplete';
 import { deleteCharBackward, indentWithTab } from '@codemirror/commands';
 import { lintKeymap } from '@codemirror/lint';
@@ -1981,6 +1982,162 @@ describe('CodeEditor replaceRange', () => {
     });
 });
 
+/**
+ * Calls `mount()` offline and captures the state it builds. No view is
+ * mounted there, so the state is read off a spy on `EditorState.create`. A
+ * `describe` that calls this restores the spy in an `afterEach`, which runs
+ * even when `mount()` throws.
+ *
+ * @param value - The editor's document.
+ * @param readOnly - Whether the editor is read-only.
+ * @returns The editor and the state its `mount()` built.
+ */
+function mountOffline(value?: string, readOnly: boolean = false): { editor: any; state: EditorState } {
+    const editor = new CodeEditor(value, { readOnly }) as any;
+
+    editor.getElement(true);
+
+    const createSpy = vi.spyOn(EditorState, 'create');
+
+    editor.mount();
+
+    return { editor, state: createSpy.mock.results[0].value as EditorState };
+}
+
+describe('CodeEditor read-only extension', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    /**
+     * Builds a read-only state holding "abc", the way the editor makes a
+     * state read-only.
+     *
+     * @returns The state.
+     */
+    function readOnlyState(): EditorState {
+        return EditorState.create({ doc: 'abc', extensions: buildReadOnlyExtension(true) });
+    }
+
+    it('RO7: refuses a document change, and moves no caret with it', () => {
+        const transaction = readOnlyState().update({ changes: { from: 0, insert: 'x' }, selection: { anchor: 2 } });
+
+        expect(transaction.docChanged).toBe(false);
+        expect(transaction.state.doc.toString()).toBe('abc');
+        expect(transaction.state.selection.main.head).toBe(0);
+    });
+
+    it('RO8: lets a transaction that changes no text through', () => {
+        const state = EditorState.create({ doc: 'abc', extensions: [buildReadOnlyExtension(true), revealHighlightField] });
+        const moved = state.update({ selection: { anchor: 2 } });
+        const shown = state.update({ effects: setRevealHighlight.of({ from: 0, to: 1, flash: false }) });
+
+        expect(moved.state.selection.main.head).toBe(2);
+        expect(shown.state.field(revealHighlightField).size).toBe(1);
+    });
+
+    it('RO9: sets the read-only flag only when read-only', () => {
+        expect(readOnlyState().readOnly).toBe(true);
+        expect(EditorState.create({ extensions: buildReadOnlyExtension(false) }).readOnly).toBe(false);
+    });
+
+    it('RO10: when not read-only, lets a document change through', () => {
+        const state = EditorState.create({ doc: 'abc', extensions: buildReadOnlyExtension(false) });
+
+        expect(state.update({ changes: { from: 0, insert: 'x' } }).state.doc.toString()).toBe('xabc');
+    });
+
+    it('RO11: the state mount() builds for a read-only editor refuses a document change', () => {
+        const { editor, state } = mountOffline('abc', true);
+        const writable          = state.update({ effects: editor._readOnlyCompartment.reconfigure(buildReadOnlyExtension(false)) }).state;
+
+        expect(state.update({ changes: { from: 0, insert: 'x' } }).docChanged).toBe(false);
+        expect(writable.update({ changes: { from: 0, insert: 'x' } }).docChanged).toBe(true);
+    });
+
+    it('RO12: setValue loads a document into a read-only editor, and signals nothing', () => {
+        const state  = readOnlyState();
+        const editor = new CodeEditor('abc', { readOnly: true }) as any;
+        const loaded: Transaction[] = [];
+        let refusals = 0;
+
+        editor.on('readonlyedit', () => { refusals += 1; });
+        editor._view = { state, dispatch: (spec: TransactionSpec) => { loaded.push(state.update(spec)); } };
+
+        editor.setValue('new');
+        editor.signalRefusedEdit(loaded);
+
+        expect(loaded[0].state.doc.toString()).toBe('new');
+        expect(refusals).toBe(0);
+    });
+
+    it('RO13: a refused transaction signals the rejected edit once, and any other signals nothing', () => {
+        const state  = readOnlyState();
+        const editor = new CodeEditor('abc', { readOnly: true }) as any;
+        let refusals = 0;
+
+        editor.on('readonlyedit', () => { refusals += 1; });
+
+        editor.signalRefusedEdit([state.update({ selection: { anchor: 1 } })]);
+        expect(refusals).toBe(0);
+
+        editor.signalRefusedEdit([state.update({ changes: { from: 0, insert: 'x' } }), state.update({ changes: { from: 1, insert: 'y' } })]);
+        expect(refusals).toBe(1);
+    });
+
+    it('RO14: a filter of a higher precedence cannot put a change back', () => {
+        // CodeMirror runs transaction filters from the lowest precedence to
+        // the highest, and the last one decides. This one stands for a
+        // language's own, loaded where `CodeEditor` loads a language.
+        const { editor, state: built } = mountOffline('abc', true);
+
+        const addsText = EditorState.transactionFilter.of((transaction) => (
+            transaction.docChanged ? transaction : [transaction, { changes: { from: 0, insert: 'x' } }]
+        ));
+
+        for (const filter of [addsText, Prec.high(addsText), Prec.highest(addsText)]) {
+            const state = built.update({ effects: editor._langCompartment.reconfigure(filter) }).state;
+            const moved = state.update({ selection: { anchor: 2 } });
+
+            expect(moved.state.doc.toString()).toBe('abc');
+            expect(moved.docChanged).toBe(false);
+        }
+    });
+
+    it('RO15: the transactions the editor itself dispatches while read-only pass', () => {
+        const { editor, state } = mountOffline('abc', true);
+        const language          = state.update({ effects: editor._langCompartment.reconfigure(json()) });
+        const folded    = state.update({ effects: foldEffect.of({ from: 1, to: 2 }) });
+        const searching = state.update({ effects: setSearchQuery.of(new SearchQuery({ search: 'b' })) });
+        const tabSize   = state.update({ effects: editor._tabSizeCompartment.reconfigure(EditorState.tabSize.of(2)) });
+
+        expect(language.state.facet(languageFacet)).not.toBeNull();
+        expect(foldedRanges(folded.state).size).toBe(1);
+        expect(getSearchQuery(searching.state).search).toBe('b');
+        expect(tabSize.state.tabSize).toBe(2);
+
+        for (const transaction of [language, folded, searching, tabSize]) {
+            expect(transaction.state.readOnly).toBe(true);
+            expect(transaction.state.doc.toString()).toBe('abc');
+        }
+    });
+
+    it('RO16: the read-only extension binds a refusal to each deletion key the editor\'s keymap stops the default of', () => {
+        const bound    = EditorState.create({ extensions: buildReadOnlyExtension(true) }).facet(keymap).flat();
+        const writable = EditorState.create({ extensions: buildReadOnlyExtension(false) }).facet(keymap).flat();
+
+        // CodeMirror's six deletion bindings, as `standardKeymap` lists them.
+        expect(bound.map(({ key, mac, shift }) => ({ key, mac, shift: shift !== undefined }))).toEqual([
+            { key: 'Backspace', mac: undefined, shift: true },
+            { key: 'Delete', mac: undefined, shift: false },
+            { key: 'Mod-Backspace', mac: 'Alt-Backspace', shift: false },
+            { key: 'Mod-Delete', mac: 'Alt-Delete', shift: false },
+            { key: undefined, mac: 'Mod-Backspace', shift: false },
+            { key: undefined, mac: 'Mod-Delete', shift: false },
+        ]);
+        expect(bound.every((binding) => binding.any === undefined)).toBe(true);
+        expect(writable).toEqual([]);
+    });
+});
+
 describe('CodeEditor revealRange', () => {
     /**
      * A duck-typed `EditorView` carrying a **real** `EditorState`, so
@@ -2589,6 +2746,7 @@ describe('CodeEditor format() dispatch', () => {
     const CHANGE_FORMATTER_LANG = 'test-change-formatter-lang';
     const OPTIONS_FORMATTER_LANG = 'test-options-formatter-lang';
     const READ_ONLY_FORMATTER_LANG = 'test-read-only-formatter-lang';
+    const LATE_READ_ONLY_FORMATTER_LANG = 'test-late-read-only-formatter-lang';
 
     it('resolves and applies the result when the formatter succeeds', async () => {
         const formatter: Formatter = async (source) => ({ formatted: source.toUpperCase(), cursorOffset: 0 });
@@ -2652,6 +2810,29 @@ describe('CodeEditor format() dispatch', () => {
         await editor.format();
 
         expect(formatter).not.toHaveBeenCalled();
+        expect(editor.getValue()).toBe('lower');
+        expect(rejected).toHaveBeenCalledOnce();
+    });
+
+    it('format() that resolves after the editor became read-only changes nothing and signals the rejected edit', async () => {
+        const editor = new CodeEditor('lower', { language: LATE_READ_ONLY_FORMATTER_LANG });
+        const rejected = vi.fn();
+
+        registerLanguage({
+            id: LATE_READ_ONLY_FORMATTER_LANG,
+            loadExtension: async () => [] as any,
+            loadFormatter: async () => async (source: string) => {
+                // The host makes the editor read-only while the formatter runs.
+                editor.setReadOnly(true);
+
+                return { formatted: source.toUpperCase(), cursorOffset: 0 };
+            },
+        });
+
+        editor.on('readonlyedit', rejected);
+
+        await editor.format();
+
         expect(editor.getValue()).toBe('lower');
         expect(rejected).toHaveBeenCalledOnce();
     });
@@ -3140,25 +3321,6 @@ describe('built-in sql language options', () => {
 
 describe('CodeEditor keymap order', () => {
     afterEach(() => vi.restoreAllMocks());
-
-    /**
-     * Calls `mount()` offline and captures the state it builds. No view is
-     * mounted there, so the state is read off a spy on `EditorState.create`,
-     * which the `afterEach` above restores even when `mount()` throws.
-     *
-     * @returns The editor and the state its `mount()` built.
-     */
-    function mountOffline(): { editor: any; state: EditorState } {
-        const editor = new CodeEditor() as any;
-
-        editor.getElement(true);
-
-        const createSpy = vi.spyOn(EditorState, 'create');
-
-        editor.mount();
-
-        return { editor, state: createSpy.mock.results[0].value as EditorState };
-    }
 
     /**
      * Lists the commands bound to `key` in the order CodeMirror tries them,
@@ -3698,7 +3860,7 @@ describe('built-in markdown language typing', () => {
     });
 
     it('C24: repeated Enter inside an open HTML block in a list item never drops the indentation', async () => {
-        expect(await typed('markdown', '- <pre>|\n  x\n  </pre>', '\n\n')).toBe('- <pre>\n  \n  |\n  x\n  </pre>');
+        expect(await typed('markdown', '- <pre>|\n  x\n  </pre>', '\n\n')).toBe('- <pre>\n\n  |\n  x\n  </pre>');
     });
 
     it('C25: at the end of an HTML block, repeated Enter leaves the blockquote as after plain quoted text', async () => {
@@ -3751,9 +3913,8 @@ describe('built-in markdown language typing', () => {
         expect(await typed('markdown', start, '\n')).toBe('<script>\nfunction f() {\n  |\n}\n</script>');
     });
 
-    it('C35: Enter in a fenced code block in a blockquote is not continued (a known limit)', async () => {
-        // Not HTML, so not this command's: Markdown's own Enter command declines inside fenced code, and plain Enter cannot write a ">".
-        expect(await typed('markdown', '> ```\n> code|\n> ```', '\n')).toBe('> ```\n> code\n|\n> ```');
+    it('C35: Enter in a fenced code block in a blockquote keeps the quote marker', async () => {
+        expect(await typed('markdown', '> ```\n> code|\n> ```', '\n')).toBe('> ```\n> code\n> |\n> ```');
     });
 
     it('C36: Enter over a selection on an item marker line still indents to the item content', async () => {
@@ -3797,13 +3958,13 @@ describe('built-in markdown language typing', () => {
         expect(await typed('markdown', '> - <div>|\n>   x', '\n\b\b')).toBe('> - <div>\n> |\n>   x');
     });
 
-    it('C42: Enter between a bracket pair inside <script> or <style> in a blockquote or list item adds one line', async () => {
-        // The pair is not split over three lines, as it is not in other
-        // quoted or item text (`> (|)` gives `> (` over `> |)`). At the top
-        // level JavaScript still splits it.
-        expect(await typed('markdown', '> <script>\n> f(|)\n> </script>', '\n')).toBe('> <script>\n> f(\n> |)\n> </script>');
-        expect(await typed('markdown', '- a\n  <script>\n  f(|)\n  </script>', '\n')).toBe('- a\n  <script>\n  f(\n  |)\n  </script>');
-        expect(await typed('markdown', '- a\n  <style>\n  a {|}\n  </style>', '\n')).toBe('- a\n  <style>\n  a {\n  |}\n  </style>');
+    it('C42: Enter between a bracket pair inside <script> or <style> in a blockquote or list item splits the pair and gives both new lines the prefix', async () => {
+        // The closing bracket moves to its own line, as with the editor's
+        // plain Enter, which still splits the pair at the top level and
+        // indents by JavaScript's own rules there.
+        expect(await typed('markdown', '> <script>\n> f(|)\n> </script>', '\n')).toBe('> <script>\n> f(\n> |\n> )\n> </script>');
+        expect(await typed('markdown', '- a\n  <script>\n  f(|)\n  </script>', '\n')).toBe('- a\n  <script>\n  f(\n  |\n  )\n  </script>');
+        expect(await typed('markdown', '- a\n  <style>\n  a {|}\n  </style>', '\n')).toBe('- a\n  <style>\n  a {\n  |\n  }\n  </style>');
         expect(await typed('markdown', '<script>\nf(|)\n</script>', '\n')).toBe('<script>\nf(\n  |\n)\n</script>');
     });
 
@@ -3955,6 +4116,312 @@ describe('built-in markdown language typing', () => {
         expect(await typed('python', '', '"""')).toBe('"""|"""');
         expect(await typed('python', '', '"""\b')).toBe('""|""');
         expect(await typed('python', '', '"""\b\b\b')).toBe('|');
+    });
+
+    // Rows F1–F42 and S1–S9: Enter in a code block, at the end of an HTML
+    // block in a blockquote or list item, and on a blank indented line. The
+    // new line starts with the caret line's own prefix, as in rows C1–C42.
+    it('F1: text typed after Enter in a fenced code block in a blockquote lands in the block', async () => {
+        expect(await typed('markdown', '> ```\n> code|\n> ```', '\nmore')).toBe('> ```\n> code\n> more|\n> ```');
+    });
+
+    it('F2: a fenced code block typed in a blockquote stays in the quote', async () => {
+        expect(await typed('markdown', '> ```js', '\ncode\n```\n')).toBe('> ```js\n> code\n> ```\n> |');
+    });
+
+    it('F3: Enter after the closing fence keeps the quote marker', async () => {
+        expect(await typed('markdown', '> ```\n> code\n> ```|\n> after', '\n')).toBe('> ```\n> code\n> ```\n> |\n> after');
+    });
+
+    it('F4: Enter in a fenced code block in a nested blockquote keeps both markers', async () => {
+        expect(await typed('markdown', '> > ```\n> > code|\n> > ```', '\n')).toBe('> > ```\n> > code\n> > |\n> > ```');
+    });
+
+    it('F5: Enter on a deeper-indented code line in a blockquote keeps that indentation', async () => {
+        expect(await typed('markdown', '> ```\n>     deep|\n> ```', '\n')).toBe('> ```\n>     deep\n>     |\n> ```');
+    });
+
+    it('F6: Enter in the middle of a quoted code line keeps the quote marker', async () => {
+        expect(await typed('markdown', '> ```\n> co|de\n> ```', '\n')).toBe('> ```\n> co\n> |de\n> ```');
+    });
+
+    it('F7: repeated Enter in a fenced code block in a blockquote never drops the quote marker', async () => {
+        expect(await typed('markdown', '> ```\n> code|\n> ```', '\n\n')).toBe('> ```\n> code\n> \n> |\n> ```');
+        expect(await typed('markdown', '> ```\n> code', '\n\n\n')).toBe('> ```\n> code\n> \n> \n> |');
+    });
+
+    it('F8: Enter in front of the quote marker of a code line leaves the line as it is', async () => {
+        expect(await typed('markdown', '> ```\n|> code\n> ```', '\n')).toBe('> ```\n\n|> code\n> ```');
+    });
+
+    it('F9: Enter after a fence opened on an item marker line indents to the item content', async () => {
+        expect(await typed('markdown', '- ```js|\n  code\n  ```', '\n')).toBe('- ```js\n  |\n  code\n  ```');
+    });
+
+    it('F10: Enter after a fence opened on an ordered item marker line blanks the whole marker', async () => {
+        expect(await typed('markdown', '1. ```|\n   code\n   ```', '\n')).toBe('1. ```\n   |\n   code\n   ```');
+    });
+
+    it('F11: a fenced code block typed on an item marker line stays in the item', async () => {
+        expect(await typed('markdown', '- ```', '\ncode\n```\n')).toBe('- ```\n  code\n  ```\n  |');
+    });
+
+    it('F12: Enter on a code line of an item continuation keeps the line indentation', async () => {
+        expect(await typed('markdown', '- ```\n  code|\n  ```', '\n')).toBe('- ```\n  code\n  |\n  ```');
+    });
+
+    it('F13: Enter in a fenced code block in an item inside a blockquote copies the line prefix', async () => {
+        expect(await typed('markdown', '> - ```\n>   code|\n>   ```', '\n')).toBe('> - ```\n>   code\n>   |\n>   ```');
+    });
+
+    it('F14: Enter in a fenced code block in a blockquote inside an item keeps the quote marker', async () => {
+        expect(await typed('markdown', '- > ```\n  > code|\n  > ```', '\n')).toBe('- > ```\n  > code\n  > |\n  > ```');
+    });
+
+    it('F15: Enter after a fence opened on an item marker line inside a blockquote keeps the quote and the item', async () => {
+        expect(await typed('markdown', '> - ```|\n>   code', '\n')).toBe('> - ```\n>   |\n>   code');
+    });
+
+    for (const tabSize of [2, 8]) {
+        it(`F16: Enter on a tab-indented code line in a nested item copies the tab with tabSize ${tabSize}`, async () => {
+            expect(await typed('markdown', '- a\n  - b\n\t```\n\tcode|\n\t```', '\n', tabSize)).toBe('- a\n  - b\n\t```\n\tcode\n\t|\n\t```');
+        });
+    }
+
+    for (const tabSize of [2, 8]) {
+        it(`F17: Enter on a tab-indented line of a top-level fenced code block copies the tab with tabSize ${tabSize}`, async () => {
+            expect(await typed('markdown', '```\n\tcode|\n```', '\n', tabSize)).toBe('```\n\tcode\n\t|\n```');
+        });
+    }
+
+    for (const tabSize of [2, 8]) {
+        it(`F18: text typed after Enter in a tab-indented code block stays in the code block with tabSize ${tabSize}`, async () => {
+            expect(await typed('markdown', 'p\n\n\tcode', '\nmore', tabSize)).toBe('p\n\n\tcode\n\tmore|');
+        });
+    }
+
+    it('F19: Enter in an indented code block in a blockquote keeps the code indentation', async () => {
+        expect(await typed('markdown', '>     code|\n>     more', '\n')).toBe('>     code\n>     |\n>     more');
+    });
+
+    it('F20: Enter in an indented code block in a list item keeps the code indentation', async () => {
+        expect(await typed('markdown', '- a\n\n      code|\n      more', '\n')).toBe('- a\n\n      code\n      |\n      more');
+    });
+
+    it('F21: Enter in a top-level indented code block keeps the code indentation', async () => {
+        expect(await typed('markdown', 'p\n\n    code', '\n')).toBe('p\n\n    code\n    |');
+    });
+
+    it('F22: three Enters leave a blockquote from an indented code block', async () => {
+        expect(await typed('markdown', '>     code', '\n\n\n')).toBe('>     code\n\n|');
+    });
+
+    it('F23: Enter in front of the first character of an indented code block in an item is not this command\'s', async () => {
+        expect(await typed('markdown', '- a\n\n      |code', '\n')).toBe('- a\n\n\n  |code');
+    });
+
+    it('F24: Enter between brackets in a fenced code block in a blockquote gives both new lines the quote marker', async () => {
+        expect(await typed('markdown', '> ```\n> f(|)\n> ```', '\n')).toBe('> ```\n> f(\n> |\n> )\n> ```');
+    });
+
+    it('F25: Enter between brackets in a fenced code block in a list item still splits them', async () => {
+        expect(await typed('markdown', '- ```\n  f(|)\n  ```', '\n')).toBe('- ```\n  f(\n  |\n  )\n  ```');
+    });
+
+    it('F26: Enter between brackets in a top-level fenced code block still splits them', async () => {
+        expect(await typed('markdown', '```\nf(|)\n```', '\n')).toBe('```\nf(\n|\n)\n```');
+    });
+
+    it('F27: Enter between braces inside <script> in a blockquote splits them and keeps the quote marker', async () => {
+        expect(await typed('markdown', '> <script>\n> f() {|}\n> </script>', '\n')).toBe('> <script>\n> f() {\n> |\n> }\n> </script>');
+    });
+
+    it('F28: Enter between brackets in quoted text is Markdown\'s own and does not split them', async () => {
+        expect(await typed('markdown', '> f(|)', '\n')).toBe('> f(\n> |)');
+    });
+
+    it('F29: Enter on a blank indented line of a top-level fenced code block empties that line', async () => {
+        expect(await typed('markdown', '```\n  code', '\n\n')).toBe('```\n  code\n\n  |');
+    });
+
+    it('F30: Enter on a blank indented line of a fenced code block in an item empties that line', async () => {
+        expect(await typed('markdown', '- ```\n  code|\n  ```', '\n\n')).toBe('- ```\n  code\n\n  |\n  ```');
+    });
+
+    it('F31: Enter on a blank indented line after a list keeps the indentation', async () => {
+        expect(await typed('markdown', '- a\n  |', '\n')).toBe('- a\n\n  |');
+    });
+
+    for (const tabSize of [2, 8]) {
+        it(`F32: Enter on a blank tab-indented line at the end of the document copies the tab with tabSize ${tabSize}`, async () => {
+            expect(await typed('markdown', '- a\n  - b\n\t<div>\n\t|', '\n', tabSize)).toBe('- a\n  - b\n\t<div>\n\n\t|');
+        });
+    }
+
+    it('F33: Enter on a blank indented line inside a top-level HTML block is the editor\'s own', async () => {
+        expect(await typed('markdown', '<pre>\n  |\n</pre>', '\n')).toBe('<pre>\n\n  |\n</pre>');
+    });
+
+    // Not in the plan: F33's text is the same from either command. A tab
+    // tells them apart, since the editor's plain Enter measures it.
+    for (const [tabSize, indentation] of [[2, '  '], [8, '        ']] as const) {
+        it(`F42: Enter on a blank tab-indented line inside a top-level HTML block writes spaces with tabSize ${tabSize}`, async () => {
+            expect(await typed('markdown', '<pre>\n\t|\n</pre>', '\n', tabSize)).toBe(`<pre>\n\n${indentation}|\n</pre>`);
+        });
+    }
+
+    for (const tabSize of [2, 4, 8]) {
+        it(`F34: Enter at the end of an HTML block on a tab-indented line of a nested item copies the tab with tabSize ${tabSize}`, async () => {
+            expect(await typed('markdown', '- a\n  - b\n\t<div>', '\n', tabSize)).toBe('- a\n  - b\n\t<div>\n\t|');
+        });
+    }
+
+    it('F35: text typed after Enter at the end of a tab-indented HTML block stays in the item', async () => {
+        expect(await typed('markdown', '1. a\n\t<div>', '\nx')).toBe('1. a\n\t<div>\n\tx|');
+    });
+
+    it('F36: Enter after a close tag on a tab-indented line copies the tab', async () => {
+        expect(await typed('markdown', '- a\n  - b\n\t<div>\n\tx\n\t</div>', '\n')).toBe('- a\n  - b\n\t<div>\n\tx\n\t</div>\n\t|');
+    });
+
+    it('F37: Enter at the end of an HTML block copies indentation deeper than the item content', async () => {
+        expect(await typed('markdown', '- a\n   <div>', '\n')).toBe('- a\n   <div>\n   |');
+    });
+
+    it('F38: Enter after an inline tag at the end of a quoted paragraph is Markdown\'s own', async () => {
+        expect(await typed('markdown', '> a\nb <i>x</i>', '\n')).toBe('> a\nb <i>x</i>\n> |');
+    });
+
+    it('F39: Enter in front of a tag on an item marker line is Markdown\'s own', async () => {
+        expect(await typed('markdown', '- a |<b>x</b>', '\n')).toBe('- a\n- |<b>x</b>');
+    });
+
+    it('F40: Backspace deletes the quote prefix of a new code line one character at a time', async () => {
+        expect(await typed('markdown', '> ```\n> code|\n> ```', '\n\b')).toBe('> ```\n> code\n>|\n> ```');
+        expect(await typed('markdown', '> ```\n> code|\n> ```', '\n\b\b')).toBe('> ```\n> code\n|\n> ```');
+    });
+
+    it('F41: Backspace deletes the item indentation of a new code line in one press', async () => {
+        expect(await typed('markdown', '- ```js|\n  code\n  ```', '\n\b')).toBe('- ```js\n|\n  code\n  ```');
+    });
+
+    /**
+     * Types `keys` over a selection in a Markdown document.
+     *
+     * @param doc - The document text.
+     * @param from - The offset the selection starts at.
+     * @param to - The offset the selection ends at.
+     * @param keys - The keys to type (see `typeText`).
+     * @returns The resulting document with `|` at the caret.
+     */
+    async function typedOver(doc: string, from: number, to: number, keys: string): Promise<string> {
+        const state = await buildTypingState('markdown', doc);
+
+        return show(typeText(state.update({ selection: EditorSelection.range(from, to) }).state, keys));
+    }
+
+    /**
+     * Presses Enter with two carets in a Markdown document.
+     *
+     * @param doc - The document text.
+     * @param first - The offset of the first caret.
+     * @param second - The offset of the second caret.
+     * @returns The resulting document text.
+     */
+    async function enterAtTwoCarets(doc: string, first: number, second: number): Promise<string> {
+        const start  = await buildTypingState('markdown', doc);
+        const state  = start.update({ effects: StateEffect.appendConfig.of(EditorState.allowMultipleSelections.of(true)) }).state;
+        const carets = EditorSelection.create([EditorSelection.cursor(first), EditorSelection.cursor(second)]);
+
+        return typeText(state.update({ selection: carets }).state, '\n').doc.toString();
+    }
+
+    it('S1: Enter over a selection in a fenced code block in a blockquote keeps the quote marker', async () => {
+        // Offsets 10 to 12 select the "de" of "code".
+        expect(await typedOver('> ```\n> code\n> ```', 10, 12, '\n')).toBe('> ```\n> co\n> |\n> ```');
+    });
+
+    it('S2: Enter over a selection inside an HTML block in a blockquote keeps the quote marker', async () => {
+        // Offsets 11 to 12 select the "b" of "abc".
+        expect(await typedOver('> <div>\n> abc\n> </div>', 11, 12, '\n')).toBe('> <div>\n> a\n> |c\n> </div>');
+    });
+
+    it('S3: Enter over a selection across two code lines in a blockquote leaves one quoted line break', async () => {
+        // Offsets 9 to 14 select from after "a" to after "c".
+        expect(await typedOver('> ```\n> ab\n> cd\n> ```', 9, 14, '\n')).toBe('> ```\n> a\n> |d\n> ```');
+    });
+
+    it('S4: Enter over a selection in quoted text adds no quote marker', async () => {
+        // Offsets 3 to 4 select the "b" of "abc". Markdown's own command passes a selection on.
+        expect(await typedOver('> abc', 3, 4, '\n')).toBe('> a\n|c');
+    });
+
+    it('S5: Enter with two carets in a fenced code block in a blockquote keeps the quote marker at both', async () => {
+        // Offset 9 is the end of "> a", 13 the end of "> b".
+        expect(await enterAtTwoCarets('> ```\n> a\n> b\n> ```', 9, 13)).toBe('> ```\n> a\n> \n> b\n> \n> ```');
+    });
+
+    it('S6: Enter with one caret in a code block and one in a paragraph gives neither a quote marker', async () => {
+        // Offset 9 is the end of "> a", 21 the end of "text".
+        expect(await enterAtTwoCarets('> ```\n> a\n> ```\n\ntext', 9, 21)).toBe('> ```\n> a\n\n> ```\n\ntext\n');
+    });
+
+    it('S7: Enter over a selection that starts between a bracket pair adds one line', async () => {
+        // Offsets 10 to 12 select the ")a" after "f(". The closing bracket is replaced, so nothing is left to move down.
+        expect(await typedOver('> ```\n> f()ab\n> ```', 10, 12, '\n')).toBe('> ```\n> f(\n> |b\n> ```');
+    });
+
+    it('S8: Enter over the text between two inline tags in a blockquote keeps the quote marker', async () => {
+        // Offsets 7 to 8 select the "x". Markdown is beside the start of the selection and HTML beside its end.
+        expect(await typedOver('> a <b>x</b> c\n> d', 7, 8, '\n')).toBe('> a <b>\n> |</b> c\n> d');
+    });
+
+    it('S9: Enter over a selection that starts in front of the quote marker is not this command\'s', async () => {
+        // Offsets 6 to 12 select the whole line "> code", from the margin. As for a caret there (row F8), the
+        // editor's plain Enter replaces it, and the new line has no ">".
+        expect(await typedOver('> ```\n> code\n> ```', 6, 12, '\n')).toBe('> ```\n\n|\n> ```');
+    });
+
+    /**
+     * Types `keys` like `typed`, in a state made read-only the way
+     * `CodeEditor` makes it.
+     *
+     * @param languageId - The built-in language id to type in.
+     * @param startDoc - The document before typing, with the caret as `buildTypingState` reads it.
+     * @param keys - The keys to type (see `typeText`).
+     * @returns The resulting document with `|` at the caret.
+     */
+    async function typedReadOnly(languageId: string, startDoc: string, keys: string): Promise<string> {
+        const state = await buildTypingState(languageId, startDoc);
+
+        return show(typeText(state.update({ effects: StateEffect.appendConfig.of(buildReadOnlyExtension(true)) }).state, keys));
+    }
+
+    it('RO1: Enter on a markdown list line changes nothing in a read-only editor', async () => {
+        expect(await typedReadOnly('markdown', '- item', '\n')).toBe('- item|');
+    });
+
+    it('RO2: Backspace after a markdown list marker changes nothing in a read-only editor', async () => {
+        expect(await typedReadOnly('markdown', '- a\n- |', '\b')).toBe('- a\n- |');
+    });
+
+    it('RO3: Enter on a markdown blockquote line changes nothing in a read-only editor', async () => {
+        expect(await typedReadOnly('markdown', '> quote', '\n')).toBe('> quote|');
+    });
+
+    it('RO4: a typed character changes nothing in a read-only editor', async () => {
+        // A mounted view drops typed text before it becomes a transaction;
+        // the harness builds the transaction, and the editor's filter refuses it.
+        expect(await typedReadOnly('markdown', 'ab|', 'x')).toBe('ab|');
+    });
+
+    it('RO5: Enter in a fenced code block in a blockquote changes nothing in a read-only editor', async () => {
+        expect(await typedReadOnly('markdown', '> ```\n> code|\n> ```', '\n')).toBe('> ```\n> code|\n> ```');
+    });
+
+    it('RO6: Enter and Backspace between brackets change nothing in a read-only javascript editor', async () => {
+        expect(await typedReadOnly('javascript', 'a(|)', '\n')).toBe('a(|)');
+        expect(await typedReadOnly('javascript', 'a(|)', '\b')).toBe('a(|)');
     });
 });
 

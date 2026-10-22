@@ -2,8 +2,8 @@ import type { CorpusCase } from './types';
 
 /**
  * What Enter leaves inside HTML that sits in a blockquote or list item, in the built-in `"markdown"` language: the
- * documents the typing rows of `code-editor.test.ts` end with, each named by its row, four with text typed on a new
- * line that starts with a tab, and one whose lines all carry a space-and-tab prefix. Every new line starts with the
+ * documents the typing rows of `code-editor.test.ts` end with, each named by its row, some with text typed on the new
+ * line, and one whose lines all carry a space-and-tab prefix. Every new line starts with the
  * prefix of the line Enter was pressed on, so it stays in the quote or list item of that line
  * (`markdown-roundtrip.test.ts` checks that on the viewer's reading, and names the one document it does not hold for).
  */
@@ -37,11 +37,23 @@ export const ENTER_INSIDE_HTML_CASES: readonly CorpusCase[] = [
     { name: 'Enter in quoted HTML with a tab after the marker, then text', source: '>\t<div>\n>\ty\n>\tx', known: { surface: 'quoteBlocks' } },
     { name: 'Enter between a quote marker and deeper-indented HTML (C21)', source: '> <div>\n> \n>   x', known: { surface: 'quoteBlocks' } },
     { name: 'Enter three times in a quoted pre block (C23)', source: '> <pre>\n> \n> \n> \n> x\n> </pre>', known: { surface: 'quoteBlocks' } },
-    { name: 'Enter twice in a pre block in a list item (C24)', source: '- <pre>\n  \n  \n  x\n  </pre>' },
+    { name: 'Enter twice in a pre block in a list item (C24)', source: '- <pre>\n\n  \n  x\n  </pre>' },
     { name: 'Enter inside an inline tag in a quote (C28)', source: '> text <a href="x"\n> title="y"> more\n> next' },
     { name: 'Enter between two inline tags in a quote (C29)', source: '> a <b>\n> </b> c\n> d' },
     { name: 'Enter inside a quoted HTML comment (C31)', source: '> <!-- a\n> \n> b -->', known: { surface: 'quoteBlocks' } },
     { name: 'Enter inside a quoted script (C32)', source: '> <script>\n> function f() {\n> \n> }\n> </script>', known: { surface: 'quoteBlocks' } },
     { name: 'Enter inside a script in a list item (C33)', source: '- a\n  <script>\n  if (x) {\n  \n  }\n  </script>', known: { surface: 'listItemBlocks' } },
     { name: 'Enter at two carets in quoted HTML (C37)', source: '> <div>\n> \n> x\n> \n> </div>', known: { surface: 'quoteBlocks' } },
+    { name: 'Enter between brackets in a quoted script (C42)', source: '> <script>\n> f(\n> \n> )\n> </script>', known: { surface: 'quoteBlocks' } },
+    { name: 'Enter between brackets in a script in a list item (C42)', source: '- a\n  <script>\n  f(\n  \n  )\n  </script>', known: { surface: 'listItemBlocks' } },
+    { name: 'Enter between braces in a style block in a list item (C42)', source: '- a\n  <style>\n  a {\n  \n  }\n  </style>', known: { surface: 'listItemBlocks' } },
+    { name: 'Enter on a blank tab-indented line after an HTML block (F32)', source: '- a\n  - b\n\t<div>\n\n\t', known: { surface: 'listItemBlocks' } },
+    { name: 'Enter on a blank tab-indented line after an HTML block, then text', source: '- a\n  - b\n\t<div>\n\n\tx' },
+    { name: 'Enter at the end of an HTML block on a tab-indented line (F34)', source: '- a\n  - b\n\t<div>\n\t', known: { surface: 'listItemBlocks' } },
+    { name: 'Enter at the end of a tab-indented HTML block, then text (F35)', source: '1. a\n\t<div>\n\tx', known: { surface: 'listItemBlocks' } },
+    { name: 'Enter after a close tag on a tab-indented line (F36)', source: '- a\n  - b\n\t<div>\n\tx\n\t</div>\n\t', known: { surface: 'listItemBlocks' } },
+    { name: 'Enter after a close tag on a tab-indented line, then text', source: '- a\n  - b\n\t<div>\n\tx\n\t</div>\n\ty', known: { surface: 'listItemBlocks' } },
+    { name: 'Enter at the end of an HTML block indented deeper than its item (F37)', source: '- a\n   <div>\n   ', known: { surface: 'listItemBlocks' } },
+    { name: 'Enter at the end of an HTML block indented deeper than its item, then text', source: '- a\n   <div>\n   x', known: { surface: 'listItemBlocks' } },
+    { name: 'Enter over a selection in quoted HTML (S2)', source: '> <div>\n> a\n> c\n> </div>', known: { surface: 'quoteBlocks' } },
 ];

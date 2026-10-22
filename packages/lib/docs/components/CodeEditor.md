@@ -63,14 +63,25 @@ The library registers seven languages out of the box, each with a grammar and, w
 
 The `markdown` language types HTML literally, because indentation changes what Markdown means (four spaces start a code block; in a list it decides the item). Typing `<div>` does not add `</div>`, typing `</` does not complete the tag, and Enter inside an HTML block keeps the current line's indentation, as on any other Markdown line. HTML is still highlighted, and tag completion still offers names when you type `<`. To get HTML auto-closing back, register your own `markdown` language with [`registerLanguage`](#registering-a-language).
 
-Enter inside HTML does something other than keep the line's indentation in these places:
+Enter in the `markdown` language does one of three things, decided by where the caret is:
 
-- **In a blockquote or a list item**, while HTML follows the caret — more of the block on the lines below, or another tag on the same line (`- <div>|<p>x</p>`) — the new line starts with the same prefix as the line the caret is on: its `>` markers and its indentation, with a list marker replaced by spaces. After `> - <div>` the new line starts with `>` and three spaces. So the new line stays in the same quote and the same item, and never starts a new item. The prefix is copied character for character: a tab stays a tab, and the result does not depend on `tabSize`. Enter never removes the prefix while the HTML continues after the caret. One case looks like an exception: in a list item outside a blockquote, a new line that holds only the item's indentation is a blank line to Markdown, and a blank line ends a block such as `<div>` (though not `<pre>`, `<script>`, `<style>` or a comment). A second Enter on that line is then on a Markdown line, and removes the indentation, as on an empty line of any list item. Backspace deletes the prefix like any other text.
-- **At the end of an HTML block**, where nothing of the block follows the caret, Markdown's own continuation runs, as after any other text: `> <div>` then Enter adds `> `, and `- <div>` then Enter adds a new `- ` marker, which Backspace turns into indentation. One marker line is left out: after a bullet followed by a tab (`-\t<div>`), Markdown's own continuation does not run, and the new line is indented to the item's content instead, a column counted as Markdown counts it, the tab reaching the next multiple of four whatever the editor's `tabSize`.
-- **Between an adjacent open and close tag** (`<div>|</div>`), the close tag moves to its own line, as a closing bracket does. In a blockquote or list item both new lines get the prefix.
-- **Inside `<script>` and `<style>`, and inside a `style` or `on…` attribute value**, JavaScript and CSS keep their own indentation. In a blockquote or list item the new line gets the prefix instead, and Enter between a bracket pair (`f(|)`) adds one line, with the closing bracket after the caret, as in other text of a quote or item. Outside both, the closing bracket still moves to a line of its own.
-- **With text selected**, Enter replaces the selection and adds no `>`, in HTML as in any other quoted text. On a list item's marker line (`- <div>`) outside a blockquote, the new line is still indented to the item's content. That column is counted as Markdown counts it, a tab before the marker reaching the next multiple of four whatever the editor's `tabSize`.
-- **On a line indented with a tab, outside every blockquote and list item**, the indentation Enter keeps is counted with the editor's `tabSize` and written as spaces, as on any other Markdown line. Markdown reads the tab as reaching the next multiple of four, so the two agree only while `tabSize` is 4 or unset: under a `\t<div>` line the new line gets two spaces with `tabSize: 2` and eight with `tabSize: 8`, neither of which is the column Markdown reads the tab at. The same holds in a list item when Enter replaces a selection off the item's marker line.
+| Caret | Enter |
+| --- | --- |
+| In Markdown text in a list item or a blockquote | Markdown's own continuation: a new list marker, or the `>`. On an empty item or an empty quoted line it takes the marker away again, at once or on the next press, which is how Enter leaves a list or a quote. |
+| In a code block (fenced or indented), in HTML inside a blockquote or list item, or on a blank indented line that no list item or blockquote holds, such as the last line of a document | The new line starts with the same *prefix* as the line the caret is on. |
+| Anywhere else, such as a paragraph, or HTML outside every blockquote and list item | The editor's plain Enter: the new line keeps the line's indentation. |
+
+The prefix is the start of the caret's line, up to its text: its `>` markers and its indentation, with a list marker replaced by spaces. After `` > - ```js `` the new line starts with `>` and three spaces. So the new line stays in the same quote, the same item and the same code block, and never starts a new item.
+
+- **The prefix is copied character for character.** A tab stays a tab, so the new line is at the column Markdown reads, whatever the editor's `tabSize` is.
+- **Enter never removes the prefix** in a fenced code block, or in HTML that continues after the caret — more of the block on the lines below, or another tag on the same line (`- <div>|<p>x</p>`). In a fenced block inside a blockquote every new line starts with the `>`, the line after the closing fence included, so a fence that is still open is not left with Enter: close it, or delete the prefix. Backspace deletes the prefix like any other text. Two cases look like exceptions. An indented code block inside a blockquote ends at a blank line that no code follows, so a second Enter at its end is Markdown's own again. And in a list item outside a blockquote, a new line that holds only the item's indentation is a blank line to Markdown, and a blank line ends an HTML block such as `<div>` (though not `<pre>`, `<script>`, `<style>` or a comment): a second Enter on that line is then on a Markdown line, and removes the indentation, as on an empty line of any list item.
+- **At the end of an HTML block**, where nothing of the block follows the caret, a line with no list marker gets the prefix too: `> <div>` then Enter adds `> `, and a tab-indented `<div>` line of a nested item gives a new line with that tab. Two caret positions there stay with Markdown's own continuation. On a list item's marker line (`- <div>`), Enter continues the list with a new `- ` marker, as after any item's first line, and Backspace turns that marker into indentation. On a quoted line with nothing after its `>`, Enter leaves the quote, as after any quoted text. One marker line is left out of the first: after a bullet followed by a tab (`-\t<div>`), Markdown's own continuation does not run, and the new line is indented to the item's content instead, a column counted as Markdown counts it, the tab reaching the next multiple of four whatever the editor's `tabSize`.
+- **Between an empty pair** — `()`, `[]`, `{}`, or in HTML an adjacent open and close tag (`<div>|</div>`) — the closing half moves to its own line, as with the editor's plain Enter. Both new lines get the prefix. In the Markdown text of a quote or item, Markdown's own continuation adds one line and leaves the closing bracket after the caret.
+- **With text selected**, where the selection starts in a code block, or in HTML inside a blockquote or list item, Enter replaces it with the line break and the prefix. In other quoted text it adds no `>`. Nor does it for a selection that starts in front of its line's `>` or list marker, such as a whole line selected from the margin: as for a caret there, the editor's plain Enter replaces it, and in a quoted code block the new line then ends the quote.
+- **A line that holds only spaces and tabs is emptied** where the new line gets the prefix, and by the editor's plain Enter: its indentation moves to the new line with the caret. On such a line inside a list item, Markdown's own continuation removes the indentation instead and adds no line.
+- **Inside `<script>` and `<style>`, and inside a `style` or `on…` attribute value**, JavaScript and CSS keep their own indentation. In a blockquote or list item the new line gets the prefix instead.
+- **The editor's plain Enter** measures the indentation it keeps with `tabSize` and writes it as spaces. It handles what is left, which is mostly lines where indentation does not change what the Markdown means. HTML outside every blockquote and list item is one: inside a top-level `<div>` block, under a line indented with a tab the new line gets two spaces with `tabSize: 2` and eight with `tabSize: 8`.
+- **A tab-indented line of ordinary text in a list item** loses its indentation: Markdown's own continuation starts the new line at the margin. Text typed there still belongs to the item's paragraph.
 
 Both the grammar and the formatter load through a dynamic `import()` the first time they're needed — selecting a language fetches only its grammar; calling `format()` additionally fetches that language's formatter (and, for the five Prettier-backed languages, the shared Prettier standalone bundle, fetched once and reused across them). A lint source loads the same way, the first time [`lint`](#construction) is turned on for that language.
 
@@ -155,7 +166,7 @@ A language extension that binds a key the editor also binds — Enter, Backspace
 - When the result does change the document, the editor's visible area no longer unconditionally jumps to the top. It stays exactly in place when nothing above it changed length, which is the common case for an incremental edit-then-save, and can otherwise shift — by roughly however much text the formatter added or removed above it, never all the way back to the top — when a reformat changes text throughout the document, e.g. a first-time format of a wholly unformatted file.
 - If the formatter **throws** (invalid syntax, or an `options` value the engine rejects — e.g. a negative `indentWidth`), the promise **rejects** and the document is left **completely untouched** — formatting never loses content.
 - If the active language has no formatter (or none is set), `format()` re-indents the whole document using CodeMirror's own indentation service instead, ignoring `options` entirely.
-- While the editor is read-only, `format()` is refused: no formatter runs, nothing is re-indented, and the rejection surfaces through the `"readonlyedit"` event and the read-only flash, as it does for `replaceRange()`. The promise still resolves.
+- While the editor is read-only, `format()` is refused: no formatter runs, nothing is re-indented, and the rejection surfaces through the `"readonlyedit"` event and the read-only flash, as it does for `replaceRange()`. The promise still resolves. A result that arrives after the editor was made read-only is refused the same way.
 
 ## Formatting options
 
@@ -206,6 +217,16 @@ has no formatter at all, so `format()` re-indents instead and `options`
 ## Dirty state
 
 The editor reports itself dirty, via the framework's [`Component.isDirty()`](/api/core/classes/Component) mechanism, whenever its document differs from the text at the last clean point — the text it was constructed with, or the text `markClean()` last accepted. Typing, paste, `format()`, and `setValue()` all go through the same check, so an edit undone back to the clean text clears the flag on its own. `isDirty()` folds up into every ancestor container automatically. A host that loads a document with `setValue()` should follow it with `markClean()`, so the loaded text becomes the clean text.
+
+## Read-only
+
+`readOnly: true`, or `setReadOnly(true)`, locks the document. The caret, selection, copy, search, folding and scrolling keep working; nothing the user does changes the text. That holds for every key, for paste, drop and cut, for a completion picked from the list, and for every language, including one you [register](#registering-a-language): the editor itself refuses any change to a read-only document, so a language's own key bindings and handlers cannot edit it either. The one way past it is a change dispatched with CodeMirror's `filter: false`, which no built-in language uses.
+
+A refused edit fires the `"readonlyedit"` event and flashes the editor when it reaches the editor as input or as a change to the document: typed text, Enter, a paste, a drop, a completion picked from the list, and whatever a language's own command or handler tries to change. Backspace and Delete are signalled too: each alone, Backspace with Shift, and each with the modifier that deletes a word or a line. `replaceRange()`, `cut()`, `paste()` and `format()` are refused the same way when called from code, and so is a `paste()` or `format()` that was started before the editor became read-only and ends after.
+
+Every other key that edits is refused quietly, with no event and no flash, because its command declines on its own and nothing reaches the editor, such as undo and redo, toggling a comment, moving, copying or deleting a line, and indenting. Tab and Shift-Tab then move focus to the next or previous control, as there is nothing to indent. Replace and Replace all in the search panel are quiet as well, and the cut key copies the selection and removes nothing. The completion list still opens with `Ctrl-Space`; picking an entry is refused, and the list stays open until `Escape`.
+
+`setValue()` still replaces the whole document: read-only guards against edits, not against the host loading another document. `setLanguage()` and the other option setters work as before.
 
 ## Cursor position
 
@@ -283,9 +304,12 @@ Tab then moves focus again, and the same shortcut switches back to indenting.
 | `Enter` (find field) | Find the next match |
 | `Shift-Enter` (find field) | Find the previous match |
 | `Enter` (replace field) | Replace the current match |
+| `Enter` | Start a new line that keeps the current line's indentation. A language can bind Enter itself: `markdown` continues lists, blockquotes and code blocks — see [Built-in languages](#built-in-languages) |
 | `Ctrl-Space` | Open completions explicitly |
 | `(` / `[` / `{` / `"` / `'` (typed) | Insert the matching closing character, caret between. The active language decides which characters close: `json` closes only `[`, `{` and `"`, while `javascript` and `sql` also close a backtick |
 | `Backspace` (caret between an empty pair the language closes, such as `()` or `""`) | Delete both characters. With several carets, only when every caret is between such a pair. In `python`, three quotes typed in a row close as `"""` on each side of the caret, and each `Backspace` there deletes one quote on each side |
+
+In a [read-only](#read-only) editor none of these keys changes the document.
 
 When the app enables [spatial focus navigation](/concepts/accessibility#spatial-focus-navigation), its `Ctrl+Alt`+arrow chord takes `Ctrl-Alt-↑` / `Ctrl-Alt-↓` (add a cursor above / below) on Windows and Linux: the chord moves focus out of the editor instead. Alt+drag still makes a rectangular selection. Word selection (`Ctrl-Shift-←` / `Ctrl-Shift-→`) is not affected.
 
@@ -306,7 +330,7 @@ The card has nine controls, each a glyph-only button whose hover tooltip names i
 | Replace all | Replaces every match in one undo step |
 | Close | Closes the card |
 
-Replace and Replace all are inert while the editor is `readOnly: true`.
+Replace and Replace all are inert while the editor is `readOnly: true`, with no flash; see [Read-only](#read-only).
 
 ## Revealing a range
 
@@ -339,10 +363,10 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 
 | Method | Purpose |
 | --- | --- |
-| `getValue()` / `setValue(value)` | Read or replace the whole document. |
+| `getValue()` / `setValue(value)` | Read or replace the whole document. `setValue` also works while the editor is [read-only](#read-only). |
 | `getLanguage()` / `setLanguage(id, options?)` | Read or swap the active language and its options (grammar loads lazily; omitted options reset to `{}`). |
 | `getLanguageOptions()` | Read a copy of the active language's options. |
-| `getReadOnly()` / `setReadOnly(readOnly)` | Read or toggle whether the editor accepts edits. |
+| `getReadOnly()` / `setReadOnly(readOnly)` | Read or toggle whether the editor accepts edits. See [Read-only](#read-only). |
 | `format(options?)` | Format the document (or re-indent, with no formatter). Refused, with the read-only flash, while the editor is read-only: nothing is formatted or re-indented. |
 | `on('change', fn)` / `off('change', fn)` | Subscribe to document changes. |
 | `getAutoHeightMaxRows()` | Read the configured `autoHeightMaxRows`, or `null` when unset. |

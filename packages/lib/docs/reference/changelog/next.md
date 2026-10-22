@@ -1478,11 +1478,9 @@ page resets to empty.
   marker replaced by spaces. It never starts a new list item. The prefix is
   copied as written, so a tab stays a tab whatever the editor's `tabSize`.
   Inside `<script>` and `<style>` in a blockquote or list item, the new line
-  gets that prefix too, in place of JavaScript's or CSS's own indentation,
-  and Enter between a bracket pair there (`f(|)`) adds one line: the closing
-  bracket no longer moves to a line of its own, as it does not in other text
-  of a quote or item. Markdown's own continuation at the end of an HTML
-  block is unchanged. No consumer action is needed.
+  gets that prefix too, in place of JavaScript's or CSS's own indentation.
+  Markdown's own continuation on a list item's marker line at the end of an
+  HTML block is unchanged. No consumer action is needed.
 
 - **`MarkdownEditor`'s block type and list commands act where a deleted
   table leaves the caret.** After `deleteTable()` the caret stands
@@ -1539,6 +1537,60 @@ page resets to empty.
   `$getTextNodeOffset: invalid offset` and left the editor without a usable
   selection. The caret now stands on that empty line. No consumer action is
   needed.
+
+- **Enter in a Markdown code block keeps the new line in its blockquote or
+  list item.** In `MarkdownEditor`'s `"source"` mode, and in any
+  `CodeEditor` with `language: "markdown"`, Enter in a fenced code block
+  inside a blockquote started the new line without the `>`, which ends the
+  quote and breaks the fence. Enter after a fence opened on a list item's
+  first line (`` - ```js ``) put the new line at the margin, outside the
+  item, and Enter in an indented code block inside a blockquote or list item
+  dropped the code's indentation. In a code block the new line now starts
+  with the same prefix as the line the caret is on: its `>` markers and its
+  indentation, with a list marker replaced by spaces. The prefix is copied
+  as written, so a tab stays a tab whatever the editor's `tabSize`. Before,
+  Enter on a tab-indented code line wrote `tabSize` spaces, which at
+  `tabSize: 2` moved the new line out of an indented code block or a nested
+  list item. The same now holds at the end of an HTML block on a line of a
+  list item, where a tab-indented line used to lose its indentation
+  altogether, on a blank indented last line of the document, and when Enter
+  replaces a selection that starts inside a code block or inside HTML in a
+  blockquote or list item. Enter between an empty `()`, `[]` or `{}` in a
+  code block still moves the closing bracket to its own line, now with the
+  prefix on both new lines, and does so inside `<script>` and `<style>` in a
+  blockquote or list item as well. Markdown's own list and blockquote
+  continuation is unchanged. No consumer action is needed.
+
+- **A read-only `CodeEditor` can no longer be edited from the keyboard or
+  the completion list.** `readOnly` relied on each editing command checking
+  it, and some do not. With `language: "markdown"`, Enter on a list or
+  blockquote line added a line, Backspace after a list marker removed the
+  marker, and pasting a URL over selected text wrapped the text in a link.
+  In every language, clicking an entry of the completion list, which
+  `Ctrl-Space` still opens, inserted it. A read-only `MarkdownEditor` in
+  `"source"` mode was affected the same way, and so was a code block of the
+  `Markdown` viewer, which is a read-only `CodeEditor`. The editor now
+  refuses every change to a read-only document itself, whichever key
+  binding, handler or language it comes from, and signals it with the
+  `"readonlyedit"` event and the rejection flash. `setValue()` still loads a
+  document into a read-only editor, and `setLanguage()` and the other option
+  setters still apply. A `format()` whose formatter ends after the editor
+  was made read-only is refused like one called while it was. A language you
+  registered is covered too: if its extension changes the document of a
+  read-only editor on its own, that change is now refused. See
+  [Migration](/reference/migration/next) for the note.
+
+- **Backspace and Delete flash a read-only `CodeEditor`.** A read-only
+  editor answers typed text and Enter with the `"readonlyedit"` event and
+  the rejection flash, but Backspace and Delete were ignored without either,
+  in every language: CodeMirror's bindings for the two keys stop the
+  browser's default even when their command declines, so the editor never
+  saw the key as input. Both keys are now signalled like a typed character,
+  once per key press: each alone, Backspace with Shift, and each with the
+  modifier that deletes a word or a line. Those are the combinations that
+  were swallowed. Every other combination with the two keys, Shift-Delete
+  among them, still goes to the browser, as in an editor that is not
+  read-only. No consumer action is needed.
 
 ### Core
 

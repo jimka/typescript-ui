@@ -206,11 +206,15 @@ and `getSelectionState()` reports its `can…` fields `false`. `paste()`
 resolves `false` without reading the clipboard. `copy()`, `setValue()`,
 `setMode()` and `markClean()` are unaffected. A read-only `CodeEditor`
 likewise refuses `cut()`, `paste()` and `format()` called from code, as it
-already refused `replaceRange()`.
+already refused `replaceRange()`, and it now refuses every other change to its
+document as well, whichever key binding, handler or language extension makes
+it: a language you registered can no longer edit a read-only editor through its
+own commands.
 
-**Who needs to act.** Only code that used a command to change a read-only
-editor's document. Load the new text with `setValue()`, which a read-only
-editor still accepts, or lift the lock around the command:
+**Who needs to act.** Only code that used a command, or an extension of a
+registered language, to change a read-only editor's document. Load the new text
+with `setValue()`, which a read-only editor still accepts, or lift the lock
+around the command:
 
 ```typescript
 editor.setReadOnly(false);
