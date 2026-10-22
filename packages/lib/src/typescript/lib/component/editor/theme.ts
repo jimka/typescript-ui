@@ -2,6 +2,7 @@
 
 import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import type { TagStyle } from "@codemirror/language";
 import { tags } from "@lezer/highlight";
 import type { Extension } from "@codemirror/state";
 import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
@@ -11,13 +12,53 @@ import { StyleRule, deferStyleSheetWrite } from "~/core/StyleTarget.js";
 // so it is a fixed, IDE-conventional colour set chosen for light/dark
 // legibility rather than derived from CSS variables — mirroring how
 // `Markdown`'s code-block wash is a neutral constant rather than a token.
-const SYNTAX_KEYWORD  = "#2563eb"; // matches the framework's single accent hue
-const SYNTAX_STRING   = "#16a34a"; // green — conventional "string" colour
-const SYNTAX_COMMENT  = "#6b7280"; // muted grey — de-emphasises comments
-const SYNTAX_LITERAL  = "#d97706"; // amber — numbers/booleans/null
-const SYNTAX_FUNCTION = "#7c3aed"; // violet — function/variable definitions
-const SYNTAX_TYPE     = "#0891b2"; // teal — type names
-const SYNTAX_PROPERTY = "#be185d"; // pink — object/attribute property names
+export const SYNTAX_KEYWORD  = "#2563eb"; // matches the framework's single accent hue
+export const SYNTAX_STRING   = "#16a34a"; // green — conventional "string" colour
+export const SYNTAX_COMMENT  = "#6b7280"; // muted grey — de-emphasises comments
+export const SYNTAX_LITERAL  = "#d97706"; // amber — numbers/booleans/null
+export const SYNTAX_FUNCTION = "#7c3aed"; // violet — function/variable definitions
+export const SYNTAX_TYPE     = "#0891b2"; // teal — type names
+export const SYNTAX_PROPERTY = "#be185d"; // pink — object/attribute property names
+
+/**
+ * The syntax-highlighting rules every `CodeEditor` language shares: each maps
+ * lezer tags to a look. A range takes every rule its tags match, and a later
+ * rule wins where two set the same property.
+ */
+export const SYNTAX_STYLES: readonly TagStyle[] = [
+    { tag: tags.keyword,                                                    color: SYNTAX_KEYWORD },
+    { tag: [tags.string, tags.special(tags.string)],                        color: SYNTAX_STRING },
+    { tag: tags.comment,                                                    color: SYNTAX_COMMENT, fontStyle: "italic" },
+    { tag: [tags.number, tags.bool, tags.null],                             color: SYNTAX_LITERAL },
+    { tag: [tags.definition(tags.variableName), tags.function(tags.variableName)], color: SYNTAX_FUNCTION },
+    { tag: tags.typeName,                                                   color: SYNTAX_TYPE },
+    { tag: [tags.propertyName, tags.attributeName],                        color: SYNTAX_PROPERTY },
+    { tag: tags.tagName,                                                    color: SYNTAX_KEYWORD },
+    // Markdown constructs (the `markdown` language, e.g. the MarkdownEditor
+    // source surface). Source mode shows Markdown as source text: colour hints
+    // at the syntax, and nothing is drawn as the Markdown viewer draws it, so
+    // no rule here sets a weight, a slant, an underline or a size, and no range
+    // is drawn in a colour with less contrast than it had before. Heading text
+    // takes the accent hue so the outline stands out; code is green, as a
+    // string is; a character reference outside a link is green too. Everything
+    // inside a link or image takes the text colour (`inherit` hands it the
+    // enclosing element's colour): its text, URL, reference label, title, any
+    // character reference, and any code. Inline HTML inside link text keeps the
+    // `html` language's colours, and an HTML comment there keeps its slant but
+    // loses its grey. The link
+    // rule comes after the heading and code rules, so a link in a heading is
+    // not heading-coloured and code in link text is not green: each of those
+    // colours has less contrast than the text colour in one of the two themes,
+    // and the base look drew all of a link in the accent blue. The markup marks
+    // (`#`, `**`, `` ` ``, `>`, `-`, `[`, `](`) and quotes are muted, after the
+    // link rule, so the content reads over the syntax.
+    { tag: [tags.heading, tags.heading1, tags.heading2, tags.heading3,
+            tags.heading4, tags.heading5, tags.heading6],                   color: SYNTAX_KEYWORD },
+    { tag: tags.monospace,                                                  color: SYNTAX_STRING },
+    { tag: tags.link,                                                       color: "inherit" },
+    { tag: [tags.quote, tags.contentSeparator],                             color: SYNTAX_COMMENT },
+    { tag: tags.processingInstruction,                                      color: SYNTAX_COMMENT },
+];
 
 /** Class the reveal highlight's decoration carries; styled below, inside the editor's theme scope. */
 export const REVEAL_CLASS = "ts-ui-cm-reveal";
@@ -242,30 +283,7 @@ export function codeEditorTheme(dark: boolean): Extension {
         },
     }, { dark });
 
-    const highlight = syntaxHighlighting(HighlightStyle.define([
-        { tag: tags.keyword,                                                    color: SYNTAX_KEYWORD },
-        { tag: [tags.string, tags.special(tags.string)],                        color: SYNTAX_STRING },
-        { tag: tags.comment,                                                    color: SYNTAX_COMMENT, fontStyle: "italic" },
-        { tag: [tags.number, tags.bool, tags.null],                             color: SYNTAX_LITERAL },
-        { tag: [tags.definition(tags.variableName), tags.function(tags.variableName)], color: SYNTAX_FUNCTION },
-        { tag: tags.typeName,                                                   color: SYNTAX_TYPE },
-        { tag: [tags.propertyName, tags.attributeName],                        color: SYNTAX_PROPERTY },
-        { tag: tags.tagName,                                                    color: SYNTAX_KEYWORD },
-        // Markdown constructs (the `markdown` language, e.g. the MarkdownEditor
-        // source surface). The parser tags these; without a style here they
-        // would render as plain text. Headings/links reuse the accent hue; bold
-        // and italic carry weight/slant rather than colour so prose stays
-        // readable; the markup marks (`#`, `**`, `` ` ``, `>`, `-`) and quotes
-        // are muted so the content reads over the syntax.
-        { tag: [tags.heading, tags.heading1, tags.heading2, tags.heading3,
-                tags.heading4, tags.heading5, tags.heading6],                   color: SYNTAX_KEYWORD, fontWeight: "bold" },
-        { tag: tags.strong,                                                     fontWeight: "bold" },
-        { tag: tags.emphasis,                                                   fontStyle: "italic" },
-        { tag: tags.monospace,                                                  color: SYNTAX_STRING },
-        { tag: [tags.link, tags.url],                                           color: SYNTAX_KEYWORD, textDecoration: "underline" },
-        { tag: [tags.quote, tags.contentSeparator],                             color: SYNTAX_COMMENT },
-        { tag: tags.processingInstruction,                                      color: SYNTAX_COMMENT },
-    ]));
+    const highlight = syntaxHighlighting(HighlightStyle.define(SYNTAX_STYLES));
 
     const built: Extension = [chrome, highlight];
 
