@@ -543,6 +543,23 @@ page resets to empty.
   hide the emphasis around it. What the viewer shows for a save does not
   change. No consumer action is needed.
 
+- **`Markdown` and `MarkdownEditor` read `<br>` in a table cell as a line
+  break.** `<br>`, `<br/>` or `<br />` in a cell's text showed as that
+  literal text in the viewer and in the editor; it now renders, and loads,
+  as a line break in the cell, and the editor saves a line break in a cell
+  as `<br>`. Outside a table, and inside a code span, it stays literal text.
+  A cell's paragraphs (Enter, a merged cell) are still saved as `\n\n`.
+  Once a cell is edited, a `<br>` inside marks is saved outside them
+  (`**a<br>b**` becomes `**a**<br>**b**`) and every other form
+  (`<br/>`, `<br />`, `<br >`, in any letter case) becomes `<br>`; the cell reloads as it shows. No
+  consumer action is needed.
+
+- **`MarkdownEditor` removes the spaces and tabs at a line's start at the
+  next edit.** The save has always dropped them; the editor kept showing
+  them until a reload. A space typed at a line's start still shows while
+  the caret is right after it, and goes when the next character is typed.
+  No consumer action is needed.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
@@ -1995,6 +2012,22 @@ page resets to empty.
   blank lines from a list the selection did not touch. The joined list is
   now loose when one of the lists is, as documented. No consumer action is
   needed.
+
+- **`MarkdownEditor`: Shift+Enter in a table cell keeps its line break
+  through a save.** The break was saved as the cell paragraph break `\n\n`
+  and loaded back as a second paragraph of the cell. It is now saved as
+  `<br>` and loads as a line break. No consumer action is needed.
+
+- **`MarkdownEditor`: a code block made into a paragraph, a heading, a
+  quote or a list item holds line breaks.** Its text kept the line ends as
+  characters of one text. What is shown and saved is unchanged. No consumer
+  action is needed.
+
+- **`MarkdownEditor`: the indent command leaves a block that is no list
+  item alone.** `INDENT_CONTENT_COMMAND` gave a paragraph, a heading, a
+  quote, a code block or a raw block an indent that was drawn and never
+  saved, and added an undo step. No key or method of the editor sends the
+  command. No consumer action is needed.
 
 ### Core
 

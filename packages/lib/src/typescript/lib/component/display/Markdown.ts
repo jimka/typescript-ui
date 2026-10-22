@@ -15,6 +15,7 @@ import { headingSlug } from "~/component/display/markdownHeadingIds.js";
 import { lexMarkdown } from "~/component/display/markdownExtensions.js";
 import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
 import { resolveSpanStyle, resolveBlockStyle, resolveImageSpec } from "~/component/display/markdownAttributes.js";
+import { CELL_LINE_BREAK_TAG } from "~/component/display/markdownTableExtension.js";
 import type { MdTableToken, MdTableHeaderCell, MdTableBodyCell } from "~/component/display/markdownTableExtension.js";
 // Type-only: erased at compile time. `CodeEditor` itself is loaded through a
 // narrow dynamic import (see `loadCodeEditorUpgrade`) so a static top-level
@@ -59,9 +60,10 @@ const CELL_LINE_BREAK = "\\n";
 /**
  * Two consecutive {@link CELL_LINE_BREAK} sequences — what the editor's
  * serializer (`markdownSerializer.ts`) writes between a table cell's
- * paragraphs and for a line break in one (one pair per boundary, regardless
- * of the WYSIWYG editor's own cell-only `margin: 0` reset that renders those
- * paragraphs flush against each other).
+ * paragraphs (one pair per boundary, regardless of the WYSIWYG editor's own
+ * cell-only `margin: 0` reset that renders those paragraphs flush against
+ * each other). A line break inside a paragraph of a cell is written `<br>`
+ * instead ({@link CELL_LINE_BREAK_TAG}).
  * {@link Markdown.appendTextWithBreaks} splits on this pair, not on a lone
  * {@link CELL_LINE_BREAK}, so each paragraph boundary collapses to exactly one
  * `<br>` — matching that flush rendering — while a genuinely empty paragraph
@@ -2090,7 +2092,27 @@ class Markdown extends Component<MarkdownOptions> {
             // A hard line break (`\` or two trailing spaces before a newline).
             case "br": DOM.sink.appendChild(parent, this.create("br")); break;
 
+            case "html": this.appendInlineHtml(parent, token as Tokens.HTML, splitCellBreaks); break;
+
             default: this.appendTextNode(parent, (token as Tokens.Text).text ?? token.raw ?? ""); break;
+        }
+    }
+
+    /**
+     * Appends inline HTML: a `<br>` in a table cell ({@link CELL_LINE_BREAK_TAG})
+     * as a line break, anything else as its literal text.
+     *
+     * @param parent - The element handle to append into.
+     * @param token - The `html` token.
+     * @param inTableCell - Whether the token is in a table cell's text (`splitCellBreaks`).
+     */
+    private appendInlineHtml(parent: Handle, token: Tokens.HTML, inTableCell: boolean): void {
+        const isCellLineBreak = inTableCell && CELL_LINE_BREAK_TAG.test(token.text);
+
+        if (isCellLineBreak) {
+            DOM.sink.appendChild(parent, this.create("br"));
+        } else {
+            this.appendTextNode(parent, token.text);
         }
     }
 

@@ -782,12 +782,12 @@ describe('$serializeMarkdown — further cases the plan specifies', () => {
 
     // A pipe-table cell holds inline content only, so a block a command nests in a cell (a heading, quote, list or
     // code block toggled inside it; the importer never nests one) is written as the inline content the editor shows,
-    // each of its lines split by the cell break: its own syntax would show as literal text (`# t`) and read back into
+    // each of its line breaks written as `<br>`: its own syntax would show as literal text (`# t`) and read back into
     // the cell's text.
     const nested: Array<[string, () => LexicalNode, string]> = [
         ['heading', () => fill($createHeadingNode('h2'), ['t ', text('b', ['bold'])]), 't **b**'],
-        ['quote', () => fill($createQuoteNode(), ['q', br(), 'r']), 'q\\n\\nr'],
-        ['code block', () => fill($createCodeNode(), ['x | y', $createLineBreakNode(), 'z']), 'x \\| y\\n\\nz'],
+        ['quote', () => fill($createQuoteNode(), ['q', br(), 'r']), 'q<br>r'],
+        ['code block', () => fill($createCodeNode(), ['x | y', $createLineBreakNode(), 'z']), 'x \\| y<br>z'],
     ];
 
     for (const [name, build, expected] of nested) {
@@ -854,7 +854,7 @@ describe('$serializeMarkdown — further cases the plan specifies', () => {
 });
 
 describe('$serializeMarkdown — line breaks in a table cell', () => {
-    it('a line break in a cell writes the cell paragraph break, which the viewer shows as one break', () => {
+    it('a line break in a cell writes <br>, which the viewer shows as one break', () => {
         const output = serialize(() => {
             const body = $createTableCellNode(TableCellHeaderStates.NO_STATUS);
 
@@ -863,7 +863,7 @@ describe('$serializeMarkdown — line breaks in a table cell', () => {
             return [table([cell(true, 'h')], [body])];
         });
 
-        expect(output).toBe('| h |\n| --- |\n| x\\n\\ny |');
+        expect(output).toBe('| h |\n| --- |\n| x<br>y |');
         expect(viewerModel(output).blocks).toEqual([{
             kind: 'table', widths: [null], header: [{ align: null, colSpan: 1, rowSpan: 1, runs: [run('h')] }],
             rows: [[{ align: null, colSpan: 1, rowSpan: 1, runs: [run('x'), BREAK, run('y')] }]],
@@ -1193,8 +1193,8 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
             expect(viewerModel(output).blocks).toEqual([para(run('a', ['code']), BREAK, run('# b', ['code']))]);
         });
 
-        it('in a table cell, the newline is the cell break, not a raw newline ending the row', () => {
-            expect(serialize(() => [table([cell(true, 'h')], [cell(false, 'a\nb')])])).toBe('| h |\n| --- |\n| a\\n\\nb |');
+        it('in a table cell, the newline is a <br>, not a raw newline ending the row', () => {
+            expect(serialize(() => [table([cell(true, 'h')], [cell(false, 'a\nb')])])).toBe('| h |\n| --- |\n| a<br>b |');
         });
     });
 
@@ -1863,9 +1863,10 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
             expect(viewerModel(output).blocks).toEqual(editorSurfaceModel(editor));
         });
 
-        it('emphasis opening right after a table cell\'s break is written after a space, so it can open', () => {
-            // The cell break `\\n\\n` ends in a letter, against which a delimiter before punctuation cannot open; the
-            // space is collapsed at the start of the line the break makes.
+        it('emphasis opening right after a table cell\'s paragraph break is written after a space, so it can open', () => {
+            // The cell paragraph break `\\n\\n` ends in a letter, against which a delimiter before punctuation cannot open;
+            // the space is collapsed at the start of the line the break makes. A line break, `<br>`, ends in punctuation,
+            // after which the delimiter opens with no space.
             const editor = editorWith(() => {
                 const body = $createTableCellNode(TableCellHeaderStates.NO_STATUS);
 
@@ -1875,7 +1876,7 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
             });
             const output = serialized(editor);
 
-            expect(output).toBe('| h |\n| --- |\n| \\n\\n *{*\\n\\n **}** |');
+            expect(output).toBe('| h |\n| --- |\n| <br>*{*\\n\\n **}** |');
             expect(viewerModel(output).blocks).toEqual(editorSurfaceModel(editor));
         });
 
@@ -1984,10 +1985,10 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
             ['a paragraph opening with a newline in its text', () => [p('\na')], '\\\na'],
             ['a quote opening with a break', () => [fill($createQuoteNode(), [br(), 'a'])], '> \\\n> a'],
             ['a list item opening with a break', () => [fill($createListNode('bullet', 1), [fill($createListItemNode(), [br(), 'a'])])], '- \\\n  a'],
-            ['a cell opening with a break', () => [cellTable([br(), 'a'])], '| h |\n| --- |\n| \\n\\na |'],
-            ['a cell ending with a break', () => [cellTable(['a', br()])], '| h |\n| --- |\n| a\\n\\n |'],
-            ['a cell holding only a break', () => [cellTable([br()])], '| h |\n| --- |\n| \\n\\n |'],
-            ['a cell with a break between two words', () => [cellTable(['a', br(), 'b'])], '| h |\n| --- |\n| a\\n\\nb |'],
+            ['a cell opening with a break', () => [cellTable([br(), 'a'])], '| h |\n| --- |\n| <br>a |'],
+            ['a cell ending with a break', () => [cellTable(['a', br()])], '| h |\n| --- |\n| a<br> |'],
+            ['a cell holding only a break', () => [cellTable([br()])], '| h |\n| --- |\n| <br> |'],
+            ['a cell with a break between two words', () => [cellTable(['a', br(), 'b'])], '| h |\n| --- |\n| a<br>b |'],
             ['a cell ending with an empty paragraph', () => [cellTable(['a'], [])], '| h |\n| --- |\n| a\\n\\n |'],
             ['a cell opening with an empty paragraph', () => [cellTable([], ['a'])], '| h |\n| --- |\n| \\n\\na |'],
             ['a cell with an empty paragraph between two', () => [cellTable(['a'], [], ['b'])], '| h |\n| --- |\n| a\\n\\n\\n\\nb |'],

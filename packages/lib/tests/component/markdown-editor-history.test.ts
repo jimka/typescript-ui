@@ -617,7 +617,7 @@ describe('the upstream rule and the guard on a bare editor (K rows)', () => {
     });
 
     it('K2: the guarded history makes that update a step of its own', () => {
-        const { editor, blocks } = bareEditorAfterBlockAddingUpdate((bare) => { registerMarkdownHistory(bare); });
+        const { editor, blocks } = bareEditorAfterBlockAddingUpdate((bare) => { registerMarkdownHistory(bare, () => false); });
 
         expect(blocks()).toEqual(['abcd', '']);
 

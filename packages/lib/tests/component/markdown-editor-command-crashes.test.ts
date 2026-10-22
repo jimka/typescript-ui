@@ -913,7 +913,7 @@ describe('a selection keeps inside text a line-break rule shortens (W rows)', ()
 
         selectText(editor, ['a\nb', 0], ['a\nb', 0]);
         editor.setBlockType('quote');
-        selectText(editor, ['a\nb', 2], ['a\nb', 3]);
+        selectText(editor, ['b', 0], ['b', 1]);
         lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
 
         expect(editor.getValue()).toBe('> a');

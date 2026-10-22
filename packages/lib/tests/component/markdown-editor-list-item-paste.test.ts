@@ -869,13 +869,13 @@ describe('a paste into the text of a list item that holds blocks leaves them as 
         expect(expectSaveKeepsDocument(editor)).toBe(`- a\n\n  ${TABLE_ITEM}\n\n  y1\n\n  y2\n\n- z`);
     });
 
-    it('T12: a pasted line that opens with a tab keeps the tab in the item\'s new paragraph', () => {
+    it('T12: a pasted line that opens with a tab loses the tab in the item\'s new paragraph, as its save does', () => {
         const editor = pasteTextAfterItemTable('\ty1');
         const texts = lexicalOf(editor).read(() => $textNode('a').getParentOrThrow().getParentOrThrow().getChildren()
             .map((block) => `${block.getType()}:${block.getTextContent()}`));
 
-        // The save writes no space before a paragraph's text, so the tab is read off the tree.
-        expect(texts.slice(2)).toEqual(['paragraph:\ty1']);
+        // The save writes no space before a paragraph's text, so the editor holds none either.
+        expect(texts.slice(2)).toEqual(['paragraph:y1']);
         expectSaveKeepsDocument(editor);
     });
 

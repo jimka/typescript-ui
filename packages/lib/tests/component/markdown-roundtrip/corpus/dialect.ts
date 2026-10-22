@@ -87,6 +87,8 @@ export const DIALECT_CASES: readonly CorpusCase[] = [
     { name: 'table merged cell holding two paragraphs', source: '| a | b |\n| --- | --- |\n| 1\\n\\n2 | << |' },
     { name: 'table width with alignment and merge', source: '| Column | Aligned |\n| :--- {width=160} | :---: |\n| Tables | yes |\n| Merge | << |' },
     { name: 'table cell underscore', source: '| a |\n| --- |\n| x_y |' },
+    { name: 'table cell line break', source: '| a |\n| --- |\n| x<br>y |' },
+    { name: 'table cell line break in a construct kept as written', source: '| a |\n| --- |\n| [~[a](/b) \\]<br>~)]() |' },
     { name: 'fence with heading and list', source: '::: {align=right}\n# H\n\n- list\n:::' },
     { name: 'three columns with gap', source: '::: columns {gap=2rem}\nA\n|||\nB\n|||\nC\n:::' },
     { name: 'nested fences', source: '::: {align=center}\n::: {align=right}\ninner\n:::\n:::' },

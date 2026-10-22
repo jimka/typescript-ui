@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import {
-    $addUpdateTag, $createParagraphNode, $createRangeSelection, $createTextNode, $findMatchingParent, $formatText, $getNodeByKey, $getRoot,
-    $getSelection, $getState,
+    $addUpdateTag, $createLineBreakNode, $createParagraphNode, $createRangeSelection, $createTextNode, $findMatchingParent, $formatText,
+    $getNodeByKey, $getRoot, $getSelection, $getState,
     $hasUpdateTag, COMMAND_PRIORITY_CRITICAL, CUT_COMMAND, DELETE_CHARACTER_COMMAND, DELETE_LINE_COMMAND, DELETE_WORD_COMMAND, DROP_COMMAND,
     INSERT_PARAGRAPH_COMMAND, PASTE_COMMAND, REMOVE_TEXT_COMMAND, SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, TEXT_TYPE_TO_FORMAT,
     $isDecoratorNode, $isElementNode, $isLineBreakNode, $isParagraphNode, $isRangeSelection, $isRootNode, $isTextNode,
@@ -27,7 +27,7 @@ import { lexMarkdownWithDefinitions, linkLabelKey } from "~/component/display/ma
 import { holdsLineContent } from "~/component/display/markdownLineContent.js";
 import {
     $definitionsSource, $documentDefinitions, $headingWritesOneLine, $itemReadsLoose, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown,
-    $runsReadingOtherwise, $serializeBlock, $writesSomething, $writtenListMarker, definitionsOfSource, keptImageShown, NO_DEFINITIONS_SOURCE, rawBlockStandsInItem,
+    $runsReadingOtherwise, $serializeBlock, $writesSomething, $writesSyntaxBeforeText, $writtenListMarker, definitionsOfSource, keptImageShown, NO_DEFINITIONS_SOURCE, rawBlockStandsInItem,
 } from "~/component/editor/markdownSerializer.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import {
@@ -1716,8 +1716,12 @@ function $placeCaret(blocks: readonly LexicalNode[], offset: number, last: Lexic
  * the blocks that hold inline content ({@link $dropUnwritableBreaks}) turn
  * a break any other edit leaves there — a paste, a deletion, a code block
  * converted — into what the save writes: nothing at a block's end, a space
- * in a level 3–6 heading. A table cell keeps every break: its cell break
- * shows anywhere.
+ * in a level 3–6 heading. A table cell keeps every break: its line break
+ * (`<br>`) shows anywhere. Two text node transforms turn a line end inside a
+ * text into a line break node ({@link $keepLineEndsOutOfText}), and remove the
+ * spaces and tabs at a line's start, which the save drops, from the block
+ * being edited once the caret is not at them
+ * ({@link $dropWhitespaceAtLineStarts}).
  *
  * @param editor - The editor.
  * @returns The unregister function.
@@ -1735,6 +1739,8 @@ function registerLineBreakRules(editor: LexicalEditor): () => void {
         editor.registerNodeTransform(MarkdownListItemTextNode, dropInContainer),
         editor.registerNodeTransform(HeadingNode, dropInContainer),
         editor.registerNodeTransform(QuoteNode, dropInContainer),
+        editor.registerNodeTransform(TextNode, $keepLineEndsOutOfText),
+        editor.registerNodeTransform(TextNode, $dropWhitespaceAtLineStarts),
         editor.registerNodeTransform(TextNode, (text) => {
             const container = $breakRuleContainerOf(text);
 
@@ -1751,6 +1757,282 @@ function registerLineBreakRules(editor: LexicalEditor): () => void {
             }
         }),
     );
+}
+
+/**
+ * Turns each line end inside a text of a block of text into a line break
+ * node, which is what a load builds for the hard break a save writes there.
+ * Only a code block and a raw block hold a line end as a character of their
+ * text; a block made of one — a code block set to a paragraph, a heading, a
+ * quote or a list item — takes its text node as it is, line ends and all.
+ * A caret keeps its place in the text.
+ *
+ * @param text - The text node that changed.
+ */
+function $keepLineEndsOutOfText(text: TextNode): void {
+    const content = text.getTextContent();
+    const holdsLineEnd = content.includes("\n") && !$isMarkdownSourceTextNode(text);
+    const block = holdsLineEnd ? $findEnclosingBlock(text) : null;
+    const keepsLineEnds = block === null || $isMarkdownRawBlockNode(block) || $isCodeNode(block);
+
+    if (keepsLineEnds) {
+        return;
+    }
+
+    const offsets: number[] = [];
+
+    for (let at = content.indexOf("\n"); at !== -1; at = content.indexOf("\n", at + 1)) {
+        offsets.push(at, at + 1);
+    }
+
+    for (const piece of text.splitText(...offsets)) {
+        const isLineEnd = piece.getTextContent() === "\n";
+
+        if (isLineEnd) {
+            piece.replace($createLineBreakNode());
+        }
+    }
+}
+
+/**
+ * The update tag of an update in which {@link $dropWhitespaceAtLineStarts}
+ * removed whitespace. The update may hold a typed character, which the
+ * history would read as a change of another kind for the whitespace the same
+ * update removes ({@link registerMarkdownHistory}); it may also be a paste or
+ * a Backspace, which hold no typed character.
+ */
+export const WHITESPACE_DROPPED_TAG = "markdown-whitespace-dropped";
+
+/** The spaces and tabs a text starts with: at a line's start, the save drops them. */
+const LEADING_WHITESPACE = /^[ \t]*/;
+
+/** The source of a soft line break: a source run that shows a space and saves a line end. */
+const SOFT_BREAK_SOURCE = "\n";
+
+/** The source of a task item's marker, kept as a source run at the start of the item's text. */
+const TASK_MARKER_SOURCE = /^\[[ xX]\] $/;
+
+/** The spaces and tabs one text node holds at the start of a line: the node, and how many characters. */
+interface LineStartWhitespace {
+    readonly node:   TextNode;
+    readonly length: number;
+}
+
+/**
+ * Removes the spaces and tabs at the start of each line of a block, which
+ * the save drops and a load does not bring back: at the start of a
+ * paragraph, a list item's text, a heading or a quote, after a line break or
+ * a soft line break in one, after the task marker that opens an item's
+ * text, and at the start of each paragraph of a table cell. Only the block
+ * an end of the selection stands in is read: the block being edited, never
+ * one an edit only passes text through. While the caret stands in that
+ * whitespace or at either end of it, it stays: the user is typing it, or is
+ * about to type before it. The next edit of the block that leaves the caret
+ * elsewhere removes it, so a space and then a letter typed at a line's start
+ * leave the letter alone. A caret keeps its place in the text. Nothing is
+ * removed while a text of the block is being composed (an input method, a
+ * dead key); the update that ends the composition removes it. A code block,
+ * a raw block, a code span and the text of a link keep their whitespace, as
+ * the save does, and so does whitespace before a source run at the start of
+ * a later line (an indented `<span>`). A load keeps what it loaded.
+ *
+ * @param text - The text node that changed.
+ */
+function $dropWhitespaceAtLineStarts(text: TextNode): void {
+    const block = $hasUpdateTag(MARKDOWN_IMPORT_TAG) ? null : $findEnclosingBlock(text);
+    const inCell = $isParagraphNode(block) && $isTableCellNode(block.getParent());
+    const isRuleContainer = inCell || $isBreakRuleContainer(block);
+
+    if (block === null || !isRuleContainer) {
+        return;
+    }
+
+    const isEdited = $selectionStandsIn(block);
+    const isComposing = $inlineLeaves(block).some((leaf) => $isTextNode(leaf) && leaf.isComposing());
+
+    if (!isEdited || isComposing) {
+        return;
+    }
+
+    for (const run of $whitespaceAtLineStarts(block, inCell)) {
+        const isTyped = $caretStandsIn(run);
+
+        if (!isTyped) {
+            $addUpdateTag(WHITESPACE_DROPPED_TAG);
+            run.forEach(({ node, length }) => $dropLeadingCharacters(node, length));
+        }
+    }
+}
+
+/**
+ * The whitespace at the start of each line of a block, one run per line
+ * that opens with some: the plain texts the line opens with that hold only
+ * spaces and tabs, and the leading spaces and tabs of the next. A line ends
+ * at a line break or a soft line break, except in a table cell, whose save
+ * keeps the whitespace after a break, and in a heading written on one line,
+ * whose breaks become spaces. A task marker opening an item's text
+ * comes before the line's start. The whitespace before a source run that
+ * opens a later line is left out: the save keeps it.
+ *
+ * @param block - The block.
+ * @param inCell - Whether the block is a paragraph of a table cell.
+ * @returns The runs, in order.
+ */
+function $whitespaceAtLineStarts(block: ElementNode, inCell: boolean): LineStartWhitespace[][] {
+    const runs: LineStartWhitespace[][] = [];
+    let run: LineStartWhitespace[] = [];
+    let atLineStart = true;
+    let isFirstLine = true;
+
+    const endLine = (): void => {
+        if (run.length > 0) {
+            runs.push(run);
+        }
+
+        run = [];
+    };
+
+    // A heading written on one line turns its line breaks into spaces, so only its first line has a start.
+    const keepsLinesTogether = inCell || $isWrittenOnOneLine(block);
+
+    for (const child of block.getChildren()) {
+        const endsLine = !keepsLinesTogether && $endsLine(child);
+
+        if (endsLine) {
+            endLine();
+            atLineStart = true;
+            isFirstLine = false;
+        }
+
+        const opensTaskItem = $opensTaskItem(block, child);
+
+        if (endsLine || !atLineStart || opensTaskItem) {
+            continue;
+        }
+
+        const length = $leadingWhitespaceLength(child);
+
+        if (length > 0) {
+            run.push({ node: child as TextNode, length });
+        }
+
+        const isWhitespaceOnly = length > 0 && length === child.getTextContentSize();
+        const indentsSource = length === 0 && !isFirstLine && $isMarkdownSourceTextNode(child);
+
+        if (indentsSource) {
+            run = [];
+        }
+
+        atLineStart = isWhitespaceOnly;
+    }
+
+    endLine();
+
+    return runs;
+}
+
+/**
+ * Whether an inline node ends a line of its block: a line break, or a soft
+ * line break.
+ *
+ * @param node - The inline node.
+ * @returns `true` when it does.
+ */
+function $endsLine(node: LexicalNode): boolean {
+    return $isLineBreakNode(node) || ($isMarkdownSourceTextNode(node) && node.getSource() === SOFT_BREAK_SOURCE);
+}
+
+/**
+ * Whether an inline node is the task marker that opens a list item's text.
+ *
+ * @param block - The block holding the node.
+ * @param node - The inline node.
+ * @returns `true` when it is.
+ */
+function $opensTaskItem(block: ElementNode, node: LexicalNode): boolean {
+    return $isMarkdownListItemTextNode(block) && node.getPreviousSibling() === null
+        && $isMarkdownSourceTextNode(node) && TASK_MARKER_SOURCE.test(node.getSource());
+}
+
+/**
+ * How many spaces and tabs a plain text starts with: none for any other
+ * node — a source run, a code span, underlined or styled text (written
+ * after syntax of its own, {@link $writesSyntaxBeforeText}), a link, an
+ * image.
+ *
+ * @param node - The inline node.
+ * @returns The number of leading spaces and tabs.
+ */
+function $leadingWhitespaceLength(node: LexicalNode): number {
+    const isPlainText = $isTextNode(node) && !$isMarkdownSourceTextNode(node) && !node.hasFormat("code") && !$writesSyntaxBeforeText(node);
+
+    return isPlainText ? LEADING_WHITESPACE.exec(node.getTextContent())![0].length : 0;
+}
+
+/**
+ * Whether an end of the selection stands in a block: the block the user is
+ * editing. A block an edit only moves text into or out of, on the way to
+ * where the caret ends, is left alone until it is edited itself.
+ *
+ * @param block - The block.
+ * @returns `true` when the selection's anchor or focus is in the block.
+ */
+function $selectionStandsIn(block: ElementNode): boolean {
+    const selection = $getSelection();
+    const points = $isRangeSelection(selection) ? [selection.anchor, selection.focus] : [];
+
+    return points.some((point) => $findEnclosingBlock(point.getNode())?.is(block) === true);
+}
+
+/**
+ * Whether a collapsed caret stands in a line's starting whitespace, or right
+ * after it: the user is typing there.
+ *
+ * @param run - The whitespace at the line's start.
+ * @returns `true` when it does.
+ */
+function $caretStandsIn(run: readonly LineStartWhitespace[]): boolean {
+    const selection = $getSelection();
+    const isRange = $isRangeSelection(selection);
+    const isCaret = isRange && selection.isCollapsed();
+
+    if (!isRange || !isCaret || selection.anchor.type !== "text") {
+        return false;
+    }
+
+    const { key, offset } = selection.anchor;
+
+    return run.some(({ node, length }) => node.getKey() === key && offset <= length);
+}
+
+/**
+ * Removes the first characters of a text node, or the whole node when they
+ * are all it holds. A selection point in the text moves back with the
+ * characters after them.
+ *
+ * @param node - The text node.
+ * @param length - How many characters to remove.
+ */
+function $dropLeadingCharacters(node: TextNode, length: number): void {
+    const isWhole = length === node.getTextContentSize();
+
+    if (isWhole) {
+        node.remove();
+
+        return;
+    }
+
+    const selection = $getSelection();
+    const points = $isRangeSelection(selection) ? [selection.anchor, selection.focus] : [];
+    const key = node.getKey();
+
+    node.setTextContent(node.getTextContent().slice(length));
+
+    for (const point of points) {
+        if (point.type === "text" && point.key === key) {
+            point.set(key, Math.max(0, point.offset - length), "text");
+        }
+    }
 }
 
 /**
@@ -1954,6 +2236,18 @@ export function $contentFollows(point: PointType, container: ElementNode): boole
 }
 
 /**
+ * Whether a block is a heading the save writes on one line: level 3–6, or
+ * level 1 or 2 when a line of its setext form would end it
+ * ({@link $headingWritesOneLine}).
+ *
+ * @param block - The block.
+ * @returns `true` when its line breaks are written as spaces.
+ */
+function $isWrittenOnOneLine(block: ElementNode): boolean {
+    return $isOneLineHeading(block) || ($isHeadingNode(block) && $holdsBreak(block) && $headingWritesOneLine(block));
+}
+
+/**
  * Turns the line breaks of a block that a save cannot write into what it
  * writes: in a heading the save writes on one line — level 3–6, or level 1
  * or 2 when a line of its setext form would end it
@@ -1967,7 +2261,7 @@ export function $contentFollows(point: PointType, container: ElementNode): boole
  * @param container - The block.
  */
 function $dropUnwritableBreaks(container: ElementNode): void {
-    if ($isOneLineHeading(container) || ($isHeadingNode(container) && $holdsBreak(container) && $headingWritesOneLine(container))) {
+    if ($isWrittenOnOneLine(container)) {
         for (const leaf of $inlineLeaves(container)) {
             if ($isLineBreakNode(leaf)) {
                 leaf.replace($createTextNode(" "));

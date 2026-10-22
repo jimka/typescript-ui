@@ -4945,11 +4945,12 @@ function $enterLeavesListAtBlankItemText(): boolean {
 }
 
 /**
- * `INDENT_CONTENT_COMMAND` and `OUTDENT_CONTENT_COMMAND` listener for a
- * range that holds the text of a list item and the text of an item nested
- * in it. The outer item is moved, and what it holds goes with it; the
- * nested item is not moved a second time for itself. Any other selection is
- * left to Lexical's own handler.
+ * `INDENT_CONTENT_COMMAND` and `OUTDENT_CONTENT_COMMAND` listener. Every
+ * selected list item moves one level; a block that is no list item is left
+ * as it is, since Lexical's own handler would give it an indent no save
+ * writes. Where a range holds the text of a list item and the text of an
+ * item nested in it, the outer item is moved, and what it holds goes with
+ * it; the nested item is not moved a second time for itself.
  *
  * @remarks
  * Lexical moves every selected block one level, in document order, reading
@@ -4960,18 +4961,16 @@ function $enterLeavesListAtBlankItemText(): boolean {
  * so the items nested in it move for themselves.
  *
  * @param isIndent - Whether the items move a level in; `false` for a level out.
- * @returns Whether the selection held such a pair, now moved.
+ * @returns `true`: the command is handled here for every selection.
  */
 function $moveSelectedItemsOnce(isIndent: boolean): boolean {
     const carried = $itemBlocksCarriedAlong(isIndent);
 
-    if (carried.size === 0) {
-        return false;
-    }
-
-    return $handleIndentAndOutdent((block) => {
+    $handleIndentAndOutdent((block) => {
         const indent = block.getIndent();
-        const movesItself = !carried.has(block.getKey());
+        // Only a list item has a depth: any other block would take an indent no save writes.
+        const opensItem = $isMarkdownListItemTextNode(block) || $isListItemNode(block);
+        const movesItself = opensItem && !carried.has(block.getKey());
 
         if (movesItself && isIndent) {
             block.setIndent(indent + 1);
@@ -4979,6 +4978,8 @@ function $moveSelectedItemsOnce(isIndent: boolean): boolean {
             block.setIndent(indent - 1);
         }
     });
+
+    return true;
 }
 
 /**
@@ -5033,9 +5034,8 @@ function $itemBlocksCarriedAlong(isIndent: boolean): Set<NodeKey> {
  * ({@link $backspaceAfterContainer}), at {@link COMMAND_PRIORITY_LOW} so
  * every other listener of those commands runs first; Enter on an empty line
  * of a list
- * ({@link $enterLeavesListAtBlankItemText}); and an indent or outdent of a
- * range over an item and an item nested in it
- * ({@link $moveSelectedItemsOnce}).
+ * ({@link $enterLeavesListAtBlankItemText}); and an indent or outdent, which
+ * moves list items only ({@link $moveSelectedItemsOnce}).
  *
  * @param editor - The editor.
  * @returns The unregister function.
@@ -9793,7 +9793,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             registerRichText(editor),
             registerList(editor),
             registerTablePlugin(editor),
-            registerMarkdownHistory(editor),
+            registerMarkdownHistory(editor, typedTextMarks.isTypedUpdate),
             registerMarkdownShortcutsOutsideRawBlocks(editor, typedTextMarks.isTypedUpdate),
             editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
             registerColumnPaste(editor),

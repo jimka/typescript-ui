@@ -22,6 +22,7 @@ import type { TableCellNode, TableNode } from "@lexical/table";
 import { $dfs } from "@lexical/utils";
 import { lexMarkdown, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions } from "~/component/display/markdownExtensions.js";
 import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
+import { CELL_LINE_BREAK_TAG } from "~/component/display/markdownTableExtension.js";
 import type { MdTableBodyCell, MdTableHeaderCell, MdTableToken } from "~/component/display/markdownTableExtension.js";
 import {
     lineEndAt, resolveBlockStyle, resolveImageSpec, resolveSpanStyle, spanStyleToCss, splitColumnSections,
@@ -1594,7 +1595,27 @@ function appendInlineToken(target: InlineTarget, token: Token, context: InlineCo
         case "styledspan": appendStyledSpan(target, token as Tokens.Generic, context); break;
         case "mdimage":    appendImage(target, token as Tokens.Generic, context); break;
         case "br":         appendLeaf(target, hardBreak(token.raw), context); break;
+        case "html":       appendInlineHtml(target, token as Tokens.HTML, context); break;
         default:           appendSourceNode(target, (token as Tokens.Generic).text ?? token.raw, token.raw, context); break;
+    }
+}
+
+/**
+ * Appends inline HTML: in a table cell, a `<br>` ({@link CELL_LINE_BREAK_TAG})
+ * as a line break, as the viewer renders it there; anything else as a source
+ * node showing its text.
+ *
+ * @param target - Where nodes are appended.
+ * @param token - The `html` token.
+ * @param context - The formatting it inherits.
+ */
+function appendInlineHtml(target: InlineTarget, token: Tokens.HTML, context: InlineContext): void {
+    const isCellLineBreak = target.nextCellParagraph !== null && CELL_LINE_BREAK_TAG.test(token.text);
+
+    if (isCellLineBreak) {
+        appendLeaf(target, $createLineBreakNode(), context);
+    } else {
+        appendSourceNode(target, token.text, token.raw, context);
     }
 }
 
@@ -1878,8 +1899,8 @@ function mergePieces(pieces: NestedLinkPiece[]): NestedLinkPiece[] {
  * @returns `false` when its syntax cannot be split into runs, so it was not appended.
  */
 function appendKeptConstruct(target: InlineTarget, token: Token, context: InlineContext): boolean {
-    const pieces = keptPieces(token, context);
     const nextCellParagraph = target.nextCellParagraph;
+    const pieces = keptPieces(token, context, nextCellParagraph !== null);
 
     if (pieces === null) {
         return false;
@@ -1911,7 +1932,7 @@ function appendKeptRuns(target: InlineTarget, pieces: readonly KeptPiece[], cont
         const leaf = piece.leaf;
         const node = leaf === null
             ? formatted($createMarkdownSourceTextNode(piece.display.replace(/\s+/g, " "), piece.source), piece.context)
-            : leaf.type === "br" ? hardBreak(leaf.raw) : $imageNode(leaf)!;
+            : keptLeafNode(leaf);
         const writesStyle = spanStyleToCss(piece.context.spanStyle) !== spanStyleToCss(context.spanStyle)
             || piece.context.spanAttributes !== context.spanAttributes;
         const writes = (formatBits(piece.context.formats) & ~formatBits(context.formats))
@@ -1922,6 +1943,21 @@ function appendKeptRuns(target: InlineTarget, pieces: readonly KeptPiece[], cont
         $setState(node, keptSourceState, { group, index, size: pieces.length, writes, source: leaf === null ? "" : piece.source, shown });
         appendLeaf(target, node, piece.context);
     });
+}
+
+/**
+ * The node of a kept construct's leaf run: a line break for a hard break or
+ * a cell's `<br>`, else the image.
+ *
+ * @param leaf - The run's token.
+ * @returns The node.
+ */
+function keptLeafNode(leaf: Tokens.Generic): LexicalNode {
+    switch (leaf.type) {
+        case "br":   return hardBreak(leaf.raw);
+        case "html": return $createLineBreakNode();
+        default:     return $imageNode(leaf)!;
+    }
 }
 
 /**
@@ -1958,21 +1994,25 @@ function splitAtCellBreaks(pieces: readonly KeptPiece[]): KeptPiece[][] {
 
 /**
  * Splits an inline token into the runs a kept construct is made of, as
- * {@link nestedLinkPieces} does, except that an image the viewer renders and
- * a hard break are runs of their own, never merged, so each keeps its node.
+ * {@link nestedLinkPieces} does, except that an image the viewer renders, a
+ * hard break and, in a table cell, a `<br>` are runs of their own, never
+ * merged, so each keeps its node.
  *
  * @param token - The token.
  * @param context - The formatting around it.
+ * @param inTableCell - Whether the token is in a table cell's text.
  * @returns The runs, or `null` when a container's content is not found in its `raw`.
  */
-function keptPieces(token: Token, context: InlineContext): KeptPiece[] | null {
+function keptPieces(token: Token, context: InlineContext, inTableCell: boolean = false): KeptPiece[] | null {
     const children = ((token as Tokens.Generic).tokens ?? []) as Token[];
     const inner = containerContext(token, context);
 
     if (inner === null || children.length === 0) {
         const generic = token as Tokens.Generic;
-        const leaf = token.type === "br" || (token.type === "mdimage" && $imageSpec(generic) !== null) ? generic : null;
-        const display = token.type === "mdimage" || token.type === "br" ? "" : generic.text as string | undefined ?? token.raw;
+        const isCellLineBreak = inTableCell && token.type === "html" && CELL_LINE_BREAK_TAG.test(generic.text as string);
+        const isBreak = token.type === "br" || isCellLineBreak;
+        const leaf = isBreak || (token.type === "mdimage" && $imageSpec(generic) !== null) ? generic : null;
+        const display = token.type === "mdimage" || isBreak ? "" : generic.text as string | undefined ?? token.raw;
 
         return [{ display, source: token.raw, context: token.type === "codespan" ? withFormat(context, "code") : context, leaf }];
     }
@@ -1982,7 +2022,7 @@ function keptPieces(token: Token, context: InlineContext): KeptPiece[] | null {
     const parts: KeptPiece[] = [];
 
     for (const child of children) {
-        const pieces = keptPieces(child, inner);
+        const pieces = keptPieces(child, inner, inTableCell);
 
         if (pieces === null || span === null) {
             return null;

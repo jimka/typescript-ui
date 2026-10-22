@@ -35,6 +35,16 @@ export interface MdTableToken {
 }
 
 /**
+ * The inline HTML a table cell holds for a line break inside one of its
+ * lines of text: `<br>`, `<br/>` or `<br />`, in any letter case. A pipe row
+ * cannot hold a newline, so GFM writes a line break in a cell this way. In a
+ * cell, the viewer renders it as a line break and the editor loads it as
+ * one; anywhere else it stays literal text, as other inline HTML does. Tested
+ * against an `html` token's `text`.
+ */
+export const CELL_LINE_BREAK_TAG = /^<br\s*\/?>$/i;
+
+/**
  * Splits one raw pipe-row line into its cell texts — the reverse of the pipe
  * rows the editor's serializer (`markdownSerializer.ts`) writes: drops one
  * optional leading and trailing pipe, splits on unescaped `|` only, restores
