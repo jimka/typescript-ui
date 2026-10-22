@@ -571,6 +571,9 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         ['the list toggled off on an item over a nested list', '- a\n  - b\n- z', 0, 0, 'bulleted', 'a\n\n- b\n- z', null],
         ['a heading on an item over a numbered nested list keeps it numbered', '- a\n  1. b', 0, 0, 'h2', '## a\n\n1. b', null],
         ['a heading on a nested item with nothing after it', '- a\n  - b', 4, 4, 'h2', '- a\n\n## b', null],
+        // A lone checkbox written with a character reference for a space is a checkbox to the viewer, and stays one.
+        ['a code block from a lone checkbox written with a character reference holds its marker', '- [x] &#32;', 6, 6, 'code', '```\n[x]\n```', null],
+        ['a numbered list from a lone checkbox written with a character reference keeps it a checkbox', '- [x] &#32;', 6, 6, 'numbered', '1. [x] &#32;', null],
         // A code line in a list item or a quote that starts with a tab shows the tab, so its source is found and a command
         // on the text around it edits only that text.
         ['an item\'s text before a fenced code line that starts with a tab', '- one\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two', 2, 5, 'bold', '- **one**\n\n  ```\n  aa\n  \tbb\n  ```\n\n- two', null],
@@ -581,6 +584,15 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         // A tab the item's content column cuts across reads as the columns left of it, and the save writes those as spaces.
         ['an item\'s text before a fenced code line whose tab the item cuts across', '- one\n\n  ```\n \tbb\n  ```', 2, 5, 'bold', '- **one**\n\n  ```\n    bb\n  ```', null],
         ['an item\'s text before an indented code line of two tabs', '- a\n\n\t\tcode', 2, 3, 'bold', '- **a**\n\n  ```\n    code\n  ```', null],
+        // The model reads each of these as the source grammar does, so the command acts as on the control form beside it.
+        ['a heading underlined by "-" and a tab, as one underlined by "-" alone', 'a\n-\t\n', 0, 1, 'bold', '## **a**\n', null],
+        ['a paragraph after a heading underlined by "-" and a tab', 'a\n-\t\nb\n', 5, 6, 'bold', 'a\n-\t\n\n**b**\n', null],
+        ['a heading underlined by "---" and a tab, not a paragraph over a rule', 'a\n---\t\n', 0, 1, 'bold', '## **a**\n', null],
+        ['a paragraph after a block tag name line and a blank line', 'a\n\n<div\n\nb c\n', 9, 10, 'bold', 'a\n\n<div\n\n**b** c\n', null],
+        ['a paragraph after a closing tag name line and a blank line in a quote', '> </div\n>\n> b c\n', 12, 13, 'bold', '> </div\n>\n> **b** c\n', null],
+        ['a word beside a link whose text is a no-break space', '[\u00a0](/u) b c\n', 8, 9, 'bold', '[\u00a0](/u) **b** c\n', null],
+        ['a word in the cell after a link whose text is a no-break space', '| h | k |\n| - | - |\n| [\u00a0](/u) | b c |\n', 32, 33, 'bold', '| h | k |\n| - | - |\n| [\u00a0](/u) | **b** c |\n', null],
+        ['a word beside a link whose text is a no-break space in a list item', '- [\u00a0](/u) b c\n', 10, 11, 'bold', '- [\u00a0](/u) **b** c\n', null],
     ];
 
     it.each(ROWS.map((row) => [`${row[0]} ${row[4]}`, row] as const))('%s: gives the text, and the caret where the WYSIWYG command leaves it', (_title, [, doc, from, to, command, text, caret]) => {
@@ -718,11 +730,16 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         },
     );
 
-    it('5.30: a text holding a carriage return does nothing', () => {
-        const run = runInSource('one\r\ntwo', { from: 1, to: 1 }, COMMANDS.bold!);
+    it('5.30: a text holding \\r\\n line ends before the view mounts acts as the same text with \\n line ends', () => {
+        for (const command of ['bold', 'h2', 'bulleted']) {
+            const crlf = runInSource('one\r\ntwo', { from: 1, to: 1 }, COMMANDS[command]!);
+            const lf = runInSource('one\ntwo', { from: 1, to: 1 }, COMMANDS[command]!);
 
-        expect(run.replaced).toEqual([]);
-        run.editor.dispose();
+            expect(crlf.text, command).toBe(lf.text);
+            expect(crlf.text, command).not.toBe('one\ntwo');
+            crlf.editor.dispose();
+            lf.editor.dispose();
+        }
     });
 
     it('a command reports no change and no selection state of its own: only the source editor reports', () => {
@@ -944,7 +961,9 @@ describe('the model is loaded and settled as the WYSIWYG editor is', () => {
         // Without the settling update the model leaves the text as it is.
         expect(doc[caret - 1]).toBe('[');
         expect(run.text.startsWith('- a')).toBe(true);
-        expect(run.text.endsWith('b **[x][x]** c')).toBe(true);
+        // The editor reads the title without the tab the viewer keeps (the corpus's known divergence `definitionTitleIndent`), so the
+        // reference is saved inline with the title it shows, as the WYSIWYG command saves it.
+        expect(run.text.endsWith('b **[x](/u "t&#10;&#10;  u")** c')).toBe(true);
         run.editor.dispose();
     });
 });

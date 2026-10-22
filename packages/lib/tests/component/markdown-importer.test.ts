@@ -1459,6 +1459,27 @@ describe('$importMarkdown — whole-stack review fixes: no source dropped', () =
         expect(editorSurfaceModel(editor)).toEqual(viewerModel(editor.getValue()).blocks);
     });
 
+    // A no-break space is content: the save keeps it at a line's edge, so such a link is a link, as one of a letter is.
+    const noBreakSpaceLinks: Array<[string, string]> = [
+        ['at the start of a paragraph', '[\u00a0](u) a'],
+        ['at the end of a paragraph', 'a [\u00a0](u)'],
+        ['in emphasis at the start of a paragraph', '*[\u00a0](u)* a'],
+        ['opening a list item', '- [\u00a0](u) a'],
+        ['alone in a table cell', '| h | k |\n| - | - |\n| [\u00a0](u) | b |'],
+    ];
+
+    for (const [name, source] of noBreakSpaceLinks) {
+        it(`a link whose text is a no-break space ${name} is a link node, and the save and the standard form read as loaded`, () => {
+            const editor = load(source);
+            const links = readDocument(editor, () => $dfs().filter(({ node }) => $isLinkNode(node)).map(({ node }) => node.getTextContent()));
+
+            expect(links).toEqual(['\u00a0']);
+            expect(editor.getValue()).toBe(source);
+            expect(editorSurfaceModel(editor)).toEqual(viewerModel(source).blocks);
+            expect(viewerModel(canonicalSave(editor)).blocks).toEqual(viewerModel(source).blocks);
+        });
+    }
+
     it('an empty link keeps the formatting around it', () => {
         const editor = load('a **[](u)** b');
 
@@ -3000,6 +3021,54 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             });
         }
 
+        // A selection goes all the same, as Delete takes it: only the break, which would have no place, is not added.
+        const removed: Array<[string, string, [string, number], [string, number], string]> = [
+            ['a selection to the end of a paragraph', 'ab', ['b', 0], ['b', 1], 'a'],
+            ['a selection of all of a paragraph', 'ab', ['ab', 0], ['ab', 2], ''],
+            ['a selection from a paragraph to the end of a list item\'s text', 'p\n\n- ab\n- cd', ['p', 0], ['ab', 2], '- cd'],
+            ['a selection to the end of a list item\'s text', '- ab\n- cd', ['ab', 1], ['ab', 2], '- a\n- cd'],
+            ['a selection to the end of a quote\'s block', '> a\n>\n> bc\n\nz', ['bc', 1], ['bc', 2], '> a\n>\n> b\n\nz'],
+            ['a selection inside a level 3 heading', '### abc', ['abc', 1], ['abc', 2], '### ac'],
+            ['a selection of the whole document', 'ab\n\ncd', ['ab', 0], ['cd', 2], ''],
+        ];
+
+        for (const [name, source, from, to, saved] of removed) {
+            it(`Shift+Enter over ${name} removes it, as Delete does, and adds no break`, () => {
+                const editor = load(source);
+                const deleted = load(source);
+
+                select(editor, from, to);
+                select(deleted, from, to);
+                shiftEnter(editor);
+                edit(deleted, () => {
+                    lexicalOf(deleted).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
+                });
+
+                expect(holdsBreak(editor)).toBe(false);
+                expect(editor.getValue()).toBe(saved);
+                expect(editor.getValue()).toBe(deleted.getValue());
+                expectSaveShowsSurface(editor);
+            });
+        }
+
+        const replaced: Array<[string, string, [string, number], [string, number], string]> = [
+            ['a selection inside a paragraph', 'abc', ['abc', 1], ['abc', 2], 'a\\\nc'],
+            ['a selection to the end of a table cell, which keeps every break', '| ab | c |\n| --- | --- |', ['ab', 1], ['ab', 2], '| a<br> | c |\n| --- | --- |'],
+        ];
+
+        for (const [name, source, from, to, saved] of replaced) {
+            it(`Shift+Enter over ${name} replaces it with a break (control)`, () => {
+                const editor = load(source);
+
+                select(editor, from, to);
+                shiftEnter(editor);
+
+                expect(holdsBreak(editor)).toBe(true);
+                expect(editor.getValue()).toBe(saved);
+                expectSaveShowsSurface(editor);
+            });
+        }
+
         it('deleting the text after a break leaves no break at the end of the block', () => {
             const editor = load('a\\\nbc');
 
@@ -4319,7 +4388,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             const editor = backspaceOver('a\n\n<div>\n\nb', ['<div>', 4], ['<div>', 5]);
 
             expect(rootTypes(editor)).toEqual(['paragraph', 'markdown-raw-block', 'paragraph']);
-            expect(editor.getValue()).toBe('a\n\n<div\n\n\nb');
+            expect(editor.getValue()).toBe('a\n\n<div\n\nb');
             expectSaveShowsSurface(editor);
         });
 
@@ -5053,3 +5122,47 @@ describe('$importMarkdown — a list a save could not write back stays raw (R ro
     });
 });
 
+
+describe('$importMarkdown — a tabbed setext underline and a block tag name line before a blank line read as CommonMark reads them', () => {
+    /**
+     * Bolds the first occurrence of a word in the editor's text.
+     *
+     * @param editor - The editor.
+     * @param word - The word.
+     */
+    function boldWord(editor: MarkdownEditor, word: string): void {
+        lexicalOf(editor).update(() => {
+            const node = $getRoot().getAllTextNodes().find((text) => text.getTextContent().includes(word))!;
+            const at = node.getTextContent().indexOf(word);
+
+            node.select(at, at + word.length);
+        }, { discrete: true });
+        editor.toggleBold();
+    }
+
+    // Each control form beside a row reads and saves as that row does: `a⏎-` for the tab underline, `<div>` for the tag
+    // name line, `····xx` for the backtick line.
+    const rows: Array<[string, string, string, string]> = [
+        ['a heading underlined by "-" and a tab', 'a\n-\t\n', 'a', '## **a**\n'],
+        ['a paragraph after a heading underlined by "-" and a tab', 'a\n-\t\nb\n', 'b', 'a\n-\t\n\n**b**\n'],
+        ['a heading underlined by "---" and a tab', 'a\n---\t\n', 'a', '## **a**\n'],
+        ['a paragraph after a block tag name line and a blank line', 'a\n\n<div\n\nb c\n', 'b', 'a\n\n<div\n\n**b** c\n'],
+        ['a paragraph after a block tag name line and a blank line in a quote', '> <div\n>\n> b c\n', 'b', '> <div\n>\n> **b** c\n'],
+    ];
+
+    it.each(rows)('%s: the editor shows what the viewer shows, and an edit saves what the editor showed', (_name, source, word, saved) => {
+        const editor = load(source);
+
+        expect(editorSurfaceModel(editor)).toEqual(viewerModel(source).blocks);
+        expect(editor.getValue()).toBe(source);
+
+        boldWord(editor, word);
+
+        const reloaded = load(editor.getValue());
+
+        expect(editor.getValue()).toBe(saved);
+        expect(editorSurfaceModel(editor)).toEqual(viewerModel(saved).blocks);
+        expect(editorSurfaceModel(reloaded)).toEqual(editorSurfaceModel(editor));
+        expect(reloaded.getValue()).toBe(saved);
+    });
+});

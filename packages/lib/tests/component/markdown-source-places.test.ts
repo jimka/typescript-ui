@@ -793,6 +793,20 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
         expect(placeOf('a &#3\u00a65; b')).toBe('[a \u00a6# b]');
     });
 
+    // A no-break space is content, not the whitespace a save trims at a block's edge: a link whose text is one is a
+    // link, and every offset of its block has a place, as with a letter there.
+    it.each<[string, string | null]>([
+        ['[\u00a0\u00a6](/u) b', '[\u2039\u00a0\u00a6\u203a b]'],
+        ['[\u00a0](/u) \u00a6b', '[\u2039\u00a0\u203a \u00a6b]'],
+        ['\u00a6[\u00a0](/u) b', '[\u2039\u00a6\u00a0\u203a b]'],
+        ['- [\u00a0](/u) \u00a6b', '[[[\u2039\u00a0\u203a \u00a6b]]]'],
+        ['| h | k |\n| - | - |\n| [\u00a0](/u) | \u00a6b |', '[[[[h]][[k]]][[[\u2039\u00a0\u203a]][[\u00a6b]]]]'],
+        ['| h | k |\n| - | - |\n| [\u00a0](/u) | b |\u00a6', '[[[[h]][[k]]][[[\u2039\u00a0\u203a]][[b\u00a6]]]]'],
+        ['| \u00a6h | k |\n| - | - |\n| [\u00a0](/u) | b |', '[[[[\u00a6h]][[k]]][[[\u2039\u00a0\u203a]][[b]]]]'],
+    ])('a link whose text is a no-break space is shown, so an offset of its block has a place: %j', (marked, expected) => {
+        expect(placeOf(marked)).toBe(expected);
+    });
+
     /**
      * The offset the reverse walk gives for a point in the text node that shows `shown`, or in the block itself.
      *

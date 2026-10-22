@@ -636,14 +636,17 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
         expect(() => lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false)).not.toThrow();
     });
 
-    it('P11b: a line break over a range that ends on a list is declined, and nothing changes', () => {
+    it('P11b: a line break over a range that ends on a list removes the range, as Delete does, and adds no break', () => {
         const editor = load(LIST);
-        const loaded = editor.getValue();
+        const deleted = load(LIST);
 
         select(editor, { on: 'root', at: 0 }, { on: 'list', at: 1 });
+        select(deleted, { on: 'root', at: 0 }, { on: 'list', at: 1 });
 
         expect(() => lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false)).not.toThrow();
-        expect(editor.getValue()).toBe(loaded);
+        lexicalOf(deleted).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
+        expect(editor.getValue()).toBe('- two');
+        expect(editor.getValue()).toBe(deleted.getValue());
     });
 
     it('control: a caret on the root between two blocks is not moved', () => {
@@ -677,6 +680,57 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
 
             expect(editor.getValue()).toBe(loaded);
         }
+    });
+
+    /**
+     * Describes both ends of the editor's selection: each as its node's type and offset, a text point with its text.
+     *
+     * @param editor - The editor.
+     * @returns The description.
+     */
+    function selectionOf(editor: MarkdownEditor): string {
+        return lexicalOf(editor).read(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                return 'no range';
+            }
+
+            return [selection.anchor, selection.focus].map((point) => {
+                const node = point.getNode();
+                const name = point.type === 'text' ? JSON.stringify(node.getTextContent()) : node.getType();
+
+                return `${name}@${point.offset}`;
+            }).join(' .. ');
+        });
+    }
+
+    // Settling moves the editor's own selection before the command reads where it would insert; a command that then
+    // declines puts the selection back, as an edit that changes nothing leaves it.
+    it.each<[string, string, (editor: MarkdownEditor) => void, Spot, Spot]>([
+        ['insertImage', '::: columns\nA\n|||\n```\ncode\n```\n:::', (editor) => editor.insertImage('/i.png', { alt: 'i' }), { on: 'fence', at: 1 }, { on: 'fence', at: 1 }],
+        ['insertTable', '::: columns\nA\n|||\n```\ncode\n```\n:::', (editor) => editor.insertTable(2, 2), { on: 'fence', at: 1 }, { on: 'fence', at: 1 }],
+        ['insertHorizontalRule', '::: columns\nA\n|||\n```\ncode\n```\n:::', (editor) => editor.insertHorizontalRule(), { on: 'fence', at: 1 }, { on: 'fence', at: 1 }],
+        ['insertTable', '::: {align=center}\n| a | b |\n| - | - |\n| c | d |\n:::', (editor) => editor.insertTable(2, 2), { on: 'fence', at: 0 }, { on: 'fence', at: 0 }],
+        ['insertTable', '::: {align=center}\n| a | b |\n| - | - |\n| c | d |\n:::', (editor) => editor.insertTable(2, 2), { on: 'fence', at: 1 }, { on: 'fence', at: 1 }],
+        ['insertHorizontalRule', '::: {align=center}\n| a | b |\n| - | - |\n| c | d |\n:::', (editor) => editor.insertHorizontalRule(), { on: 'fence', at: 0 }, { on: 'fence', at: 0 }],
+        ['insertTable', 'p\n\n| a | b |\n| - | - |\n\nq', (editor) => editor.insertTable(2, 2), { on: 'root', at: 1 }, { on: 'root', at: 2 }],
+        // The rule removed the range first, the text of the cells it settled into, and then declined.
+        ['insertHorizontalRule', 'p\n\n| a | b |\n| - | - |\n\nq', (editor) => editor.insertHorizontalRule(), { on: 'root', at: 1 }, { on: 'root', at: 2 }],
+        // The same removal took the node the selection ended in, and the update threw.
+        ['insertHorizontalRule', 'p\n\n| a |\n| - |\n| b |\n\nq', (editor) => editor.insertHorizontalRule(), { on: 'root', at: 1 }, ['b', 1]],
+    ])('%s declined once the point settles leaves the selection as it was, in %j', (_name, source, command, anchor, focus) => {
+        const editor = load(source);
+        const loaded = editor.getValue();
+
+        select(editor, anchor, focus);
+
+        const before = selectionOf(editor);
+
+        command(editor);
+
+        expect(editor.getValue()).toBe(loaded);
+        expect(selectionOf(editor)).toBe(before);
     });
 
     /**
@@ -778,15 +832,18 @@ describe('commands at a selection point where no caret can be (P rows)', () => {
             }
         });
 
-        it('S1: a line break over a range from just before a list to the end of its text is declined, range kept', () => {
+        it('S1: a line break over a range from just before a list to the end of its text removes the range, as Delete does, and adds no break', () => {
             const editor = load('Above\n\n- one\n- two');
-            const loaded = editor.getValue();
+            const deleted = load('Above\n\n- one\n- two');
 
             select(editor, ABOVE_LIST, ['two', 3]);
+            select(deleted, ABOVE_LIST, ['two', 3]);
 
             expect(() => lineBreak(editor)).not.toThrow();
-            expect(editor.getValue()).toBe(loaded);
-            expect(lexicalOf(editor).read(() => ($getSelection() as RangeSelection).isCollapsed())).toBe(false);
+            lexicalOf(deleted).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
+            expect(editor.getValue()).toBe('Above');
+            expect(editor.getValue()).toBe(deleted.getValue());
+            expect(lexicalOf(editor).read(() => ($getSelection() as RangeSelection).isCollapsed())).toBe(true);
         });
     });
 

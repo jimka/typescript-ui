@@ -22,6 +22,7 @@ import type { TableCellNode, TableNode } from "@lexical/table";
 import { $dfs } from "@lexical/utils";
 import { FULL_REFERENCE, lexMarkdown, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions, SHORT_REFERENCE } from "~/component/display/markdownExtensions.js";
 import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
+import { holdsLineContent } from "~/component/display/markdownLineContent.js";
 import { CELL_LINE_BREAK_TAG } from "~/component/display/markdownTableExtension.js";
 import type { MdTableBodyCell, MdTableHeaderCell, MdTableToken } from "~/component/display/markdownTableExtension.js";
 import {
@@ -49,7 +50,7 @@ import {
     rawBlockStandsInItem, runsOn, withoutBlankEdges,
 } from "~/component/editor/markdownSerializer.js";
 import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode, $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
-import { $createMarkdownTaskCheckboxNode } from "~/component/editor/markdownTaskCheckboxNode.js";
+import { $createMarkdownTaskCheckboxNode, $keepBlankTextOfCheckbox, $openingCheckbox } from "~/component/editor/markdownTaskCheckboxNode.js";
 import { headingSlugSource, slugify } from "~/component/display/markdownHeadingIds.js";
 import { $readStandardForm, keptImageShown } from "~/component/editor/markdownSerializer.js";
 import type { StandardFormReading } from "~/component/editor/markdownSerializer.js";
@@ -1608,6 +1609,14 @@ function $buildListItem(item: Tokens.ListItem): ListItemNode | null {
 
             appendInlineTokens({ block: itemText, openLink: null, nextCellParagraph: null, keep, edges: edgeLinks(tokens) }, tokens, PLAIN);
             $dropBlanksEndingItemText(itemText);
+
+            // A checkbox that shows nothing after it is one to the viewer only by the text after its marker (`&#32;`).
+            const box = $openingCheckbox(itemText);
+            const showsNothingAfterBox = itemText.getChildren().slice(1).every((child) => $isTextNode(child) && !holdsLineContent(child.getTextContent()));
+
+            if (box !== null && showsNothingAfterBox) {
+                $keepBlankTextOfCheckbox(box, tokens.map((token) => token.raw).join(""));
+            }
         });
     }
 
@@ -2276,9 +2285,35 @@ function idSourceIndex(tokens: Token[], idScore: number): number {
  * @param context - The formatting they inherit.
  */
 function appendInlineTokens(target: InlineTarget, tokens: Token[], context: InlineContext): void {
-    for (const token of tokens) {
-        appendInlineToken(target, token, context);
+    tokens.forEach((token, index) => {
+        appendInlineToken(target, token, context, tokens[index + 1]);
+    });
+}
+
+/**
+ * The inline token types the editor builds nodes of its own for
+ * ({@link appendInlineToken}); any other token becomes a source node.
+ */
+const NODE_TOKEN_TYPES: ReadonlySet<string> = new Set([...Object.keys(TOKEN_FORMATS), "text", "escape", "codespan", "link", "styledspan", "mdimage", "br"]);
+
+/**
+ * Whether the blanks that stand alone on a paragraph line before `next`
+ * are kept: before a run kept as its source (inline HTML, a construct kept
+ * as written, a token the editor has no node for), whose save writes them
+ * back so `marked` reads the source as before. Before any other token, and
+ * at the end of the tokens, the viewer shows none of them
+ * ({@link LEADING_BLANKS}).
+ *
+ * @param target - Where the tokens are appended.
+ * @param next - The token after the blanks' text, if any.
+ * @returns `true` when the blanks are kept.
+ */
+function keepsBlanksBefore(target: InlineTarget, next: Token | undefined): boolean {
+    if (next === undefined) {
+        return false;
     }
+
+    return target.keep.has(next) || !NODE_TOKEN_TYPES.has(next.type);
 }
 
 /**
@@ -2288,8 +2323,9 @@ function appendInlineTokens(target: InlineTarget, tokens: Token[], context: Inli
  * @param target - Where nodes are appended.
  * @param token - The inline token.
  * @param context - The formatting it inherits.
+ * @param next - The token after it at its level, if any.
  */
-function appendInlineToken(target: InlineTarget, token: Token, context: InlineContext): void {
+function appendInlineToken(target: InlineTarget, token: Token, context: InlineContext, next: Token | undefined): void {
     const format = TOKEN_FORMATS[token.type];
 
     if (target.keep.has(token) && appendKeptConstruct(target, token, context)) {
@@ -2303,7 +2339,7 @@ function appendInlineToken(target: InlineTarget, token: Token, context: InlineCo
     }
 
     switch (token.type) {
-        case "text":       appendTextToken(target, token as Tokens.Text, context); break;
+        case "text":       appendTextToken(target, token as Tokens.Text, context, keepsBlanksBefore(target, next)); break;
         case "escape":     appendText(target, (token as Tokens.Escape).text, context); break;
         case "codespan":   appendLeaf(target, styledText((token as Tokens.Codespan).text, withFormat(context, "code")), context); break;
         case "link":       appendLink(target, token as Tokens.Link, context); break;
@@ -2342,8 +2378,9 @@ function appendInlineHtml(target: InlineTarget, token: Tokens.HTML, context: Inl
  * @param target - Where nodes are appended.
  * @param token - The `text` token.
  * @param context - The formatting it inherits.
+ * @param blanksKept - Whether blanks standing alone at the text's end are kept ({@link keepsBlanksBefore}).
  */
-function appendTextToken(target: InlineTarget, token: Tokens.Text, context: InlineContext): void {
+function appendTextToken(target: InlineTarget, token: Tokens.Text, context: InlineContext, blanksKept: boolean): void {
     if (token.tokens !== undefined && token.tokens.length > 0) {
         appendInlineTokens(target, token.tokens, context);
 
@@ -2353,45 +2390,57 @@ function appendTextToken(target: InlineTarget, token: Tokens.Text, context: Inli
     const nextCellParagraph = target.nextCellParagraph;
 
     if (nextCellParagraph === null) {
-        appendText(target, token.text, context);
+        appendText(target, token.text, context, blanksKept);
 
         return;
     }
 
-    token.text.split(CELL_PARAGRAPH_BREAK).forEach((piece, index) => {
+    const pieces = token.text.split(CELL_PARAGRAPH_BREAK);
+
+    pieces.forEach((piece, index) => {
         if (index > 0) {
             target.block = nextCellParagraph();
             target.openLink = null;
         }
 
-        appendText(target, piece, context);
+        // A piece the cell's next paragraph break ends is a paragraph of its own, blanks and all.
+        appendText(target, piece, context, index < pieces.length - 1 || blanksKept);
     });
 }
 
 /**
  * The spaces and tabs a paragraph line opens with, which CommonMark strips: the viewer shows none of them. Blanks
- * that stand alone before another inline token are kept, as inline HTML after them keeps its indentation.
+ * that stand alone before inline HTML or another run kept as its source are kept, as that source keeps its
+ * indentation ({@link keepsBlanksBefore}).
  */
 const LEADING_BLANKS = /^[ \t]+/;
 
 /**
  * Appends text, with a soft-break source node (showing a space, saving a
  * newline) for each newline in it. The blanks a line opens
- * with, the block's first line included, are dropped, as the viewer drops them.
+ * with, the block's first line included, are dropped, as the viewer drops them,
+ * also when they stand alone at the text's end before the next token, unless
+ * `blanksKept` says that token keeps them.
  *
  * @param target - Where nodes are appended.
  * @param text - The text.
  * @param context - Its formatting.
+ * @param blanksKept - Whether blanks standing alone at the text's end are kept; `true` by default.
  */
-function appendText(target: InlineTarget, text: string, context: InlineContext): void {
-    text.split("\n").forEach((piece, index) => {
+function appendText(target: InlineTarget, text: string, context: InlineContext, blanksKept: boolean = true): void {
+    const pieces = text.split("\n");
+
+    pieces.forEach((piece, index) => {
         if (index > 0) {
             appendLeaf(target, formatted($createMarkdownSourceTextNode(SOFT_BREAK_DISPLAY, SOFT_BREAK_SOURCE), context), context);
         }
 
-        const opensBlock = index === 0 && target.block.getChildrenSize() === 0;
+        // Blanks that open a link's text are the link's own: the link node is not in the block yet while its text is
+        // added, so a link that opens the block must not make that text the block's opening.
+        const opensBlock = index === 0 && context.link === null && target.block.getChildrenSize() === 0;
         const stripped = piece.replace(LEADING_BLANKS, "");
-        const dropsBlanks = LOADING_DOCUMENT.current && (index > 0 || opensBlock) && stripped !== "";
+        const standsAlone = stripped === "" && index === pieces.length - 1 && !blanksKept;
+        const dropsBlanks = LOADING_DOCUMENT.current && (index > 0 || opensBlock) && (stripped !== "" || standsAlone);
         const text = dropsBlanks ? stripped : piece;
 
         if (text !== "") {
@@ -2930,14 +2979,15 @@ function reversedToken(token: Token): Token {
 /**
  * Tells whether a link's text shows nothing beside the links nested in it
  * but whitespace, some of it at the text's own start or end — whitespace a
- * save trims away when the link stands at its block's edge.
+ * save trims away when the link stands at its block's edge. Whitespace is
+ * ASCII whitespace, as in {@link showsOnlyWhitespace}.
  *
  * @param tokens - The link's inline tokens.
  * @returns Whether it does.
  */
 function showsWhitespaceBesideLinks(tokens: readonly Token[]): boolean {
     const atEdge = [tokens[0], tokens[tokens.length - 1]]
-        .some((token) => token?.type === "text" && /^\s+$/.test((token as Tokens.Text).text));
+        .some((token) => token?.type === "text" && (token as Tokens.Text).text !== "" && !holdsLineContent((token as Tokens.Text).text));
 
     return atEdge && !showsOnlyWhitespace(tokens) && showsOnlyWhitespace(tokens, true);
 }
@@ -2945,6 +2995,9 @@ function showsWhitespaceBesideLinks(tokens: readonly Token[]): boolean {
 /**
  * Tells whether inline tokens show nothing but whitespace: each leaf is text
  * (or an escape) holding only whitespace, at any depth of emphasis or span.
+ * Whitespace is ASCII whitespace, the spaces and tabs a save trims at a
+ * line's edge: a no-break space is content, which the save keeps
+ * ({@link holdsLineContent}).
  *
  * @param tokens - The inline tokens.
  * @param besideLinks - Whether links among them count as showing nothing, so
@@ -2964,7 +3017,7 @@ function showsOnlyWhitespace(tokens: readonly Token[], besideLinks: boolean = fa
         }
 
         return (token.type === "text" || token.type === "escape") && (children === undefined || children.length === 0
-            ? /^\s*$/.test((token as Tokens.Text).text)
+            ? !holdsLineContent((token as Tokens.Text).text)
             : showsOnlyWhitespace(children, besideLinks));
     });
 }

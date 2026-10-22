@@ -2106,7 +2106,6 @@ describe('a command that changes nothing leaves a range with a rule at an end as
         ['a paste of no nodes', (editor) => paste(editor, ['application/x-lexical-editor'], [], {
             'application/x-lexical-editor': JSON.stringify({ namespace: 'none', nodes: [] }),
         })],
-        ['Shift+Enter', (editor) => { lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false); settle(editor); }],
     ];
 
     it.each(['---\n\nab', 'ab\n\n---', '<div></div>\n\nab', 'ab\n\n<div></div>'].flatMap((source) => NOTHING.map(([name, run]) => [source, name, run] as const)))(
@@ -2123,6 +2122,44 @@ describe('a command that changes nothing leaves a range with a rule at an end as
             expect(pointsOf(editor)).toBe(before);
         },
     );
+
+    // Shift+Enter changes something there: it removes the range, the rule with it, as Delete does, and adds no break.
+    it.each(['---\n\nab', 'ab\n\n---', '<div></div>\n\nab', 'ab\n\n<div></div>', '---'])('Select All over %j, then Shift+Enter: the range goes, as Delete takes it', (source) => {
+        const editor = load(source);
+        const deleted = load(source);
+
+        selectAllOf(editor);
+        selectAllOf(deleted);
+        lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+        settle(editor);
+        lexicalOf(deleted).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
+        settle(deleted);
+
+        expect(editor.getValue()).toBe('');
+        expect(editor.getValue()).toBe(deleted.getValue());
+    });
+
+    // One undo takes the whole edit back, the text and the selection with it.
+    it.each([
+        ['within a block', 'abcd', ['abcd', 1], ['abcd', 3]],
+        ['across blocks', 'ab\n\ncd', ['ab', 1], ['cd', 1]],
+    ] as const)('one undo after Shift+Enter over a range %s restores the text and the selection', (_name, source, from, to) => {
+        const editor = load(source);
+
+        selectText(editor, [from[0], from[1]], [to[0], to[1]]);
+
+        const selectionBefore = selectionOf(editor);
+
+        lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+        settle(editor);
+
+        expect(editor.getValue()).not.toBe(source);
+
+        press(editor, { key: 'undo' });
+
+        expect(editor.getValue()).toBe(source);
+        expect(selectionOf(editor)).toBe(selectionBefore);
+    });
 
     it('a paste that carries text still replaces the rule at the range\'s end', () => {
         const editor = load('---\n\nab');

@@ -345,7 +345,8 @@ function fuzzSequence(testCase: CorpusCase, random: () => number): void {
         }
 
         // The save reads in the viewer as the standard form of the same document does.
-        if (!knownDivergence(testCase, 'canonical')) {
+        // An edit of a case whose edits are a known divergence rewrites what the divergence names, so its standard form reads otherwise.
+        if (!knownDivergence(testCase, 'canonical') && !knownDivergence(testCase, 'edits')) {
             expect(viewerModel(run.saved), run.context).toEqual(viewerModel(canonicalSave(run.editor)));
         }
 

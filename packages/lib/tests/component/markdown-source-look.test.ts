@@ -20,6 +20,7 @@ import {
     syntaxStyles, SHARED_SYNTAX_STYLES, MARKDOWN_SOURCE_LIGHT, MARKDOWN_SOURCE_DARK,
     SYNTAX_KEYWORD, SYNTAX_STRING, SYNTAX_COMMENT, SYNTAX_LITERAL, SYNTAX_FUNCTION, SYNTAX_TYPE, SYNTAX_PROPERTY,
 } from '~/component/editor/theme';
+import { lexMarkdown } from '~/component/display/markdownExtensions';
 import { CORPUS } from './markdown-roundtrip/corpus';
 import { readDemoEditorSample } from '../helpers/readDemoSample.mjs';
 
@@ -255,6 +256,12 @@ const MARKDOWN_ROWS: ReadonlyArray<[title: string, source: string, looks: Range[
         [['~one~', 'plain']]],
     ['tildes with spaces inside are plain text', 'a ~~ b ~~ c',
         [['a ~~ b ~~ c', 'plain']]],
+    ['a run of three tildes is plain text', 'x ~~~a~~~',
+        [['x ~~~a~~~', 'plain']]],
+    ['a run of three tildes does not close struck text', '~~a~~~',
+        [['~~a~~~', 'plain']]],
+    ['a run of three tildes inside struck text is plain text', 'a ~~b~~~c~~',
+        [['a ', 'plain'], ['~~', 'inline mark'], ['b~~~c', 'plain'], ['~~', 'inline mark']]],
     ['underlined text is plain between inline marks', '++underline++',
         [['++', 'inline mark'], ['underline', 'plain'], ['++', 'inline mark']]],
     ['underline inside strong text joins the marks', '**++b++**',
@@ -625,6 +632,100 @@ describe.each(SCHEMES)('source mode colours, $name theme', (scheme) => {
                     .toBeGreaterThanOrEqual(MINIMUM_CONTRAST);
             }
         }
+    });
+});
+
+describe('the markdown language strikes what the viewer strikes', () => {
+    /**
+     * Lists the text of each struck run the grammar reads, marks included, in document order.
+     *
+     * @param doc - The source text.
+     * @returns The `Strikethrough` nodes' text.
+     */
+    async function sourceStruck(doc: string): Promise<string[]> {
+        const extension = await getLanguage('markdown')!.loadExtension();
+        const state = EditorState.create({ doc, extensions: [extension] });
+        const struck: string[] = [];
+
+        ensureSyntaxTree(state, state.doc.length, Infinity)!.iterate({
+            enter: (node) => {
+                if (node.name === 'Strikethrough') {
+                    struck.push(doc.slice(node.from, node.to));
+                }
+            },
+        });
+
+        return struck;
+    }
+
+    /**
+     * Lists the source of each `del` token the viewer's lexer reads, in document order, and tells whether one of
+     * them is a single-tilde strike, which source mode leaves as text by design.
+     *
+     * @param doc - The source text.
+     * @returns The tokens' source, and whether a single-tilde one is among them.
+     */
+    function viewerStruck(doc: string): { struck: string[]; singleTilde: boolean } {
+        const struck: string[] = [];
+        let singleTilde = false;
+        const walk = (value: unknown): void => {
+            if (Array.isArray(value)) {
+                value.forEach(walk);
+
+                return;
+            }
+
+            if (value === null || typeof value !== 'object') {
+                return;
+            }
+
+            const token = value as { type?: string; raw?: string };
+
+            if (token.type === 'del') {
+                const isSingle = /^~(?!~)/.test(token.raw!);
+
+                singleTilde = singleTilde || isSingle;
+                struck.push(token.raw!);
+            }
+
+            Object.values(value).forEach(walk);
+        };
+
+        walk(lexMarkdown(doc));
+
+        return { struck, singleTilde };
+    }
+
+    it('in every run of tildes, letters and spaces up to seven characters long, after a word and after a space', async () => {
+        const alphabet = ['~', 'a', ' '];
+        const differing: string[] = [];
+        let checked = 0;
+
+        for (let length = 2; length <= 7; length++) {
+            for (let code = 0; code < alphabet.length ** length; code++) {
+                const shape = Array.from({ length }, (_, place) => alphabet[Math.floor(code / alphabet.length ** place) % alphabet.length]).join('');
+
+                for (const doc of [`x${shape}`, `x ${shape}`]) {
+                    const viewer = viewerStruck(doc);
+
+                    if (!shape.includes('~~') || viewer.singleTilde) {
+                        continue;
+                    }
+
+                    checked++;
+
+                    const source = await sourceStruck(doc);
+
+                    if (JSON.stringify(source) !== JSON.stringify(viewer.struck)) {
+                        differing.push(JSON.stringify(doc));
+                    }
+                }
+            }
+        }
+
+        // Most documents are compared: only those with no `~~` and those the viewer strikes with one tilde are skipped.
+        expect(checked).toBeGreaterThan(1000);
+        expect(differing).toEqual([]);
     });
 });
 

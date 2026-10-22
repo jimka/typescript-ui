@@ -478,8 +478,12 @@ const LIST_START = /^ {0,3}(?:[*+-]|\d{1,9}[.)])(?:[ \t\n]|$)/;
 /** Read off `marked`'s `html` rule, every alternative of which begins `^ {0,3}<`. */
 const HTML_START = /^ {0,3}</;
 
-/** The line a setext heading's content must end at, read off `marked`'s `lheading` rule's closing ` {0,3}(=+|-+) *` step. */
-const SETEXT_UNDERLINE_LINE = /^ {0,3}(?:=+|-+) *$/;
+/**
+ * The line a setext heading's content must end at, read off `marked`'s
+ * `lheading` rule's closing ` {0,3}(=+|-+) *` step, with tabs as well as
+ * spaces after the run, as CommonMark reads it ({@link lheadingWithTabbedUnderline}).
+ */
+const SETEXT_UNDERLINE_LINE = /^ {0,3}(?:=+|-+)[ \t]*$/;
 
 /** Whitespace-only by JavaScript's `\s`, the class `lheading`'s `\n(?!\s*?\n…)` step stops its content at. */
 const WHITESPACE_ONLY_LINE = /^\s*$/;
@@ -708,6 +712,49 @@ function blockquoteWithSourceRaw(this: Tokenizer, src: string): Tokens.Blockquot
 /** The line end `marked`'s HTML rule wants after a tag name that ends its line. */
 const LINE_END = "\n";
 
+/** An HTML block's start line that is only `<` or `</` and a tag name, the name captured. */
+const TAG_NAME_ONLY_LINE = /^ {0,3}<\/?([a-z][a-z0-9-]*)\n/i;
+
+/** The tag names whose HTML block runs to its closing tag, not to a blank line (CommonMark §4.6, condition 1). */
+const RAW_TEXT_TAG_NAME = /^(?:script|pre|style|textarea)$/i;
+
+/**
+ * Runs `marked`'s HTML-block tokenizer, ending a block whose start line is
+ * only a block tag name (`<div`, `</div`) at the blank line after it.
+ * `marked`'s rule takes the line end after such a name as the name's end and
+ * then looks for a line end followed by a blank line, so the blank line right
+ * after the start line does not end the block, and the block runs on to the
+ * next blank line or the end of the input; CommonMark ends it at the first
+ * blank line (§4.6, condition 6). For such a token `marked` is asked again
+ * with a space after the tag name, which its rule reads as the name's end
+ * too, and the token it then returns is cut back to the source by that one
+ * character. A `<script`, `<pre`, `<style` or `<textarea` block runs to its
+ * closing tag and is left as it is.
+ *
+ * @param src - The remaining source at the current block position.
+ * @returns The HTML token, or `undefined` when no HTML block starts here.
+ */
+function htmlEndingAtBlankLine(this: Tokenizer, src: string): Tokens.HTML | undefined {
+    const token = Tokenizer.prototype.html.call(this, src);
+    const tagName = token === undefined ? null : TAG_NAME_ONLY_LINE.exec(token.raw)?.[1] ?? null;
+
+    if (tagName === null || RAW_TEXT_TAG_NAME.test(tagName)) {
+        return token;
+    }
+
+    const nameEnd = src.indexOf(LINE_END);
+    const spaced = Tokenizer.prototype.html.call(this, src.slice(0, nameEnd) + " " + src.slice(nameEnd));
+
+    if (spaced === undefined) {
+        return token;
+    }
+
+    spaced.raw = src.slice(0, spaced.raw.length - 1);
+    spaced.text = spaced.raw;
+
+    return spaced;
+}
+
 /**
  * Runs `marked`'s HTML-block tokenizer, reading the end of the input as the
  * end of a line. `marked` 18's rule takes a block tag name (`<div`, `</div`,
@@ -726,7 +773,7 @@ const LINE_END = "\n";
  * @returns The HTML token, or `undefined` when no HTML block starts here.
  */
 function htmlWithInputEndAsLineEnd(this: Tokenizer, src: string): Tokens.HTML | undefined {
-    const token = Tokenizer.prototype.html.call(this, src);
+    const token = htmlEndingAtBlankLine.call(this, src);
 
     if (token !== undefined) {
         return token;
@@ -1096,6 +1143,34 @@ function blockquoteWithTabStops(this: Tokenizer, src: string): Tokens.Blockquote
     return token;
 }
 
+/** A setext underline line whose trailing whitespace holds a tab: the run, then that whitespace. */
+const TABBED_SETEXT_UNDERLINE = /^( {0,3}(?:=+|-+))([ \t]*\t[ \t]*)$/gm;
+
+/**
+ * Runs `marked`'s setext-heading tokenizer on a form of the source in which
+ * the whitespace after an underline's run is spaces only. `marked`'s rule
+ * takes spaces only there, so `a` over `-` and a tab reads as a paragraph,
+ * where CommonMark takes any spaces and tabs (§4.3) and reads a heading. Each
+ * tab becomes one space, so the form is as long as the source and the token's
+ * `raw` is set back to the source's own text; its content lines come before
+ * the underline and are not changed. The first line is left as it is: it is
+ * the heading's content, never its underline.
+ *
+ * @param src - The remaining source at the current block position.
+ * @returns The heading token, or `undefined` when no setext heading starts here.
+ */
+function lheadingWithTabbedUnderline(this: Tokenizer, src: string): Tokens.Heading | undefined {
+    const firstEnd = lineEndAt(src, 0);
+    const spaced = src.slice(0, firstEnd) + src.slice(firstEnd).replace(TABBED_SETEXT_UNDERLINE, (_line, run: string, trail: string) => run + " ".repeat(trail.length));
+    const token = Tokenizer.prototype.lheading.call(this, spaced);
+
+    if (token !== undefined) {
+        token.raw = src.slice(0, token.raw.length);
+    }
+
+    return token;
+}
+
 /** The indentation of an indented backtick fence: one to three spaces. `marked` takes it off the content of backtick fences only. */
 const INDENTED_BACKTICK_FENCE = /^ {1,3}(?=`{3})/;
 
@@ -1154,11 +1229,11 @@ function fencesWithColumnIndent(this: Tokenizer, src: string): Tokens.Code | und
 }
 
 /**
- * The five block tokenizers the dialect owns, installed in `marked`'s
- * `blockquote`, `list`, `table`, `html` and `fences` slots: the unbounded test
- * twin installs them as they are, and {@link BOUNDED_BLOCK_TOKENIZERS} calls
- * the same five, four of them behind its guards, so the twin differs from the
- * bounded instance in nothing else.
+ * The six block tokenizers the dialect owns, installed in `marked`'s
+ * `blockquote`, `list`, `table`, `html`, `fences` and `lheading` slots: the
+ * unbounded test twin installs them as they are, and
+ * {@link BOUNDED_BLOCK_TOKENIZERS} calls the same six, five of them behind its
+ * guards, so the twin differs from the bounded instance in nothing else.
  */
 const DIALECT_BLOCK_TOKENIZERS: TokenizerObject = {
     blockquote: blockquoteWithTabStops,
@@ -1166,6 +1241,7 @@ const DIALECT_BLOCK_TOKENIZERS: TokenizerObject = {
     table:      dialectTable,
     html:       htmlWithInputEndAsLineEnd,
     fences:     fencesWithColumnIndent,
+    lheading:   lheadingWithTabbedUnderline,
 };
 
 /**
@@ -1173,14 +1249,15 @@ const DIALECT_BLOCK_TOKENIZERS: TokenizerObject = {
  * whose anchored regexes JavaScriptCore — the engine WebKitGTK runs — scans
  * from every start position of whatever it is handed, so each failed match
  * costs time in proportion to the rest of the document and lexing a long
- * document is quadratic (`blockquote`, `list` and `html` reach theirs through
- * the dialect's wrappers); the sixth, `table`, is the dialect's own tokenizer,
+ * document is quadratic (`blockquote`, `list`, `html` and `lheading` reach
+ * theirs through the dialect's wrappers); the sixth, `table`, is the dialect's own tokenizer,
  * which has no such regex; the seventh, `fences`, is described below. Each
  * override returns `undefined`, declining the position outright, when a
  * condition its rule's own regex requires does not hold; otherwise it calls
  * `marked`'s original method on {@link blockWindow}'s cut of the source.
  * `blockquote` and `list` call the dialect's tab-stop wrappers on the window
- * instead of the originals. `table` runs the dialect's table tokenizer behind
+ * instead of the originals, and `lheading` the dialect's tabbed-underline
+ * wrapper. `table` runs the dialect's table tokenizer behind
  * the guard with no window: that tokenizer reads only up to its first blank
  * line, so it never scans the rest of the document. `html` takes the guard
  * only and calls the dialect's input-end wrapper on the whole source, because
@@ -1210,7 +1287,7 @@ const BOUNDED_BLOCK_TOKENIZERS: TokenizerObject = {
         return secondLineHasDash(src) ? dialectTable.call(this, src) : undefined;
     },
     lheading(src) {
-        return hasSetextUnderline(src) ? Tokenizer.prototype.lheading.call(this, blockWindow(src)) : undefined;
+        return hasSetextUnderline(src) ? lheadingWithTabbedUnderline.call(this, blockWindow(src)) : undefined;
     },
     html(src) {
         return HTML_START.test(src) ? htmlWithInputEndAsLineEnd.call(this, src) : undefined;
@@ -1244,9 +1321,9 @@ let _unboundedMarked: Marked | null = null;
 /**
  * Lexes Markdown source through the same dialect with no block-rule guards or
  * windows, so a test can assert that bounding them changed no token. It shares
- * the dialect's own `table`, `blockquote`, `list` and `html` tokenizers and
- * its character-reference tokenizers, so the guards and windows are the only
- * difference.
+ * the dialect's own `table`, `blockquote`, `list`, `html`, `fences` and
+ * `lheading` tokenizers and its character-reference tokenizers, so the
+ * guards and windows are the only difference.
  *
  * @internal Test-only reference lexer, not part of the public API surface.
  *

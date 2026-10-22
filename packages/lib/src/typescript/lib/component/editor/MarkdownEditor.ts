@@ -72,8 +72,7 @@ import {
     $serializeBlockContent, $serializeInlineNodes, $serializeMarkdown, $serializeMarkdownWithPlaces, $serializeRestOfBlock, $writtenListMarker, escapeLineStart, markdownBlockShape, SETEXT_H2_UNDERLINE, UNDER_TEXT_BULLET,
 } from "~/component/editor/markdownSerializer.js";
 import {
-    $breakRuleContainerOf, $contentFollows, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
-    $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $standsAsBlock, $selectionHasFormat, $showRawBlockAsSaved, $takeBlocksOutOf, RUN_EDGE_TAG,
+    $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $standsAsBlock, $selectionHasFormat, $showRawBlockAsSaved, $takeBlocksOutOf, RUN_EDGE_TAG,
     registerWritableStateRules, TASK_ITEM_OPENED_TAG,
 } from "~/component/editor/markdownWritable.js";
 import { registerMarkdownHistory } from "~/component/editor/markdownHistory.js";
@@ -108,6 +107,7 @@ import {
 } from "~/component/editor/markdownTaskCheckboxNode.js";
 import type { MarkdownTaskCheckboxNode } from "~/component/editor/markdownTaskCheckboxNode.js";
 import { cssTextToAttributes, resolveImageSpec } from "~/component/display/markdownAttributes.js";
+import { lexMarkdownInline } from "~/component/display/markdownExtensions.js";
 import { readSourceSelectionState } from "~/component/editor/markdownSourceEdits.js";
 import type { MarkdownSourceEdit, MarkdownSourceTransform } from "~/component/editor/markdownSourceEdits.js";
 import { horizontalRuleSource, paragraphAroundBlockSource, tableSource } from "~/component/editor/markdownSourceLines.js";
@@ -2043,76 +2043,6 @@ function $removalJoinsEndBlockRest(startNode: LexicalNode, endNode: LexicalNode)
 }
 
 /**
- * Whether Shift+Enter over `selection`, a range {@link $removeJoiningRange}
- * removes — a text-only-edge range, a stale-focus range or a cross-item
- * range that is no table-edge range —, would have its line break declined once the range is
- * removed: whether the caret the removal leaves — at the range's start,
- * followed by the rest of the end's block when the removal joins it there
- * ({@link $removalJoinsEndBlockRest}) — is where a save cannot write a break
- * ({@link $lineBreakUnwritableAt}). Told ahead of the removal, so that a
- * declined Shift+Enter can leave the range as it is. A range that starts in
- * a raw Markdown block or a code block is not declined, since its caret
- * stays in that block, which keeps every break — but for one that starts
- * at the very start of a raw block and has nothing follow its end: the
- * removal empties the raw block, which then shows as an empty paragraph
- * ({@link $rawBlockEmptiedFrom}), where a break is all the block would
- * hold.
- *
- * @remarks
- * Read off the document as it stands, so it cannot tell for a range with an
- * end in a raw Markdown block that the removal makes read as another block:
- * where the break has no place in that block, the range is removed and no
- * break is added.
- *
- * "Nothing follows its end" is read in the block of text the range ends
- * in, so the range's end has to stand in one: each command's guard settles
- * the range's points ({@link $settleSelectionOffContainers}) before this is
- * asked, and moves an end held as a point on a list, a `:::` block or the
- * document — after which a whole block may follow — into the text the
- * range reaches.
- *
- * @param selection - A range of one of those shapes, its ends settled, left as it is.
- * @returns Whether the break would be declined.
- */
-function $joiningRemovalDeclinesLineBreak(selection: RangeSelection): boolean {
-    const [start, end] = $orderedPoints(selection);
-    const joinsRest = $removalJoinsEndBlockRest(start.getNode(), end.getNode());
-    const emptied = $rawBlockEmptiedFrom(start);
-    const endBlock = $findEnclosingBlock(end.getNode());
-
-    if (emptied !== null && endBlock !== null) {
-        return !$contentFollows(end, endBlock);
-    }
-
-    return $lineBreakUnwritableAt(start, joinsRest ? end : null);
-}
-
-/**
- * The raw Markdown block a removal from `start` empties: the one `start`
- * stands in with nothing of it before `start`. Such a block shows as an
- * empty paragraph once its text is gone, or as the blocks that the text
- * joined onto it reads as.
- *
- * @param start - The start of a range that ends in another block.
- * @returns The raw block, or `null` when `start` stands in none, or after some of its text.
- */
-function $rawBlockEmptiedFrom(start: PointType): MarkdownRawBlockNode | null {
-    const node = start.getNode();
-    const block = $findMatchingParent(node, $isMarkdownRawBlockNode);
-
-    if (block === null) {
-        return null;
-    }
-
-    // A raw block holds its lines' text nodes and the line breaks between them, and nothing deeper.
-    const isOnBlock = node.is(block);
-    const before = isOnBlock ? block.getChildren().slice(0, start.offset) : node.getPreviousSiblings();
-    const isAtStart = before.length === 0 && (isOnBlock || start.offset === 0);
-
-    return isAtStart ? block : null;
-}
-
-/**
  * Whether a paste will insert text of its own at the selection, read off its
  * event the way `@lexical/rich-text` routes a paste. It will not when the
  * event has no clipboard (a key or input event), nor when the clipboard's
@@ -2505,7 +2435,9 @@ function $readEndPastContainerStart(point: PointType): void {
  * end); a range's start likewise; a range's end to the end of the block
  * before it, read past the start of its container when nothing stands
  * before it there ({@link $readEndPastContainerStart}). Lists and list items
- * are not settled, and neither is a range's start just before a list or a quote
+ * are not settled — but for a caret on an item right before the item's text,
+ * which goes to the start of that text ({@link $settleCaretOntoItemText}) —,
+ * and neither is a range's start just before a list or a quote
  * ({@link $liesBetweenBlocks}): but for a range the raw-block removal takes,
  * whose ends on lists, list items and before a list are then read inward
  * ({@link $settleTextOnlyEdgeEnds}).
@@ -2531,8 +2463,15 @@ function $settleSelectionOffContainers(selection: BaseSelection | null, pastChec
         return false;
     }
 
+    // A caret on a list item before its text acts as the caret at the start of that text.
+    const ontoItemText = $settleCaretOntoItemText(selection);
+
     // A caret before a task item's checkbox acts as the caret right after it.
     if (pastCheckbox && $settleCaretPastCheckbox(selection)) {
+        return true;
+    }
+
+    if (ontoItemText) {
         return true;
     }
 
@@ -2591,26 +2530,6 @@ function $isListContainerRange(selection: BaseSelection | null): selection is Ra
 
         return point.type === "element" && ($isMarkdownListItemNode(node) || $isListNode(node) || $isMarkdownQuoteNode(node));
     });
-}
-
-/**
- * Tells whether an insert at the selection would go in between the blocks
- * of a list item or a quote, or between the items of a list: the selection
- * is a caret there, or a range that starts there, whose removal leaves the
- * caret where it starts.
- *
- * @param selection - The selection, left as it is.
- * @returns `true` when the selection starts at an element point on a list item, a quote or a list.
- */
-function $startsOnListContainer(selection: BaseSelection | null): boolean {
-    if (!$isRangeSelection(selection)) {
-        return false;
-    }
-
-    const [start] = $orderedPoints(selection);
-    const node = start.getNode();
-
-    return start.type === "element" && ($isMarkdownListItemNode(node) || $isListNode(node) || $isMarkdownQuoteNode(node));
 }
 
 /**
@@ -3366,159 +3285,32 @@ function $clearGuardedRangeBeforeParagraph(): boolean {
 }
 
 /**
- * The point of the document as it stands that has after it, in its block,
- * what the caret will have after it once `covered` is removed and the caret,
- * left between blocks at the range's start, has settled
- * ({@link $settleCaretIntoBlock}). A table-edge removal joins nothing, so
- * the content past the range is the same before and after.
- *
- * @param covered - A copy of a table-edge range that starts in a table,
- *   covered by {@link $coverWholeTables}; its start is moved to the point returned.
- * @returns The point, or `null` when the caret settles in a block holding nothing.
- */
-function $pointAheadOfSettledCaret(covered: RangeSelection): PointType | null {
-    const [start, end] = $orderedPoints(covered);
-    const parent = start.getNode();
-    const endNode = end.getNode();
-    const endsBetweenBlocks = $isElementNode(endNode) && $isRootOrShadowRoot(endNode);
-    const endsOnParent = parent.is(endNode);
-    const endsInsideParent = parent.isParentOf(endNode);
-    const blockAfterEnd = endsBetweenBlocks ? endNode.getChildAtIndex(end.offset) : null;
-    const blockBeforeStart = $isElementNode(parent) ? parent.getChildAtIndex(start.offset - 1) : null;
-
-    const pointAt = (caret: PointCaret<CaretDirection>): PointType => {
-        $setPointFromCaret(start, $normalizeCaret(caret));
-
-        return start;
-    };
-
-    // Forward, into what the removal leaves of the end's block.
-    if (endsInsideParent && !endsBetweenBlocks) {
-        return end;
-    }
-
-    // Forward, to the block after the end's table.
-    if ((endsOnParent || endsInsideParent) && $isElementNode(blockAfterEnd)) {
-        return pointAt($getChildCaret(blockAfterEnd, "next"));
-    }
-
-    // Forward, into the column the end's table closed: the removal leaves it holding nothing else.
-    if (endsInsideParent) {
-        return null;
-    }
-
-    // Back, to the end of the block before the start's table, else into a new paragraph.
-    return $isElementNode(blockBeforeStart) ? pointAt($getChildCaret(blockBeforeStart, "previous")) : null;
-}
-
-/**
- * Whether Shift+Enter over `selection`, a table-edge range, would have its
- * line break declined once the range is removed: whether the caret the
- * removal leaves is where a save cannot write a break
- * ({@link $lineBreakUnwritableAt}). Told ahead of the removal, so that a
- * declined Shift+Enter can leave the range as it is.
- *
- * @param selection - A table-edge range, left as it is.
- * @returns Whether the break would be declined.
- */
-function $tableEdgeRemovalDeclinesLineBreak(selection: RangeSelection): boolean {
-    const covered = selection.clone();
-
-    $coverWholeTables(covered);
-
-    const [start, end] = $orderedPoints(covered);
-    const startNode = start.getNode();
-    const startsBetweenBlocks = $isElementNode(startNode) && $isRootOrShadowRoot(startNode);
-
-    if (startsBetweenBlocks) {
-        const ahead = $pointAheadOfSettledCaret(covered);
-
-        return ahead === null || $lineBreakUnwritableAt(ahead);
-    }
-
-    // The caret stays at the start, and only what the start's own block holds past the range's end follows it.
-    const container = $breakRuleContainerOf(startNode);
-    const endsInContainer = container !== null && container.is($breakRuleContainerOf(end.getNode()));
-
-    return endsInContainer ? $lineBreakUnwritableAt(end) : container !== null;
-}
-
-/**
- * Whether Shift+Enter over `selection` would have its line break declined
- * once the range is removed as {@link $removeGuardedRange} removes it: told
- * for a table-edge range by {@link $tableEdgeRemovalDeclinesLineBreak}, else
- * for a text-only-edge range, a stale-focus range or a cross-item range
- * by {@link $joiningRemovalDeclinesLineBreak} — in the order the removal
- * itself takes the shapes in. The steps that join list items away
- * ({@link $joinCoveredItemTexts}) do not change the answer: they move blocks,
- * and the decision reads only the start's block and the rest of the end's.
- *
- * @param selection - The selection, left as it is.
- * @returns Whether it is a guarded range and the break would be declined.
- */
-function $guardedRemovalDeclinesLineBreak(selection: BaseSelection | null): boolean {
-    const isTableEdge = $isTableEdgeRange(selection);
-
-    if (isTableEdge) {
-        return $tableEdgeRemovalDeclinesLineBreak(selection);
-    }
-
-    const isJoining = $isTextOnlyEdgeRange(selection) || $isStaleFocusRange(selection) || $isCrossItemRange(selection);
-
-    return isJoining && $joiningRemovalDeclinesLineBreak(selection);
-}
-
-/**
- * `INSERT_LINE_BREAK_COMMAND` listener: removes a guarded range
- * ({@link $removeGuardedRange}), then lets Lexical insert the break at the
- * now-collapsed caret — unless the removal would leave the caret where the
- * break is declined ({@link $guardedRemovalDeclinesLineBreak}). Shift+Enter
- * is then declined here, before anything is removed: a declined Shift+Enter
- * changes nothing, over these ranges as over any other. A range that starts
- * just before a list is removed first, as Enter removes it, unless the break
- * would be declined where that leaves the caret
- * ({@link $beforeListRemovalDeclinesLineBreak}); then nothing is removed.
+ * `INSERT_LINE_BREAK_COMMAND` listener: removes the range Shift+Enter is
+ * pressed over, as Delete removes it — a guarded range through
+ * {@link $removeGuardedRange}, and a range that starts just before a list or
+ * ends between the blocks of a list item through Lexical's own removal, as
+ * Enter removes it ({@link $clearGuardedRangeBeforeParagraph}) — and leaves
+ * the break to be judged at the caret that leaves: the line-break rules
+ * decline it where a save could not write it ({@link $declinesLineBreak}),
+ * and Lexical inserts it everywhere else. Between the blocks of a list item
+ * or a quote, or the items of a list, there is no line to break, and
+ * Lexical's insert throws there: a caret there, and one a removal leaves
+ * there, takes no break.
  *
  * @returns Whether the break was declined; otherwise `false`, so the command's own handlers still run.
  */
 function $clearGuardedRangeBeforeLineBreak(): boolean {
     const selection = $getSelection();
     const isGuarded = $isGuardedRange(selection);
-    const removesFirst = !isGuarded && $isRangeStartingBeforeList(selection);
-    // Between the blocks of a list item, or the items of a list, there is no line to break, and Lexical's insert
-    // throws there: for a caret, and for a range that starts or ends there, before anything of it is removed.
-    const declined = $guardedRemovalDeclinesLineBreak(selection) || $startsOnListContainer(selection) || $isListContainerRange(selection)
-        || (removesFirst && $beforeListRemovalDeclinesLineBreak(selection));
+    const removesFirst = !isGuarded && ($isRangeStartingBeforeList(selection) || $isListContainerRange(selection));
 
-    if (declined) {
-        return true;
+    if (removesFirst && $isRangeSelection(selection)) {
+        selection.removeText();
+    } else {
+        $removeGuardedRange(selection);
     }
 
-    // A range from just before a list is removed first, as Enter removes it ({@link $clearGuardedRangeBeforeParagraph}).
-    if (removesFirst) {
-        $removeGuardedRangeForInsert(selection);
-
-        return false;
-    }
-
-    $removeGuardedRange(selection);
-
-    return false;
-}
-
-/**
- * Whether Shift+Enter over a range that starts just before a list
- * ({@link $isRangeStartingBeforeList}) would have its line break declined
- * once the range is removed: the removal leaves the caret in the block the
- * range ends in, ahead of what that block holds after the range.
- *
- * @param selection - A range that starts just before a list, left as it is.
- * @returns Whether the break would be declined.
- */
-function $beforeListRemovalDeclinesLineBreak(selection: RangeSelection): boolean {
-    const [, end] = $orderedPoints(selection);
-
-    return $lineBreakUnwritableAt(end);
+    return $listContainerAtCaret($getSelection()) !== null;
 }
 
 /**
@@ -3600,13 +3392,17 @@ function $clearGuardedRangeBeforePastedText(event: CommandPayloadType<typeof PAS
 /**
  * `CONTROLLED_TEXT_INSERTION_COMMAND` listener: removes a guarded range and
  * gives the caret the format the typed text goes in with
- * ({@link $removeGuardedRangeBeforeText}), then lets Lexical type at the
- * now-collapsed caret.
+ * ({@link $removeGuardedRangeBeforeText}), gives a caret that then stands
+ * between the blocks of a quote or a list item, or between the items of a
+ * list, a block to stand in ({@link $openBlockAtItemCaret}), as a paste
+ * there gets one, and lets Lexical type at the now-collapsed caret. Lexical
+ * would type into the start of the block after such a caret.
  *
  * @returns Always `false`, so the command's own handler still runs.
  */
 function $clearGuardedRangeBeforeTyping(): boolean {
     $removeGuardedRangeBeforeText($getSelection());
+    $openBlockAtItemCaret($getSelection());
 
     return false;
 }
@@ -3793,12 +3589,12 @@ const UNCLOSED_TAG_OPENING = /<[A-Za-z/!?][^>]*$/;
  * counting the whitespace the rest opens with ({@link RAW_LINE_OPENING}),
  * opens a line, so the rest keeps the escapes a line start needs there. The
  * whitespace a rest that opens a line starts with is written as
- * {@link restWrittenAtLineStart} decides. A `>` that opens the rest is
- * escaped when the raw text before the joint holds a `<` that opens a tag and
- * is not closed: the `>` would close it, making a tag of the two blocks'
- * text. The tag may span lines, so it is read off the text before the
- * joint, which the serializer's one character of context before the rest
- * cannot carry.
+ * {@link restWrittenAtLineStart} decides. When the raw text before the joint
+ * holds a `<` that opens a tag and is not closed, the `>` of the rest that
+ * would close it is escaped ({@link withTagLeftOpen}), so the joined text
+ * reads as the two blocks' texts read, with no tag made of them. The tag may
+ * span lines, so it is read off the text before the joint, which the
+ * serializer's one character of context before the rest cannot carry.
  *
  * @param target - The raw block or code block the rest joins.
  * @param source - The block the rest comes from.
@@ -3821,9 +3617,43 @@ function $joinedMarkdown(target: ElementNode, source: ElementNode, nodes: Lexica
     const written = $inlineMarkdown(nodes, opensLine ? "" : textBeforeJoint.slice(-1));
     const markdown = opensLine ? restWrittenAtLineStart(textBeforeJoint, lineBeforeJoint, written) : written;
     // The quote markers at the lines' starts are no `>` that closes a tag.
-    const opensTag = UNCLOSED_TAG_OPENING.test(textBeforeJoint.replace(QUOTE_MARKERS, ""));
+    const openTag = UNCLOSED_TAG_OPENING.exec(textBeforeJoint.replace(QUOTE_MARKERS, ""));
 
-    return opensTag ? markdown.replace(/^([ \t]*)>/, "$1\\>") : markdown;
+    return openTag === null ? markdown : withTagLeftOpen(openTag[0], markdown);
+}
+
+/**
+ * Escapes the `>` of joined Markdown that closes a tag the text before the
+ * joint leaves open, as the viewer reads the two together: `<br` joined with
+ * `/>cd`, ` x="1">cd` or `r>cd` would make the tag `<br/>`, `<br x="1">` or
+ * `<brr>`. Each `>` that ends such a tag is escaped in turn, until the text
+ * reads no tag from the `<`; a joined text the viewer reads no tag in is
+ * returned as it is.
+ *
+ * @param openTag - The text before the joint from its unclosed `<` on, quote markers removed.
+ * @param markdown - The joined Markdown.
+ * @returns The Markdown, with the `>` that would close the tag escaped.
+ */
+function withTagLeftOpen(openTag: string, markdown: string): string {
+    let written = markdown;
+    const closings = markdown.split(">").length - 1;
+
+    // Each pass escapes one more `>`, and an escaped `>` closes no tag: no more passes than the Markdown has `>`s.
+    for (let pass = 0; pass < closings; pass += 1) {
+        const [first] = lexMarkdownInline(openTag + written);
+        const closesTag = first?.type === "html" && first.raw.length > openTag.length;
+
+        if (!closesTag) {
+            break;
+        }
+
+        // The tag's last character is the `>` that closes it.
+        const close = first.raw.length - 1 - openTag.length;
+
+        written = `${written.slice(0, close)}\\${written.slice(close)}`;
+    }
+
+    return written;
 }
 
 /**
@@ -6319,6 +6149,7 @@ function registerTaskItemRules(editor: LexicalEditor, isReadOnly: () => boolean,
         editor.registerCommand(KEY_ENTER_COMMAND, $toggleTouchedTaskItems, COMMAND_PRIORITY_HIGH),
         editor.registerCommand(INSERT_PARAGRAPH_COMMAND, $enterSplitsTaskItem, COMMAND_PRIORITY_HIGH),
         editor.registerCommand(COMPOSITION_START_COMMAND, () => {
+            $settleCaretOntoItemText($getSelection());
             $settleCaretPastCheckbox($getSelection());
 
             return false;
@@ -6563,6 +6394,39 @@ function $splitTaskItemAtCaret(selection: RangeSelection, text: MarkdownListItem
     $settleCaretPastCheckbox($getSelection());
     // The upper item may be left holding its checkbox alone, with the caret below it: it keeps the checkbox.
     $addUpdateTag(TASK_ITEM_OPENED_TAG);
+}
+
+/**
+ * Moves a collapsed caret that stands on a list item right before the
+ * item's text (an element point on the item at offset 0, which only code
+ * sets) to the start of that text, the place it names: what is typed,
+ * pasted, inserted or split there then goes in at the start of the item's
+ * line, as at a caret put there by a click, and a task item keeps its
+ * checkbox ({@link $settleCaretPastCheckbox} then moves the caret past it).
+ * An item that opens with another block — a heading, a quote, a code block,
+ * a table — is left alone: a caret before that block stands between blocks
+ * ({@link $openBlockAtItemCaret}). A range is not settled.
+ *
+ * @param selection - The selection, moved in place.
+ * @returns Whether a point moved.
+ */
+function $settleCaretOntoItemText(selection: BaseSelection | null): boolean {
+    if (!$isRangeSelection(selection) || !selection.isCollapsed()) {
+        return false;
+    }
+
+    const { anchor } = selection;
+    const item = anchor.getNode();
+    const text = $isMarkdownListItemNode(item) ? item.getFirstChild() : null;
+
+    if (anchor.type !== "element" || anchor.offset !== 0 || !$isMarkdownListItemTextNode(text)) {
+        return false;
+    }
+
+    selection.anchor.set(text.getKey(), 0, "element");
+    selection.focus.set(text.getKey(), 0, "element");
+
+    return true;
 }
 
 /**
@@ -6820,16 +6684,14 @@ function $settleSelectionBeforeEnter(): boolean {
 /**
  * Whether a guarded command will change anything over a range that has a
  * horizontal rule at an end, told before the rule is removed: a paste with no
- * text to insert (an empty clipboard, a file alone), a clipboard insert with no
- * nodes, and Shift+Enter where the break would have no place once the rules at
- * the ends are gone. Every other command acts.
+ * text to insert (an empty clipboard, a file alone) and a clipboard insert with no
+ * nodes do not. Every other command acts.
  *
  * @param identity - The command.
  * @param payload - Its payload.
- * @param selection - The range, which has a rule at an end.
- * @returns `"acts"`, `"nothing"` to run the command's listener on the range as it is, or `"declined"` to cancel the command.
+ * @returns `"acts"`, or `"nothing"` to run the command's listener on the range as it is.
  */
-function $ruleEdgeRangeVerdict(identity: unknown, payload: unknown, selection: BaseSelection | null): "acts" | "nothing" | "declined" {
+function $ruleEdgeRangeVerdict(identity: unknown, payload: unknown): "acts" | "nothing" {
     if (identity === PASTE_COMMAND) {
         return pasteWillInsertText(payload as CommandPayloadType<typeof PASTE_COMMAND>) ? "acts" : "nothing";
     }
@@ -6838,41 +6700,7 @@ function $ruleEdgeRangeVerdict(identity: unknown, payload: unknown, selection: B
         return (payload as CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>).nodes.length > 0 ? "acts" : "nothing";
     }
 
-    if (identity === INSERT_LINE_BREAK_COMMAND && $isRangeSelection(selection)) {
-        return $ruleEdgeRangeDeclinesLineBreak(selection) ? "declined" : "acts";
-    }
-
     return "acts";
-}
-
-/**
- * Whether Shift+Enter over a range with a horizontal rule at an end would have
- * its line break declined once the rules at the ends are gone: the range is then
- * nothing but those rules, or the caret the removal leaves is where a save cannot
- * write a break ({@link $lineBreakUnwritableAt}).
- *
- * @param selection - A range with a rule at an end, left as it is.
- * @returns Whether the break would be declined.
- */
-function $ruleEdgeRangeDeclinesLineBreak(selection: RangeSelection): boolean {
-    const [start, end] = $orderedPoints(selection.clone());
-
-    // The same walk the removal makes, on a copy of the points: past the rules after the start, back over those before the end.
-    for (let rule = $ruleAfterElementPoint(start); rule !== null; rule = $ruleAfterElementPoint(start)) {
-        start.set(start.key, start.offset + 1, start.type);
-    }
-
-    for (let rule = $ruleBeforeElementPoint(end); rule !== null; rule = $ruleBeforeElementPoint(end)) {
-        end.set(end.key, end.offset - 1, end.type);
-    }
-
-    // Starting between blocks and ending in text, the removal leaves a caret before the rest of the end's block, which
-    // is where a break is told from. Ending between blocks, it leaves the caret at the end of the start's block, and
-    // a break at a block's end is never written.
-    const isEmptied = start.is(end);
-    const leavesRestOfEndBlock = start.type === "element" && end.type === "text";
-
-    return isEmptied || !leavesRestOfEndBlock || $lineBreakUnwritableAt(end);
 }
 
 /**
@@ -6934,11 +6762,7 @@ function registerRangeGuards(editor: LexicalEditor): () => void {
 
             // A command that will change nothing leaves the rules at the range's ends, and the selection, as they are.
             if ($standsBesideHorizontalRule($getSelection())) {
-                const verdict = $ruleEdgeRangeVerdict(identity, payload, $getSelection());
-
-                if (verdict === "declined") {
-                    return true;
-                }
+                const verdict = $ruleEdgeRangeVerdict(identity, payload);
 
                 if (verdict === "nothing") {
                     return listener(payload, target);
@@ -6948,6 +6772,11 @@ function registerRangeGuards(editor: LexicalEditor): () => void {
             const isEmptied = $removeHorizontalRulesAtRangeEnds($getSelection());
 
             $settleSelectionOffContainers($getSelection());
+
+            // Taking the rules left a caret between blocks, where there is no line to break.
+            if (isEmptied && identity === INSERT_LINE_BREAK_COMMAND) {
+                return true;
+            }
 
             if (!isEmptied || !DELETING_COMMANDS.has(identity)) {
                 return listener(payload, target);
@@ -8320,29 +8149,45 @@ const KEPT_CLEAR_MAX_TEXT_HEIGHTS = 5;
  */
 const KEPT_CLEAR_MAX_VIEWPORT_SHARE = 1 / 3;
 
-/** One preset of the Text style submenus: its label and the value it applies (`null` clears it). */
-interface TextStylePreset {
+/**
+ * One preset of the Text style submenus: its label and the value it applies (`null` clears it).
+ *
+ * @internal Shared with `MarkdownDocumentPanel.ts`, not part of the public API surface.
+ */
+export interface TextStylePreset {
     text: string;
     value: string | null;
 }
 
-/** The Colour presets of the Text style submenu. */
-const TEXT_COLOUR_PRESETS: readonly TextStylePreset[] = [
+/**
+ * The Colour presets of the Text style submenu.
+ *
+ * @internal Shared with `MarkdownDocumentPanel.ts`, not part of the public API surface.
+ */
+export const TEXT_COLOUR_PRESETS: readonly TextStylePreset[] = [
     { text: "Red", value: "#cc0000" },
     { text: "Green", value: "#008000" },
     { text: "Blue", value: "#2563eb" },
     { text: "Default", value: null },
 ];
 
-/** The Font presets of the Text style submenu. */
-const FONT_FAMILY_PRESETS: readonly TextStylePreset[] = [
+/**
+ * The Font presets of the Text style submenu.
+ *
+ * @internal Shared with `MarkdownDocumentPanel.ts`, not part of the public API surface.
+ */
+export const FONT_FAMILY_PRESETS: readonly TextStylePreset[] = [
     { text: "Serif", value: "Georgia, serif" },
     { text: "Monospace", value: "monospace" },
     { text: "Default", value: null },
 ];
 
-/** The Size presets of the Text style submenu. */
-const FONT_SIZE_PRESETS: readonly TextStylePreset[] = [
+/**
+ * The Size presets of the Text style submenu.
+ *
+ * @internal Shared with `MarkdownDocumentPanel.ts`, not part of the public API surface.
+ */
+export const FONT_SIZE_PRESETS: readonly TextStylePreset[] = [
     { text: "Small", value: "0.8em" },
     { text: "Large", value: `${LARGE_TEXT_SCALE}em` },
     { text: "Default", value: null },
@@ -9915,13 +9760,6 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     private editThroughModel(command: () => unknown): void {
         const text = this._codeEditor.getValue();
         const selection = this._codeEditor.getSelection();
-        // Only the cached text of a source editor not mounted yet holds one; the import rewrites it, so no offset would match.
-        const holdsCarriageReturn = text.includes("\r");
-
-        if (holdsCarriageReturn) {
-            return;
-        }
-
         const window = sourceWindow(text, selection.from, selection.to);
         const windowed = this.runOnModel(text, selection, window, command);
         const result = windowed === WINDOW_LOST ? this.runOnModel(text, selection, wholeDocumentWindow(text), command) : windowed;
@@ -11913,10 +11751,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             const initial = $getSelection();
+            // Read before settling moves it: a declined insert leaves the selection as it was.
+            const before = initial?.clone() ?? null;
             // A caret before a task item's checkbox stays there: the block goes above the item, which keeps its checkbox.
             const moved = $settleSelectionOffContainers(initial, false);
             const isTableEdge = $isTableEdgeRange(initial);
             const hadRange = $isRangeSelection(initial);
+            // A point moved off a `:::` block, or between two blocks, may have settled where no table goes (a code
+            // block), judged before anything is removed. A table-edge range's removal keeps the caret out of such blocks.
+            const declinedOnceSettled = moved && !isTableEdge && !$tableInsertApplies($selectionTouchesTextOnlyBlock());
+
+            if (declinedOnceSettled) {
+                $setSelection(before);
+
+                return;
+            }
 
             if (isTableEdge) {
                 // A range that also takes a list item's text whole joins that item away first, as every removal does.
@@ -11928,10 +11777,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
             const selection = $getSelection();
             const hasRange = $isRangeSelection(selection);
-            // A point moved off a `:::` block, or between two blocks, may have settled where no table goes (a code block).
-            const declinedOnceSettled = moved && !$tableInsertApplies($selectionTouchesTextOnlyBlock());
 
-            if (!hasRange || declinedOnceSettled) {
+            if (!hasRange) {
                 return;
             }
 
@@ -11993,9 +11840,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             $removeHorizontalRulesAtRangeEnds($getSelection());
 
             const initial = $getSelection();
+            // Read before settling moves it: a declined insert leaves the selection as it was.
+            const before = initial?.clone() ?? null;
             // A caret before a task item's checkbox stays there: the block goes above the item, which keeps its checkbox.
             const moved = $settleSelectionOffContainers(initial, false);
             const isTableEdge = $isTableEdgeRange(initial);
+            // A point moved off a `:::` block, or between two blocks, may have settled where no rule goes (a code
+            // block, a table's cell), judged before the range is removed. A table-edge range's removal keeps the caret
+            // out of such blocks.
+            const declinedOnceSettled = moved && !isTableEdge && !$tableInsertApplies($selectionTouchesTextOnlyBlock());
+
+            if (declinedOnceSettled) {
+                $setSelection(before);
+
+                return;
+            }
 
             if (isTableEdge) {
                 $joinCoveredItemTexts(initial);
@@ -12007,10 +11866,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             const selection = $getSelection();
-            // A point moved off a `:::` block, or between two blocks, may have settled where no rule goes (a code block).
-            const declinedOnceSettled = moved && !$tableInsertApplies($selectionTouchesTextOnlyBlock());
 
-            if (!$isRangeSelection(selection) || declinedOnceSettled) {
+            if (!$isRangeSelection(selection)) {
                 return;
             }
 
@@ -12088,11 +11945,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             if ($isRangeSelection(selection)) {
+                // Read before settling moves it: a declined insert leaves the selection as it was.
+                const before = selection.clone();
                 // A point moved off a `:::` block, or between two blocks, may have settled where no image goes (a code block).
                 const moved = $settleSelectionOffContainers(selection);
                 const declinedOnceSettled = moved && !$imageInsertApplies($selectionTouchesTextOnlyBlock());
 
                 if (declinedOnceSettled) {
+                    $setSelection(before);
+
                     return;
                 }
 

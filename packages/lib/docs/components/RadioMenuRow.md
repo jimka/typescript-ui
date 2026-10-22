@@ -4,6 +4,8 @@
 
 You build one via a `MenuItemConfig.row` factory, not by adding it to the tree directly.
 
+To assistive technology the row is a `menuitemradio`, named by its `text`, with `aria-checked` following its state. The radio button inside it is hidden from the accessibility tree and takes no tab stop.
+
 ## Usage
 
 ```typescript

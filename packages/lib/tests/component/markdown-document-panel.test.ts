@@ -1027,6 +1027,64 @@ describe('MarkdownDocumentPanel Text style / Alignment / Columns dropdowns', () 
     });
 });
 
+describe('MarkdownDocumentPanel Text style dropdown and the editor context menu', () => {
+    /** The editor command each Text style submenu applies its preset through. */
+    const STYLE_COMMANDS = [
+        ['Colour', 'setTextColor'],
+        ['Font', 'setFontFamily'],
+        ['Size', 'setFontSize'],
+    ] as const;
+
+    /** One menu's reading of a Text style submenu: each row's label and the value picking it applies. */
+    type PresetReading = Array<{ text: string | null; value: unknown }>;
+
+    /**
+     * Activates each item of a submenu with the editor's style command stubbed,
+     * and records the label and the value each one passed to the command.
+     */
+    function readPresets(
+        editor: MarkdownEditor,
+        command: (typeof STYLE_COMMANDS)[number][1],
+        rows: Array<{ text: string | null; activate: () => void }>,
+    ): PresetReading {
+        const spy = vi.spyOn(editor, command).mockImplementation(() => editor);
+        const reading = rows.map((row) => {
+            spy.mockClear();
+            row.activate();
+
+            return { text: row.text, value: spy.mock.calls[0]?.[0] };
+        });
+
+        spy.mockRestore();
+
+        return reading;
+    }
+
+    it('offers the context menu\'s Colour, Font and Size presets: the same labels, order and values', () => {
+        const panel = new MarkdownDocumentPanel();
+        const editor = panel.getEditor();
+        const panelItems = resolveItems(findMenuButton(panel, 'Text style…').getMenuItems());
+        const menuItem = (editor as unknown as { buildTextStyleMenuItem(enabled: boolean): MenuItemConfig })
+            .buildTextStyleMenuItem(true);
+        const menuItems = resolveItems(menuItem.submenu!.items);
+
+        expect(panelItems.map((item) => item.text)).toEqual(menuItems.map((item) => item.text));
+
+        for (const [submenu, command] of STYLE_COMMANDS) {
+            const panelRows = resolveItems(findItem(panelItems, submenu).submenu!.items)
+                .map((item) => ({ text: item.text ?? null, activate: () => item.action!() }));
+            const menuRows = resolveItems(findItem(menuItems, submenu).submenu!.items).map((item) => {
+                // The context menu's presets are radio rows, labelled by their inner radio button.
+                const row = item.row!() as unknown as { getControl(): { getLabel(): string | null }; activate(): void };
+
+                return { text: row.getControl().getLabel(), activate: () => row.activate() };
+            });
+
+            expect(readPresets(editor, command, panelRows)).toEqual(readPresets(editor, command, menuRows));
+        }
+    });
+});
+
 describe('MarkdownDocumentPanel Link popup', () => {
     /** Builds a full Rect from its four edges (width/height derived) — copied from PopupPanel.test.ts. */
     function rect(left: number, top: number, right: number, bottom: number): Rect {

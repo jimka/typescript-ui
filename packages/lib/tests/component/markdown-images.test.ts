@@ -586,6 +586,30 @@ describe('a title holding a line feed is written on one line where its block hol
         expect(titles(load(saved))).toEqual(['t\n\nu']);
     });
 
+    it('an image copied as JSON with a blank line in its title keeps the title where its label is defined with another', () => {
+        const source = load('![a][x]\n\n[x]: /i.png "t&#10;&#10;u"');
+        const json = lexicalOf(source).read(() => imageNodes(source)[0]!.exportJSON());
+        const editor = load('z\n\n[x]: /i.png "other"');
+
+        update(editor, () => { $getRoot().getFirstChildOrThrow<ElementNode>().append($parseSerializedNode(json)); });
+
+        const saved = expectShownAsSaved(editor);
+
+        expect(saved).toBe('z![a](/i.png "t&#10;&#10;u")\n\n[x]: /i.png "other"');
+        expect(titles(load(saved))).toEqual(['t\n\nu']);
+    });
+
+    // Regression row (passes on the base): where the definition gives the same title, the image keeps its reference form.
+    it('an image copied as JSON with a blank line in its title keeps its reference form where the definition gives that title', () => {
+        const source = load('![a][x]\n\n[x]: /i.png "t&#10;&#10;u"');
+        const json = lexicalOf(source).read(() => imageNodes(source)[0]!.exportJSON());
+        const editor = load('z\n\n[x]: /i.png "t&#10;&#10;u"');
+
+        update(editor, () => { $getRoot().getFirstChildOrThrow<ElementNode>().append($parseSerializedNode(json)); });
+
+        expect(expectShownAsSaved(editor)).toBe('z![a][x]\n\n[x]: /i.png "t&#10;&#10;u"');
+    });
+
     it('a crafted image whose written form spans a blank line is saved in the standard form', () => {
         const editor = load('p');
         const json = {

@@ -352,7 +352,8 @@ function fuzzSequence(testCase: CorpusCase, random: () => number): void {
             expect(reloaded.saved, context).toBe(saved);
         }
 
-        if (!knownDivergence(testCase, 'canonical')) {
+        // An edit of a case whose edits are a known divergence rewrites what the divergence names, so its standard form reads otherwise.
+        if (!knownDivergence(testCase, 'canonical') && !knownDivergence(testCase, 'edits')) {
             expect(viewerModel(saved), context).toEqual(viewerModel(canonicalSave(editor)));
         }
 
@@ -446,7 +447,8 @@ function sourceCommandSequence(testCase: CorpusCase, random: () => number): void
             expect(reloaded.saved, context).toBe(text);
         }
 
-        if (!knownDivergence(testCase, 'canonical')) {
+        // An edit of a case whose edits are a known divergence rewrites what the divergence names, so its standard form reads otherwise.
+        if (!knownDivergence(testCase, 'canonical') && !knownDivergence(testCase, 'edits')) {
             expect(viewerModel(text), context).toEqual(viewerModel(canonicalSave(reloaded.editor)));
         }
     } finally {

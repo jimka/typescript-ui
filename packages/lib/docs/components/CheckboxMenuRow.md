@@ -4,6 +4,8 @@
 
 You build one via a `MenuItemConfig.row` factory, not by adding it to the tree directly.
 
+To assistive technology the row is a `menuitemcheckbox`, named by its `text`, with `aria-checked` following its state. The checkbox inside it is hidden from the accessibility tree and takes no tab stop.
+
 <!-- demo: checkboxmenurow-format -->
 > **Live demo** — a `MenuBar` "Format" menu built entirely from
 > `CheckboxMenuRow` entries, with a `Text` below echoing the current

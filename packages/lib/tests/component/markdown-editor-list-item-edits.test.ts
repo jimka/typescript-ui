@@ -3195,10 +3195,10 @@ describe('an edit in a list item never leaves the caret, or what is typed, where
             saved:  '- a\n\n  Q\n\n- m\n\n- z\n\ntail',
         },
         {
-            name:   'Z41: Shift+Enter over such a range changes nothing: nothing is removed for a break that is declined',
+            name:   'Z41: Shift+Enter over such a range removes it, as Delete does, and adds no break: there is no line to break',
             source: `- a\n\n  ${TABLE_ITEM}\n- z`,
             steps:  [{ key: 'command', run: rangeOnItem('a', 1, 2) }, { key: 'Shift+Enter' }],
-            saved:  `- a\n\n  ${TABLE_ITEM}\n- z`,
+            saved:  '- a\n\n- z',
         },
         {
             name:   'Z42: Enter over a range from after an item\'s table into the next item\'s text',
@@ -3294,7 +3294,90 @@ describe('an edit in a list item never leaves the caret, or what is typed, where
             steps:  [{ key: 'Backspace', at: ['bc', 0], to: ['bc', 2] }, { key: 'Backspace key' }],
             saved:  '- a\n- ## hh\n- z',
         },
+        {
+            name:   'text typed with the caret between two paragraphs of an item goes into a paragraph of its own, as a paste there',
+            source: '- a\n\n  q\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 1) }, { key: 'type', text: 'Q' }],
+            saved:  '- a\n\n  Q\n\n  q\n\n- z',
+        },
+        {
+            name:   'the same between a table of the item and a paragraph after it',
+            source: `- a\n\n  ${TABLE_ITEM}\n\n  q\n- z`,
+            steps:  [{ key: 'command', run: caretOnItem('a', 2) }, { key: 'type', text: 'Q' }],
+            saved:  `- a\n\n  ${TABLE_ITEM}\n\n  Q\n\n  q\n\n- z`,
+        },
+        {
+            name:   'the same after the item\'s last block (control: Lexical makes the paragraph there itself)',
+            source: `- a\n\n  ${TABLE_ITEM}\n- z`,
+            steps:  [{ key: 'command', run: caretOnItem('a', 2) }, { key: 'type', text: 'Q' }],
+            saved:  `- a\n\n  ${TABLE_ITEM}\n\n  Q\n\n- z`,
+        },
+        {
+            name:   'text typed with the caret on a task item, before its text, goes in after the checkbox',
+            source: '- [ ] a\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 0) }, { key: 'type', text: 'Q' }],
+            saved:  '- [ ] Qa\n- z',
+        },
+        {
+            name:   'an image put there goes in after the checkbox',
+            source: '- [ ] a\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 0) }, { key: 'command', run: (editor) => editor.insertImage('u.png') }],
+            saved:  '- [ ] ![](u.png)a\n- z',
+        },
+        {
+            name:   'a table inserted there goes above the item, which keeps its checkbox, as at the start of its text (control)',
+            source: '- [ ] a\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 0) }, { key: 'command', run: (editor) => editor.insertTable(1, 1) }],
+            saved:  '|  |\n| --- |\n\n- [ ] a\n- z',
+        },
+        {
+            name:   'an image put with the caret on an item before its text goes in at the start of the text, as typing does there',
+            source: '- a\n\n  q\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 0) }, { key: 'command', run: (editor) => editor.insertImage('u.png') }],
+            saved:  '- ![](u.png)a\n\n  q\n\n- z',
+        },
+        {
+            name:   'text typed there goes in at the start of the text (control)',
+            source: '- a\n\n  q\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 0) }, { key: 'type', text: 'Q' }],
+            saved:  '- Qa\n\n  q\n\n- z',
+        },
+        {
+            name:   'Enter there opens an empty item above, as at the start of the text',
+            source: '- a\n- z',
+            steps:  [{ key: 'command', run: caretOnItem('a', 0) }, { key: 'Enter' }],
+            saved:  '-\n- a\n- z',
+        },
     ])('$name', runRow);
+
+    it('Enter with the caret on a task item, before its text, does what it does at the start of the text', () => {
+        const onItem = load('- [x] a\n- z');
+        const onText = load('- [x] a\n- z');
+
+        caretOnItem('a', 0)(onItem);
+        lexicalOf(onText).update(() => { $textNode('a').getParentOrThrow().select(0, 0); }, { discrete: true });
+        press(onItem, { key: 'Enter' });
+        press(onText, { key: 'Enter' });
+
+        expect(onItem.getValue()).toBe('- [ ]\n- [x] a\n- z');
+        expect(shapeOf(onItem)).toBe(shapeOf(onText));
+    });
+
+    it.each<[string, string, number]>([
+        ['between two paragraphs of an item', '- a\n\n  q\n- z', 1],
+        ['on an item before its text', '- a\n\n  q\n- z', 0],
+        ['on a task item before its text', '- [ ] a\n\n  q\n- z', 0],
+    ])('%s, text typed inside an update, as the browser types, gives what it gives outside one', (_name, source, offset) => {
+        const outside = load(source);
+        const inside = load(source);
+
+        caretOnItem('a', offset)(outside);
+        caretOnItem('a', offset)(inside);
+        press(outside, { key: 'type', text: 'Q' });
+        lexicalOf(inside).update(() => { lexicalOf(inside).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'Q'); }, { discrete: true });
+
+        expect(expectSaveKeepsDocument(inside, 'the typing')).toBe(outside.getValue());
+    });
 
     it('Z31: text typed with the caret on a list, between two items, makes an item of its own', () => {
         const editor = load('- a\n- z');
@@ -3310,6 +3393,30 @@ describe('an edit in a list item never leaves the caret, or what is typed, where
         press(editor, { key: 'type', text: 'Q' });
 
         expect(expectSaveKeepsDocument(editor, 'the typing')).toBe('- a\n- Q\n- z');
+    });
+
+    it.each([false, true])('Shift+Enter over a range from an item\'s text to between the blocks of the next item removes it, as Delete does (backward %s)', (backward) => {
+        const source = '- x\n- a\n\n  para\n- b';
+        const editors = [load(source), load(source)];
+
+        for (const editor of editors) {
+            lexicalOf(editor).update(() => {
+                const text = $textNode('x');
+                const item = $textNode('a').getParentOrThrow().getParentOrThrow();
+                const selection = $createRangeSelection();
+                const [anchor, focus] = backward ? [selection.focus, selection.anchor] : [selection.anchor, selection.focus];
+
+                anchor.set(text.getKey(), 1, 'text');
+                focus.set(item.getKey(), 1, 'element');
+                $setSelection(selection);
+            }, { discrete: true });
+        }
+
+        press(editors[0]!, { key: 'Shift+Enter' });
+        press(editors[1]!, { key: 'Delete' });
+
+        expect(expectSaveKeepsDocument(editors[0]!, 'the line break')).toBe('- x\n\n  para\n\n- b');
+        expect(editors[0]!.getValue()).toBe(editors[1]!.getValue());
     });
 });
 
@@ -3403,7 +3510,7 @@ describe('a raw block outside a list item is written so that it reads where it s
             name:   'RL9: once the last line stands at the margin the editor shows a quote and a raw block',
             source: DEEP_QUOTE,
             steps:  [{ key: 'Backspace', at: ['  <div', 2] }, { key: 'Backspace', at: [' <div', 1] }],
-            saved:  'p\n\n> q\n\n<div\n\n\nz',
+            saved:  'p\n\n> q\n\n<div\n\nz',
             shape:  'paragraph("p") | markdown-quote(paragraph("q")) | markdown-raw-block("<div") | paragraph("z")',
             comparesWithViewer: false,
         },
@@ -3438,7 +3545,7 @@ describe('a raw block outside a list item is written so that it reads where it s
             name:   'RL14: a block added after a last line at the margin shows it as a quote and a raw block (control)',
             source: '> q\n<div',
             steps:  [{ key: 'Enter', at: ['<div', 4] }, { key: 'type', text: 'z' }],
-            saved:  '> q\n\n<div\n\n\nz',
+            saved:  '> q\n\n<div\n\nz',
             shape:  'markdown-quote(paragraph("q")) | markdown-raw-block("<div") | paragraph("z")',
             comparesWithViewer: false,
         },
@@ -3763,39 +3870,39 @@ describe('a raw block outside a list item is written so that it reads where it s
             saved:  '- w\n  > x\n\n[//]: #\n\n- n\n  > q',
             comparesWithViewer: false,
         },
-        // RW — a raw block only a second blank line ends keeps that line when it is written as its loaded source
-        // and the block after it is not the one it was loaded before.
+        // RW — a raw block that only a second blank line ended in the source is written one blank line from the block
+        // after it, as an HTML block that one blank line ends is.
         {
-            name:   'RW1: an HTML block start keeps its second blank line when the paragraph after it is edited',
+            name:   'RW1: an HTML block start is written one blank line from the paragraph after it when that is edited',
             source: '<div\n\n\nb',
             steps:  [typeX(['b', 1])],
-            saved:  '<div\n\n\nbX',
+            saved:  '<div\n\nbX',
         },
         {
-            name:   'RW2: it keeps the line when the block after it is removed',
+            name:   'RW2: it is written one blank line from the block after it when the block between is removed',
             source: '<div\n\n\nb\n\nc',
             steps:  [{ key: 'removeBlock', index: 1 }],
-            saved:  '<div\n\n\nc',
+            saved:  '<div\n\nc',
         },
         {
-            name:   'RW3: two HTML block starts in a row each keep it',
+            name:   'RW3: two HTML block starts in a row are each written one blank line from the block after',
             source: '<div\n\n\n<div\n\n\nb',
             steps:  [typeX(['b', 1])],
-            saved:  '<div\n\n\n<div\n\n\nbX',
+            saved:  '<div\n\n\n<div\n\nbX',
         },
         {
-            name:   'RW4: a closing tag name after a paragraph keeps it',
+            name:   'RW4: a closing tag name after a paragraph is written one blank line from the block after it',
             source: 'a\n\n</details\n\n\nb',
             steps:  [typeX(['b', 1])],
-            saved:  'a\n\n</details\n\n\nbX',
+            saved:  'a\n\n</details\n\nbX',
         },
         {
             // `insertParagraphBeforeBlock()` acts on a quote, a list, a code block or a table: the new block stands
             // between two blocks that are both written as their loaded source.
-            name:   'RW5: it keeps the line before a block put between it and the block it was loaded before',
+            name:   'RW5: it is written one blank line from a block put between it and the block it was loaded before',
             source: '<div\n\n\n> b',
             steps:  [{ key: 'command', run: (editor) => editor.insertParagraphBeforeBlock(), at: ['b', 0] }, { key: 'type', text: 'n' }],
-            saved:  '<div\n\n\nn\n\n> b',
+            saved:  '<div\n\nn\n\n> b',
         },
         {
             name:   'RW6: an edit of the block before it leaves the source\'s own two blank lines (control)',
@@ -3811,10 +3918,10 @@ describe('a raw block outside a list item is written so that it reads where it s
             comparesWithViewer: false,
         },
         {
-            name:   'RW8: in a column the block is written in the standard form, which holds the line (control)',
+            name:   'RW8: in a column the block is written in the standard form, one blank line apart (control)',
             source: inColumn('<div\n\n\nb'),
             steps:  [typeX(['b', 1])],
-            saved:  inColumn('<div\n\n\nbX'),
+            saved:  inColumn('<div\n\nbX'),
         },
         {
             name:   'RW9: an HTML block one blank line ends is written one blank line apart (control)',
@@ -3825,40 +3932,40 @@ describe('a raw block outside a list item is written so that it reads where it s
         // The block itself was not edited, so every byte of its source stays: the spaces before it, the line end
         // between it and the block it was loaded right after, and the document's own first lines.
         {
-            name:   'RW10: an indented HTML block start keeps its indentation when it is given its second blank line',
+            name:   'RW10: an indented HTML block start keeps its indentation when it is written one blank line from the next',
             source: '  <div\n\n\nb',
             steps:  [typeX(['b', 1])],
-            saved:  '  <div\n\n\nbX',
+            saved:  '  <div\n\nbX',
         },
         {
             name:   'RW11: an HTML block start right under a quote stays right under it',
             source: '> q\n<div\n\n\nb',
             steps:  [typeX(['b', 1])],
-            saved:  '> q\n<div\n\n\nbX',
+            saved:  '> q\n<div\n\nbX',
         },
         {
             name:   'RW12: the blank lines that open the document stay before an HTML block start',
             source: '\n\n<div\n\n\nb',
             steps:  [typeX(['b', 1])],
-            saved:  '\n\n<div\n\n\nbX',
+            saved:  '\n\n<div\n\nbX',
         },
         {
             name:   'RW13: an indented closing tag name keeps its indentation when the block after it is removed',
             source: 'a\n\n   </details\n\n\nb\n\nc',
             steps:  [{ key: 'removeBlock', index: 2 }],
-            saved:  'a\n\n   </details\n\n\nc',
+            saved:  'a\n\n   </details\n\nc',
         },
         {
             name:   'RW14: the document\'s last block, an indented HTML block start, keeps its indentation before a new block',
             source: 'p\n\n  <div',
             steps:  [{ key: 'Enter', at: ['<div', 4] }, { key: 'type', text: 'z' }],
-            saved:  'p\n\n  <div\n\n\nz',
+            saved:  'p\n\n  <div\n\nz',
         },
         {
             name:   'RW15: the same in a document that ends with a line end',
             source: '   </details\n',
             steps:  [{ key: 'Enter', at: ['</details', 9] }, { key: 'type', text: 'z' }],
-            saved:  '   </details\n\n\nz\n',
+            saved:  '   </details\n\nz\n',
         },
         {
             name:   'RW16: an indented HTML block start keeps its indentation when every block after it is removed',
@@ -3873,7 +3980,7 @@ describe('a raw block outside a list item is written so that it reads where it s
             saved:  'p\n\n```\nk\n```\n\nz',
         },
         // RD — the document's definitions are read raw block by raw block: an HTML block left open ends with its
-        // column or list item, or at its second blank line, and the definition after it counts.
+        // column or list item, or at a blank line, and the definition after it counts.
         {
             name:   'RD1: a definition after an HTML block start ending a column keeps a reference link',
             source: `${COLUMNS}\n\nb [x] c`,
@@ -3910,11 +4017,11 @@ describe('a raw block outside a list item is written so that it reads where it s
         },
         {
             // The definition is removed, so the link is written inline with its own URL; the raw block before it
-            // keeps its second blank line.
-            name:   'RD7: removing a definition two blank lines after an HTML block start writes its link inline',
+            // is written one blank line from the next.
+            name:   'RD7: removing a definition two blank lines after an HTML block start writes its link inline, the block one blank line from the next',
             source: '<div\n\n\n[x]: /u\n\n[a][x]',
             steps:  [{ key: 'removeBlock', index: 1 }],
-            saved:  '<div\n\n\n[a](/u)',
+            saved:  '<div\n\n[a](/u)',
         },
         {
             name:   'RD8: a definition after a list whose item ends in an open comment keeps a reference link',
@@ -4082,8 +4189,8 @@ describe('a range that takes a list item\'s text whole joins that item away (CI 
         { name: 'CI42: Enter to the end of a block, then type', source: A,
             steps: [{ key: 'Enter', at: ['ab', 1], to: ['pq', 2] }, { key: 'type', text: 'Q' }], saved: '- a\n\n- Q\n  - nn\n\n  rr\n\n- z' },
         { name: 'CI43: Shift+Enter', source: A, steps: [{ key: 'Shift+Enter', at: ['ab', 1], to: ['pq', 1] }], saved: '- a\\\n  q\n  - nn\n\n  rr\n\n- z' },
-        { name: 'CI44: Shift+Enter with nothing after the caret: declined', source: A, steps: [{ key: 'Shift+Enter', at: ['ab', 1], to: ['pq', 2] }],
-            saved: '- ab\n- cd\n\n  pq\n  - nn\n\n  rr\n- z' },
+        { name: 'CI44: Shift+Enter with nothing after the caret: the range is removed, as Delete removes it, and no break is added', source: A,
+            steps: [{ key: 'Shift+Enter', at: ['ab', 1], to: ['pq', 2] }], saved: '- a\n  - nn\n\n  rr\n\n- z' },
         { name: 'CI45: cut()', source: A, steps: [{ key: 'command', at: ['ab', 1], to: ['pq', 1], run: (editor) => { void editor.cut(); } }],
             saved: '- aq\n  - nn\n\n  rr\n\n- z' },
         { name: 'CI46: insertImage()', source: A,

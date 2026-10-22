@@ -665,6 +665,56 @@ describe('Lexical\'s own split at a point on a quote keeps the quote\'s blocks i
     });
 });
 
+describe('text typed with the caret between the blocks of a quote goes into a paragraph of its own, as a paste there', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+    });
+
+    /**
+     * Loads `> a` / `>` / `> b` with the caret on the quote, an element point only code can set.
+     *
+     * @param offset - The index of the block the caret stands before.
+     * @returns The editor.
+     */
+    function caretOnQuote(offset: number): MarkdownEditor {
+        const editor = load('> a\n>\n> b');
+
+        lexicalOf(editor).update(() => {
+            const quote = $getRoot().getFirstChildOrThrow<ElementNode>();
+            const selection = $createRangeSelection();
+
+            selection.anchor.set(quote.getKey(), offset, 'element');
+            selection.focus.set(quote.getKey(), offset, 'element');
+            $setSelection(selection);
+        }, { discrete: true });
+
+        return editor;
+    }
+
+    it.each([
+        [0, '> Z\n>\n> a\n>\n> b'],
+        [1, '> a\n>\n> Z\n>\n> b'],
+        [2, '> a\n>\n> b\n>\n> Z'],
+    ])('at offset %i', (offset, saved) => {
+        const editor = caretOnQuote(offset);
+
+        press(editor, typeText('Z'));
+
+        expect(expectSaveKeepsDocument(editor, 'the typing')).toBe(saved);
+    });
+
+    it.each([0, 1, 2])('typed inside an update, as the browser types, at offset %i, it gives what a paste of the same text gives', async (offset) => {
+        const typed = caretOnQuote(offset);
+        const pasted = caretOnQuote(offset);
+
+        lexicalOf(typed).update(() => { lexicalOf(typed).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'Z'); }, { discrete: true });
+        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('Z');
+        await pasted.paste();
+
+        expect(typed.getValue()).toBe(pasted.getValue());
+    });
+});
+
 describe('a range that starts just before a quote is removed first, as for a list', () => {
     /**
      * Selects from the point on the document just before the quote to the end of the text `b`, then removes the range

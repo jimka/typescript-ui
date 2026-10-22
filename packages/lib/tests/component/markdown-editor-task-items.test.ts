@@ -19,6 +19,7 @@ import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import type { MarkdownBlockType } from '~/component/editor/MarkdownEditor';
 import { $isMarkdownRawBlockNode } from '~/component/editor/markdownSourceNodes';
 import { $isMarkdownTaskCheckboxNode } from '~/component/editor/markdownTaskCheckboxNode';
+import { BLANK_REFERENCES, taskBlankTextState } from '~/component/editor/markdownNodeState';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -1152,6 +1153,32 @@ describe('the list toggles over a task item', () => {
             saved:  'p\\[x\\] a',
         },
     ])('$name', runRow);
+
+    // The code holds the marker as the item showed it, not the escaped text the item's own save writes for a checkbox alone.
+    it.each([
+        ['a checked item', '- [x] a', '```\n[x]\n```'],
+        ['an unchecked item', '- [ ] a', '```\n[ ]\n```'],
+        ['an item loaded with a capital marker', '- [X] a', '```\n[X]\n```'],
+        ['a checked item before another item', '- [x] a\n- b', '```\n[x]\n```\n\n- b'],
+    ])('a code block made from %s emptied holds the marker as the item showed it', (_name, source, saved) => {
+        const editor = load(source);
+
+        press(editor, { key: 'Backspace', at: ['a', 1] });
+        press(editor, blockType('code'));
+
+        expect(editor.getValue()).toBe(saved);
+        expectSaveKeepsDocument(editor, 'the code block');
+    });
+
+    it('a code block made from a lone checkbox written with a character reference holds the marker as the item showed it', () => {
+        const editor = load('- [x] &#32;');
+
+        press(editor, caretAtStart());
+        press(editor, blockType('code'));
+
+        expect(editor.getValue()).toBe('```\n[x]\n```');
+        expectSaveKeepsDocument(editor, 'the code block');
+    });
 });
 
 describe('a task item copied and pasted', () => {
@@ -1214,6 +1241,16 @@ describe('a task item copied and pasted', () => {
         pasteNodes(editor, nodes);
 
         expect(editor.getValue()).toBe('a\\[ \\] xb');
+    });
+
+    it('keeps the character reference of a lone checkbox, so it is still a checkbox', () => {
+        const editor = load('para');
+
+        selectText(editor, ['para', 2]);
+        pasteNodes(editor, copiedDocument('- [x] &#32;'));
+
+        expect(editor.getValue()).toBe('pa\n\n- [x] &#32;\n\nra');
+        expectSaveKeepsDocument(editor, 'the paste');
     });
 });
 
@@ -1717,17 +1754,18 @@ describe('toggleTaskList over an empty block makes a task item that keeps its ch
 
 describe('a lone checkbox loaded from a character reference for a space', () => {
     // A character reference for a space is no blank to `marked`, so the marker has text after it and is a checkbox, in
-    // the viewer and the editor alike; the item then holds no text of its own. Its standard form is the escaped
-    // `- \\[x\\]`, which reads as text, so the row cannot run the save checks of the load/save rows (a known issue).
+    // the viewer and the editor alike; the item then shows nothing after it. The checkbox keeps the reference, so its
+    // save, toggled or not, still reads as a checkbox: Markdown has no other form of a task item with no text.
     it('is a checkbox in the viewer and the editor, and saves as it was written', () => {
         const editor = load('- [x] &#32;');
 
         expect(shapeOf(editor)).toBe(`list(${ITEM}(${TEXT}(checkbox(checked))))`);
         expect(editor.getValue()).toBe('- [x] &#32;');
-        expect(editorSurfaceModel(editor)).toEqual(viewerModel('- [x] &#32;').blocks);
+        expect(canonicalSave(editor)).toBe('- [x] &#32;');
+        expectSaveKeepsDocument(editor, 'the load');
     });
 
-    it('saves as `- [ ]` once a click unchecks it, which a reload reads as the text `[ ]` (a known issue)', () => {
+    it('stays a checkbox once a click unchecks it, saved with its character reference', () => {
         const editor = load('- [x] &#32;');
 
         lexicalOf(editor).update(() => {
@@ -1736,7 +1774,138 @@ describe('a lone checkbox loaded from a character reference for a space', () => 
             box.setChecked(false);
         }, { discrete: true });
 
-        expect(editor.getValue()).toBe('- [ ]');
-        expect(shapeOf(load(editor.getValue()))).toBe(`list(${ITEM}(${TEXT}("[ ]")))`);
+        expect(editor.getValue()).toBe('- [ ] &#32;');
+        expect(shapeOf(editor)).toBe(`list(${ITEM}(${TEXT}(checkbox(unchecked))))`);
+        expect(shapeOf(load(editor.getValue()))).toBe(`list(${ITEM}(${TEXT}(checkbox(unchecked))))`);
+        expectSaveKeepsDocument(editor, 'the click');
     });
+
+    it.each<Row>([
+        {
+            name:   'Ctrl+Enter toggles it and keeps the reference',
+            source: '- [x] &#32;\n- b',
+            steps:  [caretAtStart(), ctrlEnter()],
+            saved:  '- [ ] &#32;\n- b',
+            shape:  `list(${ITEM}(${TEXT}(checkbox(unchecked))), ${ITEM}(${TEXT}("b")))`,
+        },
+        {
+            name:   'a numbered list keeps it a checkbox',
+            source: '- [x] &#32;',
+            steps:  [caretAtStart(), command((editor) => { editor.toggleOrderedList(); })],
+            saved:  '1. [x] &#32;',
+            shape:  `list(${ITEM}(${TEXT}(checkbox(checked))))`,
+        },
+        {
+            name:   'text typed after it and deleted again leaves it a checkbox, with the caret elsewhere',
+            source: '- [x] &#32;\n- b',
+            steps:  [caretAtStart(), typeText('z'), { key: 'Backspace', at: ['z', 1] }, command(() => {}, ['b', 1])],
+            saved:  '- [x] &#32;\n- b',
+            shape:  `list(${ITEM}(${TEXT}(checkbox(checked))), ${ITEM}(${TEXT}("b")))`,
+        },
+    ])('$name', runRow);
+
+    // A space that is not ASCII whitespace is content to `marked` and to the editor (`holdsLineContent`): typed after
+    // a checkbox in place of its text, it stays in the save, and a character reference for it is shown, not kept. A
+    // save of a task item reloads as a task item with the same state and text; `marked` reads a task marker only when a
+    // `\S` character follows it, and JavaScript's `\S` does not match these spaces, so the space is written as a
+    // numeric character reference (as a no-break space is written `&nbsp;`).
+    it.each([['\u00a0', '&nbsp;'], ['\u2003', '&#8195;'], ['\u3000', '&#12288;']])('a space typed in place of the text after a checkbox (U+%#x) is saved', (space, written) => {
+        const editor = load('- [x] a\n- b');
+
+        press(editor, typeText(space, ['a', 0], ['a', 1]));
+        press(editor, command(() => {}, ['b', 1]));
+
+        expect(editor.getValue()).toBe(`- [x] ${written}\n- b`);
+        expectSaveKeepsDocument(editor, 'the typed space');
+    });
+
+    it.each(['\u2003', '\u3000'])('a code block made from that item holds the marker and the space (U+%#x)', (space) => {
+        const editor = load('- [x] a');
+
+        press(editor, typeText(space, ['a', 0], ['a', 1]));
+        press(editor, { key: 'command', run: (target: MarkdownEditor) => { target.setBlockType('code'); } });
+
+        expect(editor.getValue()).toBe(`\`\`\`\n[x] ${space}\n\`\`\``);
+    });
+
+    it.each(['&#160;', '&#8195;', '&#12288;'])('%s after a checkbox shows its space, which stays once an edit elsewhere saves', (reference) => {
+        const editor = load(`- [x] ${reference}\n- b`);
+
+        press(editor, typeText('Y', ['b', 1]));
+
+        expect(editor.getValue()).toBe(`- [x] ${reference}\n- bY`);
+        expect(shapeOf(load(editor.getValue()))).toBe(shapeOf(editor));
+    });
+
+    it.each(['&#160;', '&#8195;', '&#12288;'])('%s after a checkbox, the space deleted, leaves a checkbox with no reference', (reference) => {
+        const editor = load(`- [x] ${reference}\n- b`);
+
+        press(editor, { key: 'Backspace', at: [reference === '&#160;' ? '\u00a0' : reference === '&#8195;' ? '\u2003' : '\u3000', 1] });
+        press(editor, typeText('Y', ['b', 1]));
+
+        expect(editor.getValue()).toBe('- \\[x\\]\n- bY');
+    });
+
+    // Every space outside ASCII that JavaScript's `\s` matches, as `marked`'s task test (`\S` after the marker) sees it.
+    const NON_ASCII_SPACES = [0x00a0, 0x1680, ...Array.from({ length: 11 }, (_unused, index) => 0x2000 + index), 0x2028, 0x2029, 0x202f, 0x205f, 0x3000, 0xfeff]
+        .filter((code) => /\s/.test(String.fromCodePoint(code)));
+
+    it('the sweep holds every non-ASCII space JavaScript matches with \\s', () => {
+        const matched = Array.from({ length: 0x10000 }, (_unused, code) => code).filter((code) => code > 0x7f && /\s/.test(String.fromCodePoint(code)));
+
+        expect(NON_ASCII_SPACES).toEqual(matched);
+    });
+
+    it.each(NON_ASCII_SPACES.map((code) => ({ code, name: `U+${code.toString(16).toUpperCase().padStart(4, '0')}` })))('$name typed after a checkbox, or loaded as a reference and toggled, saves as a task item', ({ code }) => {
+        const space = String.fromCodePoint(code);
+        const typed = load('- [x] a\n- b');
+
+        press(typed, typeText(space, ['a', 0], ['a', 1]));
+        press(typed, command(() => {}, ['b', 1]));
+
+        expectSaveKeepsDocument(typed, 'the typed space');
+        expect(shapeOf(load(typed.getValue()))).toBe(shapeOf(typed));
+
+        const loaded = load(`- [x] &#${code};\n- b`);
+
+        expectSaveKeepsDocument(loaded, 'the load');
+
+        lexicalOf(loaded).update(() => {
+            const box = $dfs($getRoot()).map(({ node }) => node).find($isMarkdownTaskCheckboxNode)!;
+
+            box.setChecked(false);
+        }, { discrete: true });
+
+        expectSaveKeepsDocument(loaded, 'the toggle');
+        expect(shapeOf(load(loaded.getValue()))).toBe(shapeOf(loaded));
+        expect(loaded.getValue()).toMatch(/^- \[ \] /);
+    });
+
+    it('taskBlankTextState refuses a reference that shows a character (pasted JSON)', () => {
+        expect(taskBlankTextState.parse('&#65;')).toBe('');
+        expect(taskBlankTextState.parse('&#32;')).toBe('&#32;');
+        expect(BLANK_REFERENCES.test('&#65;')).toBe(false);
+        expect(BLANK_REFERENCES.test('&#12288;')).toBe(false);
+        expect(BLANK_REFERENCES.test('&#xA0;')).toBe(false);
+        expect(BLANK_REFERENCES.test('&#32; &#9;&#x20;')).toBe(true);
+    });
+
+    // Each character reference that shows as blank text after the marker, toggled: the save reloads as the editor shows
+    // it and the viewer reads it the same way.
+    const REFERENCES = ['&#32;', '&#x20;', '&#X20;', '&#032;', '&#9;', '&#x9;', '&#32;&#32;', '&#32; &#32;', '&#10;', '&#13;'];
+
+    it.each(REFERENCES.flatMap((reference) => [`- [x] ${reference}`, `- [ ] ${reference}`, `- a\n  - [x] ${reference}\n- b`]))(
+        'toggled, %j stays a checkbox through a save and a load', (source) => {
+            const editor = load(source);
+
+            lexicalOf(editor).update(() => {
+                const box = $dfs($getRoot()).map(({ node }) => node).find($isMarkdownTaskCheckboxNode)!;
+
+                box.setChecked(!box.isChecked());
+            }, { discrete: true });
+
+            expect(shapeOf(editor)).toMatch(/checkbox\((un)?checked\)/);
+            expectSaveKeepsDocument(editor, 'the toggle');
+        },
+    );
 });

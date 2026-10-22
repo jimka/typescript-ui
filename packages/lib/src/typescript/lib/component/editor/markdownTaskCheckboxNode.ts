@@ -3,7 +3,7 @@
 import { $getState, $isElementNode, $isTextNode, $setState, DecoratorNode } from "lexical";
 import type { DOMConversionMap, DOMExportOutput, EditorConfig, ElementNode, LexicalEditor, LexicalNode, NodeKey, SerializedLexicalNode, Spread } from "lexical";
 import { DOM } from "~/core/DOM.js";
-import { taskMarkerState } from "~/component/editor/markdownNodeState.js";
+import { BLANK_REFERENCES, taskBlankTextState, taskMarkerState } from "~/component/editor/markdownNodeState.js";
 
 /**
  * The priority of the checkbox input conversion: one above Lexical's default of
@@ -272,15 +272,73 @@ export function $taskMarkerMarkdown(node: MarkdownTaskCheckboxNode): string {
  * An item's text that holds its checkbox alone, as the text Markdown reads it
  * as: Markdown has no empty task item, so `- [ ]` is an item holding `[ ]`.
  * A checked box has its brackets escaped, since `[x]` alone could be a
- * reference link; `[ ]` cannot, a label needing a non-blank character.
+ * reference link; `[ ]` cannot, a label needing a non-blank character. A box
+ * loaded with blank text after it that makes it a checkbox
+ * ({@link taskBlankTextState}, `- [x] &#32;`) is written with that text, so
+ * it is still a checkbox to the viewer.
  *
  * @param node - The checkbox.
- * @returns `[ ]`, or the marker with its brackets escaped (`\[x\]`).
+ * @returns `[ ]`, the marker with its brackets escaped (`\[x\]`), or the marker and its blank text (`[ ] &#32;`).
  */
 export function $emptyTaskItemMarkdown(node: MarkdownTaskCheckboxNode): string {
+    const blank = $getState(node, taskBlankTextState);
+
+    if (blank !== "") {
+        return $taskMarkerMarkdown(node) + blank;
+    }
+
     const marker = $taskMarkerMarkdown(node).trimEnd();
 
     return node.isChecked() ? marker.replace("[", "\\[").replace("]", "\\]") : marker;
+}
+
+/**
+ * Tells whether a checkbox that is all its item's text holds is still a
+ * checkbox to the viewer once saved: one loaded with the blank text that
+ * makes it one ({@link taskBlankTextState}). Any other is written as the text
+ * Markdown reads it as ({@link $emptyTaskItemMarkdown}).
+ *
+ * @param node - The checkbox.
+ * @returns `true` when its save alone reads as a checkbox.
+ */
+export function $savesAsCheckboxAlone(node: MarkdownTaskCheckboxNode): boolean {
+    return $getState(node, taskBlankTextState) !== "";
+}
+
+/**
+ * A space that is no ASCII space and that JavaScript's `\s` matches (`U+2003`, `U+3000`, ...), after any ASCII spaces.
+ * `marked` reads a task marker only when a `\S` character follows its spaces, so such a space right after the marker
+ * would make the item text.
+ */
+const BLANK_AFTER_MARKER = /^( *)([^\S ])/;
+
+/**
+ * An item's written text, made to follow its task marker: a space that `marked`'s `\S` does not match (a wide space,
+ * a no-break space is already written `&nbsp;`) first in the text would make the marker text, so it is written as a
+ * numeric character reference, which reads back as the space it is. The text is otherwise as it was.
+ *
+ * @param written - The Markdown the item's text was written as.
+ * @returns The text, safe to follow the marker.
+ */
+export function taskTextAfterMarker(written: string): string {
+    return written.replace(BLANK_AFTER_MARKER, (_match, spaces: string, blank: string) => `${spaces}&#${blank.codePointAt(0)};`);
+}
+
+/**
+ * Keeps, on a checkbox a load leaves alone in its item's text, the source of
+ * the text after its marker when that is character references for blanks
+ * ({@link BLANK_REFERENCES}): the text that makes it a checkbox to the viewer
+ * though it shows nothing (`- [x] &#32;`).
+ *
+ * @param node - The checkbox.
+ * @param source - The source of the item's text after the marker.
+ */
+export function $keepBlankTextOfCheckbox(node: MarkdownTaskCheckboxNode, source: string): void {
+    const blank = source.trim();
+
+    if (BLANK_REFERENCES.test(blank)) {
+        $setState(node, taskBlankTextState, blank);
+    }
 }
 
 /**

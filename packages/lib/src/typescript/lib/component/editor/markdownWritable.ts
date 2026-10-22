@@ -31,7 +31,7 @@ import {
 } from "~/component/editor/markdownSerializer.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { $isMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
-import { $isMarkdownTaskCheckboxNode, $taskMarkerMarkdown, MarkdownTaskCheckboxNode, TASK_MARKER_LENGTH } from "~/component/editor/markdownTaskCheckboxNode.js";
+import { $isMarkdownTaskCheckboxNode, $savesAsCheckboxAlone, $taskMarkerMarkdown, MarkdownTaskCheckboxNode, TASK_MARKER_LENGTH } from "~/component/editor/markdownTaskCheckboxNode.js";
 import {
     $createMarkdownListItemTextNode, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $movePointsBetween, $removePlainly,
     MarkdownListItemTextNode,
@@ -141,7 +141,9 @@ export const TASK_ITEM_OPENED_TAG = "markdown-task-item-opened";
  * save reads it as (`[ ]`, `[x]`: Markdown has no empty task item) once the
  * selection no longer stands in it, so the editor shows what a reload shows;
  * while the selection stands there, the checkbox stays, so Enter can open a
- * task item and its text be typed. A load keeps what it loaded, and so does
+ * task item and its text be typed. A checkbox loaded with the blank text that
+ * makes it one (`- [x] &#32;`) saves as a checkbox alone, and stays one
+ * ({@link $savesAsCheckboxAlone}). A load keeps what it loaded, and so does
  * an update that makes a task item with no text ({@link TASK_ITEM_OPENED_TAG}),
  * whose emptied upper item keeps its checkbox.
  *
@@ -156,11 +158,13 @@ function $keepCheckboxesOfItemText(text: MarkdownListItemTextNode): void {
 
     const box = text.getFirstChild();
     const holdsBoxAlone = $isMarkdownTaskCheckboxNode(box)
-        && text.getChildren().slice(1).every((child) => $isTextNode(child) && child.getTextContent().trim() === "");
+        && text.getChildren().slice(1).every((child) => $isTextNode(child) && !holdsLineContent(child.getTextContent()));
+    // A checkbox whose save alone still reads as one (`- [x] &#32;`) has a Markdown form, and stays.
+    const savesAsText = holdsBoxAlone && !$savesAsCheckboxAlone(box);
 
     const isKept = $hasUpdateTag(MARKDOWN_IMPORT_TAG) || $hasUpdateTag(TASK_ITEM_OPENED_TAG);
 
-    if (holdsBoxAlone && !isKept && !$selectionStandsIn(text)) {
+    if (savesAsText && !isKept && !$selectionStandsIn(text)) {
         box.replace($createTextNode($taskMarkerMarkdown(box).slice(0, TASK_MARKER_LENGTH)));
     }
 }
@@ -1673,9 +1677,9 @@ function $showBlocksAsDefinitionsRead(previous: Links, current: Links, changed: 
 /**
  * Gives each reference link in a block whose title holds a blank line the
  * title of its definition, while that definition resolves its label to its
- * URL: no inline link can write such a title (a blank line ends the block),
- * so its save keeps the reference form and the viewer shows the definition's
- * title, whatever the link's own.
+ * URL, so its save keeps the reference form and the editor shows the title
+ * the viewer shows. An image whose title holds a blank line takes the title
+ * its written form now reads with, the same way.
  *
  * @param block - The block.
  * @param definitions - The document's definitions now.
@@ -2180,7 +2184,9 @@ function $dropLeadingCharacters(node: TextNode, length: number): void {
  * `INSERT_LINE_BREAK_COMMAND` handler declining a break a save could not
  * write: in a level 3–6 heading, where nothing with content follows the
  * selection's end in its block, or over a selection that covers all the
- * text one raw block holds ({@link $coversAllOfRawBlock}).
+ * text one raw block holds ({@link $coversAllOfRawBlock}). A selection is
+ * removed all the same, as Delete removes it: only the break, which would
+ * have no place where that leaves the caret, is declined.
  *
  * @returns Whether the break was declined.
  */
@@ -2192,8 +2198,13 @@ function $declinesLineBreak(): boolean {
     }
 
     const end = selection.isBackward() ? selection.anchor : selection.focus;
+    const declined = $lineBreakUnwritableAt(end) || $coversAllOfRawBlock(selection);
 
-    return $lineBreakUnwritableAt(end) || $coversAllOfRawBlock(selection);
+    if (declined && !selection.isCollapsed()) {
+        selection.removeText();
+    }
+
+    return declined;
 }
 
 /**
@@ -2220,21 +2231,17 @@ function $coversAllOfRawBlock(selection: RangeSelection): boolean {
  * is declined by the command's handler ({@link $declinesLineBreak}).
  *
  * @param point - The point the break would go in at.
- * @param rest - For a break that follows an edit joining another block's
- *   rest after `point`: the point of the document as it stands whose block
- *   holds, after it, what will follow the break — or `null` when nothing
- *   will. `point` itself when omitted, for a break put in as things stand.
  * @returns `true` when the save could not write the break.
  */
-export function $lineBreakUnwritableAt(point: PointType, rest: PointType | null = point): boolean {
+function $lineBreakUnwritableAt(point: PointType): boolean {
     const container = $breakRuleContainerOf(point.getNode());
 
     if (container === null) {
         return false;
     }
 
-    const restBlock = rest === null ? null : $findEnclosingBlock(rest.getNode());
-    const isFollowed = rest !== null && restBlock !== null && $contentFollows(rest, restBlock);
+    const block = $findEnclosingBlock(point.getNode());
+    const isFollowed = block !== null && $contentFollows(point, block);
 
     return $isOneLineHeading(container) || !isFollowed;
 }
@@ -2263,7 +2270,7 @@ function $isBreakRuleContainer(node: LexicalNode | null): node is ElementNode {
  * @returns The block, or `null` when the node sits elsewhere (a table cell,
  *   a code block, a raw block).
  */
-export function $breakRuleContainerOf(node: LexicalNode): ElementNode | null {
+function $breakRuleContainerOf(node: LexicalNode): ElementNode | null {
     const block = $findEnclosingBlock(node);
 
     return $isBreakRuleContainer(block) ? block : null;
@@ -2317,7 +2324,8 @@ function $inlineLeaves(element: ElementNode): LexicalNode[] {
 /**
  * Whether an inline leaf holds content a save writes — an image, text other
  * than whitespace, any code, source other than whitespace — as the
- * serializer counts it when it drops a block's edge breaks.
+ * serializer counts it when it drops a block's edge breaks: whitespace is
+ * ASCII whitespace, and a no-break space is content ({@link holdsLineContent}).
  *
  * @param node - The leaf.
  * @param text - The part of its text to read; all of it when omitted.
@@ -2325,13 +2333,13 @@ function $inlineLeaves(element: ElementNode): LexicalNode[] {
  */
 function $holdsContent(node: LexicalNode, text?: string): boolean {
     if ($isMarkdownSourceTextNode(node)) {
-        return /\S/.test(node.getSource());
+        return holdsLineContent(node.getSource());
     }
 
     if ($isTextNode(node)) {
         const shown = text ?? node.getTextContent();
 
-        return node.hasFormat("code") ? shown.replace(/\n/g, "") !== "" : /\S/.test(shown);
+        return node.hasFormat("code") ? shown.replace(/\n/g, "") !== "" : holdsLineContent(shown);
     }
 
     return $isDecoratorNode(node);
@@ -2344,7 +2352,7 @@ function $holdsContent(node: LexicalNode, text?: string): boolean {
  * @param container - The block it sits in.
  * @returns `true` when a leaf after the point, before the run ends, holds content.
  */
-export function $contentFollows(point: PointType, container: ElementNode): boolean {
+function $contentFollows(point: PointType, container: ElementNode): boolean {
     const leaves = $inlineLeaves(container);
     const node = point.getNode();
     let start: number;

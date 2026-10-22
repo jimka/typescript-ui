@@ -1122,6 +1122,9 @@ page resets to empty.
   and `Aria.setReadOnly(null)` remove their attribute, as `setHidden(null)`
   does.
 
+- **`AriaRole` gains `'menuitemcheckbox'` and `'menuitemradio'`**, the
+  roles `CheckboxMenuRow` and `RadioMenuRow` now carry.
+
 ### Data
 
 - **`JsonWriter.dataFor` is `protected`.** A subclass can override it to
@@ -1242,6 +1245,19 @@ page resets to empty.
   `[x]` and the block now goes above the item. No consumer action is
   needed.
 
+- **`MarkdownEditor` keeps a lone task checkbox written with a character
+  reference.** A task item whose text after its checkbox is only a
+  character reference for a space (`- [x] &#32;`), which the viewer shows as
+  a checkbox alone, saved as `- [ ]` once the checkbox was toggled, which a
+  reload reads as the text `[ ]`; it now keeps the reference
+  (`- [ ] &#32;`) and stays a checkbox. A task item whose text opens with a
+  space other than an ASCII one, such as an ideographic space, saved that
+  space as itself, which a reload reads as the text `[x]`; it is now written
+  as a character reference (`- [x] &#12288;a`), so the item stays a task
+  item. A code block made from a task item with no text holds its marker as
+  the item showed it (`[x]`), where a checked one held `\[x\]`. No consumer
+  action is needed.
+
 - **`mergeTableCells()` leaves a usable table.** An empty first cell no
   longer gives the merged cell a blank first line, the caret lands in the
   merged cell so Unmerge cell is available at once (the table controls
@@ -1269,9 +1285,10 @@ page resets to empty.
   at the start, inserted the paragraph and removed nothing; with the anchor
   at the end it left the caret at the document's end. The range is now
   removed first and the break comes where it was, as after Delete.
-  Shift+Enter over a range ending between a list's items is declined, and
-  changes nothing. A range that ends at the end of a list in a `:::` column
-  no longer leaves the column empty when it is deleted or replaced.
+  Shift+Enter over a range ending between a list's items removes the range,
+  as Delete does, and adds no break. A range that ends at the end of a list
+  in a `:::` column no longer leaves the column empty when it is deleted or
+  replaced.
 
 - **`MarkdownEditor` keeps a `:::` fence's opening line.** Editing anything
   inside a fence whose opening line carried more than its attributes —
@@ -1562,9 +1579,10 @@ page resets to empty.
   from the keyboard or through `cut()` / `copy()`, puts the whole table on
   the clipboard; a copy changes neither the document nor the selection.
   `insertTable()` and `insertImage()` remove the selection first, then
-  insert at the caret, as one undo step. A paste that inserts nothing, and
-  Shift+Enter where no line break could be written once the selection is
-  gone, leave the selection as it was. No consumer action is needed.
+  insert at the caret, as one undo step. A paste that inserts nothing leaves
+  the selection as it was; Shift+Enter where no line break could be written
+  once the selection is gone removes the selection, as Delete does, and adds
+  no break. No consumer action is needed.
 
 - **`MarkdownEditor` keeps the caret inside text a save trims.** Deleting
   the last line of a block converted from a code block (for example with
@@ -1751,13 +1769,17 @@ page resets to empty.
   such a line reads as an HTML block now loads as a raw Markdown block, as
   one holding `<div>` already did. That is the only line of a quote, a `>`
   line that a line without `>` follows, and a last line without `>` after a
-  quote. In a list item such a line is a raw Markdown block of that item,
-  as `<div>` is there; right under the item's text in a tight list (one
-  with no blank line between its items or between an item's blocks), it
-  keeps the whole list a raw Markdown block. In
-  `"source"` mode the format toggles and the block commands decline on such
-  a last line, as they do on any line of an HTML block. No consumer action
-  is needed.
+  quote. In a list item such a line is a raw Markdown block of that item, as
+  `<div>` is there; right under the item's text in a tight list (one with no
+  blank line between its items or between an item's blocks), it keeps the
+  whole list a raw Markdown block. In `"source"` mode the format toggles and
+  the block commands decline on such a last line, as they do on any line of
+  an HTML block. A block tag name alone on its line (`<div`, `</div`)
+  followed by a blank line now ends its HTML block at that blank line, as
+  CommonMark specifies; the paragraph after it was read into the block and
+  shown as its literal text. `MarkdownEditor` loads that paragraph as a
+  paragraph, so it can be formatted, in WYSIWYG and in `"source"` mode. No
+  consumer action is needed.
 
 - **`MarkdownEditor` keeps a list whose item holds a block.** Pasting several
   blocks into a nested list item, or **Insert line after block** inside a
@@ -1912,24 +1934,23 @@ page resets to empty.
   without regard to its neighbours. Spaces typed before one that follows a
   raw list moved it into that list on reload; a raw block an edit emptied
   let the list before it and the raw list after it join; a `<div` line two
-  blank lines above a paragraph lost one of them once that paragraph was
-  edited, and then took the paragraph in; and an indented quote whose last
-  line stays in it only while indented (`> q` over an indented `<div`) lost
-  that indentation at load, so the line left the quote as soon as the quote
-  was rewritten. A raw block is now saved the same way everywhere: without an
-  empty first or last line and without spaces before it that mean nothing; a
-  block that writes nothing no longer stands between two lists; a block only
-  a second blank line ends keeps that line; and a raw block keeps the
-  indentation of any line its reading needs. A list whose item holds such a
-  quote now loads as a list, the quote a raw block of its item. In a list
-  item as well, a save no longer takes indentation off a raw block where a
-  line of it is read by that indentation: spaces typed before the lines of
-  an HTML block after its first stay, the second line of a definition's
-  title keeps its place, and a raw list whose first item is indented deeper
-  than its next keeps what that item holds. A list whose item holds such a
-  raw list, with code or an HTML block in that first item, now shows as
-  one raw Markdown block where it showed a list whose save changed that
-  code. No consumer action is needed.
+  blank lines above a paragraph took the paragraph in once it was edited;
+  and an indented quote whose last line stays in it only while indented (`>
+  q` over an indented `<div`) lost that indentation at load, so the line
+  left the quote as soon as the quote was rewritten. A raw block is now
+  saved the same way everywhere: without an empty first or last line and
+  without spaces before it that mean nothing; a block that writes nothing no
+  longer stands between two lists; and a raw block keeps the indentation of
+  any line its reading needs. A list whose item holds such a quote now loads
+  as a list, the quote a raw block of its item. In a list item as well, a
+  save no longer takes indentation off a raw block where a line of it is
+  read by that indentation: spaces typed before the lines of an HTML block
+  after its first stay, the second line of a definition's title keeps its
+  place, and a raw list whose first item is indented deeper than its next
+  keeps what that item holds. A list whose item holds such a raw list, with
+  code or an HTML block in that first item, now shows as one raw Markdown
+  block where it showed a list whose save changed that code. No consumer
+  action is needed.
 
 - **`MarkdownEditor` counts the link reference definitions the viewer
   counts.** A definition that followed an HTML block left open at the end of
@@ -2100,8 +2121,11 @@ page resets to empty.
   Into a raw block, the rest keeps every escape, escaped for where it
   lands: mid-line it has no line-start escape (Backspace at a paragraph
   after a raw block gives `</div>+alpha`, where it gave `</div>\+alpha`),
-  right after a raw quote's or list's marker it keeps them, and a leading
-  `>` is escaped when it would close a tag the raw block left open. Backspace
+  right after a raw quote's or list's marker it keeps them, and the `>`
+  that would close a tag the raw block left open is escaped, also after a
+  `/`, attributes or more of the tag's name (`<br` at the end of a quote's
+  line joined with `/>cd` is written `<br/\>cd`, and at the end of a list
+  item's own line `\<br/>cd`; both read as text). Backspace
   and Delete between a code block or raw block and a heading, quote or list
   item's text now join it the same way. No consumer action is needed.
 
@@ -2128,17 +2152,10 @@ page resets to empty.
   the same key gives: Enter over a selection that cuts `<div>` down to `<`
   starts a new paragraph, and Tab no longer turns what is left into a code
   block. A paste over a selection that runs into such a block no longer
-  depends on the direction the selection was dragged in. One limit remains:
-  Shift+Enter is judged before the selection is removed, so where the
-  removal makes a raw block read as a block in which the break has no place,
-  the selection is removed and no break is added. Where no break could
-  follow the caret at all — the selection ends at the start or the end of
-  such a block and nothing would follow it, or it runs from a level 3 to 6
-  heading to such a block's start — Shift+Enter now does nothing, as over
-  any other selection there; it used to remove the selection. A selection
-  that runs from such a block's very start into a table is not judged so: it
-  is removed with the table and no break is added. No consumer
-  action is needed.
+  depends on the direction the selection was dragged in. Shift+Enter over
+  such a selection removes it the same way and adds the break only where
+  the caret that leaves has a place for one, as over any other selection.
+  No consumer action is needed.
 
 - **`MarkdownEditor`: a selection removed from a raw Markdown block into a
   later block no longer makes a heading or code block at the joint.**
@@ -2168,8 +2185,9 @@ page resets to empty.
   holding a lone line break, and what was pasted into it went in as plain
   text. It now shows as an empty paragraph holding the caret, whichever key
   removed the text, and what is typed or pasted next is rich text.
-  Shift+Enter over a selection that would leave nothing but the break does
-  nothing, as in any empty paragraph. No consumer action is needed.
+  Shift+Enter over a selection that would leave nothing but the break
+  removes the selection and adds no break, as Shift+Enter adds none in an
+  empty paragraph. No consumer action is needed.
 
 - **The caret keeps its place when an edit makes a raw Markdown block show
   as rich text.** When a raw block's text was edited until it read as a
@@ -2220,8 +2238,8 @@ page resets to empty.
   `Markdown` and `MarkdownEditor` read a tab that starts a later line of a
   list item as four columns wherever it started, read the rest of a line
   after `>` and a tab from column zero, and took characters, not columns,
-  off the lines under a fenced code block indented by one to three spaces.
-  A line indented by two spaces and a tab under `- a` was a code block, an
+  off the lines under a fenced code block indented by one to three spaces. A
+  line indented by two spaces and a tab under `- a` was a code block, an
   item nested by a space and a tab put its text one column too far right,
   `>`, a space and a tab made the rest of the line code, and a fence
   indented by one space dropped a line's leading tab. A tab now reaches the
@@ -2233,10 +2251,13 @@ page resets to empty.
   quote is read into the quote as its code, and its tabs show as the spaces
   that reach their tab stops. A tab in the indentation of an HTML line
   inside a list item or blockquote, or right after a marker character that
-  starts such a line, is read as the spaces that reach its tab stop. So is
-  a tab after a marker character that starts a paragraph continuation line,
-  which changes only the whitespace the tab stands for in that paragraph.
-  No consumer action is needed.
+  starts such a line, is read as the spaces that reach its tab stop. So is a
+  tab after a marker character that starts a paragraph continuation line,
+  which changes only the whitespace the tab stands for in that paragraph. A
+  setext underline may end in tabs as well as spaces: `a` over `-` and a tab
+  is a level-2 heading, where it was a paragraph, and `a` over `---` and a
+  tab no longer reads as a paragraph over a rule. No consumer action is
+  needed.
 
 - **`MarkdownEditor`'s WYSIWYG surface no longer shows the blanks a
   paragraph line opens with.** CommonMark strips the whitespace a paragraph
@@ -2244,8 +2265,34 @@ page resets to empty.
   editor kept it: a quote written `>`, three spaces and `foo bar` showed two
   spaces before `foo bar`, and a list item's second line indented by a tab
   showed its indentation inside the text. The editor now drops those blanks
-  when a document loads, so it shows the text the viewer shows. A block that
-  is not edited is still saved as written. No consumer action is needed.
+  when a document loads, also where bold or italic text, a code span, a link
+  or an image opens the line, and at the start of a table cell's later
+  paragraph, so it shows the text the viewer shows; inline HTML keeps the
+  blanks before it. A block that is not edited is still saved as written.
+  No consumer action is needed.
+
+- **`CodeEditor`'s `markdown` language reads a marker line that only
+  whitespace follows as an empty item or quote.** `-` followed by two tabs
+  or by six spaces, and `> >` followed by a space and a tab, were read as an
+  item or quote holding an empty code block, where the `Markdown` viewer
+  reads an empty one; on the spaces form Enter then copied the line's
+  whitespace instead of continuing the list. Enter now acts there as after
+  `- `. No consumer action is needed.
+
+- **`CodeEditor`'s `markdown` language reads an ordered list in a list item
+  as the `Markdown` viewer does.** Under `- x`, a line `  8. a` was read as
+  more of the text `x`, so Enter at its end added an indented blank line
+  instead of the item `9.`. An ordered item of any number now starts a list
+  where it follows a list item's text, and Enter continues and renumbers
+  it. No consumer action is needed.
+
+- **A `CodeEditor` given `\r\n` line ends reads them as `\n` before it
+  mounts.** `getValue()` returned the value as given until the view
+  mounted, and then with `\n` line ends, so offsets taken before the mount
+  did not match the mounted document. In `MarkdownEditor`'s `"source"` mode
+  every command did nothing on such a document until the source view
+  mounted. `getValue()` now returns `\n` line ends from the start. No
+  consumer action is needed.
 
 - **`CodeEditor`'s `markdown` language reads a tab after `#` or `>` as
   Markdown does.** A heading whose `#` a tab followed was highlighted as a
@@ -2330,7 +2377,11 @@ page resets to empty.
   quote, so the link fell apart on reload; the last backslash is now written
   `&#92;`. A line feed in a title of a heading or table cell was written as a
   space and a blank line collapsed to one line feed, so the title changed on
-  reload; each is now written `&#10;`.
+  reload; each is now written `&#10;`. A reference link or reference image
+  with a blank line in its title, copied as Lexical JSON into a document
+  that defines its label with another title, kept its reference form and
+  reloaded with that other title; it is now saved inline with the title it
+  shows.
 - **`MarkdownEditor` keeps the emphasis around an image.** Emphasis, strong,
   strikethrough or underline around an image (`*![a](/i.png)*`) was dropped
   from the save at the first edit in its block; an image now remembers the
@@ -2340,6 +2391,46 @@ page resets to empty.
 - **`MarkdownEditor` neutralises an image pasted as Lexical JSON with a refused
   source.** Such a source (`javascript:…`) now becomes an empty one, as it is
   refused everywhere else an image enters the editor.
+- **`MarkdownEditor` edits at a caret set in code on a quote or a list item
+  as at the place it names.** Text typed with the caret between two blocks
+  of a quote or a list item went into the start of the block after it (`> a`
+  / `>` / `> b` with the caret between the two paragraphs gave `> Zb`); it
+  now goes into a paragraph of its own there, as a paste there already did.
+  A caret on a task item before its text typed before the checkbox, which
+  then became the text `[ ] ` (`- Z\[ \] a`); typing, pasting, Enter and an
+  inserted image now act after the checkbox, as with the caret at the start
+  of the item's text, and on any item a caret there acts at the start of its
+  text. `insertTable()`, `insertHorizontalRule()` and `insertImage()` that
+  decline once the caret has moved off a `:::` block or from between two
+  blocks now leave the selection where it was, as every edit that changes
+  nothing does; they used to leave it in the block it moved to.
+  `insertHorizontalRule()` over such a selection that settles inside a table
+  removed the text of the cells it took, or threw, before it declined; it
+  now declines before it removes anything. Only a selection set in code
+  reaches these carets. No consumer action is needed.
+
+- **`CheckboxMenuRow` and `RadioMenuRow` are `menuitemcheckbox` and
+  `menuitemradio` items.** The row element had no role, and the checkbox or
+  radio button inside it carried `role="checkbox"` / `role="radio"` and a
+  tab stop, so inside a `role="menu"` panel assistive technology found a
+  form control where a menu item belongs. The row element now carries the
+  menu item role, its `text` as `aria-label`, `aria-checked` and, when
+  disabled, `aria-disabled`; the inner control is `aria-hidden` and takes
+  no tab stop. A keyboard-opened menu's `aria-activedescendant` names the
+  row itself. The rows in `Split`'s gutter menu, `Table`'s column menu, a
+  window's menu and `MarkdownEditor`'s context menu change with them. A
+  subclass of `AbstractBooleanMenuRow` gets the same and is a
+  `menuitemcheckbox` unless it overrides the new protected
+  `getMenuItemRole()`. No consumer action is needed.
+
+- **`MarkdownEditor` keeps a link whose text is a no-break space.** A link
+  whose only text was a no-break space (`[&nbsp;](/u)`, written with the
+  character) at the start or end of a block loaded as uneditable source that
+  showed a plain space, so in `"source"` mode no caret in that block had a
+  place in the document and the format toggles did nothing there; opening a
+  list item, the link was lost on the next save. It now loads as a link, as
+  one with a letter does, and saves as written. No consumer action is
+  needed.
 
 ### Core
 

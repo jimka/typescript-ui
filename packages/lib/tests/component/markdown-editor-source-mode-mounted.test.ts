@@ -149,3 +149,22 @@ describe('a source-mode MarkdownEditor command and undo', () => {
         expect(events.filter((event) => event === 'selectionstate').length).toBeLessThanOrEqual(1);
     });
 });
+
+describe('a source-mode MarkdownEditor given \\r\\n line ends', () => {
+    it('holds the same text, and a command gives the same result, before and after the view mounts', () => {
+        const offline = new MarkdownEditor('a b\r\nc d', { mode: 'source' });
+        const mounted = new MarkdownEditor('a b\r\nc d', { mode: 'source' });
+
+        editors.push(offline, mounted);
+        mountView((mounted as unknown as { _codeEditor: CodeEditor })._codeEditor);
+
+        expect(offline.getValue()).toBe('a b\nc d');
+        expect(mounted.getValue()).toBe('a b\nc d');
+
+        offline.toggleBold();
+        mounted.toggleBold();
+
+        expect(offline.getValue()).toBe('**a** b\nc d');
+        expect(mounted.getValue()).toBe('**a** b\nc d');
+    });
+});

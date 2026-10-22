@@ -41,7 +41,7 @@ The framework sets WAI-ARIA roles automatically for its components. Some highlig
 | [`Tree`](/components/Tree) | `tree` with `treeitem` rows |
 | [`Tab`](/layouts/Tab) | `tablist` / `tab` / `tabpanel` |
 | [`MenuBar`](/components/MenuBar) | `menubar` / `menu` / `menuitem` |
-| [`Menu`](/components/Menu) | `menu` / `menuitem` / `separator`; a context menu opened from the keyboard takes focus and names its highlighted row with `aria-activedescendant` |
+| [`Menu`](/components/Menu) | `menu` / `menuitem` / `separator`, and `menuitemcheckbox` / `menuitemradio` for [`CheckboxMenuRow`](/components/CheckboxMenuRow) / [`RadioMenuRow`](/components/RadioMenuRow) rows; a context menu opened from the keyboard takes focus and names its highlighted row with `aria-activedescendant` |
 | [`Button`](/components/Button) | inherits the native `<button>` semantics |
 | [`SplitButton`](/components/SplitButton) | native `<button>` with `aria-haspopup="menu"`, `aria-expanded` and `aria-controls` |
 | [`ComboBox`](/components/ComboBox) | `combobox` (with the underlying `<select>` providing the listbox) |

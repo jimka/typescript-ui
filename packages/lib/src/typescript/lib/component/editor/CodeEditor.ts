@@ -360,6 +360,13 @@ const READONLY_FLASH_Z_INDEX = 400;
  */
 const SEARCH_PANEL_Z_INDEX = 350;
 
+/**
+ * A line end CodeMirror reads as `\n`: `\r\n`, or a lone `\r`. Its
+ * `EditorState` splits a document on these and on `\n`, and joins the lines
+ * with `\n`.
+ */
+const NON_LF_LINE_END = /\r\n?/g;
+
 /** Shown when the browser refuses a right-click Paste's clipboard read. */
 const CLIPBOARD_READ_DENIED_MESSAGE = "Clipboard read blocked by the browser — press Ctrl/Cmd+V to paste.";
 /** How long the denied-paste toast stays visible. */
@@ -869,7 +876,9 @@ class CodeEditor extends Component<CodeEditorOptions> {
 
     /**
      * Returns the current document text: read live from the view when mounted,
-     * else the cached pre-mount / offline value.
+     * else the cached pre-mount / offline value, with its line ends written as
+     * the view would hold them: `\r\n` and a lone `\r` read as `\n`, so an
+     * editor returns the same text and offsets before and after it mounts.
      *
      * @returns The document text, or `""` when unset.
      */
@@ -878,7 +887,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
             return this._view.state.doc.toString();
         }
 
-        return this._options.value ?? "";
+        return (this._options.value ?? "").replace(NON_LF_LINE_END, "\n");
     }
 
     /**

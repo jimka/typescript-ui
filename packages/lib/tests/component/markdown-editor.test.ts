@@ -42,6 +42,7 @@ import { installTestDOM, makeEvent, ruleStyleWrites, type RecordingDOMSink } fro
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState } from '@codemirror/state';
 import { editorSurfaceModel, viewerModel } from './markdown-roundtrip/viewModel';
+import type { Block as ViewBlock } from './markdown-roundtrip/viewModel';
 import { canonicalSave } from './markdown-roundtrip/harness';
 import { smallestEdit } from '~/component/editor/markdownSourceModel';
 import { $selectionCharacters, charactersOfSourceCaret, lexicalEditorOf } from './markdown-roundtrip/sourceCaret';
@@ -2096,6 +2097,17 @@ describe('MarkdownEditor WYSIWYG text of paragraph lines', () => {
         ['W6: a paragraph line indented by spaces', 'a\n   b', 'a b'],
         // W7 is a guard row: it passes without the blank-dropping too, and keeps a hard break's line from losing its text.
         ['W7: a line after a hard break', 'a  \n   b', 'a\nb'],
+        // A line led by an inline token other than HTML loses its blanks too: the viewer shows none before the token.
+        ['a paragraph line indented before bold text', 'a\n  **b**', 'a b'],
+        ['a paragraph line indented before italic text', 'a\n  *b*', 'a b'],
+        ['a paragraph line indented before a code span', 'a\n  `b`', 'a b'],
+        ['a paragraph line indented before a link', 'a\n  [b](/u)', 'a b'],
+        ['a paragraph line indented before an image', 'a\n   ![i](/i.png)', 'a '],
+        ['an item line indented before bold text', '- a\n    **b**', 'a b'],
+        ['a quote line indented before bold text', '> a\n>   **b**', 'a b'],
+        ['a line in link text indented before bold text', '[a\n  **b**](/u)', 'a b'],
+        // Guard row (passes on the base): inline HTML keeps the blanks before it, as its save keeps them.
+        ['a paragraph line indented before inline HTML', 'a\n  <span>b</span>', 'a   <span>b</span>'],
     ])('%s', (_title, source, expected) => {
         const editor = new MarkdownEditor();
 
@@ -2104,6 +2116,35 @@ describe('MarkdownEditor WYSIWYG text of paragraph lines', () => {
         const text = lexicalOf(editor).getEditorState().read(() => $getRoot().getTextContent());
 
         expect(text).toBe(expected);
+        editor.dispose();
+    });
+
+    // Sweep: every inline token the editor builds a node of its own for, after each indentation, in each place a paragraph
+    // line continues. The editor shows the text the viewer shows, one space for the line end and no blanks after it.
+    const LEADING_TOKENS = ['**b**', '*b*', '_b_', '~~b~~', '***b***', '**b** c', '`b`', '[b](/u)', '[b][r]', '<https://x.test>', 'https://x.test', '\\*b', '&amp;b', '[b]{color=red}', '![i](/i.png)', 'b'];
+    const INDENTS = [' ', '  ', '   ', '\t', '    '];
+    const CONTINUED: Array<[string, (line: string) => string]> = [
+        ['paragraph', (line) => `a\n${line}`],
+        ['list item', (line) => `- a\n  ${line}`],
+        ['quote', (line) => `> a\n>${line}`],
+        ['link text', (line) => `[a\n${line}](/v)`],
+        ['bold text', (line) => `**a\n${line}**`],
+    ];
+    const LEADING_ROWS = CONTINUED.flatMap(([place, continued]) => LEADING_TOKENS.flatMap((token) => INDENTS.map((indent) => ({
+        name: `${place}, ${JSON.stringify(indent)} then ${token}`, source: `${continued(indent + token)}\n\n[r]: /r`,
+    }))));
+
+    it.each(LEADING_ROWS)('the editor shows the viewer\'s text: $name', ({ source }) => {
+        const editor = new MarkdownEditor();
+
+        editor.setValue(source);
+
+        /** The text of a viewer block: its runs' text, or its blocks' in turn. */
+        const shownText = (block: ViewBlock): string => ('runs' in block ? block.runs.map((run) => ('text' in run ? run.text : '')).join('') : '');
+        const viewer = viewerModel(source).blocks.map((block) => (block.kind === 'list' ? block.items[0]!.map(shownText).join('') : block.kind === 'quote' ? block.blocks.map(shownText).join('') : shownText(block)));
+        const text = lexicalOf(editor).getEditorState().read(() => $getRoot().getFirstChildOrThrow().getTextContent());
+
+        expect(text).toBe(viewer[0]);
         editor.dispose();
     });
 });
@@ -3226,6 +3267,66 @@ describe('MarkdownEditor dirty state', () => {
 
         editor.setMode('wysiwyg');
         expect(editor.isDirty()).toBe(true);
+    });
+
+    // Sweep: the blanks that open a link's text belong to the link, not to the block the link opens. Each token kind
+    // opens link text, after each indentation, in a paragraph, a list item, a quote and a table cell. The editor shows
+    // the text the viewer shows, and an edit elsewhere in the block saves the link's text with its blanks.
+    // Each token and the text it shows: the harness's viewer model trims link text, so the expected text is written out,
+    // as `marked` renders it (`<a href="/u"> <strong>b</strong></a> c`).
+    const LINK_TEXT_TOKENS: Array<[string, string]> = [['**b**', 'b'], ['*b*', 'b'], ['~~b~~', 'b'], ['`b`', 'b'], ['![i](/i.png)', ''], ['b', 'b']];
+    const LINK_TEXT_INDENTS = [' ', '  ', '\t'];
+    const LINK_TEXT_PLACES: Array<[string, (inline: string) => string]> = [
+        ['paragraph', (inline) => inline],
+        ['list item', (inline) => `- ${inline}`],
+        ['quote', (inline) => `> ${inline}`],
+        ['table cell', (inline) => `| h |\n| - |\n| ${inline} |`],
+    ];
+    const LINK_TEXT_ROWS = LINK_TEXT_PLACES.flatMap(([place, within]) => LINK_TEXT_TOKENS.flatMap(([token, shown]) => LINK_TEXT_INDENTS.map((indent) => ({
+        name: `${place}, link text ${JSON.stringify(indent)} then ${token}`, source: within(`[${indent}${token}](/u) c`), shown: `${indent}${shown} c`,
+    }))));
+
+    it.each(LINK_TEXT_ROWS)('the editor keeps the blanks that open link text, as the viewer shows them: $name', ({ source, shown }) => {
+        const editor = new MarkdownEditor();
+
+        editor.setValue(source);
+
+        const text = lexicalOf(editor).getEditorState().read(() => $getRoot().getTextContent());
+
+        expect(text).toContain(shown);
+        editor.dispose();
+    });
+
+    it.each(LINK_TEXT_ROWS)('an edit elsewhere saves the link text with its blanks: $name', ({ source }) => {
+        const editor = new MarkdownEditor();
+
+        editor.setValue(source);
+        // The text after the link gets a letter; the save must keep the link's source.
+        lexicalOf(editor).update(() => {
+            const last = $getRoot().getAllTextNodes().find((node) => node.getTextContent().endsWith(' c'));
+
+            last?.setTextContent(`${last.getTextContent()}Z`);
+        }, { discrete: true });
+
+        const saved = editor.getValue();
+
+        expect(saved).toContain(' cZ');
+        expect(saved).toContain(`](/u) cZ`);
+        expect(saved).toContain(source.slice(source.indexOf('[') , source.indexOf('](/u)')));
+        editor.dispose();
+    });
+
+    it('a markClean() in source mode over \\r\\n line ends leaves the editor clean on the switch back to WYSIWYG', () => {
+        const editor = new MarkdownEditor('x');
+
+        (editor as unknown as { ensureEditor(): LexicalEditor }).ensureEditor();
+        editor.setMode('source');
+        editor.setValue('a b\r\nc d');
+        expect(editor.getValue()).toBe('a b\nc d');
+
+        editor.markClean();
+        editor.setMode('wysiwyg');
+        expect(editor.isDirty()).toBe(false);
     });
 
     it('a first build that happens after a source-mode edit does not clear the flag', () => {

@@ -245,6 +245,36 @@ describe('the editor shows what its save reloads to: a line break in a table cel
 
         expectShownAndReloaded(editor, cells('paragraph("t<br>1")'), '| t0 |\n| --- |\n| t\\<br>1 |');
     });
+
+    // The save writes a space before a delimiter that opens a cell's later paragraph, so it can open after the cell paragraph
+    // break's `n`; the viewer shows no space there, and neither does the reload.
+    it.each([
+        ['bold', (editor: MarkdownEditor) => editor.toggleBold(), '**t**\\n\\n **1**'],
+        ['italic', (editor: MarkdownEditor) => editor.toggleItalic(), '*t*\\n\\n *1*'],
+        ['strikethrough', (editor: MarkdownEditor) => editor.toggleStrikethrough(), '~~t~~\\n\\n ~~1~~'],
+    ])('%s across the two paragraphs Enter makes in a cell reloads as it shows', (_name, format, cell) => {
+        const editor = load(TABLE);
+
+        select(editor, 't1', 1);
+        lexicalOf(editor).dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
+        select(editor, 't', 0, '1', -1);
+        format(editor);
+
+        expectShownAndReloaded(editor, cells('paragraph("t")', 'paragraph("1")'), `| t0 |\n| --- |\n| ${cell} |`);
+    });
+
+    it('a cell paragraph written after a space before its bold text loads without the space', () => {
+        const source = '| t0 |\n| --- |\n| x\\n\\n **y** |';
+
+        expect(shown(load(source))).toBe(cells('paragraph("x")', 'paragraph("y")'));
+    });
+
+    // Regression row (passes on the base): blanks before inline HTML opening a cell paragraph stay, as inline HTML keeps them.
+    it('a cell paragraph opening with blanks before inline HTML keeps them', () => {
+        const source = '| t0 |\n| --- |\n| x\\n\\n  <b>y</b> |';
+
+        expect(shown(load(source))).toBe(cells('paragraph("x")', 'paragraph("  ", "<b>", "y", "</b>")'));
+    });
 });
 
 describe('the editor shows what its save reloads to: a line end inside a text', () => {

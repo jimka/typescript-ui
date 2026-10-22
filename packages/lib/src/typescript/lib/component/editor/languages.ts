@@ -33,7 +33,8 @@ import type { BlockParser, MarkdownConfig } from "~/component/editor/markdownTab
 import { collectSyntaxErrors } from "~/component/editor/syntaxDiagnostics.js";
 import { MARKDOWN_SOURCE_TAGS } from "~/component/editor/markdownSourceTags.js";
 import {
-    MARKDOWN_ATTRIBUTE_GROUPS, MARKDOWN_FENCE_FOLD, MARKDOWN_FENCE_LINES, MARKDOWN_SOURCE_RETAGS, MARKDOWN_STRIKETHROUGH, MARKDOWN_TABLES, MARKDOWN_UNDERLINE,
+    MARKDOWN_ATTRIBUTE_GROUPS, MARKDOWN_FENCE_FOLD, MARKDOWN_FENCE_LINES, MARKDOWN_ITEM_TEXT_ENDS, MARKDOWN_SOURCE_RETAGS, MARKDOWN_STRIKETHROUGH, MARKDOWN_TABLES,
+    MARKDOWN_UNDERLINE,
 } from "~/component/editor/markdownSourceSyntax.js";
 
 /** Loads the babel + estree plugins Prettier's `babel-ts` and `json` parsers need. */
@@ -652,6 +653,7 @@ registerLanguage({
             extensions:      [
                 MARKDOWN_TAB_STOPS, taskMarkerExtension(tags), linkTitleTagExtension(tags, styleTags), MARKDOWN_SOURCE_RETAGS,
                 MARKDOWN_STRIKETHROUGH, MARKDOWN_UNDERLINE, MARKDOWN_ATTRIBUTE_GROUPS, MARKDOWN_FENCE_LINES, MARKDOWN_TABLES,
+                MARKDOWN_ITEM_TEXT_ENDS,
             ],
             addKeymap:       false,
         });
