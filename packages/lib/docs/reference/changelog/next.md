@@ -1963,6 +1963,17 @@ page resets to empty.
   folding and Enter follow it: Enter after an item in a quote opened by `>`
   and a tab now continues the list. No consumer action is needed.
 
+- **`CodeEditor`'s `markdown` language continues lists and quotes after a
+  tab.** Enter and Backspace measured a line's markers in characters and
+  took a space but not a tab after them. After `-`, a tab and `a`, Enter
+  added no new item; in `> - a` over `>`, a tab and `b`, it started the new
+  line outside the quote; Backspace after `-` and a tab deleted the tab and
+  left the marker. They now count a tab to Markdown's tab stops, as the
+  `Markdown` viewer reads it, and do what they do on the same lines written
+  with spaces. A tab the key leaves alone stays a tab, also when the key
+  moves it to a column where it spans the same width. `MarkdownEditor`'s
+  source mode gets the same keys. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation

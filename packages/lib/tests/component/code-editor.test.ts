@@ -16,20 +16,21 @@ import { DOM } from '~/core/DOM';
 import { Animation } from '~/core/Animation';
 import { installTestDOM, setQuerySelectorResult, makeEvent } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
-import { EditorState, EditorSelection, Prec, StateEffect } from '@codemirror/state';
-import type { Extension, Transaction, TransactionSpec } from '@codemirror/state';
+import { EditorState, EditorSelection, Prec, StateEffect, Transaction } from '@codemirror/state';
+import type { Extension, TransactionSpec } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { codeFolding, foldable, foldEffect, foldedRanges, ensureSyntaxTree, syntaxTree, indentOnInput, indentUnit, language as languageFacet } from '@codemirror/language';
 import { SearchQuery, getSearchQuery, setSearchQuery } from '@codemirror/search';
 import { CompletionContext, closeBrackets, completionKeymap, deleteBracketPair } from '@codemirror/autocomplete';
-import { deleteCharBackward, indentWithTab } from '@codemirror/commands';
+import { deleteCharBackward, history, indentWithTab, undo, undoDepth } from '@codemirror/commands';
 import { lintKeymap } from '@codemirror/lint';
 import { basicSetup } from 'codemirror';
 import type { CompletionSource } from '@codemirror/autocomplete';
 import { json } from '@codemirror/lang-json';
-import { commonmarkLanguage } from '@codemirror/lang-markdown';
+import { commonmarkLanguage, deleteMarkupBackward } from '@codemirror/lang-markdown';
 import { collectSyntaxErrors } from '~/component/editor/syntaxDiagnostics';
 import { tabDocuments } from './markdown-roundtrip/tabDocuments';
+import { expandPrefixTabs } from '~/component/display/markdownTabs';
 import type { SqlLanguageOptions } from '~/component/editor/languages';
 import type { MenuItemConfig } from '~/component/container/MenuItem';
 import { Notification } from '~/overlay/Notification';
@@ -3736,8 +3737,9 @@ describe('built-in markdown language typing', () => {
 
     // A tab reaches the next stop from wherever it starts, so one that starts off a stop is narrower
     // than four columns: after one space it is three wide, and after a marker at column 0 too. M36
-    // copies its tab with the rest of the line's start. M37 has no HTML below the caret, so its column
-    // is counted, and it alone tells that from a tab counted as four columns wherever it stands.
+    // copies its tab with the rest of the line's start. M37 has no HTML below the caret, so Markdown's
+    // own Enter continues the list, the new marker's spaces reaching the column the tab reaches; it
+    // alone tells that from a tab counted as four columns wherever it stands.
     for (const tabSize of [2, 4, 8]) {
         it(`M36: Enter on a marker line indented by a space and a tab indents to the item content with tabSize ${tabSize}`, async () => {
             // The space is column 0, the tab runs to column 4, the marker and its space to column 6.
@@ -3746,9 +3748,9 @@ describe('built-in markdown language typing', () => {
             expect(await typed('markdown', start, '\n', tabSize)).toBe('- a\n \t- <div>\n \t  |\n      x\n      </div>');
         });
 
-        it(`M37: Enter on a marker line whose marker is followed by a tab indents to the item content with tabSize ${tabSize}`, async () => {
+        it(`M37: Enter on a marker line whose marker is followed by a tab continues the list with tabSize ${tabSize}`, async () => {
             // The marker is column 0 and the tab runs from column 1 to column 4, where the content starts.
-            expect(await typed('markdown', '-\t<div>|', '\n', tabSize)).toBe('-\t<div>\n    |');
+            expect(await typed('markdown', '-\t<div>|', '\n', tabSize)).toBe('-\t<div>\n-   |');
         });
     }
 
@@ -3839,7 +3841,7 @@ describe('built-in markdown language typing', () => {
         return folds;
     }
 
-    /** Markdown's tab stop, in columns (CommonMark §2.2), as `MARKDOWN_TAB_STOP` in `languages.ts`. */
+    /** Markdown's tab stop, in columns (CommonMark §2.2), as `MARKDOWN_TAB_STOP` in `markdownTabs.ts`. */
     const MARKDOWN_TAB_STOP = 4;
 
     /**
@@ -3974,30 +3976,29 @@ describe('built-in markdown language typing', () => {
     });
 
     it("TAB29: Backspace after an empty item's marker in a quote removes the marker", async () => {
-        expect(await typed('markdown', '>\t- |', '\b')).toBe('>\t|');
+        expect(await typed('markdown', '>\t- |', '\b')).toBe('> |');
     });
 
     it("TAB30: Backspace after an empty nested item's marker in a quote removes the marker", async () => {
         expect(await typed('markdown', '> - a\n>\t- |', '\b')).toBe('> - a\n>\t|');
     });
 
-    // TAB31 and TAB32: @codemirror/lang-markdown's own Enter takes a space after > but not a tab. Its result is pinned, not fixed.
-    it("TAB31: pinned: Enter on an item's later paragraph after a tab leaves the quote", async () => {
-        expect(await typed('markdown', '> - a\n>\n>\tb|', '\n')).toBe('> - a\n>\n>\tb\n|');
+    it("TAB31: Enter on an item's later paragraph after a tab stays in the quote and the item", async () => {
+        expect(await typed('markdown', '> - a\n>\n>\tb|', '\n')).toBe('> - a\n>\n>\tb\n>   |');
     });
 
-    it('TAB32: pinned: Enter on an empty nested item after a tab does nothing', async () => {
-        expect(await typed('markdown', '> - a\n>\t- |', '\n')).toBe('> - a\n>\t- |');
+    it('TAB32: Enter on an empty nested item after a tab lifts it to the outer list', async () => {
+        expect(await typed('markdown', '> - a\n>\t- |', '\n')).toBe('> - a\n> - |');
     });
 
-    // TAB35 and TAB36: @codemirror/lang-markdown's character-based Enter now reads the corrected tree, and on these
-    // shapes its result differs from the one the stock tree gave. Pinned, not fixed.
-    it("TAB35: pinned: Enter on a line of text under an item opened after a quote's tab starts a quote line", async () => {
-        expect(await typed('markdown', '   >\t-\tx\n\t---|', '\n')).toBe('   >\t-\tx\n\t---\n>|');
+    // TAB35 and TAB36: @codemirror/lang-markdown's Enter declines on both, as it does on the same documents written
+    // with spaces, so the editor's plain Enter keeps the line's indentation.
+    it("TAB35: Enter on a line of text under an item opened after a quote's tab keeps the line's indentation", async () => {
+        expect(await typed('markdown', '   >\t-\tx\n\t---|', '\n')).toBe('   >\t-\tx\n\t---\n    |');
     });
 
-    it('TAB36: pinned: Enter after a task item under a quote opened by a tab', async () => {
-        expect(await typed('markdown', '   >\t- x\n    1. [ ] |', '\n')).toBe('   >\t- x\n    1. [ ]\n>      |');
+    it("TAB36: Enter after a task item under a quote opened by a tab keeps the line's indentation", async () => {
+        expect(await typed('markdown', '   >\t- x\n    1. [ ] |', '\n')).toBe('   >\t- x\n    1. [ ] \n    |');
     });
 
     // Green on the base and after this plan. It checks that this language's parser changes no other: the stock
@@ -4700,6 +4701,281 @@ describe('built-in markdown language typing', () => {
     it('RO6: Enter and Backspace between brackets change nothing in a read-only javascript editor', async () => {
         expect(await typedReadOnly('javascript', 'a(|)', '\n')).toBe('a(|)');
         expect(await typedReadOnly('javascript', 'a(|)', '\b')).toBe('a(|)');
+    });
+
+    // TS1–TS19: Markdown's own Enter and Backspace read a tab in a line's container prefix as the spaces to its
+    // stop, so they do what they do on the same document written with spaces (markdown-source-mode-enter-after-quote-tab).
+
+    /**
+     * Writes each line's container prefix as the viewer reads it: every tab as the spaces to its stop.
+     *
+     * @param doc - The document.
+     * @returns The document with tab-free container prefixes.
+     */
+    function prefixSpacesForm(doc: string): string {
+        return expandPrefixTabs(doc).text;
+    }
+
+    for (const tabSize of [2, 4, 8]) {
+        it(`TS1: Enter after an item whose marker a tab follows starts the next item with tabSize ${tabSize}`, async () => {
+            expect(await typed('markdown', '-\ta|', '\n', tabSize)).toBe('-\ta\n-   |');
+        });
+    }
+
+    it('TS2: Enter after an ordered item whose number a tab follows numbers the next', async () => {
+        expect(await typed('markdown', '1.\ta|', '\n')).toBe('1.\ta\n2.  |');
+    });
+
+    it('TS3: Enter inside the text of an item whose marker a tab follows starts the next item', async () => {
+        expect(await typed('markdown', '-\ta|b', '\n')).toBe('-\ta\n-   |b');
+    });
+
+    it('TS4: Enter after a task item whose checkbox a tab follows starts the next task', async () => {
+        expect(await typed('markdown', '- [ ]\ttask|', '\n')).toBe('- [ ]\ttask\n- [ ]   |');
+    });
+
+    it('TS5: Enter renumbers the items below and keeps their tabs', async () => {
+        expect(await typed('markdown', '1.\ta|\n2.\tb', '\n')).toBe('1.\ta\n2.  |\n3.\tb');
+    });
+
+    it('TS6: Enter after a loose item whose marker a tab follows keeps the list loose', async () => {
+        expect(await typed('markdown', '-\ta\n\n-\tb|', '\n')).toBe('-\ta\n\n-\tb\n\n-   |');
+    });
+
+    it('TS7: Enter on an empty second item after a tab loosens the list, and a second Enter leaves it', async () => {
+        expect(await typed('markdown', '-\ta\n-\t|', '\n')).toBe('-\ta\n\n-\t|');
+        expect(await typed('markdown', '-\ta\n-\t|', '\n\n')).toBe('-\ta\n\n|');
+    });
+
+    it('TS8: Enter in a quote inside an item whose marker a tab follows stays in the item', async () => {
+        expect(await typed('markdown', '-\t> a|', '\n')).toBe('-\t> a\n    > |');
+    });
+
+    it('TS9: Enter after an item in a quote, with a tab after the quote marker and after the item marker', async () => {
+        expect(await typed('markdown', '>\t-\ta|', '\n')).toBe('>\t-\ta\n>   -   |');
+    });
+
+    it('TS10: Enter after an item in a quote whose marker a space and a tab follow', async () => {
+        expect(await typed('markdown', '> \t- a|', '\n')).toBe('> \t- a\n>   - |');
+    });
+
+    it("TS11: Enter on a tab-indented paragraph of an item starts the new line at the item's content", async () => {
+        expect(await typed('markdown', '- a\n\n\tb|', '\n')).toBe('- a\n\n\tb\n  |');
+    });
+
+    it('TS12: Backspace after a marker that a tab follows removes the marker', async () => {
+        expect(await typed('markdown', '-\t|', '\b')).toBe('|');
+        expect(await typed('markdown', '1.\t|', '\b')).toBe('|');
+    });
+
+    it("TS13: Backspace after a second item's marker that a tab follows turns the marker into indentation", async () => {
+        expect(await typed('markdown', '- a\n-\t|', '\b')).toBe('- a\n  |');
+    });
+
+    it('TS14: Backspace after a quote marker that a tab follows removes the marker', async () => {
+        expect(await typed('markdown', '>\t|', '\b')).toBe('|');
+    });
+
+    it('TS15: Backspace after an item marker and a tab in a quote opened by a tab removes the item marker', async () => {
+        expect(await typed('markdown', '>\t-\t|', '\b')).toBe('> |');
+    });
+
+    it('TS16: Enter with a caret after each of two items whose markers tabs follow starts two items', async () => {
+        expect(await enterAtTwoCarets('-\ta\n-\tb', 3, 7)).toBe('-\ta\n-   \n-\tb\n-   ');
+    });
+
+    it('TS17: Enter after an item whose marker a tab follows changes nothing in a read-only editor', async () => {
+        expect(await typedReadOnly('markdown', '-\ta|', '\n')).toBe('-\ta|');
+    });
+
+    it('TS18: Enter and Backspace in a quoted list without a tab are unchanged', async () => {
+        expect(await typed('markdown', '> - a|', '\n')).toBe('> - a\n> - |');
+        expect(await typed('markdown', '> - |', '\b')).toBe('> |');
+    });
+
+    // 3,000 draws give 2,932 documents and 9,285 presses. On the base, 1,329 of them end otherwise.
+    it('TS19: on every drawn tab document, Enter and Backspace do what they do with its container prefixes written as spaces', async () => {
+        const differing: string[] = [];
+
+        for (const doc of tabDocuments(3_000)) {
+            const lines = doc.split('\n');
+            const spacedLines = prefixSpacesForm(doc).split('\n');
+
+            for (let index = 0; index < lines.length; index++) {
+                const line = lines[index]!;
+                const isEnterLine = line !== '' && !/[ \t]$/.test(line);
+                const isBackspaceLine = /[-*+>.)] $/.test(line);
+                const keys = isEnterLine ? '\nx' : isBackspaceLine ? '\bx' : null;
+
+                if (keys === null) {
+                    continue;
+                }
+
+                const withCaret = (all: string[]): string => all.map((text, at) => (at === index ? text + '|' : text)).join('\n');
+                const result = await typed('markdown', withCaret(lines), keys);
+                const spacedResult = await typed('markdown', withCaret(spacedLines), keys);
+                const same = prefixSpacesForm(result.replace('|', '')) === spacedResult.replace('|', '');
+
+                if (!same) {
+                    differing.push(JSON.stringify([doc, index, keys]));
+                }
+            }
+        }
+
+        expect(differing).toEqual([]);
+    });
+
+    // 150 draws, the caret at every position of every line that does not end in whitespace, Enter and Backspace.
+    // Two kinds of press are left out, because the two forms differ there whatever this module does:
+    // Backspace where Markdown's own Backspace declines on the spaces form (the editor's plain one then deletes a
+    // tab as one character), and Enter where the library's prefix-copying Enter handles the spaces form but not the
+    // tab form (it starts from whole characters, and a caret in a tab's columns has none).
+
+    /**
+     * Finds which key binding handles a key, without running its effect on the document.
+     *
+     * @param state - The state the key is pressed in.
+     * @param key - The key.
+     * @returns The binding group and the binding's place in it, such as `0:1`, or `none`.
+     */
+    function handlerOf(state: EditorState, key: 'Enter' | 'Backspace'): string {
+        const view = { state, dispatch: (): void => undefined } as unknown as EditorView;
+        let group = 0;
+
+        for (const bindings of state.facet(keymap)) {
+            for (let index = 0; index < bindings.length; index++) {
+                const binding = bindings[index]!;
+                const handled = binding.key === key && binding.run !== undefined && binding.run(view);
+
+                if (handled) {
+                    return `${group}:${index}`;
+                }
+            }
+
+            group++;
+        }
+
+        return 'none';
+    }
+
+    // A tab whose column an edit moved is written as spaces, so the result keeps the blocks the spaces form has.
+    it('TS20: with the caret at any position of a drawn tab document, Enter and Backspace give the blocks of the spaces form', async () => {
+        const differing: string[] = [];
+        // The binding that copies the prefix of an indented code line is the library's prefix-copying Enter.
+        const prefixCopyingEnter = handlerOf(settle(await buildTypingState('markdown', '    code|')), 'Enter');
+
+        for (const doc of tabDocuments(150)) {
+            const lines = doc.split('\n');
+            const expansion = expandPrefixTabs(doc);
+            let lineStart = 0;
+
+            for (const line of lines) {
+                for (let column = 0; column <= line.length && !/[ \t]$/.test(line); column++) {
+                    const spacedCaret = expansion.offsets.indexOf(lineStart + column);
+
+                    for (const key of ['\n', '\b']) {
+                        const spacedStart = expansion.text.slice(0, spacedCaret) + '|' + expansion.text.slice(spacedCaret);
+                        const tabState = settle(await buildTypingState('markdown', doc.slice(0, lineStart + column) + '|' + doc.slice(lineStart + column)));
+                        const spacedState = settle(await buildTypingState('markdown', spacedStart));
+                        const markdownBackspaceDeclines = key === '\b' && !deleteMarkupBackward({ state: spacedState, dispatch: () => undefined });
+                        const copiesPrefix = key === '\n' && handlerOf(spacedState, 'Enter') === prefixCopyingEnter && handlerOf(tabState, 'Enter') !== prefixCopyingEnter;
+
+                        if (markdownBackspaceDeclines || copiesPrefix) {
+                            continue;
+                        }
+
+                        const result = await typed('markdown', doc.slice(0, lineStart + column) + '|' + doc.slice(lineStart + column), key);
+                        const spacedResult = await typed('markdown', spacedStart, key);
+                        const same = await languageOutline(result.replace('|', '')) === await languageOutline(spacedResult.replace('|', ''));
+
+                        if (!same) {
+                            differing.push(JSON.stringify([doc, lineStart + column, key]));
+                        }
+                    }
+                }
+
+                lineStart += line.length + 1;
+            }
+        }
+
+        expect(differing).toEqual([]);
+    });
+
+    it('TS21: Enter after an item whose marker a tab follows is one undo step', async () => {
+        const start = (await buildTypingState('markdown', '-\ta|')).update({ effects: StateEffect.appendConfig.of(history()) }).state;
+        const pressed = pressKey(settle(start), 'Enter');
+        let undone = pressed;
+
+        undo({ state: pressed, dispatch: (transaction) => { undone = transaction.state; } });
+
+        expect(undoDepth(pressed)).toBe(1);
+        expect(undone.doc.toString()).toBe('-\ta');
+    });
+
+    it('TS22: Enter after an item whose marker a tab follows keeps the key press as the user event', async () => {
+        const events: (string | undefined)[] = [];
+        const record = EditorState.transactionFilter.of((transaction) => {
+            events.push(transaction.annotation(Transaction.userEvent));
+
+            return transaction;
+        });
+        const start = (await buildTypingState('markdown', '-\ta|')).update({ effects: StateEffect.appendConfig.of(record) }).state;
+
+        const settled = settle(start);
+
+        events.length = 0;
+        pressKey(settled, 'Enter');
+
+        expect(events).toEqual(['input']);
+    });
+
+    it('TS23: Backspace after a marker that a tab follows changes nothing in a read-only editor', async () => {
+        expect(await typedReadOnly('markdown', '-\t|', '\b')).toBe('-\t|');
+    });
+
+    it('TS24: Enter after the second quote marker, before a tab and a heading, keeps the heading', async () => {
+        expect(await typed('markdown', '> >|\t# h', '\n')).toBe('> >\n> > | # h');
+    });
+
+    it('TS25: Enter in front of whitespace that ends a line writes that whitespace as one space', async () => {
+        expect(await typed('markdown', ' >|\t', '\n')).toBe(' >\n> | ');
+    });
+
+    it('TS26: Enter keeps the whitespace that ends a line only where it stood', async () => {
+        const start = '\n\t>\t</pre>\n 1. [ ]\t\n\n>\t#\th\n';
+
+        expect(await typed('markdown', start.slice(0, 14) + '|' + start.slice(14), '\n')).toBe('\n\t>\t</pre>\n 1.\n 2. | [ ] \n\n>\t#\th\n');
+    });
+
+    /**
+     * Types `keys` in a Markdown document whose state carries one more extension.
+     *
+     * @param startDoc - The document before typing, with the caret as `buildTypingState` reads it.
+     * @param extension - The extension to add.
+     * @param keys - The keys to type (see `typeText`).
+     * @returns The resulting document with `|` at the caret.
+     */
+    async function typedWith(startDoc: string, extension: Extension, keys: string): Promise<string> {
+        const state = (await buildTypingState('markdown', startDoc)).update({ effects: StateEffect.appendConfig.of(extension) }).state;
+
+        return show(typeText(state, keys));
+    }
+
+    it('TS27: Enter after an item whose marker a tab follows works under a change filter that refuses unannotated changes', async () => {
+        const refusing = EditorState.changeFilter.of((transaction) => transaction.annotation(Transaction.userEvent) !== undefined);
+
+        expect(await typedWith('-\ta|', refusing, '\n')).toBe('-\ta\n-   |');
+    });
+
+    it('TS28: a transaction filter of the consumer runs once on Enter after an item whose marker a tab follows', async () => {
+        const bang = EditorState.transactionFilter.of((transaction): Transaction | TransactionSpec[] => {
+            const isInput = transaction.docChanged && transaction.isUserEvent('input');
+
+            return isInput ? [transaction, { changes: { from: transaction.newDoc.length, insert: '!' }, sequential: true }] : transaction;
+        });
+
+        expect(await typedWith('-\ta|', bang, '\n')).toBe('-\ta\n-   |!');
+        expect(await typedWith('- a|', bang, '\n')).toBe('- a\n- |!');
     });
 });
 

@@ -4,10 +4,13 @@ import type { Token } from "marked";
 
 /**
  * The width of Markdown's tab stops, in columns: a tab advances to the next
- * multiple of four (CommonMark §2.2), whatever width an editor shows it with.
- * `editor/languages.ts` holds the same number for source mode's Enter rule.
+ * multiple of four (CommonMark §2.2), whatever width an editor shows it with,
+ * so the columns Markdown reads its indentation by are counted with this, not
+ * with an editor's `tabSize`.
+ *
+ * @internal Shared with the editor's Markdown language, not part of the public API surface.
  */
-const MARKDOWN_TAB_STOP = 4;
+export const MARKDOWN_TAB_STOP = 4;
 
 /**
  * One step of a line's container prefix: a run of spaces and tabs, a quote
@@ -113,35 +116,90 @@ export interface TabExpansion {
 }
 
 /**
+ * One replacement in a line, by character index.
+ *
+ * @internal Returned by prefixTabEdits, not part of the public API surface.
+ */
+export interface PrefixTabEdit {
+    /** Where the replaced text starts. */
+    readonly from:   number;
+    /** Where the replaced text ends. */
+    readonly to:     number;
+    /** The spaces that replace it. */
+    readonly insert: string;
+}
+
+/**
+ * Lists the replacements that write a line's container prefix without tabs:
+ * each tab of the prefix becomes the spaces that reach its tab stop, counted
+ * from the line's start, and whitespace that holds a tab and ends the line
+ * after a marker becomes one space; its width means nothing there, and two
+ * or more spaces would end a paragraph line in a hard line break. In `>`,
+ * two tabs and `a`, the first tab becomes three spaces and the second four.
+ * This is the one statement of the tab rule: the expansion of a text and the
+ * editor's Enter and Backspace both apply it.
+ *
+ * @internal Shared with the editor's Markdown language, not part of the public API surface.
+ *
+ * @param line - One line, without its line end.
+ * @returns The replacements, in line order and not overlapping; empty when the prefix holds no tab.
+ */
+export function prefixTabEdits(line: string): PrefixTabEdit[] {
+    const end = prefixEnd(line);
+    const edits: PrefixTabEdit[] = [];
+    let column = 0;
+
+    for (let index = 0; index < end; index += 1) {
+        const isTab = line[index] === "\t";
+        const width = isTab ? tabWidthAt(column) : 1;
+
+        if (isTab) {
+            edits.push({ from: index, to: index + 1, insert: " ".repeat(width) });
+        }
+
+        column += width;
+    }
+
+    const endsInTab = end > 0 && TABBED_LINE_END.test(line.slice(end));
+
+    if (endsInTab) {
+        edits.push({ from: end, to: line.length, insert: " " });
+    }
+
+    return edits;
+}
+
+/**
  * Writes one line's container prefix with its tabs as spaces, recording where
  * each character of the result came from.
  *
  * @param line - One line, without its line end.
- * @param end - Where its prefix ends.
  * @param lineStart - The line's offset in the source.
  * @param offsets - Receives the source offset of each character of the result.
  * @returns The line with a tab-free container prefix.
  */
-function expandLine(line: string, end: number, lineStart: number, offsets: number[]): string {
-    const rest = line.slice(end);
-    const tail = end > 0 && TABBED_LINE_END.test(rest) ? " " : rest;
-    let prefix = "";
+function expandLine(line: string, lineStart: number, offsets: number[]): string {
+    let expanded = "";
+    let copied = 0;
 
-    for (let at = 0; at < end; at += 1) {
-        const width = line[at] === "\t" ? tabWidthAt(prefix.length) : 1;
-
-        prefix += line[at] === "\t" ? " ".repeat(width) : line[at];
-
-        for (let step = 0; step < width; step += 1) {
+    for (const edit of prefixTabEdits(line)) {
+        for (let at = copied; at < edit.from; at += 1) {
             offsets.push(lineStart + at);
         }
+
+        for (let step = 0; step < edit.insert.length; step += 1) {
+            offsets.push(lineStart + edit.from);
+        }
+
+        expanded += line.slice(copied, edit.from) + edit.insert;
+        copied = edit.to;
     }
 
-    for (let at = 0; at < tail.length; at += 1) {
-        offsets.push(lineStart + end + at);
+    for (let at = copied; at < line.length; at += 1) {
+        offsets.push(lineStart + at);
     }
 
-    return prefix + tail;
+    return expanded + line.slice(copied);
 }
 
 /**
@@ -161,17 +219,16 @@ function expandLine(line: string, end: number, lineStart: number, offsets: numbe
  */
 export function expandPrefixTabs(text: string): TabExpansion {
     const source = text.split("\n");
-    const ends = containerPrefixEnds(source);
     const lines: string[] = [];
     const offsets: number[] = [];
     let lineStart = 0;
 
-    source.forEach((line, index) => {
+    source.forEach((line) => {
         if (lineStart > 0) {
             offsets.push(lineStart - 1);
         }
 
-        lines.push(expandLine(line, ends[index]!, lineStart, offsets));
+        lines.push(expandLine(line, lineStart, offsets));
         lineStart += line.length + 1;
     });
 
