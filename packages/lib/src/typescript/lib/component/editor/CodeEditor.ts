@@ -95,6 +95,16 @@ export interface CodeEditorSelection {
     characterCount: number;
     /** Number of lines the primary selection spans. 1 for a selection confined to a single line, including a collapsed one. */
     lineCount: number;
+    /**
+     * 0-based document offset of the selection's start — its normalized lower
+     * bound, so a selection dragged backward reports the same value as one
+     * dragged forward. The same raw position
+     * {@link CodeEditorCursorPosition.offset} reports, usable directly with
+     * `getValue().slice(from, to)` or as a CodeMirror selection anchor.
+     */
+    from: number;
+    /** 0-based document offset of the selection's end (exclusive). Equal to {@link from} for a collapsed selection. */
+    to: number;
 }
 
 /**
@@ -163,8 +173,10 @@ export interface CodeEditorRevealOptions {
  *   editor's own computed height changed (payload {@link CodeEditorHeightChange}).
  * - `"cursorchange"` — the primary caret moved to a different line, column, or
  *   document offset (payload {@link CodeEditorCursorPosition}).
- * - `"selectionchange"` — the primary selection's extent (its character count
- *   or line count) changed (payload {@link CodeEditorSelection}).
+ * - `"selectionchange"` — the primary selection changed: its character count,
+ *   line count, or either of its `from` / `to` document offsets — so a
+ *   same-length selection moved elsewhere fires too (payload
+ *   {@link CodeEditorSelection}).
  */
 type CodeEditorEvent = "change" | "readonlyedit" | "heightchange" | "cursorchange" | "selectionchange";
 
@@ -639,10 +651,11 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * `_lastCursorPosition` seeds, and for the same reason: `mount()` creates its
      * `EditorState` with no `selection` spec, so a freshly mounted view's
      * selection really is empty. Compared against on every update so the event
-     * fires once per real change to the character or line count, never per
+     * fires once per real change to any of its four fields — the character
+     * count, the line count, or the `from` / `to` offsets — never per
      * transaction.
      */
-    private _lastSelection: CodeEditorSelection = { characterCount: 0, lineCount: 1 };
+    private _lastSelection: CodeEditorSelection = { characterCount: 0, lineCount: 1, from: 0, to: 0 };
 
     // Definite-assignment, not `declare`: no cascade-dispatched setter writes
     // it, and it is assigned in the constructor body — mirrors MarkdownViewer._controls.
@@ -761,6 +774,59 @@ class CodeEditor extends Component<CodeEditorOptions> {
                 changes: { from: 0, to: this._view.state.doc.length, insert: value },
             });
         }
+
+        return this;
+    }
+
+    /**
+     * Replaces the text in `[from, to)` with `insert`, and optionally leaves
+     * `selection` behind — both in one transaction, so a caller applying an edit
+     * plus its resulting selection costs the user exactly one undo step. Both
+     * the replaced range and the resulting selection are clamped against the
+     * live document, like {@link CodeEditor.revealRange}, so offsets computed
+     * from a copy of the text that has since changed land at the nearest valid
+     * position rather than throwing.
+     *
+     * Refused while the editor is read-only: nothing changes, and the rejection
+     * surfaces through the `"readonlyedit"` event and the read-only flash, the
+     * same feedback a rejected keystroke gets. Before the view is mounted only
+     * the cached value is updated, so {@link CodeEditor.getValue} reports the
+     * result but no `"change"` fires — the same offline contract
+     * {@link CodeEditor.setValue} has.
+     *
+     * @param from - 0-based start of the range to replace.
+     * @param to - 0-based end (exclusive) of that range.
+     * @param insert - The replacement text.
+     * @param selection - Where to leave the selection, as offsets into the
+     *   post-edit document; omitted maps the current selection through the change.
+     * @returns This component, for method chaining.
+     */
+    replaceRange(from: number, to: number, insert: string, selection?: { from: number; to: number }): this {
+        if (this.getReadOnly()) {
+            this.signalReadOnlyEdit();
+
+            return this;
+        }
+
+        const text  = this.getValue();
+        const start = Math.max(0, Math.min(from, text.length));
+        const end   = Math.max(start, Math.min(to, text.length));
+        const next  = text.slice(0, start) + insert + text.slice(end);
+
+        this._options.value = next;
+
+        if (!this._view) {
+            return this;
+        }
+
+        this._view.dispatch({
+            changes:        { from: start, to: end, insert },
+            selection:      selection === undefined ? undefined : {
+                anchor: Math.max(0, Math.min(selection.from, next.length)),
+                head:   Math.max(0, Math.min(selection.to,   next.length)),
+            },
+            scrollIntoView: true,
+        });
 
         return this;
     }
@@ -1262,7 +1328,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
             return this.readSelection(this._view.state);
         }
 
-        return { characterCount: 0, lineCount: 1 };
+        return { characterCount: 0, lineCount: 1, from: 0, to: 0 };
     }
 
     /**
@@ -1616,14 +1682,16 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
-     * Derives the primary selection's character count and line count from a
-     * CodeMirror state. Uses `main.from`/`main.to` — the range's normalized
-     * bounds — rather than `anchor`/`head`, so a selection dragged backward
-     * (head before anchor) still reports a non-negative count. `doc.lineAt`
-     * already numbers lines from 1.
+     * Derives the primary selection's character count, line count and
+     * `from` / `to` offsets from a CodeMirror state. Uses `main.from`/`main.to`
+     * — the range's normalized bounds — rather than `anchor`/`head`, so a
+     * selection dragged backward (head before anchor) still reports a
+     * non-negative count and `from <= to`. `doc.lineAt` already numbers lines
+     * from 1.
      *
      * @param state - The state to read the selection and document from.
-     * @returns The primary selection's character count and the number of lines it spans.
+     * @returns The primary selection's character count, the number of lines it
+     *   spans, and its normalized `from` / `to` offsets.
      */
     private readSelection(state: EditorState): CodeEditorSelection {
         const { from, to } = state.selection.main;
@@ -1631,14 +1699,22 @@ class CodeEditor extends Component<CodeEditorOptions> {
         return {
             characterCount: to - from,
             lineCount: state.doc.lineAt(to).number - state.doc.lineAt(from).number + 1,
+            from,
+            to,
         };
     }
 
     /**
-     * Emits `"selectionchange"` when the primary selection's character count or
-     * line count differs from the last one emitted, and does nothing otherwise.
-     * Takes an `EditorState`, mirroring `onCursorChange`, so the offline harness
-     * — where no `EditorView` ever mounts — can drive it directly.
+     * Emits `"selectionchange"` when the primary selection's character count,
+     * line count, or either document offset differs from the last one
+     * emitted, and does nothing otherwise. Takes an `EditorState`, mirroring
+     * `onCursorChange`, so the offline harness — where no `EditorView` ever
+     * mounts — can drive it directly.
+     *
+     * Comparing `from`/`to` too, not just the two counts, is what makes a
+     * same-length selection dragged to a different place in the document emit:
+     * moving a two-character selection from `[0, 2)` to `[3, 5)` leaves both
+     * counts unchanged, but the range it names is not the one last reported.
      *
      * @param state - The state carrying the selection to report.
      */
@@ -1646,7 +1722,9 @@ class CodeEditor extends Component<CodeEditorOptions> {
         const selection = this.readSelection(state);
 
         if (selection.characterCount === this._lastSelection.characterCount
-            && selection.lineCount === this._lastSelection.lineCount) {
+            && selection.lineCount === this._lastSelection.lineCount
+            && selection.from === this._lastSelection.from
+            && selection.to === this._lastSelection.to) {
             return;
         }
 
@@ -1693,10 +1771,13 @@ class CodeEditor extends Component<CodeEditorOptions> {
     on(event: "cursorchange", listener: (payload: CodeEditorCursorPosition) => void): this;
     /**
      * Registers a listener for the `"selectionchange"` event, fired when the
-     * primary selection's character count or line count changes.
+     * primary selection's character count, line count, or `from` / `to`
+     * document offsets change — so a same-length selection moved elsewhere
+     * fires too.
      *
      * @param event - Must be `"selectionchange"`.
-     * @param listener - Invoked with the selection's new character and line counts.
+     * @param listener - Invoked with the selection's new character and line
+     *   counts and its `from` / `to` offsets.
      * @returns This component, for method chaining.
      */
     on(event: "selectionchange", listener: (payload: CodeEditorSelection) => void): this;

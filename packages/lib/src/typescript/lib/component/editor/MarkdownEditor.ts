@@ -54,6 +54,12 @@ import {
 } from "~/component/editor/markdownBlockNode.js";
 import { $createMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { resolveImageSpec } from "~/component/display/markdownAttributes.js";
+import {
+    BOLD_SOURCE, ITALIC_SOURCE, UNDERLINE_SOURCE, STRIKETHROUGH_SOURCE, INLINE_CODE_SOURCE,
+    REMOVE_LINK_SOURCE, CLEAR_FORMAT_SOURCE, linkSource, readSourceSelectionState,
+    FENCED_CODE_SOURCE, blockPrefixSource, listSource, paragraphAroundBlockSource, imageSource, tableSource,
+} from "~/component/editor/markdownSourceEdits.js";
+import type { MarkdownSourceTransform } from "~/component/editor/markdownSourceEdits.js";
 
 /**
  * The coalescing window (ms) for the undo/redo history: edits within this gap
@@ -196,6 +202,45 @@ function createBlockNode(type: MarkdownBlockType): ElementNode {
         case "paragraph": return $createParagraphNode();
         default:      return $createHeadingNode(type satisfies HeadingTagType);
     }
+}
+
+/**
+ * Builds the source-mode transform for a {@link MarkdownEditor.setBlockType}
+ * call: `"code"` fences the selection, and every other type strips whatever
+ * block prefix is there and writes its own — `""` for `"paragraph"`, `"> "`
+ * for `"quote"`, `"#".repeat(level) + " "` for `h1`–`h6`.
+ *
+ * @param type - The requested block type.
+ * @returns The source-mode transform.
+ */
+function sourceTransformForBlockType(type: MarkdownBlockType): MarkdownSourceTransform {
+    switch (type) {
+        case "code":      return FENCED_CODE_SOURCE;
+        case "paragraph": return blockPrefixSource("");
+        case "quote":     return blockPrefixSource("> ");
+        default:          return blockPrefixSource("#".repeat(Number(type.slice(1))) + " ");
+    }
+}
+
+/**
+ * Builds the `{ width?, height? }` attribute record `insertImage` passes to
+ * `resolveImageSpec` / `imageSource`, from its own `options` parameter.
+ *
+ * @param options - The caller-supplied `width`/`height`, if any.
+ * @returns The attribute record.
+ */
+function imageAttributes(options?: { width?: number; height?: number }): Record<string, string> {
+    const attributes: Record<string, string> = {};
+
+    if (options?.width !== undefined) {
+        attributes.width = String(options.width);
+    }
+
+    if (options?.height !== undefined) {
+        attributes.height = String(options.height);
+    }
+
+    return attributes;
 }
 
 /**
@@ -1168,7 +1213,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         this._codeEditor = new CodeEditor(this._options.value ?? "", {
             language:  "markdown",
             readOnly:  this._options.readOnly ?? false,
-            listeners: { change: (payload) => this.handleCodeChange(payload) },
+            listeners: {
+                change:          (payload) => this.handleCodeChange(payload),
+                selectionchange: () => this.updateSelectionState(),
+            },
         });
 
         this.addComponent(this._wysiwyg);
@@ -1212,11 +1260,54 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Whether the raw-Markdown source surface is the one currently shown. A
+     * command with no source-mode behaviour returns early on this, so it never
+     * mutates the Lexical document that surface is not showing.
+     *
+     * @returns `true` in `"source"` mode.
+     */
+    private isSourceMode(): boolean {
+        return this.getMode() === "source";
+    }
+
+    /**
+     * Applies `transform` to the source surface's raw Markdown when that surface
+     * is the one shown, and restores focus to it afterwards — a toolbar click or
+     * a menu row blurs the editing surface before the command runs. The range is
+     * read from the `CodeEditor`'s own state rather than the DOM selection, which
+     * a blurred surface no longer carries.
+     *
+     * @param transform - The edit rule to run against the raw Markdown.
+     * @returns `true` when the source surface handled the command, so the caller
+     *   must return without touching the Lexical document; `false` in WYSIWYG
+     *   mode, so the caller falls through to its Lexical path.
+     */
+    private editSource(transform: MarkdownSourceTransform): boolean {
+        if (!this.isSourceMode()) {
+            return false;
+        }
+
+        const selection = this._codeEditor.getSelection();
+        const edit = transform(this._codeEditor.getValue(), selection.from, selection.to);
+
+        if (edit !== null) {
+            this._codeEditor.replaceRange(edit.from, edit.to, edit.insert, edit.selection);
+        }
+
+        this._codeEditor.focus(true);
+
+        return true;
+    }
+
+    /**
      * Switches the active editing surface. Converts the current document across
      * the surfaces so no edits are lost — the outgoing surface's Markdown is read
      * (via {@link MarkdownEditor.getValue}) before the mode flips, then loaded
      * into the incoming surface — and swaps the visible [`Card`](/api/layout/classes/Card) child.
-     * No-op (no conversion, no `"change"`) when already in `mode`.
+     * No-op (no conversion, no `"change"`) when already in `mode`. Otherwise
+     * emits a fresh `"selectionstate"` for the newly-shown surface, so a
+     * toolbar's pressed/enabled state never keeps what the outgoing surface
+     * last reported.
      *
      * @param mode - The surface to show.
      * @returns This component, for method chaining.
@@ -1238,6 +1329,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 () => $convertFromMarkdownString(markdown, TRANSFORMERS), { discrete: true });
             this._card.setVisibleComponentId(this._wysiwyg.getId());
         }
+
+        this.updateSelectionState();
 
         return this;
     }
@@ -1266,15 +1359,47 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Reads the current selection's tracked state — the five inline-format
      * flags, table/column-alignment context, and enclosing-block
-     * alignment/column count — recomputed fresh from the live Lexical state
-     * on every call, mirroring `CodeEditor.getCursorPosition`'s own
+     * alignment/column count — recomputed fresh from whichever surface is
+     * active on every call, mirroring `CodeEditor.getCursorPosition`'s own
      * always-fresh contract; nothing is cached here beyond what
-     * `updateSelectionState` needs for its own emit-dedup.
+     * `updateSelectionState` needs for its own emit-dedup. In `"source"` mode
+     * the five format flags, `hasSelectedText` and `linkUrl` are derived from
+     * the raw Markdown, and `inTable`/`tableColumnAlignment`/`blockAlignment`/
+     * `columnCount` report the fields that mode has no notion of.
      *
-     * @returns The current {@link MarkdownEditorSelectionState}, or the
-     *   neutral default before the Lexical editor is built.
+     * @returns The current {@link MarkdownEditorSelectionState}: in
+     *   `"source"` mode the state read from the raw Markdown, which is always
+     *   available; in WYSIWYG mode the live Lexical state, or the neutral
+     *   default before the Lexical editor is built.
      */
     getSelectionState(): MarkdownEditorSelectionState {
+        return this.readActiveSelectionState();
+    }
+
+    /**
+     * Reads the tracked selection state from whichever surface is active: the
+     * raw Markdown in `"source"` mode, else the live Lexical state (or the
+     * neutral default before the Lexical editor is built). Source mode answers
+     * only what raw text can answer — the five format flags, whether there is
+     * something to act on, and any enclosing link — and reports the table and
+     * `:::` block fields as absent, which is what a consumer toolbar needs to
+     * disable the controls those fields drive.
+     *
+     * @returns The current {@link MarkdownEditorSelectionState}.
+     */
+    private readActiveSelectionState(): MarkdownEditorSelectionState {
+        if (this.isSourceMode()) {
+            const selection = this._codeEditor.getSelection();
+
+            return {
+                ...readSourceSelectionState(this._codeEditor.getValue(), selection.from, selection.to),
+                inTable:              false,
+                tableColumnAlignment: null,
+                blockAlignment:       null,
+                columnCount:          1,
+            };
+        }
+
         const editor = this._editor;
 
         return editor ? editor.read(() => $readSelectionState()) : NEUTRAL_SELECTION_STATE;
@@ -1381,9 +1506,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * caret to its enclosing word so the toggle has more than an empty span
      * to act on. No-op (without throwing) when there is no range selection.
      *
+     * In `"source"` mode, toggles the `**bold**` marker around the raw-Markdown
+     * selection instead; no-op where the markers would read back as literal text — straight after
+     * a backslash, or where Markdown's flanking rules stop them pairing
+     * (`**hello.**b`).
+     *
      * @returns This component, for method chaining.
      */
     toggleBold(): this {
+        const handledBySource = this.editSource(BOLD_SOURCE);
+
+        if (handledBySource) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
@@ -1396,9 +1530,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Toggles italic on the current selection, first expanding a collapsed
      * caret to its enclosing word. No-op without a range selection.
      *
+     * In `"source"` mode, toggles the `*italic*` marker around the raw-Markdown
+     * selection instead; no-op where the markers would read back as literal text — straight after
+     * a backslash, or where Markdown's flanking rules stop them pairing
+     * (`**hello.**b`).
+     *
      * @returns This component, for method chaining.
      */
     toggleItalic(): this {
+        const handledBySource = this.editSource(ITALIC_SOURCE);
+
+        if (handledBySource) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
@@ -1412,9 +1555,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * collapsed caret to its enclosing word or run. No-op without a range
      * selection.
      *
+     * In `"source"` mode, toggles the `` `code` `` marker around the
+     * raw-Markdown selection instead; refuses a selection that still contains
+     * a backtick, or one straight after a backslash, which would escape the
+     * opening backtick.
+     *
      * @returns This component, for method chaining.
      */
     toggleInlineCode(): this {
+        const handledBySource = this.editSource(INLINE_CODE_SOURCE);
+
+        if (handledBySource) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
@@ -1427,9 +1579,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Toggles strikethrough on the current selection, first expanding a
      * collapsed caret to its enclosing word. No-op without a range selection.
      *
+     * In `"source"` mode, toggles the `~~strikethrough~~` marker around the
+     * raw-Markdown selection instead; no-op where the markers would read back as literal text — straight after
+     * a backslash, or where Markdown's flanking rules stop them pairing
+     * (`**hello.**b`).
+     *
      * @returns This component, for method chaining.
      */
     toggleStrikethrough(): this {
+        const handledBySource = this.editSource(STRIKETHROUGH_SOURCE);
+
+        if (handledBySource) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
@@ -1442,9 +1603,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Toggles underline on the current selection, first expanding a collapsed
      * caret to its enclosing word. No-op without a range selection.
      *
+     * In `"source"` mode, toggles the dialect's `++underline++` marker around
+     * the raw-Markdown selection instead; no-op where the markers would read back as literal text — straight after
+     * a backslash, or where Markdown's flanking rules stop them pairing
+     * (`**hello.**b`).
+     *
      * @returns This component, for method chaining.
      */
     toggleUnderline(): this {
+        const handledBySource = this.editSource(UNDERLINE_SOURCE);
+
+        if (handledBySource) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
@@ -1466,6 +1636,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     private patchSelectionStyle(patch: Record<string, string | null>): this {
+        if (this.isSourceMode()) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -1493,6 +1665,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * collapsed caret first expands to its enclosing word. No-op without a
      * range selection, or when the selection sits inside a link.
      *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     *
      * @param color - A CSS colour value, or `null` to clear the override.
      * @returns This component, for method chaining.
      */
@@ -1504,6 +1678,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Sets (or clears, with `null`) the current selection's font family. A
      * collapsed caret first expands to its enclosing word. No-op without a
      * range selection, or when the selection sits inside a link.
+     *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
      *
      * @param family - A CSS `font-family` value, or `null` to clear the override.
      * @returns This component, for method chaining.
@@ -1517,6 +1693,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * collapsed caret first expands to its enclosing word. No-op without a
      * range selection, or when the selection sits inside a link.
      *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     *
      * @param size - A CSS font-size value (e.g. `"1.2em"`), or `null` to clear
      *   the override.
      * @returns This component, for method chaining.
@@ -1529,9 +1707,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Converts the selected blocks into an unordered (bulleted) list, or out of
      * one when already a list. No-op without a range selection.
      *
+     * In `"source"` mode, toggles the raw-Markdown selection's `- ` list
+     * marker instead.
+     *
      * @returns This component, for method chaining.
      */
     toggleUnorderedList(): this {
+        const handledBySource = this.editSource(listSource("unordered"));
+
+        if (handledBySource) { return this; }
+
         this.ensureEditor().dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
 
         return this;
@@ -1541,9 +1726,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Converts the selected blocks into an ordered (numbered) list, or out of
      * one when already a list. No-op without a range selection.
      *
+     * In `"source"` mode, toggles the raw-Markdown selection's `1. ` list
+     * marker instead.
+     *
      * @returns This component, for method chaining.
      */
     toggleOrderedList(): this {
+        const handledBySource = this.editSource(listSource("ordered"));
+
+        if (handledBySource) { return this; }
+
         this.ensureEditor().dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
 
         return this;
@@ -1558,10 +1750,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * link's URL in place instead of double-wrapping (Lexical's own `$toggleLink`
      * behavior). No-op without a range selection.
      *
+     * In `"source"` mode, wraps the raw-Markdown selection in `[text](url)`,
+     * or updates the enclosing link's URL in place — keeping its title —
+     * instead; no-op inside an image's alt text.
+     *
      * @param url - The link target, or `null` to remove the link.
      * @returns This component, for method chaining.
      */
     toggleLink(url: string | null): this {
+        const handledBySource = this.editSource(linkSource(url));
+
+        if (handledBySource) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -1587,9 +1787,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * how much of it (if any) is currently selected. No-op (without throwing)
      * when there is no range selection, or it is not inside a link.
      *
+     * In `"source"` mode, removes the raw-Markdown link enclosing the
+     * selection, unwrapping it back to plain text, instead.
+     *
      * @returns This component, for method chaining.
      */
     removeLink(): this {
+        const handledBySource = this.editSource(REMOVE_LINK_SOURCE);
+
+        if (handledBySource) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -1621,9 +1828,19 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * and any other Lexical text format) from the current selection, leaving
      * plain text. No-op without a range selection. Block type is untouched.
      *
+     * In `"source"` mode, removes every whole inline-format marker pair the
+     * raw-Markdown selection touches instead — both markers of a pair
+     * together, even when the selection reaches only one — leaving links and
+     * `[text]{…}` styled spans alone; no-op when the selection touches no
+     * pair.
+     *
      * @returns This component, for method chaining.
      */
     clearFormatting(): this {
+        const handledBySource = this.editSource(CLEAR_FORMAT_SOURCE);
+
+        if (handledBySource) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -1652,9 +1869,20 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * when there is no range selection, or the selection is collapsed with
      * nothing to expand into.
      *
+     * In `"source"` mode, delegates to the source editor's own `copy()`
+     * instead.
+     *
      * @returns This component, for method chaining.
      */
     copy(): this {
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) {
+            this._codeEditor.copy();
+
+            return this;
+        }
+
         const editor = this.ensureEditor();
 
         editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
@@ -1692,9 +1920,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * throwing) when there is no range selection, or the selection is
      * collapsed with nothing to expand into.
      *
+     * In `"source"` mode, delegates to the source editor's own `cut()`
+     * instead.
+     *
      * @returns This component, for method chaining.
      */
     cut(): this {
+        if (this.isSourceMode()) {
+            this._codeEditor.cut();
+
+            return this;
+        }
+
         this.copy();
 
         this.ensureEditor().update(() => {
@@ -1713,10 +1950,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * any current selection. No-op (without throwing) when there is no range
      * selection.
      *
+     * In `"source"` mode, delegates to the source editor's own `paste()`
+     * instead.
+     *
      * @returns A promise resolving `true` when the clipboard was read (even if
      *   it was empty), or `false` when the read was unavailable or denied.
      */
     async paste(): Promise<boolean> {
+        if (this.isSourceMode()) { return this._codeEditor.paste(); }
+
         const text = await DOM.source.readClipboardText();
 
         if (text === null) {
@@ -1748,10 +1990,17 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Converts the selected blocks to `type` (paragraph, `h1`–`h6`, blockquote,
      * or fenced code). No-op without a range selection.
      *
+     * In `"source"` mode, rewrites the raw-Markdown selection's block prefix
+     * instead — see `sourceTransformForBlockType`.
+     *
      * @param type - The target block type.
      * @returns This component, for method chaining.
      */
     setBlockType(type: MarkdownBlockType): this {
+        const handledBySource = this.editSource(sourceTransformForBlockType(type));
+
+        if (handledBySource) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -1773,10 +2022,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * alignment leaves it with no more than one column either. No-op
      * without a range selection.
      *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     *
      * @param align - The new block alignment, or `null` to clear it.
      * @returns This component, for method chaining.
      */
     setBlockAlignment(align: MarkdownBlockAlignment | null): this {
+        if (this.isSourceMode()) { return this; }
+
         this.ensureEditor().update(() => {
             const selection = $getSelection();
 
@@ -1817,11 +2070,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * column and no alignment. `count` is clamped to 1–6; `null` means one
      * column. No-op without a range selection.
      *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     *
      * @param count - The new column count, or `null` to clear it.
      * @param gap - The new column gap override; omitted leaves the existing gap untouched, `null` clears it.
      * @returns This component, for method chaining.
      */
     setColumnCount(count: number | null, gap?: string | null): this {
+        if (this.isSourceMode()) { return this; }
+
         const target = Math.max(1, Math.min(count ?? 1, MAX_COLUMN_COUNT));
 
         this.ensureEditor().update(() => {
@@ -1859,9 +2116,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * not just the clicked item or cell. No-op without throwing when the
      * caret is not inside one of those four block types.
      *
+     * In `"source"` mode, inserts a blank line before the raw-Markdown
+     * blockquote, list, fenced code block, or table line-run enclosing the
+     * caret instead; no-op when the caret's line is neither a block line nor
+     * inside a fence.
+     *
      * @returns This component, for method chaining.
      */
     insertParagraphBeforeBlock(): this {
+        const handledBySource = this.editSource(paragraphAroundBlockSource(false));
+
+        if (handledBySource) { return this; }
+
         this.ensureEditor().update(() => { $insertParagraphAroundEnclosingBlock(false); }, { discrete: true });
 
         return this;
@@ -1874,9 +2140,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * not just the clicked item or cell. No-op without throwing when the
      * caret is not inside one of those four block types.
      *
+     * In `"source"` mode, inserts a blank line after the raw-Markdown
+     * blockquote, list, fenced code block, or table line-run enclosing the
+     * caret instead; no-op when the caret's line is neither a block line nor
+     * inside a fence.
+     *
      * @returns This component, for method chaining.
      */
     insertParagraphAfterBlock(): this {
+        const handledBySource = this.editSource(paragraphAroundBlockSource(true));
+
+        if (handledBySource) { return this; }
+
         this.ensureEditor().update(() => { $insertParagraphAroundEnclosingBlock(true); }, { discrete: true });
 
         return this;
@@ -1887,11 +2162,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * first row is the header row, so `insertTable(2, 3)` gives a header row
      * plus one body row. The caret lands in the first header cell.
      *
+     * In `"source"` mode, inserts the raw-Markdown GFM table skeleton at the
+     * caret's line instead.
+     *
      * @param rows - The number of rows, including the header row.
      * @param columns - The number of columns.
      * @returns This component, for method chaining.
      */
     insertTable(rows: number, columns: number): this {
+        const handledBySource = this.editSource(tableSource(rows, columns));
+
+        if (handledBySource) { return this; }
+
         const editor = this.ensureEditor();
 
         // INSERT_TABLE_COMMAND inserts at the selection; a freshly built editor
@@ -1915,26 +2197,27 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Inserts a sized, validated image at the caret. No-op when `src` fails
      * the scheme allow-list — never inserts a broken or unsafe image.
      *
+     * In `"source"` mode, inserts the raw-Markdown `![alt](src)` — plus a
+     * `{width=… height=…}` attribute block when either dimension is set —
+     * at the selection instead; no-op there when either end of the selection
+     * sits inside an image or inside a link's destination, or when the
+     * selection reaches outside one table cell or onto a `:::` fence's own
+     * lines.
+     *
      * @param src - The image source (a relative path, `http:`/`https:` URL,
      *   or an allow-listed `data:image/…` base64 URI).
      * @param options - Optional `alt` text and explicit pixel `width`/`height`.
      * @returns This component, for method chaining.
      */
     insertImage(src: string, options?: { alt?: string; width?: number; height?: number }): this {
+        const handledBySource = this.editSource(imageSource(src, options?.alt ?? "", imageAttributes(options)));
+
+        if (handledBySource) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
-            const attributes: Record<string, string> = {};
-
-            if (options?.width !== undefined) {
-                attributes.width = String(options.width);
-            }
-
-            if (options?.height !== undefined) {
-                attributes.height = String(options.height);
-            }
-
-            const spec = resolveImageSpec(src, options?.alt ?? "", attributes);
+            const spec = resolveImageSpec(src, options?.alt ?? "", imageAttributes(options));
 
             if (spec === null) {
                 return;
@@ -1959,11 +2242,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Inserts a row after (default) or before the row holding the caret.
      * No-op without throwing when the caret is not inside a table cell.
      *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     *
      * @param after - Whether to insert after (`true`, default) or before
      *   (`false`) the current row.
      * @returns This component, for method chaining.
      */
     insertTableRow(after: boolean = true): this {
+        if (this.isSourceMode()) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -1979,9 +2266,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Deletes the row holding the caret. No-op without throwing when the
      * caret is not inside a table cell.
      *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     *
      * @returns This component, for method chaining.
      */
     deleteTableRow(): this {
+        if (this.isSourceMode()) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -1997,11 +2288,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Inserts a column after (default) or before the column holding the
      * caret. No-op without throwing when the caret is not inside a table cell.
      *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     *
      * @param after - Whether to insert after (`true`, default) or before
      *   (`false`) the current column.
      * @returns This component, for method chaining.
      */
     insertTableColumn(after: boolean = true): this {
+        if (this.isSourceMode()) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -2017,9 +2312,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Deletes the column holding the caret. No-op without throwing when the
      * caret is not inside a table cell.
      *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     *
      * @returns This component, for method chaining.
      */
     deleteTableColumn(): this {
+        if (this.isSourceMode()) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -2036,10 +2335,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * that column. No-op without throwing when the caret is not inside a
      * table cell.
      *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     *
      * @param alignment - The alignment to apply to the column.
      * @returns This component, for method chaining.
      */
     setTableColumnAlignment(alignment: MarkdownTableAlignment): this {
+        if (this.isSourceMode()) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -2053,9 +2356,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Deletes the entire table containing the caret, including every row and
      * cell. No-op without throwing when the caret is not inside a table cell.
      *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     *
      * @returns This component, for method chaining.
      */
     deleteTable(): this {
+        if (this.isSourceMode()) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -2071,9 +2378,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * when the current selection is not a `TableSelection` spanning more than
      * one cell.
      *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     *
      * @returns This component, for method chaining.
      */
     mergeTableCells(): this {
+        if (this.isSourceMode()) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -2097,9 +2408,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Splits the merged cell containing the caret back into its individual
      * cells. No-op without throwing when the caret is not inside a table cell.
      *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     *
      * @returns This component, for method chaining.
      */
     unmergeTableCell(): this {
+        if (this.isSourceMode()) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -2116,10 +2431,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * in, in pixels. No-op without throwing when the caret is not inside a
      * table cell.
      *
+     * No-op in `"source"` mode, where the raw-Markdown surface is shown.
+     *
      * @param width - The column width in pixels, or `null` to clear it.
      * @returns This component, for method chaining.
      */
     setTableColumnWidth(width: number | null): this {
+        if (this.isSourceMode()) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -2893,21 +3212,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Recomputes the selection's tracked state after a Lexical update and
-     * emits `"selectionstate"` when it differs from the last one reported —
-     * the update-driven counterpart to {@link handleChange}, registered on
-     * the same `registerUpdateListener` callback so every commit that would
-     * change the toolbar's live state (typing, a caret move, undo/redo, or a
-     * same-position format toggle) is observed, not just a selection change.
+     * Recomputes the active surface's tracked selection state and emits
+     * `"selectionstate"` when it differs from the last one reported. Driven
+     * from several call sites so every commit that would change the
+     * toolbar's live state is observed: the Lexical `registerUpdateListener`
+     * callback (typing, a caret move, undo/redo, or a same-position format
+     * toggle), the source `CodeEditor`'s own `"selectionchange"`,
+     * `handleCodeChange`, and `setMode`. No-op before either surface has
+     * anything to report (source mode always does; WYSIWYG needs the Lexical
+     * editor built).
      */
     private updateSelectionState(): void {
-        const editor = this._editor;
-
-        if (!editor) {
+        if (!this.isSourceMode() && !this._editor) {
             return;
         }
 
-        const state = editor.read(() => $readSelectionState());
+        const state = this.readActiveSelectionState();
 
         if (selectionStatesEqual(state, this._lastSelectionState)) {
             return;
@@ -2919,18 +3239,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Routes a source-surface (`CodeEditor`) edit into the shared change seam,
-     * then re-baselines the source editor. The source `CodeEditor` is a surface,
-     * not a second owner of this document's dirty state: re-baselining it on
-     * every change keeps its own flag clear, so `isDirty()` is decided by this
-     * component's comparison alone. Outside `onDocChange` so it also runs on a
-     * mode-switch load, which that method's unchanged-value guard returns early
-     * from.
+     * then re-baselines the source editor and refreshes the tracked selection
+     * state. The source `CodeEditor` is a surface, not a second owner of this
+     * document's dirty state: re-baselining it on every change keeps its own
+     * flag clear, so `isDirty()` is decided by this component's comparison
+     * alone. Outside `onDocChange` so it also runs on a mode-switch load, which
+     * that method's unchanged-value guard returns early from — an edit changes
+     * what the format flags around the caret would report even when the
+     * document's own dirty comparison sees no change.
      *
      * @param payload - The `CodeEditor` change payload (the new source text).
      */
     private handleCodeChange(payload: CodeEditorChange): void {
         this.onDocChange(payload.value);
         this._codeEditor.markClean();
+        this.updateSelectionState();
     }
 }
 

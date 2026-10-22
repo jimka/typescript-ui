@@ -28,6 +28,7 @@ import { _Dialog as Dialog } from '~/overlay/Dialog';
 import type { TextField } from '~/component/input/TextField';
 import { installTestDOM, ruleStyleWrites, type RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
+import { EditorState } from '@codemirror/state';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -87,13 +88,26 @@ function lexicalOf(editor: MarkdownEditor): LexicalEditor {
     return (editor as unknown as { _editor: LexicalEditor })._editor;
 }
 
-/** Reaches the private source-surface CodeEditor for white-box readOnly / dirty-state assertions. */
-function codeEditorOf(editor: MarkdownEditor): {
-    getReadOnly(): boolean; getValue(): string; isDirty(): boolean; onDocChange(value: string): void;
-} {
-    return (editor as unknown as {
-        _codeEditor: { getReadOnly(): boolean; getValue(): string; isDirty(): boolean; onDocChange(value: string): void };
-    })._codeEditor;
+/** The private source-surface `CodeEditor`'s shape needed for white-box assertions across this file. */
+interface CodeEditorHandle {
+    getReadOnly(): boolean;
+    getValue(): string;
+    isDirty(): boolean;
+    onDocChange(value: string): void;
+    onSelectionChange(state: EditorState): void;
+    getSelection(): { characterCount: number; lineCount: number; from: number; to: number };
+    focus(preventScroll?: boolean): unknown;
+    copy(): unknown;
+    cut(): unknown;
+    paste(): Promise<boolean>;
+    on(event: 'readonlyedit', listener: () => void): unknown;
+    /** A duck-typed CodeMirror `EditorView` (`{ state, dispatch }`), or unset before mount — see `code-editor.test.ts`'s own pattern. */
+    _view: unknown;
+}
+
+/** Reaches the private source-surface CodeEditor for white-box readOnly / dirty-state / selection assertions. */
+function codeEditorOf(editor: MarkdownEditor): CodeEditorHandle {
+    return (editor as unknown as { _codeEditor: CodeEditorHandle })._codeEditor;
 }
 
 /** Reaches the private WYSIWYG contenteditable surface for white-box style assertions. */
@@ -993,6 +1007,420 @@ describe('MarkdownEditor mode', () => {
 
         expect(lexicalOf(editor).isEditable()).toBe(true);
         expect(codeEditorOf(editor).getReadOnly()).toBe(false);
+    });
+});
+
+describe('MarkdownEditor source-mode command no-ops', () => {
+    const SOURCE_VALUE = '# Title\n\nhello world\n';
+
+    // Phases 1 and 2 gave every other command a real source-mode edit; these
+    // 14 are the plan's Non-Goals backlog — permanently guarded with the
+    // plain `if (this.isSourceMode()) { return this; }` this block was
+    // originally written to cover, since each needs its own design
+    // (`setTextColor`/`setFontFamily`/`setFontSize`'s styled-span merge
+    // rules, `setBlockAlignment`/`setColumnCount`'s `:::` fence rewrite, and
+    // the nine table-structure commands' parsed pipe grid).
+    const COMMANDS: Record<string, (editor: MarkdownEditor) => unknown> = {
+        setTextColor:          (editor) => editor.setTextColor('#c00'),
+        setFontFamily:         (editor) => editor.setFontFamily('serif'),
+        setFontSize:           (editor) => editor.setFontSize('1.2em'),
+        setBlockAlignment:     (editor) => editor.setBlockAlignment('center'),
+        setColumnCount:        (editor) => editor.setColumnCount(2),
+        insertTableRow:        (editor) => editor.insertTableRow(),
+        deleteTableRow:        (editor) => editor.deleteTableRow(),
+        insertTableColumn:     (editor) => editor.insertTableColumn(),
+        deleteTableColumn:     (editor) => editor.deleteTableColumn(),
+        setTableColumnAlignment: (editor) => editor.setTableColumnAlignment('left'),
+        deleteTable:           (editor) => editor.deleteTable(),
+        mergeTableCells:       (editor) => editor.mergeTableCells(),
+        unmergeTableCell:      (editor) => editor.unmergeTableCell(),
+        setTableColumnWidth:   (editor) => editor.setTableColumnWidth(120),
+    };
+
+    it('emits no change and leaves the value untouched', () => {
+        for (const [name, run] of Object.entries(COMMANDS)) {
+            const editor = new MarkdownEditor(SOURCE_VALUE, { mode: 'source' });
+            let fired = 0;
+            editor.on('change', () => { fired += 1; });
+
+            run(editor);
+
+            expect(fired, name).toBe(0);
+            expect(editor.getValue(), name).toBe(SOURCE_VALUE);
+        }
+    });
+
+    it('never builds the Lexical editor', () => {
+        const editor = new MarkdownEditor('x', { mode: 'source' });
+
+        editor.toggleBold();
+
+        expect(lexicalOf(editor)).toBeNull();
+    });
+
+    it('still returns this for chaining', () => {
+        const editor = new MarkdownEditor('hello', { mode: 'source' });
+
+        expect(editor.toggleBold()).toBe(editor);
+    });
+
+    it('paste still resolves false', async () => {
+        const editor = new MarkdownEditor('hello', { mode: 'source' });
+
+        await expect(editor.paste()).resolves.toBe(false);
+    });
+});
+
+describe('MarkdownEditor source-mode commands', () => {
+    it('bold rewrites the source text', () => {
+        const editor = new MarkdownEditor('hello world', { mode: 'source' });
+
+        expect(editor.toggleBold().getValue()).toBe('**hello** world');
+    });
+
+    it('pressing bold twice returns the original', () => {
+        // Offline (no injected view), `getSelection()` always reports a
+        // collapsed caret at offset 0, so the first press finds and wraps
+        // the document's first word.
+        const editor = new MarkdownEditor('hello world', { mode: 'source' });
+
+        editor.toggleBold();
+
+        expect(editor.getValue()).toBe('**hello** world');
+
+        // The second press, over a real mounted view, would have a caret
+        // still resting on the word it just wrapped (position 2, inside
+        // `**hello**`) rather than offline's hardcoded 0 — inject that via a
+        // duck-typed view, mirroring `code-editor.test.ts`'s own pattern,
+        // and assert on the dispatched transaction rather than `getValue()`,
+        // since the mocked `dispatch` does not itself mutate `_view.state`.
+        const dispatch = vi.fn();
+        codeEditorOf(editor)._view = {
+            state: EditorState.create({ doc: '**hello** world', selection: { anchor: 2, head: 7 } }),
+            dispatch, focus: vi.fn(),
+        };
+        editor.toggleBold();
+
+        expect(dispatch).toHaveBeenCalledTimes(1);
+        expect(dispatch.mock.calls[0]![0]).toMatchObject({ changes: { from: 0, to: 9, insert: 'hello' } });
+    });
+
+    it('never builds the Lexical editor', () => {
+        const editor = new MarkdownEditor('hello world', { mode: 'source' });
+
+        editor.toggleBold();
+        editor.toggleBold();
+
+        expect(lexicalOf(editor)).toBeNull();
+    });
+
+    it('runs the transform against the injected range and dispatches once', () => {
+        const editor = new MarkdownEditor('a hello b', { mode: 'source' });
+        const dispatch = vi.fn();
+        codeEditorOf(editor)._view = {
+            state: EditorState.create({ doc: 'a hello b', selection: { anchor: 2, head: 7 } }),
+            dispatch, focus: vi.fn(),
+        };
+
+        editor.toggleBold();
+
+        expect(dispatch).toHaveBeenCalledTimes(1);
+        const spec = dispatch.mock.calls[0][0];
+        expect(spec.changes).toEqual({ from: 2, to: 7, insert: '**hello**' });
+        expect(spec.selection).toEqual({ anchor: 4, head: 9 });
+    });
+
+    it('read-only refuses and signals, leaving the value unchanged', () => {
+        const editor = new MarkdownEditor('hello', { mode: 'source', readOnly: true });
+        let readonlyEdits = 0;
+        codeEditorOf(editor).on('readonlyedit', () => { readonlyEdits += 1; });
+
+        editor.toggleBold();
+
+        expect(editor.getValue()).toBe('hello');
+        expect(readonlyEdits).toBe(1);
+    });
+
+    it('restores focus after a handled command', () => {
+        const editor = new MarkdownEditor('hello', { mode: 'source' });
+        const focusSpy = vi.spyOn(codeEditorOf(editor), 'focus');
+
+        editor.toggleBold();
+
+        expect(focusSpy).toHaveBeenCalledOnce();
+    });
+
+    it('restores focus even when the transform declines', () => {
+        const editor = new MarkdownEditor('a  b', { mode: 'source' });
+        const dispatch = vi.fn();
+        codeEditorOf(editor)._view = {
+            state: EditorState.create({ doc: 'a  b', selection: { anchor: 2, head: 2 } }),
+            dispatch, focus: vi.fn(),
+        };
+        const focusSpy = vi.spyOn(codeEditorOf(editor), 'focus');
+
+        editor.toggleBold();
+
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(focusSpy).toHaveBeenCalledOnce();
+    });
+
+    it('copy() delegates to the source editor\'s own copy()', () => {
+        const editor = new MarkdownEditor('hello', { mode: 'source' });
+        const copySpy = vi.spyOn(codeEditorOf(editor), 'copy');
+
+        editor.copy();
+
+        expect(copySpy).toHaveBeenCalledOnce();
+    });
+
+    it('cut() delegates to the source editor\'s own cut()', () => {
+        const editor = new MarkdownEditor('hello', { mode: 'source' });
+        const cutSpy = vi.spyOn(codeEditorOf(editor), 'cut');
+
+        editor.cut();
+
+        expect(cutSpy).toHaveBeenCalledOnce();
+    });
+
+    it('paste() resolves to what the source editor\'s own paste() resolves', async () => {
+        const editor = new MarkdownEditor('hello', { mode: 'source' });
+        const pasteSpy = vi.spyOn(codeEditorOf(editor), 'paste').mockResolvedValue(true);
+
+        const pasted = await editor.paste();
+
+        expect(pasteSpy).toHaveBeenCalledOnce();
+        expect(pasted).toBe(true);
+    });
+
+    it('the selection state comes from the source text', () => {
+        const editor = new MarkdownEditor('**hi** there', { mode: 'source' });
+        codeEditorOf(editor)._view = {
+            state: EditorState.create({ doc: '**hi** there', selection: { anchor: 2, head: 4 } }),
+        };
+
+        expect(editor.getSelectionState()).toEqual({
+            bold: true, italic: false, underline: false, strikethrough: false, code: false,
+            hasSelectedText: true, linkUrl: null,
+            inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
+        });
+    });
+
+    it('setMode emits a fresh state for the newly-shown surface', () => {
+        const editor = new MarkdownEditor('**hi** there');
+        editor.setValue('**hi** there'); // forces the headless Lexical editor to build
+
+        lexicalOf(editor).update(() => { $selectAll(); }, { discrete: true });
+
+        const payloads: MarkdownEditorSelectionState[] = [];
+        editor.on('selectionstate', (state) => payloads.push(state));
+
+        editor.setMode('source');
+
+        expect(payloads).toEqual([{
+            bold: false, italic: false, underline: false, strikethrough: false, code: false,
+            hasSelectedText: false, linkUrl: null,
+            inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
+        }]);
+    });
+
+    it('a caret move refreshes the selection state', () => {
+        // The `selectionchange` half of the wiring: a caret move alone changes
+        // no text, so only this listener can keep a toolbar's pressed state
+        // current as the caret crosses into a `**bold**` run.
+        const editor = new MarkdownEditor('**hi** there', { mode: 'source' });
+        const state = EditorState.create({ doc: '**hi** there', selection: { anchor: 2, head: 4 } });
+        codeEditorOf(editor)._view = { state };
+
+        const payloads: MarkdownEditorSelectionState[] = [];
+        editor.on('selectionstate', (payload) => payloads.push(payload));
+
+        codeEditorOf(editor).onSelectionChange(state);
+
+        expect(payloads).toHaveLength(1);
+        expect(payloads[0]!.bold).toBe(true);
+        expect(payloads[0]!.hasSelectedText).toBe(true);
+    });
+
+    it('a source edit refreshes the selection state', () => {
+        const editor = new MarkdownEditor('hi there', { mode: 'source' });
+        codeEditorOf(editor)._view = {
+            state: EditorState.create({ doc: '**hi** there', selection: { anchor: 2, head: 4 } }),
+        };
+
+        const payloads: MarkdownEditorSelectionState[] = [];
+        editor.on('selectionstate', (state) => payloads.push(state));
+
+        codeEditorOf(editor).onDocChange('**hi** there');
+
+        expect(payloads).toHaveLength(1);
+        expect(payloads[0]!.bold).toBe(true);
+    });
+});
+
+// Each implemented command has to route to ITS OWN transform, and has to do so
+// without building the Lexical editor. A table of (document, selection,
+// command) -> dispatched change catches both classes of wiring bug the rest of
+// this file would miss: wiring a command to the wrong transform fails on the
+// insert, and putting the source-mode guard after `ensureEditor()` fails on the
+// Lexical assertion. `toggleBold`, `setBlockType`, `insertTable`, `copy`, `cut`
+// and `paste` have their own cases above and below.
+describe('MarkdownEditor source-mode command wiring', () => {
+    const CASES: Array<{
+        name:    string;
+        doc:     string;
+        anchor:  number;
+        head:    number;
+        run:     (editor: MarkdownEditor) => unknown;
+        changes: { from: number; to: number; insert: string };
+    }> = [
+        {
+            name: 'toggleItalic', doc: 'a hello b', anchor: 2, head: 7,
+            run: (editor) => editor.toggleItalic(), changes: { from: 2, to: 7, insert: '*hello*' },
+        },
+        {
+            name: 'toggleUnderline', doc: 'a hello b', anchor: 2, head: 7,
+            run: (editor) => editor.toggleUnderline(), changes: { from: 2, to: 7, insert: '++hello++' },
+        },
+        {
+            name: 'toggleStrikethrough', doc: 'a hello b', anchor: 2, head: 7,
+            run: (editor) => editor.toggleStrikethrough(), changes: { from: 2, to: 7, insert: '~~hello~~' },
+        },
+        {
+            name: 'toggleInlineCode', doc: 'a hello b', anchor: 2, head: 7,
+            run: (editor) => editor.toggleInlineCode(), changes: { from: 2, to: 7, insert: '`hello`' },
+        },
+        {
+            name: 'toggleLink', doc: 'a hello b', anchor: 2, head: 7,
+            run: (editor) => editor.toggleLink('/x'), changes: { from: 2, to: 7, insert: '[hello](/x)' },
+        },
+        {
+            name: 'removeLink', doc: 'a [hello](/x) b', anchor: 5, head: 5,
+            run: (editor) => editor.removeLink(), changes: { from: 2, to: 13, insert: 'hello' },
+        },
+        {
+            name: 'clearFormatting', doc: 'a **hello** b', anchor: 4, head: 9,
+            run: (editor) => editor.clearFormatting(), changes: { from: 2, to: 11, insert: 'hello' },
+        },
+        {
+            name: 'toggleUnorderedList', doc: 'a\nb', anchor: 0, head: 3,
+            run: (editor) => editor.toggleUnorderedList(), changes: { from: 0, to: 3, insert: '- a\n- b' },
+        },
+        {
+            name: 'toggleOrderedList', doc: 'a\nb', anchor: 0, head: 3,
+            run: (editor) => editor.toggleOrderedList(), changes: { from: 0, to: 3, insert: '1. a\n2. b' },
+        },
+        {
+            name: 'insertParagraphBeforeBlock', doc: '> q', anchor: 2, head: 2,
+            run: (editor) => editor.insertParagraphBeforeBlock(), changes: { from: 0, to: 0, insert: '\n\n' },
+        },
+        {
+            name: 'insertParagraphAfterBlock', doc: '> q', anchor: 2, head: 2,
+            run: (editor) => editor.insertParagraphAfterBlock(), changes: { from: 3, to: 3, insert: '\n\n' },
+        },
+        {
+            name: 'insertImage', doc: 'a hello b', anchor: 2, head: 7,
+            run: (editor) => editor.insertImage('/d.png', { alt: 'Diagram', width: 320 }),
+            changes: { from: 2, to: 7, insert: '![Diagram](/d.png){width=320}' },
+        },
+    ];
+
+    for (const testCase of CASES) {
+        it(`${testCase.name} dispatches its own transform's edit without building Lexical`, () => {
+            const editor = new MarkdownEditor(testCase.doc, { mode: 'source' });
+            const dispatch = vi.fn();
+            codeEditorOf(editor)._view = {
+                state: EditorState.create({
+                    doc:       testCase.doc,
+                    selection: { anchor: testCase.anchor, head: testCase.head },
+                }),
+                dispatch, focus: vi.fn(),
+            };
+
+            testCase.run(editor);
+
+            expect(dispatch, testCase.name).toHaveBeenCalledTimes(1);
+            expect(dispatch.mock.calls[0]![0].changes, testCase.name).toEqual(testCase.changes);
+            expect(lexicalOf(editor), testCase.name).toBeNull();
+        });
+    }
+
+    // A command with nothing to change must dispatch nothing: an identical
+    // rewrite is still a transaction, and so still an undo step the user has to
+    // spend to get back past it.
+    const NO_OP_CASES: Array<{ name: string; doc: string; run: (editor: MarkdownEditor) => unknown }> = [
+        { name: 'clearFormatting on unformatted text', doc: 'hello world', run: (editor) => editor.clearFormatting() },
+        { name: 'setBlockType("paragraph") on a paragraph', doc: 'hello world', run: (editor) => editor.setBlockType('paragraph') },
+        { name: 'setBlockType("h2") on an h2', doc: '## hello', run: (editor) => editor.setBlockType('h2') },
+        { name: 'setBlockType("code") on a fenced block', doc: '```\nhello\n```', run: (editor) => editor.setBlockType('code') },
+    ];
+
+    for (const testCase of NO_OP_CASES) {
+        it(`${testCase.name} dispatches nothing, but still restores focus`, () => {
+            const editor = new MarkdownEditor(testCase.doc, { mode: 'source' });
+            const dispatch = vi.fn();
+            const focus = vi.fn();
+            codeEditorOf(editor)._view = {
+                state: EditorState.create({ doc: testCase.doc, selection: { anchor: 0, head: testCase.doc.length } }),
+                dispatch, focus,
+            };
+
+            testCase.run(editor);
+
+            expect(dispatch, testCase.name).not.toHaveBeenCalled();
+            expect(focus, testCase.name).toHaveBeenCalledTimes(1);
+            expect(editor.getValue(), testCase.name).toBe(testCase.doc);
+        });
+    }
+});
+
+describe('MarkdownEditor source-mode block commands', () => {
+    it('setBlockType maps the type to the right transform', () => {
+        expect(new MarkdownEditor('hello', { mode: 'source' }).setBlockType('h2').getValue()).toBe('## hello');
+        expect(new MarkdownEditor('hello', { mode: 'source' }).setBlockType('code').getValue())
+            .toBe('```\nhello\n```');
+    });
+
+    it('insertTable writes a GFM skeleton', () => {
+        expect(new MarkdownEditor('', { mode: 'source' }).insertTable(2, 3).getValue())
+            .toContain('| --- | --- | --- |');
+    });
+
+    it('the 14 backlog commands still no-op', () => {
+        const editor = new MarkdownEditor('hello', { mode: 'source' });
+
+        editor.setTextColor('#c00');
+        editor.setFontFamily('serif');
+        editor.setFontSize('1.2em');
+        editor.setBlockAlignment('center');
+        editor.setColumnCount(2);
+        editor.insertTableRow();
+        editor.deleteTableRow();
+        editor.insertTableColumn();
+        editor.deleteTableColumn();
+        editor.setTableColumnAlignment('left');
+        editor.deleteTable();
+        editor.mergeTableCells();
+        editor.unmergeTableCell();
+        editor.setTableColumnWidth(120);
+
+        expect(editor.getValue()).toBe('hello');
+    });
+
+    it('source output round-trips through a mode switch', () => {
+        const tableSkeleton = ((): string => {
+            const codeEditor = new MarkdownEditor('', { mode: 'source' }).insertTable(2, 3).getValue();
+
+            return codeEditor.trim();
+        })();
+
+        for (const doc of ['**hello** world', '++hello++ world', '## hello', '- a\n- b', tableSkeleton]) {
+            const editor = new MarkdownEditor(doc, { mode: 'source' });
+
+            editor.setMode('wysiwyg');
+
+            expect(normalize(editor.getValue()), doc).toBe(normalize(doc));
+        }
     });
 });
 
