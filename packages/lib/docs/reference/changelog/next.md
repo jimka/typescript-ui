@@ -1643,6 +1643,17 @@ page resets to empty.
   a code fence opener converts the block as before. No consumer action is
   needed.
 
+- **`Markdown` no longer fails on a fenced block of text it has already
+  replaced.** Calling `setMarkdown` twice before the next layout — a live
+  preview fed by fast typing or by streamed text, or a page updated while its
+  browser tab is in the background — or disposing the viewer right after
+  `setMarkdown`, logged `Layout flush: an afterNextLayout callback threw …
+  DOM handle … is not registered`, once for each fenced block in a
+  supported language of each replaced text. If the viewer was hidden at the
+  time, showing it later threw instead, and the fenced blocks of the current
+  text stayed without highlighting until the next `setMarkdown`. No consumer
+  action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
