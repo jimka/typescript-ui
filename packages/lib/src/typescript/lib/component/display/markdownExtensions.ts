@@ -3,7 +3,7 @@
 import { Marked, Tokenizer } from "marked";
 import type { Lexer, Links, Token, TokenizerExtension, TokenizerObject, Tokens } from "marked";
 import {
-    lineEndAt, parseAttributes, readFenceLine, splitColumnSections, startFenceLineScan,
+    FENCE_ATTRIBUTE_GROUP, lineEndAt, parseAttributes, readFenceLine, splitColumnSections, startFenceLineScan,
 } from "~/component/display/markdownAttributes.js";
 import { tokenizeTable } from "~/component/display/markdownTableExtension.js";
 
@@ -108,7 +108,7 @@ const STYLED_SPAN_EXTENSION: TokenizerExtension = {
  * @returns The attribute text inside the first `{…}` group, or `""`.
  */
 function extractFenceAttributeText(remainder: string): string {
-    const match = /\{([^{}]*)\}/.exec(remainder);
+    const match = FENCE_ATTRIBUTE_GROUP.exec(remainder);
 
     return match === null ? "" : match[1]!;
 }

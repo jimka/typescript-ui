@@ -33,7 +33,7 @@ import { $createMarkdownImageNode } from "~/component/editor/markdownImageNode.j
 import type { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { $createMarkdownListItemTextNode, $isMarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
 import {
-    bareAutolinkState, codeInfoState, fenceAttributesState, hardBreakMarkerState, imageAttributesState, KEPT_SOURCE_WRITES_LINK,
+    bareAutolinkState, codeInfoState, fenceOpeningState, hardBreakMarkerState, imageAttributesState, KEPT_SOURCE_WRITES_LINK,
     KEPT_SOURCE_WRITES_STYLE, keptSourceState, listLooseState, listMarkerState, NESTED_LINK_WRITES_STYLE, nestedLinkGroupState,
     nestedLinkState, spanAttributesState,
 } from "~/component/editor/markdownNodeState.js";
@@ -187,11 +187,8 @@ interface InlineTarget {
     readonly edges: ReadonlySet<Token>;
 }
 
-/**
- * A `:::` fence's opening line: its attribute text, between the first braces
- * after the `:::` — where the viewer's own fence tokenizer reads it.
- */
-const FENCE_ATTRIBUTES = /^\s*:::[^{\n]*\{([^{}\n]*)\}/;
+/** A `:::` fence's opening line: the text after its `:::`, without trailing whitespace. */
+const FENCE_OPENING = /^\s*:::(.*?)\s*$/;
 
 /** A styled span's `raw` ending: its attribute text between the braces. */
 const SPAN_ATTRIBUTES = /\]\{([^{}]*)\}$/;
@@ -1206,8 +1203,8 @@ function $buildCellParagraphs(cell: TableCellNode, tokens: Token[]): void {
 }
 
 /**
- * Builds a `:::` fence with its resolved style and its authored attribute
- * text ({@link fenceAttributesState}), never unwrapped: each column holds
+ * Builds a `:::` fence with its resolved style and its authored opening
+ * line ({@link fenceOpeningState}), never unwrapped: each column holds
  * the blocks of its own section of the fence's text, or one empty paragraph.
  *
  * @param token - The `mdblock` token.
@@ -1220,7 +1217,7 @@ function $buildFence(token: MdBlockToken): MarkdownBlockNode {
 
     fence.setAlign(style.textAlign);
     fence.setColumnGap(style.columnGap);
-    $setState(fence, fenceAttributesState, FENCE_ATTRIBUTES.exec(token.raw.slice(0, lineEndAt(token.raw, 0)))?.[1] ?? "");
+    $setState(fence, fenceOpeningState, FENCE_OPENING.exec(token.raw.slice(0, lineEndAt(token.raw, 0)))?.[1] ?? "");
 
     token.columns.forEach((tokens, index) => {
         const column = $createMarkdownColumnNode();

@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { ElementNode } from "lexical";
+import { $getState, ElementNode } from "lexical";
 import type { EditorConfig, LexicalNode, SerializedElementNode, Spread } from "lexical";
 import { DOM } from "~/core/DOM.js";
-import { resolveBlockStyle, blockStyleToAttributes } from "~/component/display/markdownAttributes.js";
+import {
+    resolveBlockStyle, blockStyleToAttributes, FENCE_COLUMNS_KEYWORD, fenceOpeningLabel,
+} from "~/component/display/markdownAttributes.js";
+import { fenceOpeningState } from "~/component/editor/markdownNodeState.js";
 
 /** The JSON shape a {@link MarkdownBlockNode} (de)serialises to/from. */
 export type SerializedMarkdownBlockNode = Spread<
@@ -198,12 +201,26 @@ export class MarkdownBlockNode extends ElementNode {
     /**
      * True when this block carries no alignment and holds at most one
      * column — the caller should unwrap this node's children and remove it
-     * rather than leave a fence with nothing left to justify it.
+     * rather than leave a fence with nothing left to justify it. A fence
+     * with an authored label ({@link hasAuthoredLabel}) is never bare.
      *
      * @returns Whether this block has nothing left to justify the fence.
      */
     canUnwrap(): boolean {
-        return this.getAlign() === null && this.getColumns().length <= 1;
+        return this.getAlign() === null && this.getColumns().length <= 1 && !this.hasAuthoredLabel();
+    }
+
+    /**
+     * True when this fence was loaded with words on its opening line besides
+     * its attribute group and the `columns` keyword — a `tip Title` label —
+     * which a save keeps as written.
+     *
+     * @returns Whether the fence's opening line carries the author's own words.
+     */
+    hasAuthoredLabel(): boolean {
+        const label = fenceOpeningLabel($getState(this, fenceOpeningState));
+
+        return label !== "" && label !== FENCE_COLUMNS_KEYWORD;
     }
 
     /**

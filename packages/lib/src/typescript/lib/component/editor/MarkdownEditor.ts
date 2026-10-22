@@ -7807,7 +7807,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * blocks the current selection spans, wrapping them in a `:::` fence (or
      * updating the enclosing fence's alignment if the caret already sits
      * inside one). Unwraps and removes the enclosing fence when clearing its
-     * alignment leaves it with no more than one column either. No-op
+     * alignment leaves it with no more than one column either — unless its
+     * opening line carries the author's own words (`::: tip Title`), which
+     * keeps it. No-op
      * without a range selection, and — adding no undo step — when the
      * enclosing fence already has that alignment, or there is none and
      * `align` is `null`.
@@ -7871,7 +7873,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * nothing else), which is dropped instead — so growing and then
      * shrinking back returns the original document. Unwraps and removes the
      * enclosing fence when the result leaves it with no more than one
-     * column and no alignment. `count` is clamped to 1–6; `null` means one
+     * column and no alignment — unless its opening line carries the author's
+     * own words (`::: tip Title`), which keeps it. `count` is clamped to 1–6; `null` means one
      * column. No-op without a range selection, and — adding no undo step —
      * when the enclosing fence already has that many columns and that gap,
      * or there is none and one column is asked for.

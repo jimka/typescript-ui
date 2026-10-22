@@ -50,6 +50,34 @@ const ALIGN = /^(left|center|right|justify)$/;
 /** The line-level marker separating one column region from the next inside a `:::` fence. */
 export const COLUMN_SEPARATOR = "|||";
 
+/**
+ * A `:::` fence opening line's attribute group: the first `{…}` holding no
+ * brace, anywhere after the `:::`. The viewer reads the fence's attributes
+ * from it and ignores the rest of the line.
+ */
+export const FENCE_ATTRIBUTE_GROUP = /\{([^{}]*)\}/;
+
+/** The keyword the editor writes on a fence of two or more columns; a label of only this word is the editor's own. */
+export const FENCE_COLUMNS_KEYWORD = "columns";
+
+/**
+ * The words of a `:::` fence's opening line outside its attribute group
+ * ({@link FENCE_ATTRIBUTE_GROUP}) — `tip Title` in `::: tip Title {align=right}`.
+ * The viewer ignores them.
+ *
+ * @param remainder - The opening line's text after its `:::`.
+ * @returns The words, trimmed, a space standing where the group stood; `""` for none.
+ */
+export function fenceOpeningLabel(remainder: string): string {
+    const group = FENCE_ATTRIBUTE_GROUP.exec(remainder);
+
+    if (group === null) {
+        return remainder.trim();
+    }
+
+    return (remainder.slice(0, group.index) + " " + remainder.slice(group.index + group[0].length)).trim();
+}
+
 /** An open code fence: its character and the length of its opening run. */
 interface CodeFence {
     readonly char:   string;

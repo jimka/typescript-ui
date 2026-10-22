@@ -377,7 +377,7 @@ const COLUMN_EMPTY_CODE_THEN_TABLE_IMAGE_RESULT = '::: columns\nA\n|||\n```\n```
 const TABLES_THEN_EMPTY_CODE = `Above para\n\n${T}\n\nmid\n\n${T2}\n\n\`\`\`\n\`\`\``;
 const TABLES_THEN_EMPTY_CODE_IMAGE_RESULT = 'Above para\n\n![i](/i.png)\n\n```\n```';
 const TABLES_THEN_FENCED_CODE = `Above para\n\n${T}\n\nmid\n\n::: x\n${T2}\n\n\`\`\`\ncode\n\`\`\`\n:::`;
-const TABLES_THEN_FENCED_CODE_IMAGE_RESULT = 'Above para\n\n::: {}\n![i](/i.png)\n\n```\ncode\n```\n:::';
+const TABLES_THEN_FENCED_CODE_IMAGE_RESULT = 'Above para\n\n::: x\n![i](/i.png)\n\n```\ncode\n```\n:::';
 const LEADING_TABLES_THEN_CODE = `${T}\n\n${T2}\n\n\`\`\`\ncode\n\`\`\`\n\nafter`;
 const LEADING_TABLES_THEN_CODE_IMAGE_RESULT = '![i](/i.png)\n\n```\ncode\n```\n\nafter';
 const EMPTY_CODE_THEN_CLOSING_TABLES = `\`\`\`\n\`\`\`\n\n${T}\n\n${T2}`;
@@ -548,7 +548,7 @@ describe('deleting a range across a table\'s edge takes the whole table and stop
     it('D19: into the end of a fence\'s only line keeps the fence and its column', () => {
         const editor = deleteRange(TABLE_THEN_FENCE, 'first-cell-start', ['A', 1], false);
 
-        expect(editor.getValue()).toBe('::: {}\n\n:::');
+        expect(editor.getValue()).toBe('::: x\n\n:::');
         expect(caretOf(editor)).toBe('paragraph@0');
         expect(editorSurfaceModel(editor)).toEqual(viewerModel(editor.getValue()).blocks);
     });
@@ -568,7 +568,7 @@ describe('deleting a range across a table\'s edge takes the whole table and stop
             return (fence.getFirstChildOrThrow() as ElementNode).getChildren().map((child) => `${child.getType()}:${child.getTextContent()}`);
         });
 
-        expect(editor.getValue()).toBe('Abov\n\n::: {}\n\n:::');
+        expect(editor.getValue()).toBe('Abov\n\n::: x\n\n:::');
         expect(column).toEqual(['paragraph:']);
         expect(caretOf(editor)).toBe('"Abov"@4');
         expect(editorSurfaceModel(editor)).toEqual(viewerModel(editor.getValue()).blocks);
@@ -1686,7 +1686,7 @@ describe('undoing a table-edge removal restores the document exactly (U rows)', 
     // The removal that keeps the end's block runs as two removals in one update: one undo step.
     it.each([
         ['into the end of a list\'s last item (D18)', TABLE_THEN_LIST, 'first-cell-start', ['two', 3], '-'],
-        ['into the end of a fence\'s only line (D19)', TABLE_THEN_FENCE, 'first-cell-start', ['A', 1], '::: {}\n\n:::'],
+        ['into the end of a fence\'s only line (D19)', TABLE_THEN_FENCE, 'first-cell-start', ['A', 1], '::: x\n\n:::'],
         ['between two lists of one marker (D26)', `- uno\n\n${T}\n\n- one\n- two`, ['uno', 1], 'last-cell-end', '- u\n- one\n- two'],
     ] as const)('U4: undo after a delete %s', (_name, source, anchor, focus, removed) => {
         const editor = deleteRange(source, anchor as End, focus as End, false);
