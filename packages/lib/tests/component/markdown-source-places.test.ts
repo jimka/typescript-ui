@@ -1,12 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { $isElementNode, $isLineBreakNode, $isTextNode } from 'lexical';
+import { $createParagraphNode, $isElementNode, $isLineBreakNode, $isTextNode } from 'lexical';
 import type { LexicalEditor, LexicalNode, TextNode } from 'lexical';
 import { $dfs } from '@lexical/utils';
 import { expandPrefixTabs, prefixTabLines } from '~/component/display/markdownTabs';
-import { BOLD_SOURCE } from '~/component/editor/markdownSourceEdits';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { $readRawBlockAsBlocks } from '~/component/editor/markdownImporter';
-import { $placeOfSourceOffset, $placeOutsideSourceNode } from '~/component/editor/markdownSourcePlaces';
+import { $placeOfSourceOffset, $placeOutsideSourceNode, $sourceOffsetOfPoint } from '~/component/editor/markdownSourcePlaces';
 import type { SourcePlace } from '~/component/editor/markdownSourcePlaces';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
@@ -744,12 +743,114 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
         expect(placeOf(`[d]: /a\n\n- t\n\n  [d]: /b\n  [d]: /c\n\n  [${CARET}`)).toBeNull();
     });
 
+    it.each<[string, string]>([
+        ['a &#35; b and \u00a6more', '[a # b and \u00a6more]'],
+        ['more &amp; \u00a6less', '[more & \u00a6less]'],
+    ])('SP21: an offset after a character reference has a place in the text that shows what it reads as: %j', (marked, expected) => {
+        expect(placeOf(marked)).toBe(expected);
+    });
+
+    it('SP22: an offset after a character reference is after the character it reads as', () => {
+        expect(placeOf('more &amp;\u00a6 less')).toBe('[more &\u00a6 less]');
+    });
+
+    it('SP23: an offset inside a character reference is before the character it reads as', () => {
+        expect(placeOf('a &#3\u00a65; b')).toBe('[a \u00a6# b]');
+    });
+
+    /**
+     * The offset the reverse walk gives for a point in the text node that shows `shown`, or in the block itself.
+     *
+     * @param text - The block's Markdown.
+     * @param shown - The text of the text node the point is in; `null` for a point among the block's children.
+     * @param offset - The offset in the text node, or the child index.
+     * @returns The offset in `text`.
+     */
+    function offsetOfPoint(text: string, shown: string | null, offset: number): number | null {
+        return inUpdate(() => {
+            const reading = $readRawBlockAsBlocks(text)!;
+            const block = reading.nodes[0]!;
+            const [start, end] = reading.spans[0]!;
+
+            if (shown === null) {
+                return $sourceOffsetOfPoint(text, block, start, end, { node: block, offset, type: 'element' });
+            }
+
+            const node = $dfs(block).map((entry) => entry.node).find((entry) => $isTextNode(entry) && entry.getTextContent() === shown)!;
+
+            return $sourceOffsetOfPoint(text, block, start, end, { node, offset, type: 'text' });
+        });
+    }
+
+    it.each<[string, string | null, number, number | null]>([
+        ['a **bc** d', 'bc', 0, 4],
+        ['a **bc** d', 'bc', 2, 6],
+        ['a **bc** d', ' d', 0, 8],
+        ['a \\* b', '*', 0, 2],
+        ['a \\* b', ' b', 0, 4],
+        ['a &#35; b', 'a # b', 2, 2],
+        ['- one\n- two', null, 1, 8],
+    ])('SP24: the offset of a point is the start of the source of what the block shows there: %j at %j %i', (text, shown, offset, expected) => {
+        expect(offsetOfPoint(text, shown, offset)).toBe(expected);
+    });
+
+    it('SP25: a point in an empty paragraph has no offset', () => {
+        const offset = inUpdate(() => {
+            const paragraph = $createParagraphNode();
+
+            return $sourceOffsetOfPoint('', paragraph, 0, 0, { node: paragraph, offset: 0, type: 'element' });
+        });
+
+        expect(offset).toBeNull();
+    });
+
+    it('SP26: over the round-trip corpus, the offset of the point of an offset has the same place', () => {
+        const differing: string[] = [];
+        let checked = 0;
+
+        for (const source of CORPUS.map((entry) => entry.source.replace(/\r\n?/g, '\n').replace(/\n+$/, ''))) {
+            for (let offset = 1; offset <= source.length; offset += 1) {
+                const text = source.slice(0, offset);
+
+                inUpdate(() => {
+                    const placed = $placeIn(text, offset);
+
+                    if (placed === null || placed.place === null) {
+                        return;
+                    }
+
+                    const reading = $readRawBlockAsBlocks(text)!;
+                    const index = Math.max(0, reading.spans.findIndex(([, end]) => end >= offset));
+                    const [start, end] = reading.spans[index]!;
+                    const { node } = placed.place;
+                    const point = { node, offset: placed.place.offset, type: $isTextNode(node) ? 'text' as const : 'element' as const };
+                    const back = $sourceOffsetOfPoint(text, placed.block, start, end, point);
+
+                    if (back === null) {
+                        return;
+                    }
+
+                    checked += 1;
+
+                    const again = $placeOfSourceOffset(text, back, placed.block, start, end);
+                    const isSame = again !== null && again.node.is(node) && again.offset === placed.place.offset;
+
+                    if (!isSame) {
+                        differing.push(JSON.stringify([text, offset, back]));
+                    }
+                });
+            }
+        }
+
+        expect(differing).toEqual([]);
+        expect(checked).toBeGreaterThan(10_000);
+    }, 120_000);
+
     // A tab document reads as its spaces form (the container prefix's tabs written as the spaces they stand for), so
-    // an offset has a place in one exactly when it has one in the other, and the bold command acts on a word in one
-    // exactly when it acts in the other. The documents left out hold a code, HTML, task or table block, whose text shows
-    // the spaces a tab stands for (rows T30 to T33), or a line of markers and tabs that is text (row T42). A word that is
-    // one marker character is left out too.
-    it('SP20: over the generated tab documents, the places and the bold command agree with the spaces form', () => {
+    // an offset has a place in one exactly when it has one in the other. The documents left out hold a code, HTML,
+    // task or table block, whose text shows the spaces a tab stands for (rows T30 to T33), or a line of markers and
+    // tabs that is text (row T42).
+    it('SP20: over the generated tab documents, the places agree with the spaces form', () => {
         const differing: string[] = [];
 
         for (const source of tabDocuments(600)) {
@@ -778,21 +879,6 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
                         differing.push(JSON.stringify([source, offset]));
                     }
                 });
-            }
-
-            for (const word of text.matchAll(/[^\s]+/g)) {
-                // A word that is one marker character is syntax in one form and text in the other on a few lines.
-                if (/^(?:[>*+-]|\d+[.)])$/.test(word[0])) {
-                    continue;
-                }
-
-                const at = expandedAt(word.index!);
-                const tabEdit = BOLD_SOURCE(text, word.index!, word.index! + word[0].length);
-                const spacesEdit = BOLD_SOURCE(spaced, at, at + word[0].length);
-
-                if ((tabEdit === null) !== (spacesEdit === null)) {
-                    differing.push(JSON.stringify([source, 'bold', word[0]]));
-                }
             }
         }
 
@@ -834,9 +920,8 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
         }
 
         // Where the mark tells and there is no place, the block shows nothing (not counted above) or holds one of the
-        // four texts whose source is not found that this corpus has: a code line whose prefix holds a tab, a
-        // paragraph line of markers and tabs, a link reference definition that repeats a label, and a character
-        // reference. (The other, a task item's checkbox followed by two spaces in a loose list, is a row of SP7.)
+        // three texts whose source is not found that this corpus has: a code line whose prefix holds a tab, a
+        // paragraph line of markers and tabs, and a link reference definition that repeats a label. (The other, a task item's checkbox followed by two spaces in a loose list, is a row of SP7.)
         const isKnown = (text: string): boolean => {
             const labels = [...text.matchAll(/^\s*\[([^\]]+)\]:/gm)].map((match) => match[1]);
             const repeatsLabel = new Set(labels).size < labels.length;
@@ -846,17 +931,14 @@ describe('$placeOfSourceOffset: where an offset of a block\'s Markdown stands in
             const hasPrefixTab = prefixTabLines(text.split('\n')).some(Boolean);
             const holdsCodeWithPrefixTab = hasPrefixTab && (text.includes('```') || /<\/?(?:div|pre)>/.test(text) || /^[ >]*(?:(?:[-*+]|\d+[.)])\t[ \t]+|[ ]*\t[ ]*\t[ \t]*)\S/m.test(text));
 
-            // `marked` 18.1 hands a character reference back as the character it stands for.
-            const holdsCharacterReference = /&(#[0-9]+|#[xX][0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);/.test(text);
-
             // A paragraph line made of markers and tabs (row T42) shows its tabs as the spaces they are read as.
             const holdsMarkerLine = /^[ \t]*-\t-\t*$/m.test(text);
 
-            return holdsCodeWithPrefixTab || holdsMarkerLine || repeatsLabel || holdsCharacterReference;
+            return holdsCodeWithPrefixTab || holdsMarkerLine || repeatsLabel;
         };
 
         expect(untold.filter((text) => !isKnown(text))).toEqual([]);
-        // Not computed: this corpus gives 17,699 places the mark confirms, and a change that loses many of them should
+        // Not computed: this corpus gives 19,089 places the mark confirms, and a change that loses many of them should
         // fail here even where no single row does.
         expect(told).toBeGreaterThan(15_000);
     }, 120_000);

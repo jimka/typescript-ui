@@ -3,7 +3,7 @@
 import {
     $findMatchingParent, $getRoot, $getState, $isElementNode, $isLineBreakNode, $isParagraphNode, $isTextNode, TEXT_TYPE_TO_FORMAT,
 } from "lexical";
-import type { ElementFormatType, ElementNode, LexicalNode, TextFormatType, TextNode } from "lexical";
+import type { ElementFormatType, ElementNode, LexicalNode, NodeKey, TextFormatType, TextNode } from "lexical";
 import { $isHeadingNode, $isQuoteNode } from "@lexical/rich-text";
 import type { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { $isListItemNode, $isListNode } from "@lexical/list";
@@ -749,6 +749,24 @@ interface InlineWriter {
 
 // ---------------------------------------------------------------- entry points
 
+/** Where one top-level block stands in a save. */
+export interface WrittenBlockPlace {
+    /** The block's node key. */
+    readonly key:   NodeKey;
+    /** The start offset of its written text in the save. */
+    readonly start: number;
+    /** The end offset of its written text in the save. */
+    readonly end:   number;
+}
+
+/** A save, with where each top-level block it writes stands in it. */
+export interface MarkdownWithPlaces {
+    /** The Markdown. */
+    readonly text:   string;
+    /** The blocks the save writes, in order; a block that writes nothing has no entry. */
+    readonly places: readonly WrittenBlockPlace[];
+}
+
 /**
  * Serializes the active editor state's document to Markdown in this
  * dialect. Like `@lexical/markdown`'s `$convertToMarkdownString`, it must
@@ -766,16 +784,27 @@ interface InlineWriter {
  * @returns The Markdown.
  */
 export function $serializeMarkdown(sourceMap: MarkdownSourceMap = EMPTY_SOURCE_MAP): string {
+    return $serializeMarkdownWithPlaces(sourceMap).text;
+}
+
+/**
+ * Serializes the document as {@link $serializeMarkdown} does, and reports
+ * where each top-level block it writes stands in the text.
+ *
+ * @param sourceMap - The source map of the editor's imports.
+ * @returns The Markdown, with the offsets of each written block.
+ */
+export function $serializeMarkdownWithPlaces(sourceMap: MarkdownSourceMap = EMPTY_SOURCE_MAP): MarkdownWithPlaces {
     const definitions = $readDefinitions();
     const parts = $serializeTopLevelBlocks(definitions);
     const load = documentLoad(parts, sourceMap);
     const blocks = writtenBlocks(parts, sourceMap, definitions);
 
     if (blocks.length === 0) {
-        return load.blockCount === 0 ? load.prefix : "";
+        return { text: load.blockCount === 0 ? load.prefix : "", places: [] };
     }
 
-    return assembleDocument(blocks, load);
+    return assembleDocumentWithPlaces(blocks, load);
 }
 
 /**
@@ -1509,12 +1538,19 @@ export function formatDelimiterRow(alignments: ElementFormatType[], widths: read
  *
  * @param blocks - The blocks to write, at least one.
  * @param load - The document's import, whose ending the document keeps.
- * @returns The Markdown.
+ * @returns The Markdown, with where each block's text stands in it.
  */
-function assembleDocument(blocks: readonly WrittenBlock[], load: MarkdownSourceLoad): string {
-    const body = blocks.map((block, index) => separatorBefore(blocks, index) + block.text).join("");
+function assembleDocumentWithPlaces(blocks: readonly WrittenBlock[], load: MarkdownSourceLoad): MarkdownWithPlaces {
+    const places: WrittenBlockPlace[] = [];
+    let text = documentStart(blocks[0]!.source);
 
-    return documentStart(blocks[0]!.source) + body + documentEnd(blocks[blocks.length - 1]!.source, load);
+    blocks.forEach((block, index) => {
+        text += separatorBefore(blocks, index);
+        places.push({ key: block.node.getKey(), start: text.length, end: text.length + block.text.length });
+        text += block.text;
+    });
+
+    return { text: text + documentEnd(blocks[blocks.length - 1]!.source, load), places };
 }
 
 /**

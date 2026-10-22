@@ -4,6 +4,8 @@ import type { Token, Tokens } from "marked";
 import {
     formatAttributes, lineEndAt, resolveSpanStyle, spanStyleToAttributes,
 } from "~/component/display/markdownAttributes.js";
+import { characterReferencePieces } from "~/component/display/markdownCharacterReferences.js";
+import type { CharacterReferencePiece } from "~/component/display/markdownCharacterReferences.js";
 import { lexMarkdown } from "~/component/display/markdownExtensions.js";
 import { containerRanges, expandPrefixTabs } from "~/component/display/markdownTabs.js";
 import type { TabExpansion } from "~/component/display/markdownTabs.js";
@@ -351,17 +353,6 @@ export function entryFormat(entry: SourceEntry, without?: ReadonlySet<SourceInli
 }
 
 /**
- * Adds one mark letter to a format.
- *
- * @param format - The format.
- * @param letter - The letter to add, from {@link MARK_LETTERS}.
- * @returns The new format.
- */
-export function withMark(format: EntryFormat, letter: string): EntryFormat {
-    return { ...format, marks: orderedMarks(new Set([...format.marks, letter])) };
-}
-
-/**
  * Writes a set of mark letters in {@link MARK_ORDER}.
  *
  * @param letters - The letters.
@@ -379,7 +370,7 @@ function orderedMarks(letters: ReadonlySet<string>): string {
  * @param attributes - The span's attributes.
  * @returns The canonical attribute text, `""` when nothing resolves.
  */
-export function canonicalSpanStyle(attributes: Record<string, string>): string {
+function canonicalSpanStyle(attributes: Record<string, string>): string {
     return formatAttributes(spanStyleToAttributes(resolveSpanStyle(attributes)));
 }
 
@@ -1097,6 +1088,31 @@ function recordInline(
 }
 
 /**
+ * Appends one leaf per shown code unit of a text token that holds character
+ * references, each at the source of the piece it belongs to: a character as
+ * written at its own offsets, a reference's characters all at the reference.
+ *
+ * @param builder - The analysis being built.
+ * @param pieces - The token's `raw` split into the pieces it reads as.
+ * @param map - The offset map of its run, `null` when unlocated.
+ * @param position - The needle index of its `raw`.
+ * @param ancestors - The tokens enclosing it, outermost first.
+ */
+function pushPieceLeaves(
+    builder: Builder, pieces: readonly CharacterReferencePiece[], map: readonly number[] | null, position: number,
+    ancestors: readonly SourceInline[],
+): void {
+    for (const piece of pieces) {
+        const start = map === null ? -1 : map[position + piece.start]!;
+        const end = map === null ? -1 : endOf(map, position + piece.start, position + piece.end);
+
+        for (let unit = 0; unit < piece.shown.length; unit += 1) {
+            builder.entries.push({ kind: "leaf", key: `t${piece.shown[unit]!}`, start, end, ancestors });
+        }
+    }
+}
+
+/**
  * Appends one leaf per character of a plain text token, each at its own
  * source offset when the run is located.
  *
@@ -1113,6 +1129,15 @@ function pushTextLeaves(
     const text = (token as Tokens.Text).text;
 
     if (text !== token.raw) {
+        const pieces = characterReferencePieces(token.raw);
+        const readsAsPieces = pieces.map((piece) => piece.shown).join("") === text;
+
+        if (readsAsPieces) {
+            pushPieceLeaves(builder, pieces, map, position, ancestors);
+
+            return;
+        }
+
         const start = map === null ? -1 : map[position]!;
         const end = map === null ? -1 : endOf(map, position, position + token.raw.length);
 

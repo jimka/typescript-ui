@@ -560,6 +560,25 @@ page resets to empty.
   the caret is right after it, and goes when the next character is typed.
   No consumer action is needed.
 
+- **`MarkdownEditor`'s source-mode commands give the WYSIWYG result.** The
+  format toggles, `toggleLink`, `removeLink`, `clearFormatting`, the style
+  setters, `insertImage`, `setBlockType` and the list toggles now run the
+  WYSIWYG command on the Markdown around the selection and write back the
+  text it changes, so both surfaces give the same document for the same
+  selection. A command writes the top-level block it changes in the
+  editor's own form, as a WYSIWYG edit does (`* one` / `    * inner` /
+  `* two` with `two` bolded saves `* one` / `  * inner` / `* **two**`). A
+  command on text the WYSIWYG surface keeps as a raw Markdown block does
+  nothing, where source mode converted some of those lines before
+  (`> - one`). A command also does nothing with the caret on several empty
+  items, rows, cells or columns of one block (`-` / `-` / `-`), on the blank
+  lines between blocks or before the first block, and where the editor does
+  not find the source of what a block shows beside the selection (the cases
+  the component page lists). A read-only editor refuses every source-mode
+  command that edits text, `insertTable` and the two paragraph inserts
+  included, with `"readonlyedit"` up front, also where the command would
+  have done nothing. No consumer action is needed.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
@@ -1008,6 +1027,11 @@ page resets to empty.
   but the list itself could take that `Tab` when nothing focusable followed
   the field, and focus was then lost as the list closed. No consumer action
   is needed.
+
+- **`CodeEditor.replaceRange()` is its own undo step.** A replacement made
+  right after typing, with the caret where typing left it, joined the
+  typing's undo step, so one undo took both back. No consumer action is
+  needed.
 
 - **`MarkdownEditor.insertTable()` leaves no empty quote, heading or list
   item beside the table.** A table inserted at the end of a quote, a
@@ -1918,10 +1942,9 @@ page resets to empty.
   found: a code line or an HTML line whose container prefix holds a tab, or
   a paragraph line made of list markers and tabs, which show as the spaces
   the tabs stand for, a task item whose checkbox is followed by more than
-  one space in a list with blank lines between its items, text of a list
-  item that begins as a link reference definition repeated before it does,
-  or a character reference such as `&#35;`, which shows as the character it
-  stands for. No consumer action is needed.
+  one space in a list with blank lines between its items, or text of a list
+  item that begins as a link reference definition repeated before it does.
+  No consumer action is needed.
 
 - **`MarkdownEditor` joins a list item away when a selection takes its
   text whole.** A selection from one item's text into a later block of
@@ -2028,6 +2051,12 @@ page resets to empty.
   quote, a code block or a raw block an indent that was drawn and never
   saved, and added an undo step. No key or method of the editor sends the
   command. No consumer action is needed.
+
+- **`MarkdownEditor` keeps the caret's place beside a character
+  reference.** After an edit made a raw Markdown block show as its blocks,
+  the caret went to the block's end when the block held a character
+  reference such as `&#35;`. It now stays where it was. No consumer action
+  is needed.
 
 ### Core
 
