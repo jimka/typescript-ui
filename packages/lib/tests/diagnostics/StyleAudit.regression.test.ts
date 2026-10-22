@@ -213,6 +213,10 @@ function buildGallery(): Component {
     return root;
 }
 
+// Building and auditing the gallery takes under 1 s alone but passed Vitest's 5 s default once when
+// `npm test` ran every test file at once; the named timeout holds under that load.
+const GALLERY_AUDIT_TIMEOUT_MS = 30_000;
+
 describe('auditStyleRules — live gallery regression ratchet', () => {
     it('the live gallery has no more duplicate style rules than the checked-in ceiling', () => {
         const root = buildGallery();
@@ -226,5 +230,5 @@ describe('auditStyleRules — live gallery regression ratchet', () => {
         expect(redundantRuleCount).toBeLessThanOrEqual(STYLE_AUDIT_DUPLICATE_CEILING);
 
         root.dispose();
-    });
+    }, GALLERY_AUDIT_TIMEOUT_MS);
 });

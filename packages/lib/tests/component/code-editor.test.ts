@@ -5371,6 +5371,10 @@ describe('built-in markdown language typing', () => {
         expect(await languageOutline(doc)).toBe(outline);
     });
 
+    // 10,560 documents take about 2 s alone, and 6 s on GitHub's two-core runner, past Vitest's 5 s default;
+    // the named timeout holds under the load of a full run, as the other sweeps' do.
+    const MARKER_WHITESPACE_SWEEP_TIMEOUT_MS = 60_000;
+
     it('a line whose markers only spaces and tabs follow holds a code block only where the viewer reads one', async () => {
         const markers = ['-', '*', '1.', '>'];
         const gaps = ['', ' ', '\t', '  '];
@@ -5399,7 +5403,7 @@ describe('built-in markdown language typing', () => {
         }
 
         expect(differing).toEqual([]);
-    });
+    }, MARKER_WHITESPACE_SWEEP_TIMEOUT_MS);
 
     it('Enter after an empty item whose marker six spaces follow acts as after one space', async () => {
         expect(await typed('markdown', '- a\n-      |', '\n')).toBe('- a\n\n-      |');
