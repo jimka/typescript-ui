@@ -507,3 +507,116 @@ No public API changes. The new handler is module-private.
     user-visible story: on `master`, a paste from across two columns came
     out wrong. One entry describing the whole fix reads better than two
     entries about the same paste.
+
+---
+
+## Implementation Notes
+
+Implemented on top of `feature/markdown-editor-table-delete-merge`
+(`77555cc3d`), which landed after this plan was drafted. Every site was
+found by symbol; the code follows *Internal Structure* as written.
+
+- **The `@lexical/clipboard` import already carried
+  `$getClipboardDataFromSelection`** (the parent's `$cutGuardedRange` and
+  `$copyTableEdgeRange` use it). Step 4's replacement line became
+  `import { $insertGeneratedNodes, copyToClipboard, $getClipboardDataFromSelection } from "@lexical/clipboard";`.
+- **Three `COMMAND_PRIORITY_CRITICAL` listeners run twice, not two.** The
+  parent added `$clearTableEdgeRangeBeforePaste` beside
+  `$clearStaleFocusRangeBeforePaste` and the run-edge `tag` listener. On the
+  second dispatch it does nothing either: the first pass already removed the
+  table-edge range, so `payload.selection` is a caret. `[^redispatch]`'s
+  reasoning holds for it unchanged. The registration sits where the plan put
+  it, on the line above `$pasteIntoTextOnlyBlock`'s.
+- **The test file's `lexical` import also gains `$isRangeSelection`**, which
+  `caretAt` needs to tell a caret from any other selection. Step 3 listed
+  only `$createParagraphNode` and `UNDO_COMMAND`.
+- **The handler's JSDoc gains a `@remarks`**, added after the audit: a
+  column paste runs every listener registered ahead of the handler twice,
+  and each must do nothing on the second pass. `[^redispatch]` says this of
+  today's listeners; the code now says it for one added later.
+- **The Columns bullet in `MarkdownEditor.md` names which blocks join**,
+  where *Documentation Impact* wrote "the first joins the paragraph at the
+  caret and the last takes in the rest of it". The audit noted that holds
+  only for a block of text, which Lexical's insert joins: a list, table or
+  fence at either end stays apart, as in any paste (`[^contract]`). The
+  bullet now reads "a block of text (a paragraph, heading, quote, code block
+  or raw Markdown block) that comes first joins the block at the caret, and
+  one that comes last takes in the rest of that block".
+- **Row C13 is added**, at the audit's suggestion: a column paste over a
+  table-edge range, where a guard that runs twice has a range to remove on
+  its first pass. `FENCE + '\n\nbefore\n\n| h |\n| --- |\n| c |\n\nafter'`,
+  copy `Left`@2→`Right`@3, paste over `before`@2→`c`@1 gives
+  `FENCE + '\n\nbeft\n\nRig\n\nafter'`, caret `['Rig', 3]`: the range's
+  text and the whole table go, as the parent branch's rule says, and the
+  pasted blocks join what is left of `before`.
+- **A column holding no block pastes as nothing**, found by the audit with a
+  hand-built `[column[]]` payload over a selected range: the handler pastes
+  zero blocks, and Lexical's insert of zero nodes leaves the range in place.
+  That is the contract (the paste of the blocks the column holds), and no
+  copy produces such a column: an empty column holds an empty paragraph. It
+  is left as it is.
+- **Red phase as predicted.** Before step 4, P1, P2, P3, P6 and C1–C12
+  failed, and P4, P5 and U1–U4 passed.
+- **Fuzz.** A throwaway seeded copy/paste fuzz (not committed) ran 31 951
+  pastes over 11 seeds, 19 271 of them carrying bare columns: random
+  documents holding `::: columns` blocks, tables, lists, raw blocks and code
+  blocks, a random range copied and pasted at a random caret or range,
+  through `$insertGeneratedNodes` and through
+  `$insertDataTransferForRichText`. On this branch: no throw, no column
+  outside a fence, no difference between a column paste and the paste of the
+  blocks the columns hold (document, node tree and caret), and no empty leaf
+  block left at a caret that the copy did not hold. The same run on the
+  parent's `MarkdownEditor.ts` left such an empty block in 346 pastes. The
+  parent's table-edge fuzz still reports 0 failures over its 11 seeds.
+- **What the fuzz found outside this plan.** Each also happens with a copy
+  that holds no column, on the parent branch, so none is changed here:
+  - A paste of two or more blocks at a caret in a nested list item saves a
+    list a reload shows as a raw block. `'- a\n  - b\n\nP1\n\nP2'`, copy
+    `P1`@0→`P2`@2, paste at `b`@1 saves `- a\n\n  - bP1\n\n  P2` before the
+    two paragraphs. A column paste there now lands as those blocks do, so it
+    shares the result (804 of the pastes, 275 without a column).
+  - A fence or other block pasted into a list item can save text the viewer
+    reads differently from what the editor shows (74 pastes, 48 without a
+    column).
+  - Bare table rows or cells, copied inside one table, pasted over a range
+    that leaves a table can leave a `:::` column with no block (44 pastes,
+    none with a column).
+  - One undo does not take back a paste over the very range it was copied
+    from when the only text node it touches ends with the same text:
+    `@lexical/history` merges such an update into the previous entry (3
+    pastes, 1 without a column).
+- **Manual checks M1–M4 were run in Chrome** against this worktree's dev
+  server, on the demo's own two-column block (`Left column.`,
+  `Right column.`) with `Below para` typed into the paragraph after it.
+  The selection and caret were set through the DOM selection; Ctrl+C,
+  Ctrl+V and Ctrl+Z were real key presses. M1 gave `Below paraft column.`,
+  `Rig`, caret after `Rig`, no empty paragraph. M2 (caret after `Below`)
+  gave `Belowft column.`, `Rig para`. M3: one Ctrl+Z restored the document.
+  M4: the browser tool drops at its target's centre. Dropped on the text
+  `Below para`, the selection landed inside it and gave `Belowft column.`,
+  `Rig para`. Dropped on the paragraph element, whose centre lies right of
+  the text on its line, it landed at the paragraph's end and gave
+  `Below paraft column.`, `Rig`, caret after `Rig`, no empty paragraph after
+  it. Both drops removed the dragged text from the columns (`Le`,
+  `ht column.`). For that second drop `Below para` was typed ahead of the
+  demo's image, with Enter after it, so the paragraph held only its text.
+- **Review fixes** (combined review of 2026-10-05, item B-13).
+  - *The handler's registration moved out of `ensureEditor`* into
+    `registerColumnPaste(editor)`, called where the inline line stood, ahead
+    of `registerTextOnlyBlockRules`. Its JSDoc carries the ordering rule the
+    inline comment gave. No behaviour change.
+  - *Two `COMMAND_PRIORITY_CRITICAL` listeners run twice again, as the plan
+    said.* The parent branch's review fixes merged
+    `$clearTableEdgeRangeBeforePaste` and `$clearStaleFocusRangeBeforePaste`
+    into one listener, `$clearGuardedRangeBeforePaste`, so the "three
+    listeners" note above describes the code as it was: on a re-dispatched
+    column paste the guard and the run-edge `tag` listener each run twice.
+    The guard still does nothing the second time, for the same reason (the
+    first pass removed the range), and the handler's `@remarks` now says
+    "the range guard". Row C13 passes unchanged and still describes what
+    happens: its range is a table-edge range, removed on the first pass.
+  - *That guard now removes a range only for a paste that carries nodes.*
+    A column holding no block, the hand-built payload noted above, counts as
+    one node on the first pass, so over a table-edge or stale-focus range it
+    removes the range and pastes nothing; over any other range the range
+    stays, as before. No copy produces such a column.
