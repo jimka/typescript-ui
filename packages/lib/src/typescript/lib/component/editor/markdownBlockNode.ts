@@ -208,7 +208,7 @@ export class MarkdownBlockNode extends ElementNode {
 
     /**
      * This node's attributes in the shared `{key=value}` record form, for
-     * rendering (`createDOM`) and Markdown export (the block transformer).
+     * rendering (`createDOM`) and Markdown export (the serializer).
      *
      * @returns The attribute record.
      */

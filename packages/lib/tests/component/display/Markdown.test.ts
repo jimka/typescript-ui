@@ -1290,14 +1290,12 @@ describe('Markdown table', () => {
 
     it('splits a cell\'s escaped paragraph break (two adjacent Lexical paragraphs from one Enter) into one <br>, not a blank line', () => {
         // '\\n\\n' here is the literal four-character sequence — two escaped
-        // newlines — that markdownTableTransformer.ts's escapeCellText always
-        // writes for one paragraph-to-paragraph boundary, since
-        // $convertToMarkdownString joins a cell's Lexical paragraphs (one
-        // plain Enter in the editor makes two) with a raw two-newline
-        // separator, not one. Splitting on a lone single-newline escape
-        // instead double-counts every boundary into a blank line the WYSIWYG
-        // editor itself never shows (its cell paragraphs render flush,
-        // margin: 0).
+        // newlines — that markdownSerializer.ts always writes for one
+        // paragraph-to-paragraph boundary between a cell's Lexical
+        // paragraphs (one plain Enter in the editor makes two), not one.
+        // Splitting on a lone single-newline escape instead double-counts
+        // every boundary into a blank line the WYSIWYG editor itself never
+        // shows (its cell paragraphs render flush, margin: 0).
         new Markdown('| line1\\n\\nline2 | b |\n| --- | --- |\n| 1 | 2 |').getElement(true);
 
         expect(childTagsOf('th').filter((tag) => tag === 'BR')).toHaveLength(1);
@@ -1399,6 +1397,38 @@ describe('Markdown merged table cells', () => {
 
         expect(createdTags().filter((t) => t === 'td')).toHaveLength(2);
         expect(textWrites()).toContain('<<');
+    });
+
+    it('renders a ^^ under a two-column cell as literal text when the column beside it does not continue it', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| 6 | << |\n| ^^ |').getElement(true);
+
+        expect(attrWrites()).toContainEqual({ colspan: '2' });
+        expect(attrWrites()).not.toContainEqual(expect.objectContaining({ rowspan: expect.anything() }));
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(3);   // 6 (merged), ^^, the empty cell
+        expect(textWrites()).toContain('^^');
+    });
+
+    it('renders a << as literal text when the cell to its left was begun in a row above', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| x | y |\n| ^^ | << |').getElement(true);
+
+        expect(attrWrites()).toContainEqual({ rowspan: '2' });
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(3);   // x (merged), y, <<
+        expect(textWrites()).toContain('<<');
+    });
+
+    it('renders a ^^ under the covered half of a two-column cell as literal text, leaving no hole', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| x | << |\n| y | ^^ |').getElement(true);
+
+        expect(attrWrites()).toContainEqual({ colspan: '2' });
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(3);   // x (merged), y, ^^
+        expect(textWrites()).toContain('^^');
+    });
+
+    it('merges a two-by-two cell whose second row is written ^^ then <<', () => {
+        new Markdown('| a | b |\n| --- | --- |\n| x | << |\n| ^^ | << |').getElement(true);
+
+        expect(attrWrites()).toContainEqual({ colspan: '2', rowspan: '2' });
+        expect(createdTags().filter((t) => t === 'td')).toHaveLength(1);
     });
 
     it('renders an escaped literal \\<< as an ordinary td with text <<, not a merge marker', () => {

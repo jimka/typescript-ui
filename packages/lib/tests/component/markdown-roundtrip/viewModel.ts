@@ -1,5 +1,5 @@
 import type { Token, Tokens } from 'marked';
-import { $getRoot, $isElementNode, $isLineBreakNode, $isParagraphNode, $isTextNode } from 'lexical';
+import { $getRoot, $getState, $isElementNode, $isLineBreakNode, $isParagraphNode, $isTextNode } from 'lexical';
 import type { LexicalEditor, LexicalNode, TextFormatType } from 'lexical';
 import { $isHeadingNode, $isQuoteNode } from '@lexical/rich-text';
 import { $isListNode, $isListItemNode } from '@lexical/list';
@@ -18,6 +18,7 @@ import {
 import type { MarkdownSpanStyle } from '~/component/display/markdownAttributes';
 import { $isMarkdownBlockNode, $isMarkdownColumnNode } from '~/component/editor/markdownBlockNode';
 import { $isMarkdownImageNode } from '~/component/editor/markdownImageNode';
+import { listLooseState } from '~/component/editor/markdownNodeState';
 import type { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 
 /** An inline format a text run carries. */
@@ -113,6 +114,11 @@ function sameFormatting(run: Extract<Run, { kind: 'text' }>, context: Pick<RunCo
  */
 function pushText(runs: Run[], text: string, context: RunContext): void {
     const last = runs[runs.length - 1];
+
+    // Empty text shows nothing, so it neither starts a run nor ends the one before (an empty link between two runs).
+    if (text === '') {
+        return;
+    }
 
     if (last?.kind === 'text' && sameFormatting(last, context)) {
         last.text = collapseWhitespace(last.text + text);
@@ -607,7 +613,7 @@ function editorBlock(node: LexicalNode): Block {
     }
 
     if ($isListNode(node)) {
-        return { kind: 'list', ordered: node.getListType() === 'number', loose: false, items: editorListItems(node) };
+        return { kind: 'list', ordered: node.getListType() === 'number', loose: $getState(node, listLooseState), items: editorListItems(node) };
     }
 
     if ($isTableNode(node)) {

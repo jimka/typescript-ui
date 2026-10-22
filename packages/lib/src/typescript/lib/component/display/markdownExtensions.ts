@@ -495,3 +495,16 @@ export function lexMarkdownUnbounded(source: string): Token[] {
 export function lexMarkdown(source: string): Token[] {
     return _marked.lexer(source);
 }
+
+/**
+ * Lexes one run of inline Markdown — text with no block structure, such as a
+ * reference link's label — through the same scoped `marked` instance as
+ * {@link lexMarkdown}, so emphasis and the dialect's inline extensions read
+ * as they do in the viewer.
+ *
+ * @param source - The inline Markdown to lex.
+ * @returns The inline token list.
+ */
+export function lexMarkdownInline(source: string): Token[] {
+    return _marked.Lexer.lexInline(source, _marked.defaults);
+}

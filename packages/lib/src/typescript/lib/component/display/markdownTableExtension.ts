@@ -27,14 +27,18 @@ export interface MdTableToken {
     widths: Array<number | null>;
     header: MdTableHeaderCell[];
     rows:   MdTableBodyCell[][];
+    /**
+     * Whether a body row holds a non-empty cell past the header's last column,
+     * which the table drops (GFM ignores a row's excess cells).
+     */
+    droppedCells: boolean;
 }
 
 /**
- * Splits one raw pipe-row line into its cell texts. Mirrors the editor's own
- * `splitTableRow` (`markdownTableTransformer.ts`): drops one optional leading
- * and trailing pipe, splits on unescaped `|` only, restores an escaped `\|`
- * to a literal `|`, and trims each cell. Duplicated rather than imported —
- * `component/display` does not reach into `component/editor`.
+ * Splits one raw pipe-row line into its cell texts — the reverse of the pipe
+ * rows the editor's serializer (`markdownSerializer.ts`) writes: drops one
+ * optional leading and trailing pipe, splits on unescaped `|` only, restores
+ * an escaped `\|` to a literal `|`, and trims each cell.
  *
  * A cell whose *entire* trimmed text is `\<<` or `\^^` (the escaped form of a
  * literal `<<`/`^^`) is left untouched here; that whole-cell unescape happens
@@ -114,37 +118,97 @@ interface Anchor {
     column: number;
 }
 
+/** A cell's rectangle while the grid is resolved: its anchor, and the last row and column it covers so far. */
+interface MergeRect {
+    readonly anchor: Anchor;
+    lastRow:         number;
+    lastColumn:      number;
+}
+
 /**
  * Resolves `<<`/`^^` continuations over the body-row grid into one anchor per
- * position, per the three-step algorithm in the plan's Internal Structure:
- * `<<` points left, `^^` points up (both transitively, since earlier
- * positions are already resolved by the time a later one reads them), and a
- * `<<` in column 0 or a `^^` in row 0 has nothing to extend, so it becomes
- * its own anchor holding that literal text. The header row is never part of
- * this grid — only body rows merge.
+ * position, row by row, so every anchor covers a whole rectangle (the
+ * `colspan` × `rowspan` block a table cell can span): a `<<` extends the cell
+ * to its left only while that cell was begun in the same row; a `^^` extends
+ * the cell above only from that cell's first column, and only when every
+ * further column the cell covers is continued in the same row (by `^^` or
+ * `<<`), so the cell grows by a whole row. A marker that cannot extend a cell
+ * that way — including a `<<` in column 0 or a `^^` in row 0 — becomes its
+ * own anchor holding that literal text. The header row is never part of this
+ * grid — only body rows merge.
  *
  * @param grid - The body rows' raw cell texts, one array per row, each
  *   already padded to the table's column count.
  * @returns One `Anchor` per grid position, same shape as `grid`.
  */
 function resolveMergeGrid(grid: string[][]): Anchor[][] {
-    const anchors: Anchor[][] = grid.map((row) => row.map(() => ({ row: -1, column: -1 })));
+    const owners: MergeRect[][] = grid.map(() => []);
 
     for (let row = 0; row < grid.length; row += 1) {
         for (let column = 0; column < grid[row]!.length; column += 1) {
-            const text = grid[row]![column]!;
-
-            if (text === "<<" && column > 0) {
-                anchors[row]![column] = anchors[row]![column - 1]!;
-            } else if (text === "^^" && row > 0) {
-                anchors[row]![column] = anchors[row - 1]![column]!;
-            } else {
-                anchors[row]![column] = { row, column };
-            }
+            owners[row]![column] ??= extendLeft(grid, owners, row, column)
+                ?? extendUp(grid, owners, row, column)
+                ?? { anchor: { row, column }, lastRow: row, lastColumn: column };
         }
     }
 
-    return anchors;
+    return owners.map((rects) => rects.map((rect) => rect.anchor));
+}
+
+/**
+ * Extends the cell to the left of a `<<` by one column, when that cell was
+ * begun in this row (a cell spanning rows from above cannot widen in one row
+ * only).
+ *
+ * @param grid - The body rows' cell texts.
+ * @param owners - The rectangles resolved so far.
+ * @param row - The position's row.
+ * @param column - The position's column.
+ * @returns The extended rectangle, or `null` when the position does not extend one.
+ */
+function extendLeft(grid: string[][], owners: MergeRect[][], row: number, column: number): MergeRect | null {
+    const left = column > 0 ? owners[row]![column - 1]! : null;
+
+    if (grid[row]![column] !== "<<" || left === null || left.anchor.row !== row) {
+        return null;
+    }
+
+    left.lastColumn = column;
+
+    return left;
+}
+
+/**
+ * Extends the cell above a `^^` by one row, when the `^^` stands under that
+ * cell's first column and every further column the cell covers holds `^^` or
+ * `<<` in this row; those positions are claimed too.
+ *
+ * @param grid - The body rows' cell texts.
+ * @param owners - The rectangles resolved so far. Updated in place for the claimed positions.
+ * @param row - The position's row.
+ * @param column - The position's column.
+ * @returns The extended rectangle, or `null` when the position does not extend one.
+ */
+function extendUp(grid: string[][], owners: MergeRect[][], row: number, column: number): MergeRect | null {
+    const above = row > 0 ? owners[row - 1]![column]! : null;
+
+    if (grid[row]![column] !== "^^" || above === null || above.anchor.column !== column) {
+        return null;
+    }
+
+    const covered = grid[row]!.slice(column + 1, above.lastColumn + 1);
+
+    if (!covered.every((text) => text === "^^" || text === "<<")) {
+        return null;
+    }
+
+    above.lastRow = row;
+
+    for (let claimed = column + 1; claimed <= above.lastColumn; claimed += 1) {
+        owners[row]![claimed] = above;
+    }
+
+    return above;
 }
 
 /** Reverses the whole-cell `\<<` / `\^^` escape back to the literal marker text. */
@@ -158,8 +222,9 @@ function unescapeCellText(text: string): string {
  * body rows, resolving `<<`/`^^` merge continuations — in one pass. Replaces
  * `marked`'s own table recognition entirely: its built-in delimiter-row regex
  * rejects a cell carrying `{width=…}`, which would otherwise turn the whole
- * block into paragraphs. Mirrors the editor's own hand-written
- * `markdownTableTransformer.ts`, so each half owns one table parser.
+ * block into paragraphs. The editor reads tables through this same
+ * extension and writes them with its serializer (`markdownSerializer.ts`),
+ * so there is one table parser.
  */
 export const TABLE_EXTENSION: TokenizerExtension = {
     name:  "mdtable",
@@ -217,6 +282,7 @@ export const TABLE_EXTENSION: TokenizerExtension = {
         });
 
         const anchors = resolveMergeGrid(bodyGrid);
+        const droppedCells = bodyLines.some((line) => splitRow(line).slice(columnCount).some((cell) => cell !== ""));
 
         const rows: MdTableBodyCell[][] = bodyGrid.map((cells, row) => {
             const rowCells: MdTableBodyCell[] = [];
@@ -267,6 +333,7 @@ export const TABLE_EXTENSION: TokenizerExtension = {
             widths: delimiter.widths,
             header,
             rows,
+            droppedCells,
         } satisfies MdTableToken;
     },
 };

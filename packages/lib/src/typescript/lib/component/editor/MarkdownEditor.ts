@@ -18,14 +18,16 @@ import type { CodeEditorChange } from "~/component/editor/CodeEditor.js";
 import { TextField } from "~/component/input/TextField.js";
 import {
     createEditor, FORMAT_TEXT_COMMAND, $getSelection, $isRangeSelection, $getRoot,
-    $createParagraphNode, KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH,
-    IS_ALL_FORMATTING, $isTextNode, TEXT_TYPE_TO_FORMAT,
+    $createParagraphNode, KEY_ENTER_COMMAND, COMMAND_PRIORITY_HIGH, SELECTION_INSERT_CLIPBOARD_NODES_COMMAND,
+    PASTE_COMMAND, DELETE_CHARACTER_COMMAND, $createTextNode, $copyNode, $isLineBreakNode, $getState,
+    IS_ALL_FORMATTING, $isTextNode, TEXT_TYPE_TO_FORMAT, $hasUpdateTag, HISTORY_PUSH_TAG,
     $getNearestNodeFromDOMNode, isDOMNode, $findMatchingParent, $isElementNode, $isParagraphNode,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
+    CommandListener, LexicalCommand, CommandListenerPriority, UpdateListener, ParagraphNode, RangeSelection, EditorUpdateOptions,
 } from "lexical";
-import { $convertFromMarkdownString, $convertToMarkdownString, registerMarkdownShortcuts } from "@lexical/markdown";
+import { registerMarkdownShortcuts } from "@lexical/markdown";
 import { registerRichText, $createHeadingNode, $createQuoteNode, QuoteNode, $isQuoteNode } from "@lexical/rich-text";
 import type { HeadingTagType } from "@lexical/rich-text";
 import {
@@ -45,27 +47,44 @@ import {
     INSERT_TABLE_COMMAND,
 } from "@lexical/table";
 import { mergeRegister, $getNearestNodeOfType } from "@lexical/utils";
-import { $setBlocksType, $patchStyleText } from "@lexical/selection";
-import { TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
+import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent } from "@lexical/selection";
+import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
+import { $importMarkdown } from "~/component/editor/markdownImporter.js";
+import { $serializeBlock, $serializeInlineNodes, $serializeMarkdown } from "~/component/editor/markdownSerializer.js";
+import {
+    $editWritably, $findEnclosingBlock, $formatWritably, $orderedPoints, $selectionHasFormat, RUN_EDGE_TAG, registerWritableStateRules,
+} from "~/component/editor/markdownWritable.js";
+import {
+    $createMarkdownRawBlockNode, $isMarkdownRawBlockNode, $isMarkdownSourceTextNode, MarkdownRawBlockNode,
+} from "~/component/editor/markdownSourceNodes.js";
+import { keptSourceState, nestedLinkState } from "~/component/editor/markdownNodeState.js";
 import { EDITOR_NODES } from "~/component/editor/editorNodes.js";
 import { EDITOR_THEME, ensureMarkdownEditorClassRules } from "~/component/editor/editorTheme.js";
 import {
     MarkdownBlockNode, $createMarkdownBlockNode, $isMarkdownBlockNode, $createMarkdownColumnNode,
 } from "~/component/editor/markdownBlockNode.js";
 import { $createMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
-import { resolveImageSpec } from "~/component/display/markdownAttributes.js";
+import { cssTextToAttributes, resolveImageSpec } from "~/component/display/markdownAttributes.js";
 import {
     BOLD_SOURCE, ITALIC_SOURCE, UNDERLINE_SOURCE, STRIKETHROUGH_SOURCE, INLINE_CODE_SOURCE,
-    REMOVE_LINK_SOURCE, CLEAR_FORMAT_SOURCE, linkSource, spanStyleSource, readSourceSelectionState,
-    FENCED_CODE_SOURCE, blockPrefixSource, listSource, paragraphAroundBlockSource, imageSource, tableSource,
+    REMOVE_LINK_SOURCE, CLEAR_FORMAT_SOURCE, linkSource, spanStyleSource, readSourceSelectionState, imageSource,
 } from "~/component/editor/markdownSourceEdits.js";
 import type { MarkdownSourceTransform } from "~/component/editor/markdownSourceEdits.js";
+import {
+    FENCED_CODE_SOURCE, blockPrefixSource, listSource, paragraphAroundBlockSource, tableSource,
+} from "~/component/editor/markdownSourceLines.js";
 
 /**
  * The coalescing window (ms) for the undo/redo history: edits within this gap
  * merge into a single undo step, matching Lexical's own recommended default.
  */
 const HISTORY_DELAY_MS = 300;
+
+/**
+ * The clipboard type Lexical writes its own copied nodes under (the
+ * `@lexical/clipboard` copy format); a paste carrying it inserts those nodes.
+ */
+const LEXICAL_CLIPBOARD_TYPE = "application/x-lexical-editor";
 
 /** Shown when a context-menu Paste finds the clipboard read unavailable. */
 const CLIPBOARD_READ_DENIED_MESSAGE = "Clipboard read blocked by the browser — press Ctrl/Cmd+V to paste.";
@@ -205,10 +224,38 @@ function createBlockNode(type: MarkdownBlockType): ElementNode {
 }
 
 /**
+ * `$setBlocksType`'s after-create hook for a conversion to a code block:
+ * copies the block's format and indent, as the default hook does, and
+ * replaces its inline content with that content's Markdown, so the code
+ * block shows — and saves — the source of the formatting, links and images
+ * it cannot hold, and nothing is lost. A raw block or a code block already
+ * holds only its text and is left as it is.
+ *
+ * @param block - The block being converted; its children move into `code`.
+ * @param code - The new code block.
+ */
+function $copyBlockAsCodeSource(block: ElementNode, code: ElementNode): void {
+    $copyBlockFormatIndent(block, code);
+
+    if ($isTextOnlyBlock(block)) {
+        return;
+    }
+
+    const markdown = $serializeInlineNodes(block.getChildren());
+
+    block.clear();
+
+    if (markdown !== "") {
+        block.append($createTextNode(markdown));
+    }
+}
+
+/**
  * Builds the source-mode transform for a {@link MarkdownEditor.setBlockType}
- * call: `"code"` fences the selection, and every other type strips whatever
- * block prefix is there and writes its own — `""` for `"paragraph"`, `"> "`
- * for `"quote"`, `"#".repeat(level) + " "` for `h1`–`h6`.
+ * call: `"code"` fences the selected blocks, and every other type converts
+ * them to the block its prefix writes — `""` for `"paragraph"`, `"> "` for
+ * `"quote"`, `"#".repeat(level) + " "` for `h1`–`h6` (see
+ * `markdownSourceLines.ts`).
  *
  * @param type - The requested block type.
  * @returns The source-mode transform.
@@ -598,6 +645,710 @@ function $handleSeparatorShortcut(event: KeyboardEvent | null): boolean {
 }
 
 /**
+ * `KEY_ENTER_COMMAND` handler for plain Enter inside a raw Markdown block,
+ * which edits the block as text: in the middle it inserts a line break, as
+ * Enter in a `CodeNode` does, so the rest of the block stays raw Markdown;
+ * at the start of a non-empty block it inserts an empty paragraph before the
+ * block, as Enter at the start of a paragraph does. At the end it is left to
+ * `registerRichText`, whose new paragraph `MarkdownRawBlockNode.insertNewAfter`
+ * places after the block. Registered at {@link COMMAND_PRIORITY_HIGH}, ahead
+ * of `registerRichText`'s own handler, as {@link $handleSeparatorShortcut} is.
+ *
+ * @param event - The native keyboard event, or `null` for a programmatic dispatch.
+ * @returns Whether Enter inside a raw block was handled.
+ */
+function $handleRawBlockEnter(event: KeyboardEvent | null): boolean {
+    if (event?.shiftKey || event?.altKey) {
+        return false;
+    }
+
+    const selection = $getSelection();
+    const rawBlock = $rawBlockAtAnchor(selection);
+
+    if (rawBlock === null || !$isRangeSelection(selection)) {
+        return false;
+    }
+
+    const atEnd = selection.isCollapsed() && rawBlock.isSelectionAtEnd(selection);
+
+    if (atEnd) {
+        return false;
+    }
+
+    event?.preventDefault();
+
+    const atStart = selection.isCollapsed() && rawBlock.isSelectionAtStart(selection);
+
+    if (atStart) {
+        rawBlock.insertBefore($createParagraphNode());
+    } else {
+        selection.insertLineBreak();
+    }
+
+    return true;
+}
+
+/**
+ * `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` handler for a paste into a raw
+ * Markdown block or a code block: the pasted content goes in as plain text
+ * at the caret — one line per line, and between pasted blocks a blank line
+ * in a raw block (Markdown's block separator) or a line break in a code
+ * block — so the block keeps holding only text. Lexical's default insert
+ * would merge a raw block's text into the first and last pasted paragraphs,
+ * which save escaped, and would put formatting, links and images into a code
+ * block, which saves only its text.
+ *
+ * @param payload - The pasted nodes and the selection they are inserted at.
+ * @returns Whether the paste landed in a raw block or a code block.
+ */
+function $pasteIntoTextOnlyBlock(payload: { nodes: LexicalNode[]; selection: BaseSelection }): boolean {
+    const selection = payload.selection;
+    const block = $isRangeSelection(selection) ? $findMatchingParent(selection.anchor.getNode(), $isTextOnlyBlock) : null;
+
+    if (block === null || !$isRangeSelection(selection)) {
+        return false;
+    }
+
+    const blockSeparator = $isCodeNode(block) ? "\n" : "\n\n";
+
+    const text = payload.nodes.reduce((joined, node, index) => {
+        const isBlock = $isElementNode(node) && !node.isInline();
+        const previous = payload.nodes[index - 1];
+        const afterBlock = previous !== undefined && $isElementNode(previous) && !previous.isInline();
+        const separator = index > 0 && (isBlock || afterBlock) ? blockSeparator : "";
+
+        return joined + separator + node.getTextContent();
+    }, "");
+
+    selection.insertRawText(text);
+
+    return true;
+}
+
+/**
+ * `PASTE_COMMAND` handler for a plain-text paste into a raw Markdown block:
+ * the clipboard's text goes in at the caret, each newline a line break of
+ * the block, as `paste()` inserts it. Lexical's own plain-text paste inserts
+ * a paragraph per newline, which splits the block in two. A paste carrying
+ * Lexical nodes is left to Lexical, whose insert reaches
+ * {@link $pasteIntoTextOnlyBlock}. Registered at {@link COMMAND_PRIORITY_HIGH},
+ * ahead of `registerRichText`'s own handler.
+ *
+ * @param event - The paste event (a `ClipboardEvent` from the browser).
+ * @returns Whether the paste landed in a raw block.
+ */
+function $pastePlainTextIntoRawBlock(event: ClipboardEvent | InputEvent | KeyboardEvent): boolean {
+    const selection = $getSelection();
+    const clipboardData = "clipboardData" in event ? event.clipboardData : null;
+
+    if ($rawBlockAtAnchor(selection) === null || !$isRangeSelection(selection) || clipboardData === null) {
+        return false;
+    }
+
+    const holdsNodes = clipboardData.getData(LEXICAL_CLIPBOARD_TYPE) !== "";
+    const text = clipboardData.getData("text/plain");
+
+    if (holdsNodes || text === "") {
+        return false;
+    }
+
+    event.preventDefault();
+    selection.insertRawText(text);
+
+    return true;
+}
+
+/**
+ * `DELETE_CHARACTER_COMMAND` handler keeping a raw Markdown block or a code
+ * block text-only when a delete joins another block to it, as that block's
+ * Markdown: its formatting, links, images and escapes become text of the
+ * block, which saves its text as written, instead of Lexical's merge moving
+ * the block's nodes in, which the save would drop. Handles Backspace at a
+ * paragraph's start after such a block, Delete at such a block's end before
+ * a paragraph, and a range deleted from inside such a block into a later
+ * block, whose rest after the range joins. The caret lands where the two
+ * met. Registered at {@link COMMAND_PRIORITY_HIGH}, ahead of
+ * `registerRichText`'s own handler.
+ *
+ * @param isBackward - `true` for Backspace, `false` for Delete.
+ * @returns Whether a block was joined to a raw block or code block.
+ */
+function $joinIntoTextOnlyBlock(isBackward: boolean): boolean {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return false;
+    }
+
+    if (!selection.isCollapsed()) {
+        return $deleteRangeFromTextOnlyBlock(selection);
+    }
+
+    const pair = isBackward ? $textOnlyBlockBeforeParagraphStart(selection) : $paragraphAfterTextOnlyBlockEnd(selection);
+
+    if (pair === null) {
+        return false;
+    }
+
+    const [block, paragraph] = pair;
+    const joint = block.getLastChild();
+    const added = $textOnlyChildren($serializeBlock(paragraph));
+
+    block.append(...added);
+    paragraph.remove();
+
+    if ($isTextNode(joint)) {
+        joint.select(joint.getTextContentSize(), joint.getTextContentSize());
+    } else if ($isTextNode(added[0])) {
+        added[0].select(0, 0);
+    } else {
+        block.selectEnd();
+    }
+
+    return true;
+}
+
+/**
+ * Deletes a range that starts inside a raw Markdown block or a code block
+ * and ends in a later block: the rest of that later block after the range
+ * joins as its Markdown (as its text, when it is a raw block or code block
+ * too), so nothing it holds is dropped and its escapes keep its text as it
+ * was shown.
+ *
+ * @param selection - A non-collapsed range selection.
+ * @returns Whether the range started in a raw block or code block and ended
+ *   outside it, and was deleted.
+ */
+function $deleteRangeFromTextOnlyBlock(selection: RangeSelection): boolean {
+    const [start, end] = $orderedPoints(selection);
+    const block = $findMatchingParent(start.getNode(), $isTextOnlyBlock);
+    const tailBlock = $findEnclosingBlock(end.getNode());
+    const endsInside = block !== null && $findMatchingParent(end.getNode(), (node) => node.is(block)) !== null;
+
+    if (block === null || tailBlock === null || endsInside) {
+        return false;
+    }
+
+    const startPoint: [string, number, "text" | "element"] = [start.key, start.offset, start.type];
+    const rest = $detachRestOfBlock(tailBlock, end);
+    const tail = $isTextOnlyBlock(tailBlock) ? rest.getTextContent() : $inlineMarkdown(rest.getChildren());
+    const range = tailBlock.selectEnd();
+
+    range.anchor.set(...startPoint);
+    range.removeText();
+
+    const caret = $getSelection();
+
+    if (tail !== "" && $isRangeSelection(caret)) {
+        const joint: [string, number, "text" | "element"] = [caret.anchor.key, caret.anchor.offset, caret.anchor.type];
+
+        caret.insertRawText(tail);
+
+        const restored = $getSelection();
+
+        if ($isRangeSelection(restored)) {
+            restored.anchor.set(...joint);
+            restored.focus.set(...joint);
+        }
+    }
+
+    return true;
+}
+
+/**
+ * Moves everything of a block after a point into a new, detached paragraph,
+ * keeping the inline elements (links) the moved nodes sit in as copies, so
+ * the paragraph serializes as the rest of the block would. A run kept as
+ * source never splits: a point inside one moves it whole.
+ *
+ * @param block - The block holding the point.
+ * @param point - Where the rest starts.
+ * @returns The paragraph holding the rest; the block keeps what was before
+ *   the point.
+ */
+function $detachRestOfBlock(block: ElementNode, point: RangeSelection["anchor"]): ParagraphNode {
+    let parent: ElementNode;
+    let first: LexicalNode | null;
+
+    if (point.type === "text") {
+        const text = point.getNode() as TextNode;
+
+        parent = text.getParentOrThrow();
+
+        if (point.offset === 0 || ($isMarkdownSourceTextNode(text) && point.offset < text.getTextContentSize())) {
+            first = text;
+        } else if (point.offset >= text.getTextContentSize()) {
+            first = text.getNextSibling();
+        } else {
+            first = text.splitText(point.offset)[1] ?? null;
+        }
+    } else {
+        parent = point.getNode() as ElementNode;
+        first = parent.getChildAtIndex(point.offset);
+    }
+
+    let moved: LexicalNode[] = first === null ? [] : [first, ...first.getNextSiblings()];
+
+    while (!parent.is(block)) {
+        const copy = $copyNode(parent);
+        const following = parent.getNextSiblings();
+        const grandparent = parent.getParentOrThrow();
+
+        copy.append(...moved);
+
+        if (parent.getChildrenSize() === 0) {
+            parent.remove();
+        }
+
+        moved = copy.getChildrenSize() > 0 ? [copy, ...following] : following;
+        parent = grandparent;
+    }
+
+    return $createParagraphNode().append(...moved);
+}
+
+/**
+ * The Markdown of a run of inline nodes, keeping the whitespace at its edges
+ * that the serializer trims at a line's edges, since the run joins text
+ * already there.
+ *
+ * @param nodes - The inline nodes.
+ * @returns Their Markdown.
+ */
+function $inlineMarkdown(nodes: LexicalNode[]): string {
+    const text = nodes.map((node) => node.getTextContent()).join("");
+    const markdown = $serializeInlineNodes(nodes);
+
+    if (markdown === "") {
+        return text.trim() === "" ? text : markdown;
+    }
+
+    const leading = /^[ \t]*/.exec(text)![0];
+    const trailing = /[ \t]*$/.exec(text)![0];
+
+    return leading + markdown.replace(/^[ \t]+/, "").replace(/[ \t]+$/, "") + trailing;
+}
+
+/**
+ * The children of a raw Markdown block or code block holding `text`: one
+ * text node per non-empty line, a line break between every two lines.
+ *
+ * @param text - The text.
+ * @returns The nodes, detached.
+ */
+function $textOnlyChildren(text: string): LexicalNode[] {
+    return $createMarkdownRawBlockNode(text).getChildren();
+}
+
+/**
+ * Node transform keeping a raw Markdown block or code block text-only: any
+ * run of children that is not plain text or a line break — a link, an
+ * image, text with a mark or a colour, font or size, a run kept as source
+ * (inline code, and CSS no span writes, show nothing the text lacks), which a merge from
+ * another block can bring in (typing or pasting over a range that reaches
+ * into the next block) — is replaced by its Markdown, so the save, which
+ * writes the block's text, drops none of it. The commands that format, link
+ * or insert decline in these blocks, so only such a merge gets here.
+ *
+ * @param block - The raw block or code block.
+ */
+function $keepTextOnly(block: ElementNode): void {
+    let run: LexicalNode[] = [];
+
+    const flush = (): void => {
+        if (run.length === 0) {
+            return;
+        }
+
+        const replacement = $textOnlyChildren($inlineMarkdown(run));
+
+        for (const node of replacement) {
+            run[0]!.insertBefore(node);
+        }
+
+        run.forEach((node) => node.remove());
+        run = [];
+    };
+
+    for (const child of block.getChildren()) {
+        // Inline code and CSS the save writes no span for (a pasted `white-space`) show nothing the block's text lacks.
+        const plain = $isLineBreakNode(child)
+            || ($isTextNode(child) && !$isMarkdownSourceTextNode(child) && (child.getFormat() & ~TEXT_TYPE_TO_FORMAT.code) === 0
+                && Object.keys(cssTextToAttributes(child.getStyle())).length === 0);
+
+        if (plain) {
+            flush();
+        } else {
+            run.push(child);
+        }
+    }
+
+    flush();
+}
+
+/**
+ * The raw Markdown block or code block a collapsed caret at a paragraph's
+ * start would Backspace into, with that paragraph.
+ *
+ * @param selection - A collapsed range selection.
+ * @returns The block and the paragraph, or `null` when the caret is not at
+ *   the start of a paragraph right after a raw block or code block.
+ */
+function $textOnlyBlockBeforeParagraphStart(selection: RangeSelection): [MarkdownRawBlockNode | CodeNode, ParagraphNode] | null {
+    const anchor = selection.anchor;
+    const paragraph = $findMatchingParent(anchor.getNode(), $isParagraphNode);
+    const previous = paragraph?.getPreviousSibling();
+    const first = paragraph?.getFirstDescendant() ?? null;
+    const atStart = anchor.offset === 0 && (anchor.getNode().is(paragraph) || anchor.getNode().is(first));
+
+    return paragraph && atStart && $isTextOnlyBlock(previous) ? [previous, paragraph] : null;
+}
+
+/**
+ * The paragraph a collapsed caret at a raw Markdown block's or code block's
+ * end would Delete into, with that block.
+ *
+ * @param selection - A collapsed range selection.
+ * @returns The block and the paragraph, or `null` when the caret is not at
+ *   the end of a raw block or code block right before a paragraph.
+ */
+function $paragraphAfterTextOnlyBlockEnd(selection: RangeSelection): [MarkdownRawBlockNode | CodeNode, ParagraphNode] | null {
+    const block = $findMatchingParent(selection.anchor.getNode(), $isTextOnlyBlock);
+    const next = block?.getNextSibling();
+
+    return block && $isSelectionAtBlockEnd(block, selection) && $isParagraphNode(next) ? [block, next] : null;
+}
+
+/**
+ * Whether a selection's anchor sits at the very end of a block, as
+ * `MarkdownRawBlockNode.isSelectionAtEnd` tells for a raw block.
+ *
+ * @param block - The block.
+ * @param selection - The selection.
+ * @returns `true` at the end of the block's last line (or in an empty block).
+ */
+function $isSelectionAtBlockEnd(block: ElementNode, selection: RangeSelection): boolean {
+    const anchor = selection.anchor;
+    const node = anchor.getNode();
+
+    if (anchor.type === "element") {
+        return node.is(block) && anchor.offset === block.getChildrenSize();
+    }
+
+    const last = block.getLastDescendant();
+
+    return last !== null && node.is(last) && anchor.offset === node.getTextContentSize();
+}
+
+/**
+ * The raw Markdown block holding a range selection's anchor.
+ *
+ * @param selection - The selection.
+ * @returns The `MarkdownRawBlockNode`, or `null` outside one or for a
+ *   selection that is not a range.
+ */
+function $rawBlockAtAnchor(selection: BaseSelection | null): MarkdownRawBlockNode | null {
+    return $isRangeSelection(selection) ? $findMatchingParent(selection.anchor.getNode(), $isMarkdownRawBlockNode) : null;
+}
+
+/**
+ * Whether the selection's anchor sits inside a raw Markdown block.
+ *
+ * @returns `true` inside a `MarkdownRawBlockNode`.
+ */
+function $isSelectionInRawBlock(): boolean {
+    return $rawBlockAtAnchor($getSelection()) !== null;
+}
+
+/**
+ * Whether a node is a block that holds only text and saves it as written: a
+ * raw Markdown block or a code block.
+ *
+ * @param node - The node.
+ * @returns `true` for a `MarkdownRawBlockNode` or a `CodeNode`.
+ */
+function $isTextOnlyBlock(node: LexicalNode | null | undefined): node is MarkdownRawBlockNode | CodeNode {
+    return $isMarkdownRawBlockNode(node) || $isCodeNode(node);
+}
+
+/**
+ * Whether any part of a range selection lies inside a node `isHolder`
+ * matches.
+ *
+ * @param isHolder - Tells the kind of node asked about.
+ * @returns `true` when the selection's anchor, focus or any selected node is
+ *   such a node or inside one; `false` for a selection that is not a range.
+ */
+function $selectionTouches(isHolder: (node: LexicalNode) => boolean): boolean {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return false;
+    }
+
+    const nodes = [selection.anchor.getNode(), selection.focus.getNode(), ...selection.getNodes()];
+
+    return nodes.some((node) => $findMatchingParent(node, isHolder) !== null);
+}
+
+/**
+ * Whether any part of the selection lies in a raw Markdown block or a code
+ * block, whose text saves as written: formatting, a link or an inserted node
+ * there would be shown but not saved, so the commands that make them
+ * decline.
+ *
+ * @returns `true` when the selection's anchor, focus or any selected node is
+ *   inside a `MarkdownRawBlockNode` or a `CodeNode`.
+ */
+function $selectionTouchesTextOnlyBlock(): boolean {
+    return $selectionTouches($isTextOnlyBlock);
+}
+
+/**
+ * Whether any part of the selection lies in a table cell, which holds text
+ * only: a heading, quote, code block or list made there would be saved into
+ * the cell as its literal syntax, so the block conversions decline. A table
+ * selection is of whole cells, so it lies in them by what it is — its own
+ * nodes are not read, since the cell its focus names can be gone (one merged
+ * away, until the next selection change).
+ *
+ * @returns `true` for a table selection, and for a range selection whose
+ *   anchor, focus or any selected node is inside a `TableCellNode`.
+ */
+function $selectionTouchesTableCell(): boolean {
+    const isTableSelection = $isTableSelection($getSelection());
+
+    return isTableSelection || $selectionTouches($isTableCellNode);
+}
+
+/**
+ * Whether a node is a run kept as Markdown source that the formats, styles
+ * and links decline to touch: the per-node half of
+ * {@link $selectionCoversSourceRun}'s test, which adds how much of the run
+ * the selection holds.
+ *
+ * @param node - The node.
+ * @returns `true` for a `MarkdownSourceTextNode` other than a soft line
+ *   break.
+ */
+function $isFormatBlockingSourceRun(node: LexicalNode): boolean {
+    // A soft break takes the formats around it, unless it is a run of a construct kept as written, which writes them.
+    return $isMarkdownSourceTextNode(node) && !(node.getSource().trim() === "" && $getState(node, keptSourceState) === null);
+}
+
+/**
+ * Whether the format toggles format a cell of a table selection. They format
+ * the selected cells one at a time, each over its whole content, so a cell
+ * takes the format when it holds text to carry it and no run the formats
+ * decline to touch ({@link $isFormatBlockingSourceRun}) — what
+ * {@link $declinesFormat} rules out for a range over that content. An empty
+ * cell, and one holding an image alone, takes none.
+ *
+ * @param cell - The cell.
+ * @returns `true` when a format toggle would format the cell.
+ */
+function $cellTakesFormat(cell: TableCellNode): boolean {
+    const texts = cell.getAllTextNodes();
+    const holdsText = texts.some((text) => text.getTextContentSize() > 0);
+
+    return holdsText && !texts.some($isFormatBlockingSourceRun);
+}
+
+/**
+ * Whether the selection holds part of a run kept as Markdown source (a
+ * `MarkdownSourceTextNode`: inline HTML, a task-list marker, a link nested
+ * in a link, …) other than a soft line break. Such a run saves its source as
+ * written, so a format, style or link put on it would be shown but not saved
+ * the way it is shown — and wrapping its source in markers can change what
+ * it is (a task-list marker inside `**` is no longer one) — so the commands
+ * that add them decline, as they do in a raw block. A soft break's
+ * whitespace takes the marks around it, so it does not count; neither does a
+ * run the selection only borders.
+ *
+ * @returns `true` when a non-whitespace source run lies (partly) inside the
+ *   selection.
+ */
+function $selectionCoversSourceRun(): boolean {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return false;
+    }
+
+    const isCollapsed = selection.isCollapsed();
+
+    if (isCollapsed) {
+        return false;
+    }
+
+    const [start, end] = $orderedPoints(selection);
+
+    return selection.getNodes().some((node) => {
+        const blocksFormat = $isFormatBlockingSourceRun(node);
+
+        if (!blocksFormat) {
+            return false;
+        }
+
+        const isStart = start.type === "text" && start.key === node.getKey();
+        const isEnd = end.type === "text" && end.key === node.getKey();
+        const from = isStart ? start.offset : 0;
+        const to = isEnd ? end.offset : node.getTextContentSize();
+
+        return (!isStart && !isEnd) || to > from;
+    });
+}
+
+/**
+ * Whether the selection's anchor or focus sits in a link node holding a run
+ * of a link nested in a link ({@link nestedLinkState}): that run's source
+ * writes the link, so removing or re-pointing the link node would change
+ * what is shown but not what is saved, and the link commands decline.
+ *
+ * @returns `true` when either end's enclosing link node holds such a run.
+ */
+function $selectionInNestedLinkRun(): boolean {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return false;
+    }
+
+    return [selection.anchor.getNode(), selection.focus.getNode()].some((node) => {
+        const link = $findMatchingParent(node, $isLinkNode);
+
+        return link !== null && link.getChildren().some((child) => $isMarkdownSourceTextNode(child) && $getState(child, nestedLinkState) !== -1);
+    });
+}
+
+/**
+ * `FORMAT_TEXT_COMMAND` handler declining a format the selection could not
+ * save as shown: one touching a raw Markdown block or a code block, or
+ * holding a run kept as Markdown source. Registered at
+ * {@link COMMAND_PRIORITY_HIGH}, ahead of `registerRichText`'s own handler,
+ * so the keyboard shortcuts decline as the toggles do.
+ *
+ * @returns Whether the format was declined.
+ */
+function $declinesFormat(): boolean {
+    return $selectionTouchesTextOnlyBlock() || $selectionCoversSourceRun();
+}
+
+/**
+ * Registers the Markdown typing shortcuts everywhere except inside a raw
+ * Markdown block, whose text is saved as typed: a shortcut there would turn
+ * typed syntax into formatting the block does not save.
+ *
+ * @remarks
+ * `registerMarkdownShortcuts` hard-codes its one exclusion (a `CodeNode`
+ * parent) and offers no hook, so it is handed the editor through a proxy
+ * whose `registerUpdateListener` and `registerCommand` wrap each listener to
+ * do nothing while the selection is in a raw block, and whose `update` runs
+ * each shortcut's edit through `$editWritably`, so a format typed where the
+ * save could not write it (`x**(a)**`) is declined and stays typed text.
+ * Every other member is the editor's own, bound to it. Unlike the `Proxy` `core/Callable.ts`
+ * avoids (WebKitGTK's JavaScriptCore breaks `super` calls through a `Proxy`
+ * in an `extends` chain), this one wraps an instance and no class extends
+ * it.
+ *
+ * @param editor - The editor.
+ * @returns The unregister function.
+ */
+function registerMarkdownShortcutsOutsideRawBlocks(editor: LexicalEditor): () => void {
+    const registerUpdateListener = (listener: UpdateListener): (() => void) =>
+        editor.registerUpdateListener((payload) => {
+            const inRawBlock = payload.editorState.read($isSelectionInRawBlock);
+
+            if (!inRawBlock) {
+                listener(payload);
+            }
+        });
+
+    const registerCommand = <P>(command: LexicalCommand<P>, listener: CommandListener<P>, priority: CommandListenerPriority): (() => void) =>
+        editor.registerCommand(command, (payload, target) => {
+            const inRawBlock = $isSelectionInRawBlock();
+
+            return inRawBlock ? false : listener(payload, target);
+        }, priority);
+
+    // A shortcut's edit runs in an update the listener starts on each keystroke; one that applies a format tags
+    // it to push history, and only that one is checked.
+    const update = (edit: () => void, options?: EditorUpdateOptions): void => {
+        editor.update(() => {
+            $editWritably(edit, () => $hasUpdateTag(HISTORY_PUSH_TAG));
+        }, options);
+    };
+
+    const guarded = new Proxy(editor, {
+        get: (target, property) => {
+            if (property === "registerUpdateListener") {
+                return registerUpdateListener;
+            }
+
+            if (property === "update") {
+                return update;
+            }
+
+            if (property === "registerCommand") {
+                return registerCommand;
+            }
+
+            const value: unknown = Reflect.get(target, property, target);
+
+            return typeof value === "function" ? value.bind(target) : value;
+        },
+    });
+
+    return registerMarkdownShortcuts(guarded, SHORTCUT_TRANSFORMERS);
+}
+
+/**
+ * Registers what keeps a raw Markdown block and a code block holding text
+ * only: Enter inside a raw block, a paste into either, a delete joining
+ * another block to either, and the transform turning anything else that
+ * reaches them into its Markdown.
+ *
+ * @remarks
+ * A command's listeners of one priority run in the order they were
+ * registered, and all of these are at {@link COMMAND_PRIORITY_HIGH}. Call
+ * this after registering {@link $handleSeparatorShortcut}, which reads Enter
+ * first, and before registering any other listener of these commands at that
+ * priority that must find a text-only block already dealt with.
+ *
+ * @param editor - The editor.
+ * @returns The unregister function.
+ */
+function registerTextOnlyBlockRules(editor: LexicalEditor): () => void {
+    return mergeRegister(
+        editor.registerCommand(KEY_ENTER_COMMAND, $handleRawBlockEnter, COMMAND_PRIORITY_HIGH),
+        editor.registerCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, $pasteIntoTextOnlyBlock, COMMAND_PRIORITY_HIGH),
+        editor.registerCommand(PASTE_COMMAND, $pastePlainTextIntoRawBlock, COMMAND_PRIORITY_HIGH),
+        editor.registerCommand(DELETE_CHARACTER_COMMAND, $joinIntoTextOnlyBlock, COMMAND_PRIORITY_HIGH),
+        editor.registerNodeTransform(MarkdownRawBlockNode, $keepTextOnly),
+        editor.registerNodeTransform(CodeNode, $keepTextOnly),
+    );
+}
+
+/**
+ * Registers the format command's handler, which formats a selection only as
+ * far as the save can write it and declines where {@link $declinesFormat}
+ * rules a format out.
+ *
+ * @remarks
+ * Registered at {@link COMMAND_PRIORITY_HIGH}, ahead of `registerRichText`'s
+ * own handler. Lexical's table selection observer registers a handler of its
+ * own at that priority, which formats selected cells unchecked; it is
+ * registered when the view mounts, so this one, registered when the editor is
+ * built, runs first and takes a table selection before it.
+ *
+ * @param editor - The editor.
+ * @returns The unregister function.
+ */
+function registerWritableFormatCommand(editor: LexicalEditor): () => void {
+    return editor.registerCommand(FORMAT_TEXT_COMMAND, (format) => $formatWritably(format, $declinesFormat, $cellTakesFormat), COMMAND_PRIORITY_HIGH);
+}
+
+/**
  * The right-click context this plan's menu builds around a resolved Lexical
  * node: a table cell or ordinary text/prose (both carrying the current
  * selection's inline-format state, so the format toggles can show a
@@ -748,7 +1499,10 @@ export function $selectEnclosingWordIfCollapsed(): void {
  * see them: a non-null `expansion` (a collapsed caret's would-be word/run
  * expansion, from {@link $computeWordExpansion}) is consulted directly
  * rather than the raw selection, so a collapsed caret reports the format the
- * enclosing run carries, not the empty-selection default. Shared by
+ * enclosing run carries, not the empty-selection default; a range selection
+ * is read by `$selectionHasFormat`, the rule the format toggles act on, which
+ * leaves out the spaces at its edges that bold, italic and strikethrough never
+ * stay on. Shared by
  * {@link $classifyContextMenuTarget} (the right-click menu's checkbox state)
  * and {@link $readSelectionState} (the toolbar's live state), so both report
  * exactly the same thing a format toggle would actually act on.
@@ -765,7 +1519,7 @@ function $readFormatFlags(
 ): { bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean } {
     const hasFormat = (type: TextFormatType): boolean => expansion !== null
         ? (expansion.format & TEXT_TYPE_TO_FORMAT[type]) !== 0
-        : $isRangeSelection(selection) && selection.hasFormat(type);
+        : $isRangeSelection(selection) && $selectionHasFormat(selection, type);
 
     return {
         bold: hasFormat("bold"), italic: hasFormat("italic"),
@@ -807,7 +1561,7 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
         return { kind: "table-cell", hasSelectedText, hasEnclosingBlock, linkUrl, columnAlignment, ...formatState };
     }
 
-    const block = $findMatchingParent(node, (n) => $isElementNode(n) && !n.isInline());
+    const block = $findEnclosingBlock(node);
 
     if ($isParagraphNode(block) && block.getTextContent() === "") {
         return { kind: "empty-line", hasSelectedText };
@@ -1060,17 +1814,17 @@ class WysiwygSurface extends Component {
  *
  * @remarks
  * `MarkdownEditor` edits a document as rendered rich text — no visible markup —
- * and reads/writes Markdown through Lexical's bidirectional converters, so it is
- * the editing counterpart to the read-only
+ * and reads Markdown with the viewer's own `marked` lexer and writes it with
+ * its own serializer, so it is the editing counterpart to the read-only
  * [`Markdown`](/api/component/display/classes/Markdown) viewer. Its dialect is
  * deliberately the **exact subset** the viewer renders (headings, paragraphs,
  * bold, italic, strikethrough, underline, inline code, coloured/sized/font-styled
  * spans, ordered/unordered lists, blockquotes, fenced code, links, GFM pipe
  * tables with per-column alignment/widths/merged cells, `:::` alignment /
- * column-region fences, and sized images); a curated transformer
- * list — not Lexical's full preset — guarantees the editor can never emit
- * Markdown the viewer would drop to plain text, so an edited document renders
- * identically in the viewer.
+ * column-region fences, and sized images). Markdown the editor has no
+ * rich-text form for is kept as source — an editable raw block, or an atomic
+ * inline run — and saved exactly as written, so an edited document renders in
+ * the viewer as it did before.
  *
  * Formatting is driven four ways, all without a built-in toolbar: Markdown
  * shortcut typing (`# ` → heading, `**b**` → bold, `- ` → list, `> ` → quote,
@@ -1300,6 +2054,32 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Whether the WYSIWYG selection touches a raw Markdown block or a code
+     * block, where the commands that format, link or insert decline, as the
+     * typing shortcuts do: what they would add there is shown but not saved,
+     * both blocks saving their text as written.
+     *
+     * @returns `true` when any part of the selection lies in a raw block or a
+     *   code block.
+     */
+    private declinesInTextOnlyBlock(): boolean {
+        return this.ensureEditor().read($selectionTouchesTextOnlyBlock);
+    }
+
+    /**
+     * Whether the WYSIWYG selection touches a table cell, where the block
+     * conversions decline before anything is dispatched: a cell holds text
+     * only, so a block made there would be saved into the cell as its
+     * literal syntax.
+     *
+     * @returns `true` when any part of the selection lies in a table cell,
+     *   or whole cells are selected.
+     */
+    private declinesInTableCell(): boolean {
+        return this.ensureEditor().read($selectionTouchesTableCell);
+    }
+
+    /**
      * Switches the active editing surface. Converts the current document across
      * the surfaces so no edits are lost — the outgoing surface's Markdown is read
      * (via {@link MarkdownEditor.getValue}) before the mode flips, then loaded
@@ -1326,7 +2106,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             this._card.setVisibleComponentId(this._codeEditor.getId());
         } else {
             this.ensureEditor().update(
-                () => $convertFromMarkdownString(markdown, TRANSFORMERS), { discrete: true });
+                () => $importMarkdown(markdown), { discrete: true });
             this._card.setVisibleComponentId(this._wysiwyg.getId());
         }
 
@@ -1350,7 +2130,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const editor = this._editor;
 
         if (editor) {
-            return editor.read(() => $convertToMarkdownString(TRANSFORMERS));
+            return editor.read(() => $serializeMarkdown());
         }
 
         return this._options.value ?? "";
@@ -1364,8 +2144,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * always-fresh contract; nothing is cached here beyond what
      * `updateSelectionState` needs for its own emit-dedup. In `"source"` mode
      * the five format flags, `hasSelectedText` and `linkUrl` are derived from
-     * the raw Markdown, and `inTable`/`tableColumnAlignment`/`blockAlignment`/
-     * `columnCount` report the fields that mode has no notion of.
+     * the raw Markdown, read as the viewer reads it, and
+     * `inTable`/`tableColumnAlignment`/`blockAlignment`/`columnCount` report
+     * the fields that mode has no notion of.
      *
      * @returns The current {@link MarkdownEditorSelectionState}: in
      *   `"source"` mode the state read from the raw Markdown, which is always
@@ -1422,7 +2203,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         // Discrete forces a synchronous commit, so the resulting `"change"`
         // fires before this returns rather than on a later flush.
-        this.ensureEditor().update(() => $convertFromMarkdownString(value, TRANSFORMERS), { discrete: true });
+        this.ensureEditor().update(() => $importMarkdown(value), { discrete: true });
 
         return this;
     }
@@ -1504,12 +2285,19 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Toggles bold on the current selection, first expanding a collapsed
      * caret to its enclosing word so the toggle has more than an empty span
-     * to act on. No-op (without throwing) when there is no range selection.
+     * to act on. No-op (without throwing) when there is no range selection,
+     * when the selection touches a raw Markdown block or a code block, which
+     * save their text as written, or when it holds a run kept as Markdown
+     * source. Whole table cells selected take the format cell by cell under
+     * the same rules, a cell holding such a run being left as it is.
      *
-     * In `"source"` mode, toggles the `**bold**` marker around the raw-Markdown
-     * selection instead; no-op where the markers would read back as literal text — straight after
-     * a backslash, or where Markdown's flanking rules stop them pairing
-     * (`**hello.**b`).
+     * In `"source"` mode, toggles bold (`**bold**`, or a `__bold__` run
+     * already there) around the raw-Markdown selection instead, reading the selection's formats as the viewer does; no-op
+     * where the markers would read back as literal text — straight after a
+     * backslash, or where Markdown's flanking rules stop them pairing
+     * (`**hello.**b`) — and where they would cut another construct (half of
+     * a run, an autolink, a code block). See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @returns This component, for method chaining.
      */
@@ -1517,6 +2305,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const handledBySource = this.editSource(BOLD_SOURCE);
 
         if (handledBySource) { return this; }
+
+        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+
+        if (touchesTextOnlyBlock) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -1528,12 +2320,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Toggles italic on the current selection, first expanding a collapsed
-     * caret to its enclosing word. No-op without a range selection.
+     * caret to its enclosing word. No-op without a range selection, when the
+     * selection touches a raw Markdown block or a code block, or when it holds
+     * a run kept as Markdown source. Whole table cells selected take the
+     * format cell by cell, as {@link MarkdownEditor.toggleBold} describes.
      *
-     * In `"source"` mode, toggles the `*italic*` marker around the raw-Markdown
-     * selection instead; no-op where the markers would read back as literal text — straight after
-     * a backslash, or where Markdown's flanking rules stop them pairing
-     * (`**hello.**b`).
+     * In `"source"` mode, toggles italic (`*italic*`, or an `_italic_` run
+     * already there) around the raw-Markdown selection instead, reading the selection's formats as the viewer does; no-op
+     * where the markers would read back as literal text — straight after a
+     * backslash, or where Markdown's flanking rules stop them pairing
+     * (`**hello.**b`) — and where they would cut another construct (half of
+     * a run, an autolink, a code block). See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @returns This component, for method chaining.
      */
@@ -1541,6 +2339,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const handledBySource = this.editSource(ITALIC_SOURCE);
 
         if (handledBySource) { return this; }
+
+        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+
+        if (touchesTextOnlyBlock) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -1553,12 +2355,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Toggles inline code on the current selection, first expanding a
      * collapsed caret to its enclosing word or run. No-op without a range
-     * selection.
+     * selection, when the selection touches a raw Markdown block or a code
+     * block, or when it holds a run kept as Markdown source. Whole table
+     * cells selected take the format cell by cell, as
+     * {@link MarkdownEditor.toggleBold} describes.
      *
      * In `"source"` mode, toggles the `` `code` `` marker around the
      * raw-Markdown selection instead; refuses a selection that still contains
-     * a backtick, or one straight after a backslash, which would escape the
-     * opening backtick.
+     * a backtick, one straight after a backslash, which would escape the
+     * opening backtick, one whose text would read differently as code, and one
+     * that would cut another construct (half of a run, an autolink).
      *
      * @returns This component, for method chaining.
      */
@@ -1566,6 +2372,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const handledBySource = this.editSource(INLINE_CODE_SOURCE);
 
         if (handledBySource) { return this; }
+
+        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+
+        if (touchesTextOnlyBlock) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -1577,12 +2387,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Toggles strikethrough on the current selection, first expanding a
-     * collapsed caret to its enclosing word. No-op without a range selection.
+     * collapsed caret to its enclosing word. No-op without a range selection,
+     * when the selection touches a raw Markdown block or a code block, or when
+     * it holds a run kept as Markdown source. Whole table cells selected take
+     * the format cell by cell, as {@link MarkdownEditor.toggleBold} describes.
      *
-     * In `"source"` mode, toggles the `~~strikethrough~~` marker around the
-     * raw-Markdown selection instead; no-op where the markers would read back as literal text — straight after
-     * a backslash, or where Markdown's flanking rules stop them pairing
-     * (`**hello.**b`).
+     * In `"source"` mode, toggles strikethrough (`~~strikethrough~~`, or a
+     * `~struck~` run already there) around the raw-Markdown selection instead, reading the selection's formats as the viewer does; no-op
+     * where the markers would read back as literal text — straight after a
+     * backslash, or where Markdown's flanking rules stop them pairing
+     * (`**hello.**b`) — and where they would cut another construct (half of
+     * a run, an autolink, a code block). See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @returns This component, for method chaining.
      */
@@ -1590,6 +2406,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const handledBySource = this.editSource(STRIKETHROUGH_SOURCE);
 
         if (handledBySource) { return this; }
+
+        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+
+        if (touchesTextOnlyBlock) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -1601,12 +2421,17 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Toggles underline on the current selection, first expanding a collapsed
-     * caret to its enclosing word. No-op without a range selection.
+     * caret to its enclosing word. No-op without a range selection, when the
+     * selection touches a raw Markdown block or a code block, or when it holds
+     * a run kept as Markdown source. Whole table cells selected take the
+     * format cell by cell, as {@link MarkdownEditor.toggleBold} describes.
      *
      * In `"source"` mode, toggles the dialect's `++underline++` marker around
-     * the raw-Markdown selection instead; no-op where the markers would read back as literal text — straight after
-     * a backslash, or where Markdown's flanking rules stop them pairing
-     * (`**hello.**b`).
+     * the raw-Markdown selection instead, reading the selection's formats as
+     * the viewer does; no-op where the markers would not read back as
+     * underline, and where they would cut another construct (half of a run,
+     * an autolink, a code block). See *Source / WYSIWYG mode* in the
+     * component docs.
      *
      * @returns This component, for method chaining.
      */
@@ -1614,6 +2439,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const handledBySource = this.editSource(UNDERLINE_SOURCE);
 
         if (handledBySource) { return this; }
+
+        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+
+        if (touchesTextOnlyBlock) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -1627,22 +2456,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Shared body of {@link setTextColor}, {@link setFontFamily}, and
      * {@link setFontSize}: expands a collapsed caret to its enclosing word,
      * then patches the resulting selection's inline CSS style. No-op without a
-     * range selection, or when the selection sits inside a link (see
+     * range selection, when the selection touches a raw Markdown block or a
+     * code block or holds a run kept as Markdown source, or when it sits
+     * inside a link (see
      * *Colour, font, and size are refused inside a link* in the plan's
      * Architecture Decisions) — a styled span can never nest inside `[text](url)`.
      *
      * In `"source"` mode this writes the `[text]{…}` styled span into the raw
-     * Markdown instead, merging into an existing span rather than nesting inside
-     * it. Refused there for a selection that crosses a line break, touches a
-     * link or image (an image's `{width=…}` group included), touches a
-     * `[text]{…}` group carrying a newline, sits on a `:::` fence line or a
-     * table delimiter row, would put a bracket straight after an escaping
-     * backslash, or whose **line carries a `*`, `~`, `+` or `` ` `` character
-     * outside the selection** — emphasis or not, so a `*`/`+` list bullet
-     * counts — or that holds such a character together with an existing span.
-     * Those last two refusals are deliberately coarse, since telling emphasis
-     * from a literal marker would need a Markdown parser, and they decline
-     * some selections that would have been safe.
+     * Markdown instead, inside any emphasis around the selection
+     * (`**[hello]{…}**`, the form WYSIWYG saves), merging into an existing
+     * span rather than nesting inside it. The raw text is read as the viewer
+     * reads it, so only a selection the span would break is refused: one that
+     * crosses a line break, touches a link of any form or an image (an
+     * image's `{width=…}` group included), lies in a code span, a code block,
+     * a `:::` fence line or a table delimiter row, cuts through a run's
+     * markers, or would put a bracket straight after an escaping backslash.
      *
      * @param patch - Kebab-case CSS property names mapped to their new value,
      *   or `null` to remove that property.
@@ -1654,6 +2482,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         if (handledBySource) {
             return this;
         }
+
+        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+
+        if (touchesTextOnlyBlock) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -1668,9 +2500,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
             // Re-read: the expansion above replaces the selection object.
             const expanded = $getSelection();
+            const coversSourceRun = $selectionCoversSourceRun();
 
-            if ($isRangeSelection(expanded)) {
-                $patchStyleText(expanded, patch);
+            if ($isRangeSelection(expanded) && !coversSourceRun) {
+                $editWritably(() => {
+                    $patchStyleText(expanded, patch);
+                });
             }
         }, { discrete: true });
 
@@ -1680,20 +2515,19 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Sets (or clears, with `null`) the current selection's text colour. A
      * collapsed caret first expands to its enclosing word. No-op without a
-     * range selection, or when the selection sits inside a link.
+     * range selection, when the selection touches a raw Markdown block or a
+     * code block or holds a run kept as Markdown source, or when it sits
+     * inside a link.
      *
      * In `"source"` mode this writes the `[text]{…}` styled span into the raw
-     * Markdown instead, merging into an existing span rather than nesting inside
-     * it. Refused there for a selection that crosses a line break, touches a
-     * link or image (an image's `{width=…}` group included), touches a
-     * `[text]{…}` group carrying a newline, sits on a `:::` fence line or a
-     * table delimiter row, would put a bracket straight after an escaping
-     * backslash, or whose **line carries a `*`, `~`, `+` or `` ` `` character
-     * outside the selection** — emphasis or not, so a `*`/`+` list bullet
-     * counts — or that holds such a character together with an existing span.
-     * Those last two refusals are deliberately coarse, since telling emphasis
-     * from a literal marker would need a Markdown parser, and they decline
-     * some selections that would have been safe.
+     * Markdown instead, inside any emphasis around the selection
+     * (`**[hello]{…}**`, the form WYSIWYG saves), merging into an existing
+     * span rather than nesting inside it. The raw text is read as the viewer
+     * reads it, so only a selection the span would break is refused: one that
+     * crosses a line break, touches a link of any form or an image (an
+     * image's `{width=…}` group included), lies in a code span, a code block,
+     * a `:::` fence line or a table delimiter row, cuts through a run's
+     * markers, or would put a bracket straight after an escaping backslash.
      *
      * @param color - A CSS colour value, or `null` to clear the override.
      * @returns This component, for method chaining.
@@ -1705,20 +2539,19 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Sets (or clears, with `null`) the current selection's font family. A
      * collapsed caret first expands to its enclosing word. No-op without a
-     * range selection, or when the selection sits inside a link.
+     * range selection, when the selection touches a raw Markdown block or a
+     * code block or holds a run kept as Markdown source, or when it sits
+     * inside a link.
      *
      * In `"source"` mode this writes the `[text]{…}` styled span into the raw
-     * Markdown instead, merging into an existing span rather than nesting inside
-     * it. Refused there for a selection that crosses a line break, touches a
-     * link or image (an image's `{width=…}` group included), touches a
-     * `[text]{…}` group carrying a newline, sits on a `:::` fence line or a
-     * table delimiter row, would put a bracket straight after an escaping
-     * backslash, or whose **line carries a `*`, `~`, `+` or `` ` `` character
-     * outside the selection** — emphasis or not, so a `*`/`+` list bullet
-     * counts — or that holds such a character together with an existing span.
-     * Those last two refusals are deliberately coarse, since telling emphasis
-     * from a literal marker would need a Markdown parser, and they decline
-     * some selections that would have been safe.
+     * Markdown instead, inside any emphasis around the selection
+     * (`**[hello]{…}**`, the form WYSIWYG saves), merging into an existing
+     * span rather than nesting inside it. The raw text is read as the viewer
+     * reads it, so only a selection the span would break is refused: one that
+     * crosses a line break, touches a link of any form or an image (an
+     * image's `{width=…}` group included), lies in a code span, a code block,
+     * a `:::` fence line or a table delimiter row, cuts through a run's
+     * markers, or would put a bracket straight after an escaping backslash.
      *
      * @param family - A CSS `font-family` value, or `null` to clear the override.
      * @returns This component, for method chaining.
@@ -1730,20 +2563,19 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Sets (or clears, with `null`) the current selection's font size. A
      * collapsed caret first expands to its enclosing word. No-op without a
-     * range selection, or when the selection sits inside a link.
+     * range selection, when the selection touches a raw Markdown block or a
+     * code block or holds a run kept as Markdown source, or when it sits
+     * inside a link.
      *
      * In `"source"` mode this writes the `[text]{…}` styled span into the raw
-     * Markdown instead, merging into an existing span rather than nesting inside
-     * it. Refused there for a selection that crosses a line break, touches a
-     * link or image (an image's `{width=…}` group included), touches a
-     * `[text]{…}` group carrying a newline, sits on a `:::` fence line or a
-     * table delimiter row, would put a bracket straight after an escaping
-     * backslash, or whose **line carries a `*`, `~`, `+` or `` ` `` character
-     * outside the selection** — emphasis or not, so a `*`/`+` list bullet
-     * counts — or that holds such a character together with an existing span.
-     * Those last two refusals are deliberately coarse, since telling emphasis
-     * from a literal marker would need a Markdown parser, and they decline
-     * some selections that would have been safe.
+     * Markdown instead, inside any emphasis around the selection
+     * (`**[hello]{…}**`, the form WYSIWYG saves), merging into an existing
+     * span rather than nesting inside it. The raw text is read as the viewer
+     * reads it, so only a selection the span would break is refused: one that
+     * crosses a line break, touches a link of any form or an image (an
+     * image's `{width=…}` group included), lies in a code span, a code block,
+     * a `:::` fence line or a table delimiter row, cuts through a run's
+     * markers, or would put a bracket straight after an escaping backslash.
      *
      * @param size - A CSS font-size value (e.g. `"1.2em"`), or `null` to clear
      *   the override.
@@ -1755,10 +2587,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Converts the selected blocks into an unordered (bulleted) list, or out of
-     * one when already a list. No-op without a range selection.
+     * one when already a list. No-op without a range selection, and when the
+     * selection touches a table cell (whole cells selected included), which
+     * holds text only.
      *
-     * In `"source"` mode, toggles the raw-Markdown selection's `- ` list
-     * marker instead.
+     * In `"source"` mode, toggles the `- ` list over the raw Markdown's
+     * selected lines instead.
      *
      * @returns This component, for method chaining.
      */
@@ -1767,6 +2601,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
+        const touchesTableCell = this.declinesInTableCell();
+
+        if (touchesTableCell) { return this; }
+
         this.ensureEditor().dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
 
         return this;
@@ -1774,10 +2612,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Converts the selected blocks into an ordered (numbered) list, or out of
-     * one when already a list. No-op without a range selection.
+     * one when already a list. No-op without a range selection, and when the
+     * selection touches a table cell (whole cells selected included), which
+     * holds text only.
      *
-     * In `"source"` mode, toggles the raw-Markdown selection's `1. ` list
-     * marker instead.
+     * In `"source"` mode, toggles the `1. ` list over the raw Markdown's
+     * selected lines instead.
      *
      * @returns This component, for method chaining.
      */
@@ -1785,6 +2625,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const handledBySource = this.editSource(listSource("ordered"));
 
         if (handledBySource) { return this; }
+
+        const touchesTableCell = this.declinesInTableCell();
+
+        if (touchesTableCell) { return this; }
 
         this.ensureEditor().dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
 
@@ -1798,11 +2642,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * bare caret links just that word rather than the whole enclosing text run.
      * When the selection already sits inside one existing link, updates that
      * link's URL in place instead of double-wrapping (Lexical's own `$toggleLink`
-     * behavior). No-op without a range selection.
+     * behavior). No-op without a range selection, when the selection touches
+     * a raw Markdown block or a code block, or when it holds a run kept as
+     * Markdown source.
      *
      * In `"source"` mode, wraps the raw-Markdown selection in `[text](url)`,
-     * or updates the enclosing link's URL in place — keeping its title —
-     * instead; no-op inside an image's alt text.
+     * or re-points the link of any form enclosing it instead — an inline link
+     * keeps its title as written, and a reference link or autolink becomes an
+     * inline link (a reference link keeping its title); no-op inside an
+     * image's alt text, and for a selection holding a link or cutting another
+     * construct.
      *
      * @param url - The link target, or `null` to remove the link.
      * @returns This component, for method chaining.
@@ -1811,6 +2660,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const handledBySource = this.editSource(linkSource(url));
 
         if (handledBySource) { return this; }
+
+        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+
+        if (touchesTextOnlyBlock) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -1825,7 +2678,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 $selectEnclosingWordIfCollapsed();
             }
 
-            $toggleLink(url);
+            const declined = $selectionCoversSourceRun() || $selectionInNestedLinkRun();
+
+            if (declined) {
+                return;
+            }
+
+            $editWritably(() => {
+                $toggleLink(url);
+            });
         }, { discrete: true });
 
         return this;
@@ -1837,8 +2698,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * how much of it (if any) is currently selected. No-op (without throwing)
      * when there is no range selection, or it is not inside a link.
      *
-     * In `"source"` mode, removes the raw-Markdown link enclosing the
-     * selection, unwrapping it back to plain text, instead.
+     * In `"source"` mode, removes the raw-Markdown link of any form enclosing
+     * the selection, unwrapping it back to plain text, instead; an autolink's
+     * text gets its `:`, `.` or `@` escaped, so it is not linked again.
      *
      * @returns This component, for method chaining.
      */
@@ -1857,8 +2719,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             const linkNode = $findEnclosingLinkNode(selection.anchor.getNode());
+            const inNestedLinkRun = $selectionInNestedLinkRun();
 
-            if (linkNode === null) {
+            if (linkNode === null || inNestedLinkRun) {
                 return;
             }
 
@@ -1878,11 +2741,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * and any other Lexical text format) from the current selection, leaving
      * plain text. No-op without a range selection. Block type is untouched.
      *
-     * In `"source"` mode, removes every whole inline-format marker pair the
-     * raw-Markdown selection touches instead — both markers of a pair
+     * In `"source"` mode, removes the markers of every emphasis run (any
+     * form the viewer reads, `__bold__` and `_italic_` included) and code span
+     * the raw-Markdown selection touches instead — both sides of a run
      * together, even when the selection reaches only one — leaving links and
      * `[text]{…}` styled spans alone; no-op when the selection touches no
-     * pair.
+     * run.
      *
      * @returns This component, for method chaining.
      */
@@ -1900,11 +2764,17 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 return;
             }
 
-            for (const node of selection.getNodes()) {
-                if ($isTextNode(node)) {
-                    node.setFormat(node.getFormat() & ~IS_ALL_FORMATTING);
+            $editWritably(() => {
+                for (const node of selection.getNodes()) {
+                    if ($isTextNode(node)) {
+                        // A nested link's run, or a kept construct's, keeps the formats its source writes.
+                        const kept = $getState(node, keptSourceState);
+                        const written = !$isMarkdownSourceTextNode(node) ? 0 : kept !== null ? kept.writes : Math.max(0, $getState(node, nestedLinkState));
+
+                        node.setFormat(node.getFormat() & (~IS_ALL_FORMATTING | written));
+                    }
                 }
-            }
+            });
         }, { discrete: true });
 
         return this;
@@ -2038,10 +2908,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Converts the selected blocks to `type` (paragraph, `h1`–`h6`, blockquote,
-     * or fenced code). No-op without a range selection.
+     * or fenced code). No-op without a range selection, and when the selection
+     * touches a table cell (whole cells selected included), which holds text
+     * only.
      *
-     * In `"source"` mode, rewrites the raw-Markdown selection's block prefix
-     * instead — see `sourceTransformForBlockType`.
+     * In `"source"` mode, converts the raw Markdown's selected blocks instead —
+     * see `sourceTransformForBlockType`.
      *
      * @param type - The target block type.
      * @returns This component, for method chaining.
@@ -2051,13 +2923,17 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
+        const touchesTableCell = this.declinesInTableCell();
+
+        if (touchesTableCell) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
             const selection = $getSelection();
 
             if ($isRangeSelection(selection)) {
-                $setBlocksType(selection, () => createBlockNode(type));
+                $setBlocksType(selection, () => createBlockNode(type), type === "code" ? $copyBlockAsCodeSource : undefined);
             }
         }, { discrete: true });
 
@@ -2167,9 +3043,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * caret is not inside one of those four block types.
      *
      * In `"source"` mode, inserts a blank line before the raw-Markdown
-     * blockquote, list, fenced code block, or table line-run enclosing the
-     * caret instead; no-op when the caret's line is neither a block line nor
-     * inside a fence.
+     * top-level blockquote, list, code block, or table holding the caret's
+     * line instead, read as the viewer reads it; no-op when the caret's line
+     * is in none.
      *
      * @returns This component, for method chaining.
      */
@@ -2191,9 +3067,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * caret is not inside one of those four block types.
      *
      * In `"source"` mode, inserts a blank line after the raw-Markdown
-     * blockquote, list, fenced code block, or table line-run enclosing the
-     * caret instead; no-op when the caret's line is neither a block line nor
-     * inside a fence.
+     * top-level blockquote, list, code block, or table holding the caret's
+     * line instead, read as the viewer reads it; no-op when the caret's line
+     * is in none.
      *
      * @returns This component, for method chaining.
      */
@@ -2210,10 +3086,11 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Inserts a table of `rows` rows by `columns` columns at the caret. The
      * first row is the header row, so `insertTable(2, 3)` gives a header row
-     * plus one body row. The caret lands in the first header cell.
+     * plus one body row. The caret lands in the first header cell. No-op when
+     * the selection touches a raw Markdown block or a code block.
      *
-     * In `"source"` mode, inserts the raw-Markdown GFM table skeleton at the
-     * caret's line instead.
+     * In `"source"` mode, inserts the raw-Markdown GFM table skeleton above
+     * the block holding the caret instead.
      *
      * @param rows - The number of rows, including the header row.
      * @param columns - The number of columns.
@@ -2223,6 +3100,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const handledBySource = this.editSource(tableSource(rows, columns));
 
         if (handledBySource) { return this; }
+
+        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+
+        if (touchesTextOnlyBlock) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -2245,12 +3126,15 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Inserts a sized, validated image at the caret. No-op when `src` fails
-     * the scheme allow-list — never inserts a broken or unsafe image.
+     * the scheme allow-list — never inserts a broken or unsafe image — when
+     * `alt` holds a `[` or `]`, which Markdown's image syntax cannot hold, and
+     * when the selection touches a raw Markdown block or a code block.
      *
      * In `"source"` mode, inserts the raw-Markdown `![alt](src)` — plus a
      * `{width=… height=…}` attribute block when either dimension is set —
      * at the selection instead; no-op there when either end of the selection
-     * sits inside an image or inside a link's destination, or when the
+     * sits inside an image or inside a link's syntax beyond its text — its
+     * destination, a reference link's label, or an autolink — or when the
      * selection reaches outside one table cell or onto a `:::` fence's own
      * lines.
      *
@@ -2260,12 +3144,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     insertImage(src: string, options?: { alt?: string; width?: number; height?: number }): this {
+        // The image syntax's alt text cannot hold a bracket: a save would drop it.
+        const altHoldsBracket = /[[\]]/.test(options?.alt ?? "");
+
+        if (altHoldsBracket) { return this; }
+
         const handledBySource = this.editSource(imageSource(src, options?.alt ?? "", imageAttributes(options)));
 
         if (handledBySource) { return this; }
 
+        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+
+        if (touchesTextOnlyBlock) { return this; }
+
         const editor = this.ensureEditor();
 
+        // Tagged as an edit at a run's edge: the image can change how source kept as written next to it reads.
         editor.update(() => {
             const spec = resolveImageSpec(src, options?.alt ?? "", imageAttributes(options));
 
@@ -2283,7 +3177,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             if ($isRangeSelection(selection)) {
                 selection.insertNodes([$createMarkdownImageNode(spec)]);
             }
-        }, { discrete: true });
+        }, { discrete: true, tag: RUN_EDGE_TAG });
 
         return this;
     }
@@ -2632,13 +3526,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     private ensureEditor(): LexicalEditor {
         if (!this._editor) {
             const editor = createEditor({ nodes: EDITOR_NODES, theme: EDITOR_THEME, onError: reportEditorError });
+            const unregisterWritableStateRules = registerWritableStateRules(editor);
 
             // Populate the initial state before registering the update listener,
             // so loading the cached value does not fire a spurious `"change"`.
-            editor.update(() => $convertFromMarkdownString(this._options.value ?? "", TRANSFORMERS), { discrete: true });
+            editor.update(() => $importMarkdown(this._options.value ?? ""), { discrete: true });
             editor.setEditable(!(this._options.readOnly ?? false));
 
-            // Lexical's converters normalize what they round-trip (a trailing newline is
+            // The importer and serializer normalize what they round-trip (a trailing newline is
             // dropped, a table's delimiter row is re-spaced), so from here on `getValue()`
             // reports the converted form rather than the string this editor was built
             // with. Re-take the clean Markdown from the converted form so both sides of
@@ -2646,16 +3541,19 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             // document is still clean, since a first build can also happen after a
             // source-mode edit, and re-taking then would clear a real dirty flag.
             if (!this.isDirty()) {
-                this._cleanValue = editor.read(() => $convertToMarkdownString(TRANSFORMERS));
+                this._cleanValue = editor.read(() => $serializeMarkdown());
             }
 
             this._unregister = mergeRegister(
+                unregisterWritableStateRules,
                 registerRichText(editor),
                 registerList(editor),
                 registerTablePlugin(editor),
                 registerHistory(editor, createEmptyHistoryState(), HISTORY_DELAY_MS),
-                registerMarkdownShortcuts(editor, TRANSFORMERS),
+                registerMarkdownShortcutsOutsideRawBlocks(editor),
                 editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
+                registerTextOnlyBlockRules(editor),
+                registerWritableFormatCommand(editor),
                 editor.registerUpdateListener(() => {
                     this.handleChange();
                     this.updateSelectionState();
@@ -3258,7 +4156,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             return;
         }
 
-        this.onDocChange(editor.read(() => $convertToMarkdownString(TRANSFORMERS)));
+        this.onDocChange(editor.read(() => $serializeMarkdown()));
     }
 
     /**

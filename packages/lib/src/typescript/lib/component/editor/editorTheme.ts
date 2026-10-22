@@ -27,6 +27,7 @@ const TABLE_CELL_SELECTED_CLASS = "ts-ui-mde-table-cell-selected";
 const BLOCK_CLASS                = "ts-ui-mde-block";
 const COLUMN_CLASS               = "ts-ui-mde-column";
 const IMAGE_CLASS                = "ts-ui-mde-image";
+const RAW_BLOCK_CLASS            = "ts-ui-mde-raw-block";
 
 /** Guards the module-singleton class-rule registration in {@link ensureMarkdownEditorClassRules}. */
 let _classRulesEnsured = false;
@@ -259,6 +260,13 @@ export function ensureMarkdownEditorClassRules(): void {
         // IMAGE_CLASS rule (Markdown.ts).
         styles: { maxWidth: "100%" },
     });
+
+    new StyleRule({
+        scope:  "class",
+        name:   RAW_BLOCK_CLASS,
+        // Monospace, as the code rules: a raw block shows Markdown source.
+        styles: { fontFamily: "var(--ts-ui-font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace)" },
+    });
 }
 
 /**
@@ -304,4 +312,5 @@ export const EDITOR_THEME: EditorThemeClasses = {
     mdBlock:           BLOCK_CLASS,
     mdColumn:          COLUMN_CLASS,
     mdImage:           IMAGE_CLASS,
+    mdRawBlock:        RAW_BLOCK_CLASS,
 };

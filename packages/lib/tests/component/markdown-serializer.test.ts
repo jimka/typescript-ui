@@ -12,11 +12,13 @@ import {
     $createTableCellNode, $createTableNode, $createTableRowNode, TableCellHeaderStates,
 } from '@lexical/table';
 import type { TableCellNode, TableNode } from '@lexical/table';
-import { $convertToMarkdownString } from '@lexical/markdown';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
-import { TRANSFORMERS } from '~/component/editor/markdownTransformers';
 import { $serializeMarkdown } from '~/component/editor/markdownSerializer';
-import { bareAutolinkState, fenceAttributesState, hardBreakMarkerState, imageAttributesState, spanAttributesState } from '~/component/editor/markdownNodeState';
+import {
+    bareAutolinkState, fenceAttributesState, hardBreakMarkerState, imageAttributesState, listLooseState, listMarkerState,
+    spanAttributesState,
+} from '~/component/editor/markdownNodeState';
+import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode } from '~/component/editor/markdownSourceNodes';
 import { $createMarkdownBlockNode, $createMarkdownColumnNode } from '~/component/editor/markdownBlockNode';
 import { $createMarkdownImageNode } from '~/component/editor/markdownImageNode';
 import type { MarkdownSpanStyle } from '~/component/display/markdownAttributes';
@@ -36,32 +38,6 @@ const CONFIG = {
 
 beforeEach(() => installTestDOM(CONFIG));
 afterEach(() => DOM.reset());
-
-// The construct corpus of `markdown-editor.test.ts`: one document per supported dialect construct.
-const CORPUS: Record<string, string> = {
-    'heading h1':       '# Heading one',
-    'heading h2':       '## Heading two',
-    'heading h6':       '###### Heading six',
-    'paragraph':        'A plain paragraph of prose.',
-    'inline formats':   'Text with **bold**, *italic*, and `inline code`.',
-    'strikethrough':    '~~struck~~ text',
-    'unordered list':   '- one\n- two\n- three',
-    'ordered list':     '1. first\n2. second',
-    'blockquote':       '> a quoted line',
-    'fenced code':      '```\nplain code\n```',
-    'fenced code lang': '```js\nconst x = 1;\n```',
-    'link':             'A [link](https://example.com) in prose.',
-    'table':            '| a | b |\n| --- | --- |\n| 1 | 2 |',
-    'table aligned':    '| a | b | c |\n| :--- | :---: | ---: |\n| 1 | 2 | 3 |',
-    'table escaped pipe': '| a | b |\n| --- | --- |\n| x | `p \\| q` |',
-    'underline':          'A ++word++ here.',
-    'styled text color':  'A [red]{color=#cc0000} word.',
-    'styled text font/size': 'A [big]{font=Georgia size=1.2em} word.',
-    'block alignment':       '::: {align=center}\ntext\n:::',
-    'block columns':         '::: columns\nLeft\n|||\nRight\n:::',
-    'block columns aligned': '::: columns {align=center}\nA\n|||\nB\n:::',
-    'sized image':           '![d](/img/d.png){width=320}',
-};
 
 /** The resolved span style `{color=red}` reads back as. */
 const RED: MarkdownSpanStyle = { color: 'red', fontFamily: null, fontSize: null };
@@ -320,10 +296,12 @@ describe('$serializeMarkdown — blocks', () => {
         expect(serialize(() => [list('number', 10, ['a', list('bullet', 1, ['b'])])])).toBe('10. a\n    - b');
     });
 
-    it('S11 (first item): a first item holding only a nested list writes its marker alone', () => {
+    it('S11 (first item): a first item holding only a nested list writes the nested list on its marker\'s line', () => {
+        // A bare `-` line under a `-` item is a delimiter row to the viewer's pipeless-table extension
+        // (plan markdown-editor-marked-import, audit fix).
         const output = serialize(() => [list('bullet', 1, [list('bullet', 1, ['n'])])]);
 
-        expect(output).toBe('-\n  - n');
+        expect(output).toBe('- - n');
         expect(viewerModel(output).blocks).toEqual([{
             kind: 'list', ordered: false, loose: false, items: [
                 [{ kind: 'list', ordered: false, loose: false, items: [[para(run('n'))]] }],
@@ -498,8 +476,36 @@ describe('$serializeMarkdown — hard breaks', () => {
         expect(serialize(() => [p(br(), 'a')])).toBe('\\\na');
     });
 
-    it('B4: a break in a heading writes a space', () => {
-        expect(serialize(() => [fill($createHeadingNode('h1'), ['a', br(), 'b'])])).toBe('# a b');
+    it('B4: a break in a level 3-6 heading writes a space (an ATX heading cannot span lines)', () => {
+        expect(serialize(() => [fill($createHeadingNode('h3'), ['a', br(), 'b'])])).toBe('### a b');
+    });
+
+    it('B4 (setext): a level 1 or 2 heading holding a break is written setext, keeping the break and its marker', () => {
+        // Plan markdown-editor-marked-import, audit fix: the importer reads `Foo  \nbar\n===` as a heading with a
+        // break, which the ATX form would flatten to a space on an unedited save.
+        for (const [tag, underline] of [['h1', '==='], ['h2', '---']] as const) {
+            const output = serialize(() => [fill($createHeadingNode(tag), ['Foo', br('  '), 'bar'])]);
+
+            expect(output).toBe(`Foo  \nbar\n${underline}`);
+            expect(viewerModel(output).blocks).toEqual([
+                { kind: 'heading', depth: tag === 'h1' ? 1 : 2, runs: [run('Foo'), BREAK, run('bar')] },
+            ]);
+        }
+    });
+
+    it('B4 (setext): a line marked would read as a code fence or an HTML block start falls back to an ATX heading', () => {
+        // A setext heading's lines may not start with a run of three backticks or tildes, nor be a lone tag: marked
+        // then reads no heading. A code span needing a fence of three, or an autolink alone on its line, is such a
+        // line, so the heading is written ATX, its breaks as spaces.
+        expect(serialize(() => [fill($createHeadingNode('h1'), ['p', br(), text('a`b``c', ['code'])])])).toBe('# p ```a`b``c```');
+        expect(serialize(() => [fill($createHeadingNode('h2'), ['p', br(), fill($createLinkNode('https://x.test'), ['https://x.test'])])]))
+            .toBe('## p <https://x.test>');
+
+        const editor = editorWith(() => [fill($createHeadingNode('h1'), ['p', br(), text(' ``)', ['code'])])]);
+        const output = serialized(editor);
+
+        expect(output).toBe('p\\\n` ``)`\n===');
+        expect(viewerModel(output).blocks).toEqual(editorSurfaceModel(editor));
     });
 
     it('B5: marks close before a break and reopen after it; trailing spaces are dropped', () => {
@@ -630,8 +636,9 @@ describe('$serializeMarkdown — further cases the plan specifies', () => {
     });
 
     // A pipe-table cell holds inline content only, so a block a command nests in a cell (a heading, quote, list or
-    // code block toggled inside it) is written as the inline content the editor shows, each of its lines split by the
-    // cell break: its own syntax would show as literal text (`# t`) and read back into the cell's text.
+    // code block toggled inside it; the importer never nests one) is written as the inline content the editor shows,
+    // each of its lines split by the cell break: its own syntax would show as literal text (`# t`) and read back into
+    // the cell's text.
     const nested: Array<[string, () => LexicalNode, string]> = [
         ['heading', () => fill($createHeadingNode('h2'), ['t ', text('b', ['bold'])]), 't **b**'],
         ['quote', () => fill($createQuoteNode(), ['q', br(), 'r']), 'q\\n\\nr'],
@@ -666,15 +673,191 @@ describe('$serializeMarkdown — further cases the plan specifies', () => {
         expect(output).toBe('| a |\n| --- |\n| x\\n\\nn\\n\\ny |');
     });
 
-    it('a bullet list is always written with "-", whatever marker it was loaded with', () => {
-        // The current importer keeps a `*` or `+` marker in @lexical/markdown's own list-marker state and the current
-        // exporter writes it back; the plan writes every bullet as `-` (see the plan's Implementation Notes).
-        const editor = new MarkdownEditor();
+    it('LM6: a bullet list with no marker state writes "-", and one with an authored marker writes that marker', () => {
+        expect(serialize(() => [list('bullet', 1, ['a', 'b'])])).toBe('- a\n- b');
 
-        editor.setValue('* a\n* b');
+        expect(serialize(() => {
+            const node = list('bullet', 1, ['a', 'b']);
 
-        expect(lexicalOf(editor).read(() => $convertToMarkdownString(TRANSFORMERS))).toBe('* a\n* b');
-        expect(serialized(editor)).toBe('- a\n- b');
+            $setState(node, listMarkerState, '*');
+
+            return [node];
+        })).toBe('* a\n* b');
+    });
+
+    it('LM7: a number list with no marker state writes ".", and one with ")" writes ")"', () => {
+        expect(serialize(() => [list('number', 2, ['a'])])).toBe('2. a');
+
+        expect(serialize(() => {
+            const node = list('number', 2, ['a', 'b']);
+
+            $setState(node, listMarkerState, ')');
+
+            return [node];
+        })).toBe('2) a\n3) b');
+    });
+
+    it('LM8: a marker of the other list type is ignored: a bullet list never writes ")"', () => {
+        expect(serialize(() => {
+            const node = list('bullet', 1, ['a']);
+
+            $setState(node, listMarkerState, ')');
+
+            return [node];
+        })).toBe('- a');
+    });
+});
+
+describe('$serializeMarkdown — line breaks in a table cell', () => {
+    it('a line break in a cell writes the cell paragraph break, which the viewer shows as one break', () => {
+        const output = serialize(() => {
+            const body = $createTableCellNode(TableCellHeaderStates.NO_STATUS);
+
+            body.append(p('x', br(), 'y'));
+
+            return [table([cell(true, 'h')], [body])];
+        });
+
+        expect(output).toBe('| h |\n| --- |\n| x\\n\\ny |');
+        expect(viewerModel(output).blocks).toEqual([{
+            kind: 'table', widths: [null], header: [{ align: null, colSpan: 1, rowSpan: 1, runs: [run('h')] }],
+            rows: [[{ align: null, colSpan: 1, rowSpan: 1, runs: [run('x'), BREAK, run('y')] }]],
+        }]);
+    });
+
+    it('the saved break survives a reload and a second save unchanged', () => {
+        const editor = editorWith(() => {
+            const body = $createTableCellNode(TableCellHeaderStates.NO_STATUS);
+
+            body.append(p('x', br(), 'y'));
+
+            return [table([cell(true, 'h')], [body])];
+        });
+        const saved = editor.getValue();
+        const reloaded = new MarkdownEditor();
+
+        reloaded.setValue(saved);
+
+        expect(reloaded.getValue()).toBe(saved);
+        expect(editorSurfaceModel(reloaded)).toEqual(viewerModel(saved).blocks);
+    });
+});
+
+describe('$serializeMarkdown — source nodes, raw blocks and loose lists', () => {
+    /** A soft break: a source node showing a space and saving a newline. */
+    function soft(formats: TextFormatType[] = []): LexicalNode {
+        const node = $createMarkdownSourceTextNode(' ', '\n');
+
+        for (const format of formats) {
+            node.toggleFormat(format);
+        }
+
+        return node;
+    }
+
+    it('S34: a soft break writes a newline', () => {
+        expect(serialize(() => [p('a', soft(), 'b')])).toBe('a\nb');
+    });
+
+    it('S35: a bold soft break stays inside the bold', () => {
+        expect(serialize(() => [p(text('a', ['bold']), soft(['bold']), text('b', ['bold']))])).toBe('**a\nb**');
+    });
+
+    it('S36: a soft break in a level 3-6 heading writes a space', () => {
+        expect(serialize(() => [fill($createHeadingNode('h3'), ['a', soft(), 'b'])])).toBe('### a b');
+    });
+
+    it('S36 (setext): a soft break in a level 1 heading keeps the setext form it was loaded from', () => {
+        expect(serialize(() => [fill($createHeadingNode('h1'), ['a', soft(), 'b'])])).toBe('a\nb\n===');
+    });
+
+    it('a single-item loose list keeps the blank line between its text and its nested list', () => {
+        const output = serialize(() => {
+            const node = list('bullet', 1, ['a', list('bullet', 1, ['b'])]);
+
+            $setState(node, listLooseState, true);
+
+            return [node];
+        });
+
+        expect(output).toBe('- a\n\n  - b');
+        expect(viewerModel(output).blocks).toEqual([{
+            kind: 'list', ordered: false, loose: true, items: [
+                [para(run('a')), { kind: 'list', ordered: false, loose: false, items: [[para(run('b'))]] }],
+            ],
+        }]);
+    });
+
+    it('S37: the line after a soft break is quoted and escaped like any line start', () => {
+        expect(serialize(() => [fill($createQuoteNode(), ['a', soft(), '- b'])])).toBe('> a\n> \\- b');
+    });
+
+    it('S38: the line after a soft break in a list item is indented under the item', () => {
+        expect(serialize(() => [fill($createListNode('bullet', 1), [fill($createListItemNode(), ['a', soft(), 'b'])])])).toBe('- a\n  b');
+    });
+
+    it('S39: a raw block writes its text unchanged', () => {
+        expect(serialize(() => [$createMarkdownRawBlockNode('> a\n>\n> b')])).toBe('> a\n>\n> b');
+    });
+
+    it('S40: a loose list joins its items with a blank line', () => {
+        expect(serialize(() => {
+            const node = list('bullet', 1, ['a', 'b']);
+
+            $setState(node, listLooseState, true);
+
+            return [node];
+        })).toBe('- a\n\n- b');
+    });
+
+    it('S40 (nested): a loose list keeps a nested list against its item', () => {
+        const output = serialize(() => {
+            const node = list('bullet', 1, ['a', list('bullet', 1, ['n']), 'b']);
+
+            $setState(node, listLooseState, true);
+
+            return [node];
+        });
+
+        expect(output).toBe('- a\n  - n\n\n- b');
+        expect(viewerModel(output).blocks).toEqual([{
+            kind: 'list', ordered: false, loose: true, items: [
+                [para(run('a')), { kind: 'list', ordered: false, loose: false, items: [[para(run('n'))]] }],
+                [para(run('b'))],
+            ],
+        }]);
+    });
+
+    it('S41: a source node writes its source unescaped', () => {
+        expect(serialize(() => [p('see ', $createMarkdownSourceTextNode('<b>', '<b>'), 'x')])).toBe('see <b>x');
+    });
+
+    it('S42: a source node in a table cell has its pipe escaped', () => {
+        expect(serialize(() => {
+            const body = $createTableCellNode(TableCellHeaderStates.NO_STATUS);
+
+            body.append(p($createMarkdownSourceTextNode('<a|b>', '<a|b>')));
+
+            return [table([cell(true, 'a')], [body])];
+        })).toBe('| a |\n| --- |\n| <a\\|b> |');
+    });
+
+    it('a soft break ending a bold run is written after the closing delimiter, not at the next line start', () => {
+        const output = serialize(() => [p(text('word', ['bold']), soft(['bold']), 'next line')]);
+
+        expect(output).toBe('**word**\nnext line');
+        expect(viewerModel(output).blocks).toEqual([para(run('word', ['bold']), run(' next line'))]);
+    });
+
+    it('a soft break opening a bold run is written before the opening delimiter', () => {
+        const output = serialize(() => [p('word', soft(['bold']), text('next', ['bold']), ' line')]);
+
+        expect(output).toBe('word\n**next** line');
+        expect(viewerModel(output).blocks).toEqual([para(run('word '), run('next', ['bold']), run(' line'))]);
+    });
+
+    it('S43: text before a soft break drops its trailing spaces, so they do not become a hard break', () => {
+        expect(serialize(() => [p('a  ', soft(), 'b')])).toBe('a\nb');
     });
 });
 
@@ -852,8 +1035,17 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
             ]);
         });
 
-        it('in a heading, the newline is a space like a line break', () => {
-            expect(serialize(() => [fill($createHeadingNode('h2'), ['x\n- z'])])).toBe('## x - z');
+        it('in a level 3-6 heading, the newline is a space like a line break', () => {
+            expect(serialize(() => [fill($createHeadingNode('h3'), ['x\n- z'])])).toBe('### x - z');
+        });
+
+        it('a level 1 or 2 heading holding a newline is written setext, its lines escaped', () => {
+            const output = serialize(() => [fill($createHeadingNode('h2'), ['x\n# y\n- z'])]);
+
+            expect(output).toBe('x\\\n\\# y\\\n\\- z\n---');
+            expect(viewerModel(output).blocks).toEqual([
+                { kind: 'heading', depth: 2, runs: [run('x'), BREAK, run('# y'), BREAK, run('- z')] },
+            ]);
         });
 
         it('in code-formatted text, the code span is split around the break', () => {
@@ -909,7 +1101,9 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
                 item('a'), item(list('number', 1, ['b']), p('X')),
             )]);
 
-            expect(output).toBe('- a\n  1. b\n\n  X');
+            // The block after the nested list makes the list loose, which the editor's looseness then
+            // records, so the nested list is set apart too; the viewer reads the same either way.
+            expect(output).toBe('- a\n\n  1. b\n\n  X');
             expect(viewerModel(output).blocks).toEqual([{
                 kind: 'list', ordered: false, loose: true, items: [[
                     para(run('a')), { kind: 'list', ordered: true, loose: false, items: [[para(run('b'))]] }, para(run('X')),
@@ -954,7 +1148,8 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
         it('text then a paragraph: the paragraph is a second block of the item', () => {
             const output = serialize(() => [$createListNode('number', 1).append(item('a', p('X')), item('b'))]);
 
-            expect(output).toBe('1. a\n\n   X\n2. b');
+            // The second block makes the list loose, which the editor's looseness then records.
+            expect(output).toBe('1. a\n\n   X\n\n2. b');
             expect(viewerModel(output).blocks).toEqual([{
                 kind: 'list', ordered: true, loose: true, items: [[para(run('a')), para(run('X'))], [para(run('b'))]],
             }]);
@@ -1595,21 +1790,30 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
         }
 
         // CommonMark reads no hard break at the end of a block — a trailing `\` is a literal backslash and trailing
-        // spaces are stripped — and a block holding only breaks has no content to keep it a paragraph. The editor
-        // shows the empty line such a break makes; no Markdown the viewer reads shows it, so the break is dropped.
-        const lossy: Array<[string, () => LexicalNode[]]> = [
+        // spaces are stripped — and a block holding only breaks has no content to keep it a paragraph. No Markdown
+        // the viewer reads shows the empty line such a break makes, so the serializer drops it, and the editor does
+        // not keep one (its line-break rules remove it), so the save shows what the editor shows.
+        const dropped: Array<[string, () => LexicalNode[]]> = [
             ['a paragraph ending with a break', () => [p('a', br())]],
             ['a paragraph holding only a break', () => [p(br())]],
             ['a quote ending with a break', () => [fill($createQuoteNode(), ['a', br()])]],
         ];
 
-        for (const [name, build] of lossy) {
-            it(`${name}: the break is dropped, which the viewer cannot show`, () => {
-                const editor = editorWith(build);
-                const output = serialized(editor);
+        for (const [name, build] of dropped) {
+            it(`${name}: the break is dropped, by the serializer and by the editor`, () => {
+                const editor = new MarkdownEditor();
+                let output = '';
+
+                editor.setValue('');
+                // Serialized in the update that builds the block, before the editor's rules run.
+                lexicalOf(editor).update(() => {
+                    $getRoot().clear().append(...build());
+                    output = $serializeMarkdown();
+                }, { discrete: true });
 
                 expect(output).not.toMatch(/\\$/);
-                expect(viewerModel(output).blocks, `${name} now reads back: move it out of the lossy cases`).not.toEqual(editorSurfaceModel(editor));
+                expect(serialized(editor)).toBe(output);
+                expect(viewerModel(output).blocks).toEqual(editorSurfaceModel(editor));
             });
         }
     });
@@ -1690,18 +1894,4 @@ describe('$serializeMarkdown — the same placement for marks however whitespace
         expect(serialized(editorWith(build(false)))).toBe(output);
         expect(viewerModel(output).blocks).toEqual(editorSurfaceModel(bareEditor));
     });
-});
-
-describe('$serializeMarkdown — corpus comparison with the current exporter', () => {
-    for (const [name, source] of Object.entries(CORPUS)) {
-        it(`C1: ${name}`, () => {
-            const editor = new MarkdownEditor();
-
-            editor.setValue(source);
-
-            const current = lexicalOf(editor).read(() => $convertToMarkdownString(TRANSFORMERS));
-
-            expect(serialized(editor)).toBe(current);
-        });
-    }
 });

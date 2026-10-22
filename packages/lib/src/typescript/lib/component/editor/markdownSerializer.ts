@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
-import { $getRoot, $getState, $isElementNode, $isLineBreakNode, $isParagraphNode, $isTextNode, TEXT_TYPE_TO_FORMAT } from "lexical";
+import {
+    $findMatchingParent, $getRoot, $getState, $isElementNode, $isLineBreakNode, $isParagraphNode, $isTextNode, TEXT_TYPE_TO_FORMAT,
+} from "lexical";
 import type { ElementFormatType, ElementNode, LexicalNode, TextFormatType, TextNode } from "lexical";
 import { $isHeadingNode, $isQuoteNode } from "@lexical/rich-text";
 import type { HeadingNode, QuoteNode } from "@lexical/rich-text";
@@ -17,24 +19,116 @@ import {
     blockStyleToAttributes, cssTextToAttributes, formatAttributes, joinColumnSections, parseAttributes, resolveBlockStyle, resolveImageSpec,
     resolveSpanStyle, spanStyleToAttributes,
 } from "~/component/display/markdownAttributes.js";
-import { lexMarkdown } from "~/component/display/markdownExtensions.js";
+import { lexMarkdown, lexMarkdownInline } from "~/component/display/markdownExtensions.js";
 import type { MdTableToken } from "~/component/display/markdownTableExtension.js";
 import { $isMarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
 import type { MarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import type { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import {
-    bareAutolinkState, fenceAttributesState, hardBreakMarkerState, imageAttributesState, spanAttributesState,
+    bareAutolinkState, codeInfoState, fenceAttributesState, hardBreakMarkerState, imageAttributesState, KEPT_SOURCE_WRITES_LINK,
+    KEPT_SOURCE_WRITES_STYLE, keptSourceState, listLooseState, listMarkerState, NESTED_LINK_WRITES_STYLE, nestedLinkGroupState,
+    nestedLinkState, spanAttributesState,
 } from "~/component/editor/markdownNodeState.js";
+import type { KeptSource } from "~/component/editor/markdownNodeState.js";
+import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
+import type { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 
 // ---------------------------------------------------------------- constants
+
+/** A thematic break: three or more of one of `-`, `*` and `_`, spaces between them allowed (CommonMark §4.1). */
+const THEMATIC_BREAK = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+
+/**
+ * The characters that, written right after a shortcut reference `[label]`,
+ * would make it part of another construct: an inline link's destination, a
+ * styled span's attributes, or a full reference's second bracket.
+ */
+const AFTER_SHORTCUT_GUARDED = "([{";
+
+/** A task item's checkbox as the importer keeps it, a source run: its marker and the space after it. */
+const TASK_MARKER_SOURCE = /^\[[ xX]\] $/;
+
+/**
+ * A source run's text that is a shortcut reference: `[label]` or
+ * `![label]`, the label holding no unescaped bracket.
+ */
+const SHORTCUT_REFERENCE_SOURCE = /^!?\[(?:\\.|[^[\]\\])+\]$/;
 
 /** Separates two top-level blocks (and two blocks of a fence column): one blank line. */
 const BLOCK_SEPARATOR = "\n\n";
 
 /**
+ * The paragraph lexed after a raw block's text to tell whether that text
+ * runs on: any plain word, which no block that has ended takes in.
+ */
+const RUN_ON_PROBE = "probe";
+
+/**
+ * How many raw-block texts {@link rawBlockEnd} remembers: the editor asks again
+ * for each raw block whenever a block before or after it changes, and a
+ * document rarely holds more raw blocks than this; past it the memory starts
+ * over rather than growing with every text an edit passes through.
+ */
+const RUNS_ON_CACHE_SIZE = 256;
+
+/**
+ * How a raw block's text ends ({@link rawBlockEnd}): `"apart"` when a blank
+ * line after it ends it; `"wide"` when only a second blank line does — an
+ * HTML block whose start tag ends its line (`<details`), whose newline
+ * `marked` spends on the start condition, so the first blank line after it
+ * is not one the end condition sees; `"runsOn"` when no blank line ends it
+ * (`<!--` without `-->`, `<pre>` without `</pre>`).
+ */
+type RawBlockEnd = "apart" | "wide" | "runsOn";
+
+/** {@link rawBlockEnd}'s answers, by raw-block text. */
+const RUNS_ON = new Map<string, RawBlockEnd>();
+
+/** A paragraph line put before a continuation line to lex it where it stands: in a paragraph. */
+const PARAGRAPH_PROBE_LINE = "probe";
+
+/** The deepest heading level a setext underline can write (CommonMark: `=` is 1, `-` is 2). */
+const SETEXT_MAX_LEVEL = 2;
+
+/** The underline of a level 1 setext heading; any run of `=` reads the same, three matches `---`'s length. */
+const SETEXT_H1_UNDERLINE = "===";
+
+/** The underline of a level 2 setext heading: three `-`, the shortest run that is not a list item's marker. */
+const SETEXT_H2_UNDERLINE = "---";
+
+/**
+ * A line `marked`'s setext-heading rule will not read as heading content: a
+ * code-fence start (three or more backticks or tildes, as a code span with
+ * a fence that long opens), a lone tag (an angle-bracket autolink, an
+ * inline-HTML source run), which it takes for an HTML block start, or a line
+ * indented four spaces or more (the indent kept before a source run), which
+ * it takes for indented code.
+ */
+const SETEXT_INTERRUPTING_LINE = /^(?: {4,}| {0,3}(?:`{3,}|~{3,}|<[^\n>]+>$))/;
+
+/** Separates two items of a loose list: one blank line, as between blocks. */
+const LOOSE_ITEM_SEPARATOR = "\n\n";
+
+/** The bullet characters a bullet list may be written with; the first is the default. */
+const BULLET_MARKERS: readonly string[] = ["-", "*", "+"];
+
+/** The delimiters an ordered list's numbers may be written with; the first is the default. */
+const ORDERED_DELIMITERS: readonly string[] = [".", ")"];
+
+/**
+ * The block written between two lists `marked` would otherwise join: a link
+ * reference definition, which ends a list as any block does and which the
+ * viewer renders nothing for. CommonMark's own separator, an empty HTML
+ * comment, would show: the viewer prints an HTML block as its text. The
+ * label `//` is the usual one for a Markdown comment; an earlier definition
+ * of it wins, and a later one is dropped, so it never redefines one.
+ */
+const LIST_SEPARATOR = "[//]: #";
+
+/**
  * The two characters backslash and `n`, half of a table cell's break: a raw
- * newline would end the pipe row. A lone one renders as literal text.
+ * newline would end the pipe row.
  */
 const CELL_LINE_BREAK = "\\n";
 
@@ -42,12 +136,10 @@ const CELL_LINE_BREAK = "\\n";
  * Two {@link CELL_LINE_BREAK}s: what a table cell writes between two of its
  * paragraphs and for a line break or a newline inside it. Mirrors the
  * viewer's own `CELL_PARAGRAPH_BREAK`, the only sequence it splits a cell's
- * text on to render one `<br>` per boundary.
+ * text on (one `<br>` per boundary) — a lone {@link CELL_LINE_BREAK} renders
+ * as literal text — and the importer reads it back as a paragraph boundary.
  */
 const CELL_PARAGRAPH_BREAK = CELL_LINE_BREAK + CELL_LINE_BREAK;
-
-/** The bullet a bullet list is written with. */
-const BULLET = "-";
 
 /**
  * The bullet a bullet list is written with when its first line is a bare
@@ -97,6 +189,12 @@ const LINE_START_ESCAPED: ReadonlySet<string> = new Set(["#", ">", "-", "+", "*"
  * limit for a list number) then `.` or `)`.
  */
 const ORDERED_LIST_MARKER = /^(\d{1,9})[.)]/;
+
+/** A list item's line holding only its marker: an empty item. */
+const BARE_LIST_MARKER_LINE = /^ *(?:\d{1,9}[.)]|[-*+]) *$/;
+
+/** A list's first marker, as its Markdown starts: an ordered item's delimiter (group 1), or a bullet (group 2). */
+const WRITTEN_LIST_MARKER = /^ *(?:\d{1,9}([.)])|([-*+]))/;
 
 /** ASCII punctuation: the characters a backslash escapes in CommonMark. */
 const ASCII_PUNCTUATION = /^[!-/:-@[-`{-~]$/;
@@ -148,13 +246,16 @@ const READING_KEY_SEPARATOR = "\u0000";
 /** The reading unit of a line break. */
 const BREAK_READING = "\u0001break";
 
+/** The marks whitespace shows, read with {@link InlineContext.readsWhitespace}: a line or a background drawn across it. */
+const DRAWN_ON_WHITESPACE: ReadonlySet<string> = new Set(["strike", "underline", "code"]);
+
 // ---------------------------------------------------------------- types
 
 /** Where inline content is being written. */
 interface InlineContext {
     /** The content cannot span lines (headings, table cells). */
     readonly singleLine: boolean;
-    /** Escape every `|`; a `\` before `n` is escaped; a `LineBreakNode` writes the cell break. */
+    /** Escape every `|`; a `\` before `n` is escaped; a `LineBreakNode` writes the cell paragraph break. */
     readonly inTableCell: boolean;
     /**
      * Leave a `~` unescaped unless another `~` touches it. An escaped `\~` is
@@ -163,12 +264,22 @@ interface InlineContext {
      * can pair as strikethrough.
      */
     readonly looseTildes?: boolean;
+    /** The content is a list item's: a continuation line opening an HTML block there ends the item. */
+    readonly inListItem?: boolean;
     /**
      * Escape every `<`. `marked` hides a `<…>` stretch from emphasis pairing,
      * so a `<` that opens no tag still keeps delimiters between it and a
      * later `>` from pairing; set only for a writing that is then read back.
      */
     readonly escapedAngles?: boolean;
+    /**
+     * Read whitespace too: each stretch of it one unit, keyed by its link and
+     * the marks that draw on it (strikethrough, underline, code), none at a
+     * line's edge — as the viewer lays it out, so a writing that moves a
+     * struck space out of its strikethrough reads differently. Set for every
+     * read-back; never for a writing.
+     */
+    readonly readsWhitespace?: boolean;
 }
 
 /** The context of a paragraph, quote or list item. */
@@ -206,8 +317,30 @@ const MARK_FORMATS: Readonly<Record<Mark, TextFormatType>> = {
 /** One flattened piece of inline content. */
 type Segment =
     | { kind: "text"; text: string; marks: Mark[]; code: boolean; style: string; link: LinkNode | null }
-    | { kind: "image"; node: MarkdownImageNode; link: LinkNode | null }
-    | { kind: "break"; marker: string; link: LinkNode | null };
+    | {
+        kind: "source"; source: string; shows: boolean; marks: Mark[]; style: string; link: LinkNode | null;
+        /** Whether it is a resolving shortcut reference (`[label]`, `![label]`), showing its text, not its source. */
+        shortcut?: boolean;
+        /** A nested link's run: what it shows, and the link it belongs to. */
+        nested?: { readonly shown: Segment[]; readonly group: { readonly id: string; readonly close: string } | null };
+        /** A whole kept construct, its runs' sources joined: what its runs show. */
+        kept?: { readonly shown: Segment[] };
+        /** A run of a kept construct, before its runs are joined. */
+        member?: KeptMember;
+    }
+    | { kind: "image"; node: MarkdownImageNode; link: LinkNode | null; member?: KeptMember }
+    | { kind: "break"; marker: string; link: LinkNode | null; member?: KeptMember };
+
+/** A run of an inline construct kept as written ({@link keptSourceState}), as flattened. */
+interface KeptMember {
+    readonly kept:   KeptSource;
+    /** The Markdown the run writes. */
+    readonly source: string;
+    /** What the run shows, as segments. */
+    readonly shown:  Segment[];
+    /** Whether the run still shows what it did at load (an image keeps its source, alt text and size). */
+    readonly intact: boolean;
+}
 
 /** One block of a list item's content, before its indentation. */
 interface ItemBlock {
@@ -217,10 +350,25 @@ interface ItemBlock {
     readonly isList: boolean;
     /** Whether it is text: the item's inline content, or a paragraph. */
     readonly isText: boolean;
+    /** Whether it is a raw block, written as it was loaded. */
+    readonly isRaw?: boolean;
+    /** For a nested list, the bullet or delimiter its Markdown is written with. */
+    readonly marker?: string;
+    /** For a nested list, its Markdown written with another bullet or delimiter. */
+    readonly withMarker?: (marker: string) => string;
+    /**
+     * For a nested list, whether `marked` reads its lines as text a bare `-`
+     * line right after them underlines as a setext heading: it holds only
+     * bare markers (empty items) and follows text.
+     */
+    readonly continuesText?: boolean;
 }
 
 /** A text segment. */
 type TextSegment = Extract<Segment, { kind: "text" }>;
+
+/** A source segment: Markdown kept as written. */
+type SourceSegment = Extract<Segment, { kind: "source" }>;
 
 /** A run of segments with one span style, written `[…]{style}`. */
 interface StyleGroup { kind: "style"; style: string; units: Segment[] }
@@ -237,10 +385,15 @@ type Piece =
     | { kind: "syntax"; text: string }      // Markdown syntax, written as is
     | { kind: "delimiter"; text: string; mark: Mark; opens: boolean } // an emphasis delimiter, written as is
     | { kind: "autolink"; text: string; bare: string } // `bare` where its neighbours bound it, else `text`
-    | { kind: "break"; marker: string };    // a hard line break with its marker
+    | { kind: "source"; text: string; shortcut?: boolean } // a source node's Markdown, written as is; `shortcut` for a shortcut reference
+    | { kind: "break"; marker: string }     // a hard line break with its marker
+    | { kind: "newline" };                  // a soft line break kept from the source
 
-/** A piece of one assembled line: hard breaks have become line ends. */
-type LinePiece = Exclude<Piece, { kind: "break" }>;
+/** What ends a line: a hard break, a soft newline. */
+type LineEnd = Extract<Piece, { kind: "break" | "newline" }>;
+
+/** A piece of one assembled line: hard breaks and newlines have become line ends. */
+type LinePiece = Exclude<Piece, LineEnd>;
 
 /**
  * A way of writing a block's marks. Where delimiters meet each other or
@@ -327,8 +480,8 @@ interface InlineWriter {
     readonly policy: WritingPolicy;
     /** The marks open at the current group level, outermost first. */
     stack: Mark[];
-    /** Trailing whitespace of the last text, written after any delimiter that closes next. */
-    pending: string;
+    /** Trailing whitespace (and soft breaks) of the last text, written after any delimiter that closes next. */
+    pending: Piece[];
     /** Whether the held-back whitespace is underlined, so an underline closing next writes it before its delimiter. */
     pendingUnderline: boolean;
     /** Whether the output is inside a link's text. */
@@ -348,6 +501,337 @@ interface InlineWriter {
  */
 export function $serializeMarkdown(): string {
     return serializeBlockList($getRoot().getChildren());
+}
+
+/**
+ * Serializes one block node as a save writes it — the Markdown the editor
+ * puts into a raw block when a paragraph merges into it. Must run inside an
+ * `editor.read` or `editor.update`.
+ *
+ * @param node - The block.
+ * @returns Its Markdown, or `""` when it writes nothing.
+ */
+export function $serializeBlock(node: LexicalNode): string {
+    return serializeBlock(node);
+}
+
+/**
+ * Serializes a run of inline nodes as a save writes them, their lines kept —
+ * the Markdown a raw block or code block holds for content it takes in from
+ * another block. Must run inside an `editor.read` or `editor.update`.
+ *
+ * @param nodes - The inline nodes.
+ * @returns Their Markdown, lines separated by `\n`.
+ */
+export function $serializeInlineNodes(nodes: LexicalNode[]): string {
+    return serializeInlineNodes(nodes, MULTI_LINE);
+}
+
+/**
+ * Tells whether a block's save reads back as the editor shows it: for each
+ * run of inline content it holds (a paragraph's, a heading's, a quote's, a
+ * list item's, a table cell's), the viewer's reading of the Markdown written
+ * for it — every visible character, image and break with its marks, link
+ * and style — is the editor's. A raw block or code block, saved as written,
+ * always does; so does a run whose source the reading cannot read on its
+ * own (source that does not lex as inline content in a heading or table
+ * cell). The editor declines an edit that would make a
+ * block stop reading back. Must run inside an `editor.read` or
+ * `editor.update`.
+ *
+ * @param node - The block, or a run's container in it.
+ * @param inTableCell - Whether it sits in a table cell, whose content is
+ *   written on the cell's line; read off its ancestors when omitted, which a
+ *   detached copy of a block does not have.
+ * @returns `false` when some run of it would read back differently.
+ */
+export function $readsBackAsShown(node: LexicalNode, inTableCell?: boolean): boolean {
+    const inCell = inTableCell ?? $findMatchingParent(node, $isTableCellNode) !== null;
+
+    return inlineRuns(node, inCell).every(([nodes, context]) => inlineReadsBack(nodes, context));
+}
+
+/**
+ * The runs of inline content in a block whose save does not read back as
+ * the editor shows them ({@link $readsBackAsShown}), each with the inline
+ * tokens the viewer reads its save as: what the run shows once a load
+ * builds it from that save. A table cell's run is the cell alone. Must run
+ * inside an `editor.read` or `editor.update`.
+ *
+ * @param node - The block.
+ * @param inTableCell - Whether it sits in a table cell; read off its
+ *   ancestors when omitted, which a detached block does not have.
+ * @returns The runs, in document order; none when the whole block reads back.
+ */
+export function $runsReadingOtherwise(node: LexicalNode, inTableCell?: boolean): Array<{ nodes: LexicalNode[]; tokens: Token[] }> {
+    const inCell = inTableCell ?? $findMatchingParent(node, $isTableCellNode) !== null;
+
+    return inlineRuns(node, inCell).flatMap(([nodes, context]) => {
+        if (nodes.length === 0 || inlineReadsBack(nodes, context)) {
+            return [];
+        }
+
+        const tokens = readBackTokens(runMarkdown(nodes, context), context);
+
+        return tokens === null ? [] : [{ nodes, tokens }];
+    });
+}
+
+/**
+ * How far a block's standard form — what a save writes for it once it is
+ * edited — reads as the tokens it was loaded from: the importer keeps a
+ * construct as written ({@link keptSourceState}) where it would not.
+ */
+export interface StandardFormReading {
+    /** How many leading reading units of the tokens the standard form reads as they do; `Infinity` when all, and no more. */
+    readonly score:   number;
+    /** The reading units each token, at any depth, reads as: `[start, end)`. */
+    readonly spans:   ReadonlyMap<Token, readonly [number, number]>;
+    /** For a heading, how many leading characters of its id the standard form keeps; `Infinity` when all, or for any other block. */
+    readonly idScore: number;
+}
+
+/**
+ * Reads a block's standard form against the inline tokens it was loaded
+ * from: the reading of the Markdown a save writes for its inline content —
+ * a paragraph's, a heading's, a quote's, a list item's or a table cell's —
+ * against the viewer's reading of the tokens and, for a heading, the id the
+ * viewer gives it, which it slugs from the heading's source text. Must run
+ * inside an `editor.read` or `editor.update`.
+ *
+ * @param container - The block (a table cell for a cell's content).
+ * @param tokens - The inline tokens it was loaded from (a task item's checkbox first).
+ * @param headingText - A heading's source text, as `marked` gives it; `null` for any other block.
+ * @returns How far the standard form reads as the tokens do.
+ */
+export function $readStandardForm(container: ElementNode, tokens: readonly Token[], headingText: string | null): StandardFormReading {
+    const cell = $isTableCellNode(container);
+    const heading = $isHeadingNode(container) ? container : null;
+    const context = cell ? TABLE_CELL : heading !== null ? headingContext(heading) : $isListItemNode(container) ? { ...MULTI_LINE, inListItem: true } : MULTI_LINE;
+    const reading: InlineContext = { ...context, readsWhitespace: true };
+    const intended: string[] = [];
+    const spans = new Map<Token, readonly [number, number]>();
+
+    pushTokenReading(intended, tokens, { marks: [], link: "", style: "" }, reading, spans);
+
+    const written = cell ? serializeTableCell(container) : serializeInline(container, context);
+    const score = readingScore(withoutTrailingWhitespace(markdownReading(written, reading)), withoutTrailingWhitespace(intended));
+
+    if (heading === null || headingText === null) {
+        return { score, spans, idScore: Infinity };
+    }
+
+    const writtenHeading = lexMarkdown(serializeHeading(heading)).find((token) => token.type === "heading") as Tokens.Heading | undefined;
+    const [id, writtenId] = [headingSlug(headingText), headingSlug(writtenHeading?.text ?? "")];
+    const differs = [...id].findIndex((char, index) => writtenId[index] !== char);
+
+    return { score, spans, idScore: id === writtenId ? Infinity : differs === -1 ? id.length : differs };
+}
+
+/**
+ * The slug the viewer makes a heading's id from: lowercase, each run of
+ * characters other than ASCII letters and digits one hyphen, none at the
+ * ends. Mirrors `slugify` in `Markdown.ts`, which the viewer does not export.
+ *
+ * @param text - The heading's source text.
+ * @returns The slug.
+ */
+function headingSlug(text: string): string {
+    return text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+/**
+ * The runs of inline content a block holds, each with the context the save
+ * writes it in. A table cell's content is one run, the cell alone: its
+ * paragraphs are written on one line, which `marked` reads as a whole.
+ *
+ * @param node - The block.
+ * @param inTableCell - Whether it sits in a table cell.
+ * @returns The runs.
+ */
+function inlineRuns(node: LexicalNode, inTableCell: boolean): Array<[LexicalNode[], InlineContext]> {
+    if ($isMarkdownRawBlockNode(node) || $isCodeNode(node) || !$isElementNode(node)) {
+        return [];
+    }
+
+    const cell = $isTableCellNode(node) ? node : inTableCell ? $findMatchingParent(node, $isTableCellNode) : null;
+
+    if (cell !== null) {
+        return [[[cell], TABLE_CELL]];
+    }
+
+    if ($isParagraphNode(node) || $isQuoteNode(node) || $isHeadingNode(node)) {
+        return [[node.getChildren(), inTableCell ? TABLE_CELL : $isHeadingNode(node) ? headingContext(node) : MULTI_LINE]];
+    }
+
+    if (!$isListItemNode(node)) {
+        return node.getChildren().flatMap((child) => inlineRuns(child, inTableCell || $isTableCellNode(node)));
+    }
+
+    const runs: Array<[LexicalNode[], InlineContext]> = [];
+    let inline: LexicalNode[] = [];
+    const context = inTableCell ? TABLE_CELL : MULTI_LINE;
+
+    for (const child of node.getChildren()) {
+        if (!$isElementNode(child) || child.isInline()) {
+            inline.push(child);
+
+            continue;
+        }
+
+        runs.push([inline, context], ...inlineRuns(child, inTableCell));
+        inline = [];
+    }
+
+    return [...runs, [inline, context]];
+}
+
+/**
+ * Whether a heading's save writes it on one line, its line breaks as spaces:
+ * a level 3–6 heading, or a level 1 or 2 heading whose content does not span
+ * lines or has a line that would end its setext form
+ * ({@link SETEXT_INTERRUPTING_LINE}).
+ *
+ * @param node - The heading.
+ * @returns `true` when it is written ATX.
+ */
+export function $headingWritesOneLine(node: HeadingNode): boolean {
+    return headingContext(node) === HEADING_LINE;
+}
+
+/**
+ * The context a heading's content is written in: the setext writing's, when
+ * {@link serializeHeading} writes it so, else one line.
+ *
+ * @param node - The heading.
+ * @returns The context.
+ */
+function headingContext(node: HeadingNode): InlineContext {
+    if (Number(node.getTag().slice(1)) > SETEXT_MAX_LEVEL) {
+        return HEADING_LINE;
+    }
+
+    const lines = serializeInline(node, MULTI_LINE);
+
+    return lines.includes("\n") && !lines.split("\n").some((line) => SETEXT_INTERRUPTING_LINE.test(line)) ? MULTI_LINE : HEADING_LINE;
+}
+
+/**
+ * Tells whether a run of inline content reads back as the editor shows it:
+ * the reading of its nodes as they are — before the writer moves a `+` out
+ * of underline or a bracket out of a styled span, whose grammars cannot hold
+ * them — equals the reading of the Markdown written for it.
+ *
+ * @param nodes - The inline nodes.
+ * @param context - Where they are written.
+ * @returns `true` when the readings are equal, or the run's reading is not known.
+ */
+function inlineReadsBack(nodes: LexicalNode[], context: InlineContext): boolean {
+    const reading: InlineContext = { ...context, readsWhitespace: true };
+    const cell = nodes.length === 1 && $isTableCellNode(nodes[0]) ? nodes[0] : null;
+    const intended = withoutTrailingWhitespace(cell !== null
+        ? cellReading(cell, reading)
+        : segmentReading(withoutEdgeBreaks(flattenInline(nodes, true), context), reading));
+
+    if (intended === null) {
+        return true;
+    }
+
+    return readingScore(withoutTrailingWhitespace(markdownReading(runMarkdown(nodes, context), reading)), intended) === Infinity;
+}
+
+/**
+ * The reading of a table cell's content as the editor shows it: each
+ * paragraph's, a break between two, as the viewer renders the cell
+ * paragraph break the save writes there.
+ *
+ * @param cell - The cell.
+ * @param reading - The context it is read in.
+ * @returns The reading, or `null` when it is not known (a block other than
+ *   a paragraph, which the table rules turn into paragraphs).
+ */
+function cellReading(cell: TableCellNode, reading: InlineContext): string[] | null {
+    const units: string[] = [];
+
+    for (const [index, child] of cell.getChildren().entries()) {
+        const part = $isParagraphNode(child) ? segmentReading(flattenInline(child.getChildren(), true), reading) : null;
+
+        if (part === null) {
+            return null;
+        }
+
+        if (index > 0) {
+            pushBreakReading(units);
+        }
+
+        units.push(...part);
+    }
+
+    return units;
+}
+
+/**
+ * The Markdown a save writes for a run of inline content: a table cell's
+ * whole text for a cell, else the run's inline Markdown.
+ *
+ * @param nodes - The run's nodes (a table cell alone for a cell).
+ * @param context - Where they are written.
+ * @returns The Markdown.
+ */
+function runMarkdown(nodes: LexicalNode[], context: InlineContext): string {
+    const cell = nodes.length === 1 && $isTableCellNode(nodes[0]) ? nodes[0] : null;
+
+    return cell !== null ? serializeTableCell(cell) : serializeInlineNodes(nodes, context);
+}
+
+/**
+ * The bullet character or ordered delimiter a save writes for a list: its
+ * authored marker, or `-` / `.` for a list made in the editor or one whose
+ * marker is of the other list type. Two adjacent lists that write the same
+ * one read as one list. Must run inside an `editor.read` or `editor.update`.
+ *
+ * @param list - The list.
+ * @returns `-`, `*`, `+`, `.` or `)`.
+ */
+export function $writtenListMarker(list: ListNode): string {
+    const authored = $getState(list, listMarkerState);
+    const markers = list.getListType() === "number" ? ORDERED_DELIMITERS : BULLET_MARKERS;
+
+    return markers.includes(authored) ? authored : markers[0]!;
+}
+
+/**
+ * Tells whether a list's save reads as a loose list: its looseness, where
+ * the save can write it — between items, or, in a list of one item, between
+ * that item's text and its nested list — or any item holding a block that is
+ * not a nested list after its first, or a nested list after a first block
+ * that is not text (a table, a quote), which a blank line sets apart and so
+ * makes the list loose whatever its looseness. A single-item list whose item
+ * holds one block cannot be loose. Must run inside an `editor.read` or
+ * `editor.update`.
+ *
+ * @param list - The list.
+ * @returns `true` when the save reads as a loose list.
+ */
+export function $listReadsLoose(list: ListNode): boolean {
+    const items: Array<Array<"list" | "text" | "block">> = [];
+
+    for (const item of list.getChildren().filter($isListItemNode)) {
+        const continues = $isListNode(item.getFirstChild()) && items.length > 0;
+        const blocks = continues ? items[items.length - 1]! : [];
+
+        blocks.push(...itemBlockKinds(item));
+
+        if (!continues) {
+            items.push(blocks);
+        }
+    }
+
+    if (items.some((blocks) => blocks.slice(1).some((kind) => kind !== "list") || (blocks[0] === "block" && blocks.length > 1))) {
+        return true;
+    }
+
+    return $getState(list, listLooseState) && (items.length > 1 || (items[0]?.length ?? 0) > 1);
 }
 
 /**
@@ -388,16 +872,121 @@ export function formatDelimiterRow(alignments: ElementFormatType[], widths: read
 
 /**
  * Serializes a list of block nodes, dropping the ones that write nothing
- * (empty paragraphs).
+ * (empty paragraphs). A list next to a raw block, or right after another
+ * list, is written so it stays its own list ({@link serializeListApart}),
+ * and a raw block that would join the raw block before it (a raw list
+ * continuing a raw list of its marker) is kept apart by {@link LIST_SEPARATOR}.
  *
  * @param nodes - The blocks, in document order.
  * @returns The blocks joined by one blank line.
  */
 function serializeBlockList(nodes: LexicalNode[]): string {
-    return nodes
-        .map((node) => serializeBlock(node))
-        .filter((markdown) => markdown !== "")
-        .join(BLOCK_SEPARATOR);
+    const written: string[] = [];
+    let previousJoinable: string | undefined;
+    let previousRaw: string | undefined;
+
+    nodes.forEach((node, index) => {
+        const markdown = $isListNode(node) ? serializeListApart(node, previousJoinable, nodes.slice(index + 1)) : serializeBlock(node);
+
+        if (markdown === "") {
+            return;
+        }
+
+        const raw = $isMarkdownRawBlockNode(node);
+
+        if (raw && previousRaw !== undefined && listsJoin(previousRaw, markdown)) {
+            written.push(LIST_SEPARATOR);
+        }
+
+        written.push(markdown);
+        previousJoinable = raw || $isListNode(node) ? markdown : undefined;
+        previousRaw = raw ? markdown : undefined;
+    });
+
+    return written.join(BLOCK_SEPARATOR);
+}
+
+/**
+ * Serializes a top-level list so `marked` does not join it to a list a raw
+ * block next to it ends or starts with, or to a list right before it (a
+ * list with the same bullet character or ordered delimiter continues one
+ * after a blank line): with its own marker when that keeps it apart, else
+ * with the first other marker of its type that does; when none does (an
+ * ordered list between raw lists of both delimiters, a list before an
+ * indented raw list), with its own marker and {@link LIST_SEPARATOR} on
+ * each side it would join, which shows nothing. The editor joins adjacent lists that
+ * write one marker, but only when the first changes, so two such lists can
+ * stand next to each other; lists of two types do not join.
+ *
+ * @param list - The list.
+ * @param before - The Markdown of the raw block or list written right
+ *   before it, if one was.
+ * @param following - The blocks after it.
+ * @returns The list's Markdown, with any separator.
+ */
+function serializeListApart(list: ListNode, before: string | undefined, following: LexicalNode[]): string {
+    const markdown = serializeList(list);
+    const nextNode = following.find((node) => !$isParagraphNode(node) || serializeBlock(node) !== "");
+    const after = $isMarkdownRawBlockNode(nextNode) ? serializeBlock(nextNode) : undefined;
+
+    if (before === undefined && after === undefined) {
+        return markdown;
+    }
+
+    const joinsBefore = (candidate: string): boolean => before !== undefined && blocksJoin(before, candidate);
+    const joinsAfter = (candidate: string): boolean => after !== undefined && blocksJoin(candidate, after);
+    const markers = list.getListType() === "number" ? ORDERED_DELIMITERS : BULLET_MARKERS;
+    const own = $getState(list, listMarkerState);
+    const candidates = [markdown, ...markers.filter((marker) => marker !== own).map((marker) => serializeList(list, false, marker))];
+    const apart = candidates.find((candidate) => !joinsBefore(candidate) && !joinsAfter(candidate));
+
+    if (apart !== undefined) {
+        return apart;
+    }
+
+    const separated = joinsBefore(markdown) ? [LIST_SEPARATOR, markdown] : [markdown];
+
+    return (joinsAfter(markdown) ? [...separated, LIST_SEPARATOR] : separated).join(BLOCK_SEPARATOR);
+}
+
+/**
+ * Tells whether a block ending in a list and a block opening with one join
+ * when written one after the other ({@link blocksJoin}): the second list
+ * continues the first. Definitions, which `marked` drops when repeated, are
+ * never taken for a join.
+ *
+ * @param first - The first block's Markdown.
+ * @param second - The second block's Markdown.
+ * @returns `true` when the second's list joins the first's.
+ */
+function listsJoin(first: string, second: string): boolean {
+    const blocks = (markdown: string): Token[] => lexMarkdown(markdown).filter((token) => token.type !== "space");
+
+    return blocks(first).at(-1)?.type === "list" && blocks(second)[0]?.type === "list" && blocksJoin(first, second);
+}
+
+/**
+ * Tells whether two blocks' Markdown written one after the other, a blank
+ * line between, lexes as fewer blocks than each does alone, or with the
+ * first's last block taking in part of the second (a list taking an
+ * indented list's first item as its own nested list): the second joins the
+ * first.
+ *
+ * @param first - The first block's Markdown.
+ * @param second - The second block's Markdown.
+ * @returns `true` when they join.
+ */
+function blocksJoin(first: string, second: string): boolean {
+    const blocks = (markdown: string): Token[] => lexMarkdown(markdown).filter((token) => token.type !== "space");
+    const alone = blocks(first);
+    const both = blocks(first + BLOCK_SEPARATOR + second);
+    const last = alone.length - 1;
+
+    if (both.length < alone.length + blocks(second).length) {
+        return true;
+    }
+
+    return last >= 0 && (both[last]?.raw ?? "").trim() !== (alone[last]!.raw ?? "").trim();
 }
 
 /**
@@ -435,18 +1024,125 @@ function serializeBlock(node: LexicalNode): string {
         return serializeFence(node);
     }
 
+    if ($isMarkdownRawBlockNode(node)) {
+        return serializeRawBlock(node);
+    }
+
     return $isElementNode(node) ? serializeBlockList(node.getChildren()) : node.getTextContent();
 }
 
 /**
- * Serializes an ATX heading. A trailing `#` run that the heading rule would
- * strip as a closing sequence has its first `#` escaped.
+ * Serializes a raw block: its text as written — unless that text runs on
+ * (an HTML block its own text does not close, `<!--` without `-->`, `<pre>`
+ * without `</pre>`) and a block that writes something follows it, which the
+ * text would take in. It is then written as a paragraph holding its text,
+ * escaped, its lines kept by hard breaks, so it shows the same text and the
+ * blocks after it stay their own, as the editor shows them.
+ *
+ * @param node - The raw block.
+ * @returns Its Markdown.
+ */
+function serializeRawBlock(node: MarkdownRawBlockNode): string {
+    if ($rawBlockWritesAsParagraph(node)) {
+        return serializeInline(node, MULTI_LINE);
+    }
+
+    const text = node.getTextContent();
+
+    // A block only a second blank line ends writes that line itself, so the block after it stays its own.
+    return rawBlockEnd(text) === "wide" && $writesBlockAfter(node) ? `${text}\n` : text;
+}
+
+/**
+ * Tells whether a save writes a raw block as a paragraph holding its text
+ * ({@link serializeRawBlock}): its text runs on and a block after it writes
+ * something. The editor then shows it as that paragraph. Must run inside an
+ * `editor.read` or `editor.update`.
+ *
+ * @param node - The raw block.
+ * @returns `true` when it is written as a paragraph.
+ */
+export function $rawBlockWritesAsParagraph(node: MarkdownRawBlockNode): boolean {
+    return rawBlockEnd(node.getTextContent()) === "runsOn" && $writesBlockAfter(node);
+}
+
+/**
+ * Tells whether a block after a node, among its siblings, writes something.
+ * Must run inside an `editor.read` or `editor.update`.
+ *
+ * @param node - The node.
+ * @returns `true` when a later sibling writes Markdown.
+ */
+function $writesBlockAfter(node: LexicalNode): boolean {
+    return node.getNextSiblings().some((sibling) => serializeBlock(sibling) !== "");
+}
+
+/**
+ * Tells how a block's Markdown ends ({@link RawBlockEnd}): lexed with a
+ * paragraph after it, one blank line between, whether that paragraph stays
+ * its own; if not, whether it does with two blank lines between.
+ *
+ * @param markdown - The block's Markdown.
+ * @returns How a following block stays apart from it, if one can.
+ */
+function rawBlockEnd(markdown: string): RawBlockEnd {
+    const known = RUNS_ON.get(markdown);
+
+    if (known !== undefined) {
+        return known;
+    }
+
+    const result = !runsOn(markdown, BLOCK_SEPARATOR) ? "apart" : !runsOn(markdown, `${BLOCK_SEPARATOR}\n`) ? "wide" : "runsOn";
+
+    if (RUNS_ON.size >= RUNS_ON_CACHE_SIZE) {
+        RUNS_ON.clear();
+    }
+
+    RUNS_ON.set(markdown, result);
+
+    return result;
+}
+
+/**
+ * Tells whether a block's Markdown runs on past its own text, so a block
+ * written after it would join it: lexed with a paragraph after it, that
+ * paragraph does not stay its own.
+ *
+ * @param markdown - The block's Markdown.
+ * @param separator - What is written between the block and the paragraph.
+ * @returns `true` when a following block would be read as part of it.
+ */
+function runsOn(markdown: string, separator: string): boolean {
+    const tokens = lexMarkdown(markdown + separator + RUN_ON_PROBE).filter((token) => token.type !== "space");
+    const last = tokens[tokens.length - 1];
+
+    return last?.type !== "paragraph" || last.raw.trim() !== RUN_ON_PROBE;
+}
+
+/**
+ * Serializes a heading: an ATX heading, whose trailing `#` run the heading
+ * rule would strip as a closing sequence has its first `#` escaped; or, for
+ * a level 1 or 2 heading whose content spans lines (a hard break, or the soft
+ * breaks of a setext heading it was loaded from), a setext heading, the only
+ * form whose content can span lines — unless one of its lines would end the
+ * heading ({@link SETEXT_INTERRUPTING_LINE}), when it is written ATX, its
+ * line breaks as spaces.
  *
  * @param node - The heading.
- * @returns `#`×level, then a space and the content when there is any.
+ * @returns `#`×level, then a space and the content when there is any; or the
+ *   content's lines and a `===` / `---` underline.
  */
 function serializeHeading(node: HeadingNode): string {
     const level = Number(node.getTag().slice(1));
+
+    if (level <= SETEXT_MAX_LEVEL) {
+        const lines = serializeInline(node, MULTI_LINE);
+
+        if (lines.includes("\n") && !lines.split("\n").some((line) => SETEXT_INTERRUPTING_LINE.test(line))) {
+            return `${lines}\n${level === 1 ? SETEXT_H1_UNDERLINE : SETEXT_H2_UNDERLINE}`;
+        }
+    }
+
     const content = serializeInline(node, HEADING_LINE).replace(/(^|[ \t])(#+)$/, "$1\\$2");
 
     return "#".repeat(level) + (content === "" ? "" : " " + content);
@@ -472,13 +1168,19 @@ function serializeQuote(node: QuoteNode): string {
  * Serializes a fenced code block: a backtick fence, or a `~` one when the
  * info string holds a backtick (which a backtick fence's info string cannot),
  * longer than any run of the fence's character that starts one of its lines.
+ * The info string is the one the block was loaded with
+ * ({@link codeInfoState}) while its first word is still the block's
+ * language, else the language.
  *
  * @param node - The code block.
  * @returns The fenced code.
  */
 function serializeCode(node: CodeNode): string {
     const code = node.getTextContent();
-    const info = node.getLanguage() ?? "";
+    const language = node.getLanguage() ?? "";
+    const authored = $getState(node, codeInfoState);
+    const authoredLanguage = authored.replace(/\\([!-/:-@[-`{-~])/g, "$1").split(/\s+/)[0];
+    const info = authored !== "" && authoredLanguage === language ? authored : language;
     const char = info.includes("`") ? "~" : "`";
 
     const longestRun = Math.max(0, ...code.split("\n").map((line) => {
@@ -505,17 +1207,19 @@ function indentLines(markdown: string, indent: string): string[] {
 }
 
 /**
- * Serializes a list. An item whose first child is a list — Lexical's shape
- * for a nested list, which it numbers and shows as part of the item before
- * it — adds its blocks to that item, indented by its marker width plus one.
+ * Serializes a list with its authored marker. An item whose first child is a
+ * list — Lexical's shape for a nested list, which it numbers and shows as
+ * part of the item before it — adds its blocks to that item, indented by its
+ * marker width plus one. A loose list separates its items with a blank line.
  *
  * @param list - The list.
  * @param underText - Whether the list's first line follows a line of text in
  *   the same container: a bare `-` marker there would be a setext underline,
- *   so a bullet list whose first line is a bare marker is written with `*`.
+ *   so a `-` bullet list whose first line is a bare marker is written with `*`.
+ * @param marker - The bullet or delimiter to write instead of the authored one.
  * @returns One line or more per item, joined by newlines.
  */
-function serializeList(list: ListNode, underText = false): string {
+function serializeList(list: ListNode, underText = false, marker?: string): string {
     const items: ItemBlock[][] = [];
 
     for (const item of list.getChildren().filter($isListItemNode)) {
@@ -529,14 +1233,16 @@ function serializeList(list: ListNode, underText = false): string {
         }
     }
 
-    const firstLineBare = items[0] !== undefined && (items[0].length === 0 || items[0][0]!.isList);
-    const bullet = underText && firstLineBare ? UNDER_TEXT_BULLET : BULLET;
+    const loose = $getState(list, listLooseState);
+    const markerOf = listMarkerWriter(list, underText && items[0]?.length === 0, marker);
 
-    return items.map((blocks, index) => {
-        const marker = list.getListType() === "number" ? `${list.getStart() + index}.` : bullet;
+    // A single-item list is loose only through a blank line inside its item:
+    // between its text and its nested list.
+    const nestedSeparated = loose && items.length === 1;
 
-        return listItemLines(marker, blocks).join("\n");
-    }).join("\n");
+    return items
+        .map((blocks, index) => listItemLines(markerOf(index), blocks, nestedSeparated).join("\n"))
+        .join(loose ? LOOSE_ITEM_SEPARATOR : "\n");
 }
 
 /**
@@ -550,14 +1256,14 @@ function serializeList(list: ListNode, underText = false): string {
 function appendItemBlocks(item: ListItemNode, blocks: ItemBlock[]): void {
     let inline: LexicalNode[] = [];
 
-    const push = (markdown: string, isList: boolean, isText: boolean): void => {
+    const push = (markdown: string, isList: boolean, isText: boolean, more?: Pick<ItemBlock, "marker" | "withMarker" | "isRaw" | "continuesText">): void => {
         if (markdown !== "") {
-            blocks.push({ markdown, isList, isText });
+            blocks.push({ markdown, isList, isText, ...more });
         }
     };
 
     const flushInline = (): void => {
-        push(serializeInlineNodes(inline, MULTI_LINE), false, true);
+        push(serializeInlineNodes(inline, { ...MULTI_LINE, inListItem: true }), false, true);
         inline = [];
     };
 
@@ -572,10 +1278,17 @@ function appendItemBlocks(item: ListItemNode, blocks: ItemBlock[]): void {
 
         if ($isListNode(child)) {
             const previous = blocks[blocks.length - 1];
+            // A list of bare markers under text reads as more lines of that text, so a list after it is under text too.
+            const underText = previous !== undefined && (!previous.isList || previous.continuesText === true);
+            const markdown = serializeList(child, underText);
 
-            push(serializeList(child, previous !== undefined && !previous.isList), true, false);
+            push(markdown, true, false, {
+                marker:        writtenListMarker(markdown),
+                withMarker:    (marker) => serializeList(child, underText, marker),
+                continuesText: underText && markdown.split("\n").every((line) => BARE_LIST_MARKER_LINE.test(line)),
+            });
         } else {
-            push(serializeBlock(child), false, $isParagraphNode(child));
+            push(serializeBlock(child), false, $isParagraphNode(child), { isRaw: $isMarkdownRawBlockNode(child) });
         }
     }
 
@@ -583,38 +1296,185 @@ function appendItemBlocks(item: ListItemNode, blocks: ItemBlock[]): void {
 }
 
 /**
+ * The kinds of the blocks {@link appendItemBlocks} writes for a list item,
+ * in order — each run of inline content holding something visible, and each
+ * block child that writes something — without writing them.
+ *
+ * @param item - The list item.
+ * @returns `"list"` for a nested list, `"text"` for inline content or a
+ *   paragraph, `"block"` for anything else.
+ */
+function itemBlockKinds(item: ListItemNode): Array<"list" | "text" | "block"> {
+    const kinds: Array<"list" | "text" | "block"> = [];
+    let inline: LexicalNode[] = [];
+
+    const flushInline = (): void => {
+        if (holdsInlineContent(inline)) {
+            kinds.push("text");
+        }
+
+        inline = [];
+    };
+
+    for (const child of item.getChildren()) {
+        if (!$isElementNode(child) || child.isInline()) {
+            inline.push(child);
+
+            continue;
+        }
+
+        flushInline();
+
+        if ($isListNode(child) ? child.getChildrenSize() > 0 : serializeBlock(child) !== "") {
+            kinds.push($isListNode(child) ? "list" : $isParagraphNode(child) ? "text" : "block");
+        }
+    }
+
+    flushInline();
+
+    return kinds;
+}
+
+/**
+ * Tells whether inline nodes write anything: an image, text other than
+ * whitespace, a code span, or source other than whitespace — what
+ * {@link withoutEdgeBreaks} counts as content; breaks and whitespace alone
+ * write nothing.
+ *
+ * @param nodes - The inline nodes.
+ * @returns `true` when they hold content.
+ */
+function holdsInlineContent(nodes: LexicalNode[]): boolean {
+    return flattenInline(nodes).some((segment) => segment.kind === "image"
+        || (segment.kind === "text" && (segment.code || /\S/.test(segment.text)))
+        || (segment.kind === "source" && /\S/.test(segment.source)));
+}
+
+/**
+ * Returns the writer of a list's item markers: its authored bullet, or its
+ * numbers counted from its start with its authored delimiter — `-` and `.`
+ * for a list made in the editor, or one whose marker is of the other type.
+ *
+ * @param list - The list.
+ * @param bareUnderText - Whether the list's first line is a bare marker right
+ *   under a line of text, where a bare `-` would be a setext underline: a `-`
+ *   bullet list is then written with `*`.
+ * @param marker - The bullet or delimiter to write instead of the authored one.
+ * @returns The marker of the item at a given index.
+ */
+function listMarkerWriter(list: ListNode, bareUnderText: boolean, marker?: string): (index: number) => string {
+    const markers = list.getListType() === "number" ? ORDERED_DELIMITERS : BULLET_MARKERS;
+    const chosen = marker !== undefined && markers.includes(marker) ? marker : $writtenListMarker(list);
+
+    if (list.getListType() !== "number") {
+        const written = bareUnderText && chosen === SETEXT_H2_UNDERLINE[0] ? UNDER_TEXT_BULLET : chosen;
+
+        return () => written;
+    }
+
+    return (index) => `${list.getStart() + index}${chosen}`;
+}
+
+/**
  * Writes one list item: its marker and its first block's first line, then the
  * rest indented under it. A nested list follows the item's own text — its
- * first block, a paragraph — directly; any other block follows a blank line,
- * so it is not read as a continuation of the block before it: a table would
- * read a nested list's lines as rows, and a paragraph after the item's text
- * would take in an ordered list that does not start at 1. An item whose
- * first block is a nested list writes its marker alone, with the list on the
- * lines below.
+ * first block, a paragraph — or a nested list before it directly (after a
+ * blank line in a loose single-item list); any other block follows a blank
+ * line, so it is not read as a continuation of the block before it: a table
+ * would read a nested list's lines as rows, and a paragraph after the item's
+ * text would take in an ordered list that does not start at 1. An item whose
+ * first block is a nested list starts it on the marker's line (`- - n`), as
+ * a bare marker line can read as a table delimiter row in this dialect.
  *
  * @param marker - The item's marker (`-`, `3.`, …).
  * @param blocks - The item's blocks.
+ * @param nestedSeparated - Whether a nested list follows a blank line.
  * @returns The item's lines.
  */
-function listItemLines(marker: string, blocks: readonly ItemBlock[]): string[] {
+function listItemLines(marker: string, itemBlocks: readonly ItemBlock[], nestedSeparated: boolean): string[] {
     const indent = " ".repeat(marker.length + 1);
     const lines: string[] = [];
+    const blocks = keepNestedListsApart(itemBlocks);
 
     blocks.forEach((block, index) => {
-        const followsText = index === 1 && blocks[0]!.isText;
+        const followsDirectly = (index === 1 && blocks[0]!.isText) || blocks[index - 1]?.isList === true;
 
-        if (index > 0 && !(block.isList && (followsText || blocks[index - 1]!.isList))) {
+        if (index > 0 && (!block.isList || nestedSeparated || !followsDirectly)) {
             lines.push("");
         }
 
         lines.push(...indentLines(block.markdown, indent));
     });
 
-    if (blocks[0] === undefined || blocks[0].isList) {
-        return [marker, ...lines];
+    if (lines.length === 0) {
+        return [marker];
     }
 
-    return [`${marker} ${lines[0]!.slice(indent.length)}`, ...lines.slice(1)];
+    const first = `${marker} ${lines[0]!.slice(indent.length)}`;
+    const nested = blocks[0]!;
+
+    // An item opening with a nested list of empty items writes its markers on one line, which can read as a
+    // thematic break (`- - -`): the nested list then takes the other bullet, which no break mixes.
+    if (THEMATIC_BREAK.test(first) && nested.withMarker !== undefined && BULLET_MARKERS.includes(nested.marker!)) {
+        const bullet = first.trimEnd().at(-1) === "*" ? "-" : "*";
+
+        return listItemLines(marker, [{ ...nested, markdown: nested.withMarker(bullet), marker: bullet }, ...blocks.slice(1)], nestedSeparated);
+    }
+
+    return [first, ...lines.slice(1)];
+}
+
+/**
+ * Writes each nested list of an item that would join the list next to it
+ * with another bullet or delimiter of its type that keeps it apart: a nested
+ * list written with the same marker right before it (the marker as written:
+ * a bare `-` under text is written `*`), or a raw block next to it that
+ * ends or starts with a list `marked` would join it to ({@link listsJoin}).
+ * `marked` reads two such lists, with or without a blank line between them,
+ * as one. With no marker that keeps it apart, the list keeps its own.
+ *
+ * @param blocks - An item's blocks.
+ * @returns The blocks, those lists rewritten.
+ */
+function keepNestedListsApart(blocks: readonly ItemBlock[]): ItemBlock[] {
+    const kept: ItemBlock[] = [];
+
+    blocks.forEach((block, index) => {
+        const previous = kept[kept.length - 1];
+        const next = blocks[index + 1];
+        // Markers compare as written: an empty first item under the item's text writes `-` as `*`.
+        const joins = (markdown: string): boolean =>
+            (previous?.isList === true && previous.marker === writtenListMarker(markdown))
+            || (previous?.isRaw === true && listsJoin(previous.markdown, markdown))
+            || (next?.isRaw === true && listsJoin(markdown, next.markdown));
+
+        if (block.withMarker === undefined || !joins(block.markdown)) {
+            kept.push(block);
+
+            return;
+        }
+
+        const markers = ORDERED_DELIMITERS.includes(block.marker!) ? ORDERED_DELIMITERS : BULLET_MARKERS;
+        const other = markers.find((candidate) => candidate !== block.marker && !joins(block.withMarker!(candidate)));
+        const markdown = other === undefined ? block.markdown : block.withMarker(other);
+
+        kept.push({ ...block, markdown, marker: writtenListMarker(markdown) });
+    });
+
+    return kept;
+}
+
+/**
+ * Reads the bullet or ordered delimiter a list's Markdown is written with:
+ * its first item's.
+ *
+ * @param markdown - The list's Markdown.
+ * @returns The bullet or delimiter; `""` when the Markdown opens with none.
+ */
+function writtenListMarker(markdown: string): string {
+    const match = WRITTEN_LIST_MARKER.exec(markdown);
+
+    return match?.[1] ?? match?.[2] ?? "";
 }
 
 /**
@@ -856,10 +1716,13 @@ function serializeInline(element: ElementNode, context: InlineContext): string {
  * policy, each with its bold and italic pairs switched between `*` and `_`
  * where that helps, and the first writing that reads back as written is
  * kept; with none, the first. A block with no mark, bare autolink or `~` —
- * nothing another writing could change — is written without the read-back.
- * A block holding a `~` is tried again with its lone tildes unescaped, and
- * one holding a `<` with every `<` escaped (a `<…>` stretch hides its
- * delimiters from `marked`'s emphasis pairing). Bare autolinks are then written bare wherever that still reads the same, so
+ * nothing another writing could change — is written without the read-back,
+ * and so is a block holding source whose reading is not known on its own
+ * (source that does not lex as inline content). A block
+ * holding a `~` is tried again with its lone tildes unescaped, and one
+ * holding a `<` with every `<` escaped (a `<…>` stretch hides its
+ * delimiters from `marked`'s emphasis pairing). Bare
+ * autolinks are then written bare wherever that still reads the same, so
  * their source text — and a heading's id — survives.
  *
  * @param nodes - The inline nodes.
@@ -876,7 +1739,13 @@ function serializeInlineNodes(nodes: LexicalNode[], context: InlineContext): str
         return assembleLines(written, context);
     }
 
-    const readBack = createReadBack(segmentReading(segments, context), context);
+    const intended = withoutTrailingWhitespace(segmentReading(segments, { ...context, readsWhitespace: true }));
+
+    if (intended === null) {
+        return assembleLines(written, context);
+    }
+
+    const readBack = createReadBack(intended, context);
     let first: string | null = null;
 
     const writings = tildes ? [context, { ...context, looseTildes: true }] : [context];
@@ -911,7 +1780,7 @@ function serializeInlineNodes(nodes: LexicalNode[], context: InlineContext): str
  */
 function writeInlinePieces(segments: Segment[], context: InlineContext, policy: WritingPolicy): Piece[] {
     const writer: InlineWriter = {
-        pieces: [], context, policy, stack: [], pending: "", pendingUnderline: false, inLink: false, openOrder: () => MARK_ORDER,
+        pieces: [], context, policy, stack: [], pending: [], pendingUnderline: false, inLink: false, openOrder: () => MARK_ORDER,
     };
 
     writeUnits(writer, groupSegments(segments), []);
@@ -1021,7 +1890,7 @@ function createReadBack(intended: readonly string[], context: InlineContext): Re
 
             readBacks += 1;
 
-            const score = readingScore(markdownReading(markdown, context), intended);
+            const score = readingScore(withoutTrailingWhitespace(markdownReading(markdown, { ...context, readsWhitespace: true })), intended);
 
             scores.set(markdown, score);
 
@@ -1060,14 +1929,19 @@ function readingScore(reading: readonly string[] | null, intended: readonly stri
  * joins such nodes only when it commits an update).
  *
  * @param nodes - The inline nodes.
+ * @param asShown - Whether to keep each text node's characters with its own
+ *   marks and style, as the editor shows them, rather than moving a `+` out
+ *   of underline and a bracket out of a styled span, as the writer must.
  * @returns The segments, in document order.
  */
-function flattenInline(nodes: LexicalNode[]): Segment[] {
+function flattenInline(nodes: LexicalNode[], asShown = false): Segment[] {
     const segments: Segment[] = [];
 
-    appendSegments(nodes, null, segments);
+    appendSegments(nodes, null, segments, asShown);
 
-    return canonicalWhitespaceMarks(segments).reduce<Segment[]>((merged, segment) => {
+    const kept = keepIntactNestedLinks(keepIntactKeptSource(segments));
+
+    return (asShown ? kept : canonicalWhitespaceMarks(kept)).reduce<Segment[]>((merged, segment) => {
         const last = merged[merged.length - 1];
 
         if (last?.kind === "text" && segment.kind === "text" && last.code === segment.code && sameFormatting(last, segment)) {
@@ -1191,19 +2065,25 @@ function sameFormatting(a: TextSegment, b: TextSegment): boolean {
  * @param nodes - The inline nodes.
  * @param link - The link they sit in, or `null`.
  * @param segments - The list to append to.
+ * @param asShown - Whether to keep text as shown ({@link flattenInline}).
  */
-function appendSegments(nodes: LexicalNode[], link: LinkNode | null, segments: Segment[]): void {
+function appendSegments(nodes: LexicalNode[], link: LinkNode | null, segments: Segment[], asShown: boolean): void {
     for (const node of nodes) {
         if ($isLinkNode(node)) {
-            appendSegments(node.getChildren(), node, segments);
+            appendSegments(node.getChildren(), node, segments, asShown);
         } else if ($isLineBreakNode(node)) {
-            segments.push({ kind: "break", marker: $getState(node, hardBreakMarkerState), link });
+            segments.push(keptLeafSegment({ kind: "break", marker: $getState(node, hardBreakMarkerState), link }, node));
         } else if ($isMarkdownImageNode(node)) {
-            segments.push({ kind: "image", node, link });
+            segments.push(keptLeafSegment({ kind: "image", node, link }, node));
+        } else if ($isMarkdownSourceTextNode(node) && $getState(node, keptSourceState) === null && node.hasFormat("code") && !/\S/.test(node.getSource())) {
+            // A soft break inside a code span shows as the span's space; written as one, it stays in the span.
+            segments.push({ kind: "text", text: " ", marks: MARK_ORDER.filter((mark) => node.hasFormat(MARK_FORMATS[mark])), code: true, style: spanAttributeText(node), link });
+        } else if ($isMarkdownSourceTextNode(node)) {
+            segments.push(sourceSegment(node, link));
         } else if ($isTextNode(node)) {
-            segments.push(...textNodeSegments(node, link));
+            segments.push(...textNodeSegments(node, link, asShown));
         } else if ($isElementNode(node)) {
-            appendSegments(node.getChildren(), link, segments);
+            appendSegments(node.getChildren(), link, segments, asShown);
         } else {
             segments.push({ kind: "text", text: node.getTextContent(), marks: [], code: false, style: "", link });
         }
@@ -1218,15 +2098,16 @@ function appendSegments(nodes: LexicalNode[], link: LinkNode | null, segments: S
  *
  * @param node - The text node.
  * @param link - The link it sits in, or `null`.
+ * @param asShown - Whether to keep its text as shown ({@link flattenInline}).
  * @returns Its segments; none for empty text.
  */
-function textNodeSegments(node: TextNode, link: LinkNode | null): Segment[] {
+function textNodeSegments(node: TextNode, link: LinkNode | null, asShown = false): Segment[] {
     const marks = MARK_ORDER.filter((mark) => node.hasFormat(MARK_FORMATS[mark]));
     const base: TextSegment = { kind: "text", text: "", marks, code: node.hasFormat("code"), style: spanAttributeText(node), link };
 
     return node.getTextContent().split("\n").flatMap((line, index): Segment[] => [
         ...(index > 0 ? [{ kind: "break", marker: hardBreakMarkerState.defaultValue, link } as const] : []),
-        ...textSegments(line, base),
+        ...(asShown ? (line === "" ? [] : [{ ...base, text: line }]) : textSegments(line, base)),
     ]);
 }
 
@@ -1267,12 +2148,280 @@ function textSegments(line: string, base: TextSegment): TextSegment[] {
 }
 
 /**
+ * Turns a source node into its segment: its source, marks and style. A run
+ * of a link nested in a link ({@link nestedLinkState}) writes that link
+ * itself, so it is written outside the link node it sits in, with only the
+ * marks and style its source does not write; so does a run of a kept
+ * construct ({@link keptSourceState}), whose segment also carries its member
+ * record for {@link keepIntactKeptSource}.
+ *
+ * @param node - The source node.
+ * @param link - The link it sits in, or `null`.
+ * @returns The segment.
+ */
+function sourceSegment(node: MarkdownSourceTextNode, link: LinkNode | null): SourceSegment {
+    const kept = $getState(node, keptSourceState);
+    const written = kept?.writes ?? $getState(node, nestedLinkState);
+    const nested = kept === null && written !== -1;
+    const writtenBySource = (mark: Mark): boolean => (kept !== null || nested) && (written & TEXT_TYPE_TO_FORMAT[MARK_FORMATS[mark]]) !== 0;
+    const marks = MARK_ORDER.filter((mark) => node.hasFormat(MARK_FORMATS[mark]) && !writtenBySource(mark));
+    const writesStyle = (written & (kept === null ? NESTED_LINK_WRITES_STYLE : KEPT_SOURCE_WRITES_STYLE)) !== 0;
+    const style = (kept !== null || nested) && writesStyle ? "" : spanAttributeText(node);
+    const shows = node.getTextContentSize() > 0;
+
+    if (kept !== null) {
+        const member: KeptMember = { kept, source: node.getSource(), shown: textNodeSegments(node, link), intact: true };
+
+        return { kind: "source", source: node.getSource(), shows, marks, style, link: keptLink(kept, link), member };
+    }
+
+    if (!nested) {
+        const shortcut = SHORTCUT_REFERENCE_SOURCE.test(node.getSource()) && node.getTextContent() !== node.getSource();
+
+        return { kind: "source", source: node.getSource(), shows, marks, style, link, ...(shortcut ? { shortcut } : {}) };
+    }
+
+    const group = $getState(node, nestedLinkGroupState);
+
+    return { kind: "source", source: node.getSource(), shows, marks, style, link: null, nested: { shown: textNodeSegments(node, link), group } };
+}
+
+/**
+ * Marks an image or line break that is a run of a kept construct
+ * ({@link keptSourceState}) with its member record; any other is returned
+ * as it is.
+ *
+ * @param segment - The leaf's segment.
+ * @param node - The image or line break node.
+ * @returns The segment, with its member record when it is a kept run.
+ */
+function keptLeafSegment<T extends Extract<Segment, { kind: "image" | "break" }>>(segment: T, node: LexicalNode): T {
+    const kept = $getState(node, keptSourceState);
+
+    if (kept === null) {
+        return segment;
+    }
+
+    const intact = segment.kind !== "image" || kept.shown === keptImageShown(segment.node);
+    const member: KeptMember = { kept, source: kept.source, shown: [{ ...segment }], intact };
+
+    return { ...segment, link: keptLink(kept, segment.link), member };
+}
+
+/**
+ * The link a kept run is written inside: the link node it sits in, unless
+ * that link is the construct's own, which its source writes.
+ *
+ * @param kept - The run's state.
+ * @param link - The link node it sits in, or `null`.
+ * @returns The link to write it in, or `null`.
+ */
+function keptLink(kept: KeptSource, link: LinkNode | null): LinkNode | null {
+    return (kept.writes & KEPT_SOURCE_WRITES_LINK) !== 0 ? null : link;
+}
+
+/**
+ * What an image showed, for {@link KeptSource.shown}: its source, alt text
+ * and size. A kept construct is written as its source only while its image
+ * still shows the same. Must run inside an `editor.read` or
+ * `editor.update`.
+ *
+ * @param node - The image.
+ * @returns A key of what it shows.
+ */
+export function keptImageShown(node: MarkdownImageNode): string {
+    return JSON.stringify([node.getSrc(), node.getAlt(), node.getImageWidth(), node.getImageHeight()]);
+}
+
+/**
+ * The member record of a kept construct's run, when a segment is one.
+ *
+ * @param segment - The segment.
+ * @returns Its record, or `undefined`.
+ */
+function memberOf(segment: Segment): KeptMember | undefined {
+    return segment.kind === "text" ? undefined : segment.member;
+}
+
+/**
+ * Writes each kept construct ({@link keptSourceState}) whose runs all stand
+ * together, in order and as loaded, as one source segment — their sources
+ * joined, byte for byte, with the formatting outside the construct around
+ * them — and the runs of any other (an edit took some away, or changed an
+ * image in it) as what they show, so the save reads as the editor shows it.
+ *
+ * @param segments - A block's segments, in order.
+ * @returns The segments, kept constructs joined.
+ */
+function keepIntactKeptSource(segments: Segment[]): Segment[] {
+    const resolved: Segment[] = [];
+
+    for (let index = 0; index < segments.length;) {
+        const member = memberOf(segments[index]!);
+
+        if (member === undefined) {
+            resolved.push(segments[index]!);
+            index += 1;
+
+            continue;
+        }
+
+        const run = keptRun(segments, index);
+
+        resolved.push(...(wholeKeptConstruct(run) ? [joinedKeptConstruct(run)] : run.flatMap((segment) => memberOf(segment)!.shown)));
+        index += run.length;
+    }
+
+    return resolved;
+}
+
+/**
+ * The run of consecutive segments of one kept construct starting at
+ * `start`, each the next run of it.
+ *
+ * @param segments - A block's segments.
+ * @param start - The index of a kept run's segment.
+ * @returns The segments, at least the first.
+ */
+function keptRun(segments: readonly Segment[], start: number): Segment[] {
+    const first = memberOf(segments[start]!)!.kept;
+    const run = [segments[start]!];
+
+    for (let next = segments[start + run.length]; next !== undefined && memberOf(next) !== undefined; next = segments[start + run.length]) {
+        const kept = memberOf(next)!.kept;
+
+        if (kept.group !== first.group || kept.index !== first.index + run.length) {
+            break;
+        }
+
+        run.push(next);
+    }
+
+    return run;
+}
+
+/**
+ * Tells whether a run of a kept construct's segments is the whole
+ * construct as loaded: every run, from the first, each still showing what
+ * it did, with one formatting outside the construct around them all.
+ *
+ * @param run - The segments, from {@link keptRun}.
+ * @returns `true` when its sources can be written joined.
+ */
+function wholeKeptConstruct(run: readonly Segment[]): boolean {
+    const first = memberOf(run[0]!)!.kept;
+    const outside = (segment: Segment): string => (segment.kind === "source"
+        ? JSON.stringify([segment.marks, segment.style, segment.link?.getKey() ?? null])
+        : JSON.stringify(segment.link?.getKey() ?? null));
+    const sources = run.filter((segment) => segment.kind === "source");
+    const links = new Set(run.map((segment) => segment.link?.getKey() ?? null));
+
+    return first.index === 0 && run.length === first.size && run.every((segment) => memberOf(segment)!.intact)
+        && new Set(sources.map(outside)).size <= 1 && links.size === 1;
+}
+
+/**
+ * Joins a whole kept construct's segments into one source segment.
+ *
+ * @param run - The segments, a whole construct.
+ * @returns The source segment: the runs' sources joined, inside the
+ *   formatting outside the construct, reading as what the runs show.
+ */
+function joinedKeptConstruct(run: readonly Segment[]): SourceSegment {
+    const text = run.find((segment): segment is SourceSegment => segment.kind === "source");
+
+    return {
+        kind:   "source",
+        source: run.map((segment) => memberOf(segment)!.source).join(""),
+        shows:  run.some((segment) => segment.kind !== "source" || segment.shows),
+        marks:  text?.marks ?? [],
+        style:  text?.style ?? "",
+        link:   run[0]!.link,
+        kept:   { shown: run.flatMap((segment) => memberOf(segment)!.shown) },
+    };
+}
+
+/**
+ * Keeps each run of nested-link source segments ({@link nestedLinkState})
+ * written as its source only while it still forms whole links: an edit can
+ * delete some of a split link's runs, type between them, or split its
+ * paragraph inside it, leaving source that no longer reads as a link. Such a
+ * run is written as what it shows instead — its text with its marks, style
+ * and the link it sits in — each stretch of one outer link's runs wrapped in
+ * that outer link again ({@link nestedLinkGroupState}), so the save reads as
+ * the editor shows it and the outer destination is kept.
+ *
+ * @param segments - A block's segments, in order.
+ * @returns The segments, broken nested-link runs replaced by their text.
+ */
+function keepIntactNestedLinks(segments: Segment[]): Segment[] {
+    const kept: Segment[] = [];
+    let run: SourceSegment[] = [];
+
+    const flush = (): void => {
+        const source = run.map((segment) => segment.source).join("");
+        const intact = run.length === 0 || formsWholeLinks(source);
+
+        kept.push(...(intact ? run : rewrapNestedLinkRuns(run)));
+        run = [];
+    };
+
+    for (const segment of segments) {
+        if (segment.kind === "source" && segment.nested !== undefined) {
+            run.push(segment);
+        } else {
+            flush();
+            kept.push(segment);
+        }
+    }
+
+    flush();
+
+    return kept;
+}
+
+/**
+ * Writes broken nested-link runs as what they show, each stretch of runs
+ * from one outer link wrapped in that link's own syntax again: `[`, the
+ * runs' text inside their inner links, then the outer link's closing syntax.
+ *
+ * @param run - Consecutive nested-link source segments.
+ * @returns The segments to write instead.
+ */
+function rewrapNestedLinkRuns(run: SourceSegment[]): Segment[] {
+    const written: Segment[] = [];
+    const syntax = (text: string): SourceSegment => ({ kind: "source", source: text, shows: true, marks: [], style: "", link: null });
+
+    runsOf(run, (segment) => segment.nested?.group?.id ?? null).forEach((stretch) => {
+        const group = stretch[0]!.nested?.group ?? null;
+        const shown = stretch.flatMap((segment) => segment.nested?.shown ?? []);
+
+        written.push(...(group === null || shown.length === 0 ? shown : [syntax("["), ...shown, syntax(group.close)]));
+    });
+
+    return written;
+}
+
+/**
+ * Tells whether Markdown reads as nothing but whole links, one after
+ * another.
+ *
+ * @param source - The Markdown.
+ * @returns `true` when it lexes to link tokens alone, together its whole text.
+ */
+function formsWholeLinks(source: string): boolean {
+    const paragraph = lexMarkdown(source)[0];
+    const tokens = paragraph?.type === "paragraph" ? (paragraph as Tokens.Paragraph).tokens : [];
+
+    return tokens.length > 0 && tokens.every((token) => token.type === "link") && tokens.map((token) => token.raw).join("") === source;
+}
+
+/**
  * Reads the attribute text a text node's span is written with: the authored
  * text of the span it was loaded from ({@link spanAttributesState}) while
  * that text still resolves to the node's style — keeping the attributes'
  * order and the ones the editor does not model — else the node's style as
- * normalized attribute text, the same pipeline the styled-span transformer
- * and the source mode use.
+ * normalized attribute text, the same pipeline the source mode uses.
  *
  * @param node - The text node.
  * @returns The attribute text (`color=red …`), or `""` when unstyled.
@@ -1305,7 +2454,9 @@ function normalizedAttributes(attributes: Record<string, string>): string {
  * empty line, which a paragraph, quote or list item can open with, so it is
  * kept there, and dropped in a heading, whose breaks are spaces. A table
  * cell keeps them all: the viewer renders its cell break at either edge. A
- * break ending a link's text is moved after the link.
+ * break ending a link's text is moved after the link. A source segment of
+ * whitespace only (a soft break) with no content before it, or none after
+ * it, is dropped: it is whitespace at the block's edge.
  *
  * @param segments - The block's segments.
  * @param context - Where the block's content is written.
@@ -1317,13 +2468,24 @@ function withoutEdgeBreaks(segments: Segment[], context: InlineContext): Segment
     }
 
     const hasContent = (segment: Segment): boolean =>
-        segment.kind === "image" || (segment.kind === "text" && (segment.code || /\S/.test(segment.text)));
+        segment.kind === "image"
+        || (segment.kind === "text" && (segment.code || /\S/.test(segment.text)))
+        || (segment.kind === "source" && /\S/.test(segment.source));
+
+    const isBreak = (segment: Segment): boolean =>
+        segment.kind === "break" || (segment.kind === "source" && !/\S/.test(segment.source));
 
     const first = segments.findIndex(hasContent);
     const last = segments.findLastIndex(hasContent);
 
     return segments
-        .filter((segment, index) => segment.kind !== "break" || (index < last && (index > first || !context.singleLine)))
+        .filter((segment, index) => {
+            if (segment.kind === "break") {
+                return index < last && (index > first || !context.singleLine);
+            }
+
+            return !isBreak(segment) || (first !== -1 && index > first && index < last);
+        })
         .map((segment, index, kept) => (segment.kind === "break" && segment.link !== null && !endsInLink(kept, index)
             ? { ...segment, link: null }
             : segment));
@@ -1344,7 +2506,8 @@ function endsInLink(segments: readonly Segment[], index: number): boolean {
     for (let next = index + 1; next < segments.length && segments[next]!.link === link; next += 1) {
         const segment = segments[next]!;
 
-        if (segment.kind === "image" || (segment.kind === "text" && (segment.code || /\S/.test(segment.text)))) {
+        if (segment.kind === "image" || (segment.kind === "text" && (segment.code || /\S/.test(segment.text)))
+            || (segment.kind === "source" && /\S/.test(segment.source))) {
             return true;
         }
     }
@@ -1390,14 +2553,21 @@ function groupSegments(segments: Segment[]): Unit[] {
 }
 
 /**
- * Groups consecutive styled text segments with the same style; images and
- * breaks end a style group.
+ * Groups consecutive styled text and source segments with the same style;
+ * images and breaks end a style group, and so does a source segment holding
+ * a bracket, which the span's grammar cannot hold.
  *
  * @param segments - Segments with one link.
  * @returns The segments, styled runs grouped.
  */
 function groupStyles(segments: Segment[]): Array<Segment | StyleGroup> {
-    const styleOf = (segment: Segment): string => (segment.kind === "text" ? segment.style : "");
+    const styleOf = (segment: Segment): string => {
+        if (segment.kind === "source") {
+            return /[[\]]/.test(segment.source) ? "" : segment.style;
+        }
+
+        return segment.kind === "text" ? segment.style : "";
+    };
 
     return runsOf(segments, styleOf).flatMap((run): Array<Segment | StyleGroup> => {
         const style = styleOf(run[0]!);
@@ -1483,8 +2653,9 @@ function policyOrder(policy: WritingPolicy, order: readonly Mark[]): readonly Ma
  *
  * @param unit - The unit.
  * @param edge - Which edge to read.
- * @returns `true` for a text segment, or a group whose edge segment is one,
- *   with whitespace at that edge.
+ * @returns `true` for a text or source segment, or a group whose edge
+ *   segment is one, with whitespace (a soft break's newline included) at that
+ *   edge.
  */
 function unitEdge(unit: Unit, edge: "start" | "end"): boolean {
     if (unit.kind === "link" || unit.kind === "style") {
@@ -1493,12 +2664,14 @@ function unitEdge(unit: Unit, edge: "start" | "end"): boolean {
         return inner !== undefined && unitEdge(inner, edge);
     }
 
-    return unit.kind === "text" && !unit.code && /\s/.test((edge === "start" ? unit.text[0] : unit.text.at(-1)) ?? "");
+    const text = unit.kind === "source" ? unit.source : unit.kind === "text" && !unit.code ? unit.text : "";
+
+    return /\s/.test((edge === "start" ? text[0] : text.at(-1)) ?? "");
 }
 
 /**
- * Tells whether a unit carries a mark: a text segment that has it, or a
- * group every segment of which does.
+ * Tells whether a unit carries a mark: a text or source segment that has it,
+ * or a group every segment of which does.
  *
  * @param unit - The unit.
  * @param mark - The mark.
@@ -1509,7 +2682,7 @@ function unitCarries(unit: Unit, mark: Mark): boolean {
         return unit.units.every((inner) => unitCarries(inner, mark));
     }
 
-    return unit.kind === "text" && unit.marks.includes(mark);
+    return (unit.kind === "text" || unit.kind === "source") && unit.marks.includes(mark);
 }
 
 /**
@@ -1526,6 +2699,14 @@ function unitCarries(unit: Unit, mark: Mark): boolean {
 function writeSegment(writer: InlineWriter, segment: Segment, inherited: readonly Mark[], next: Unit | undefined): void {
     if (segment.kind === "text") {
         writeTextSegment(writer, segment, segment.marks.filter((mark) => !inherited.includes(mark)));
+
+        return;
+    }
+
+    if (segment.kind === "source") {
+        const own = segment.marks.filter((mark) => !inherited.includes(mark));
+
+        writeSourceSegment(writer, segment, segment.shows ? own : invisibleRunMarks(writer, own, next));
 
         return;
     }
@@ -1552,16 +2733,40 @@ function writeSegment(writer: InlineWriter, segment: Segment, inherited: readonl
  * @returns The marks, in no particular order.
  */
 function imageMarks(writer: InlineWriter, inherited: readonly Mark[], next: Unit | undefined): Mark[] {
-    const kept = writer.pending !== "" && closesAfterPunctuation(next) ? writer.stack.slice() : [];
+    const kept = writer.pending.length > 0 && closesAfterPunctuation(next) ? writer.stack.slice() : [];
     const leadsWithSpace = next?.kind === "text" && !next.code && /^\s+\S/.test(next.text);
     const carried = leadsWithSpace ? next.marks.filter((mark) => !inherited.includes(mark)) : [];
     const staying = writer.stack.filter((mark) => kept.includes(mark) || carried.includes(mark));
     const closes = staying.length < writer.stack.length;
 
     const opens = carried.filter((mark) => !writer.stack.includes(mark) && (mark === "underline"
-        || writer.pending !== "" || closes || opensBeforePunctuation(writer.pieces.at(-1), MARK_DELIMITERS[mark])));
+        || writer.pending.length > 0 || closes || opensBeforePunctuation(writer.pieces.at(-1), MARK_DELIMITERS[mark])));
 
     return [...staying, ...opens];
+}
+
+/**
+ * The marks to have around a source run that shows nothing (an empty link,
+ * an image the viewer rejects): a mark it carries is shown on nothing, so it
+ * is written only where its delimiters pair around the run's punctuation —
+ * open already or able to open before it, and staying open after it or able
+ * to close there. Anywhere else (`a*[]()*`, after a letter) the delimiters
+ * would read as literal text, so the mark is left off, which changes nothing
+ * shown.
+ *
+ * @param writer - The writer.
+ * @param own - The marks the run carries beyond the inherited ones.
+ * @param next - The unit after the run, or `undefined` at the end.
+ * @returns The marks to write around it.
+ */
+function invisibleRunMarks(writer: InlineWriter, own: readonly Mark[], next: Unit | undefined): Mark[] {
+    return own.filter((mark) => {
+        const opens = mark === "underline" || writer.stack.includes(mark) || writer.pending.length > 0
+            || opensBeforePunctuation(writer.pieces.at(-1), MARK_DELIMITERS[mark]);
+        const closes = mark === "underline" || (next !== undefined && unitCarries(next, mark)) || closesAfterPunctuation(next);
+
+        return opens && closes;
+    });
 }
 
 /**
@@ -1571,11 +2776,12 @@ function imageMarks(writer: InlineWriter, inherited: readonly Mark[], next: Unit
  *
  * @param previous - The last piece written, or `undefined` at the start.
  * @param delimiter - The delimiter to open.
- * @returns `true` at a line start, after a break or another delimiter, or
- *   after text or syntax ending in whitespace or punctuation.
+ * @returns `true` at a line start, after a break, a newline or another
+ *   delimiter, or after text, syntax or source ending in whitespace or
+ *   punctuation.
  */
 function opensBeforePunctuation(previous: Piece | undefined, delimiter: string): boolean {
-    if (previous === undefined || previous.kind === "break" || previous.kind === "delimiter") {
+    if (previous === undefined || previous.kind === "break" || previous.kind === "newline" || previous.kind === "delimiter") {
         return true;
     }
 
@@ -1595,14 +2801,15 @@ function opensBeforePunctuation(previous: Piece | undefined, delimiter: string):
  * letter or digit.
  *
  * @param next - The unit after the delimiter, or `undefined` at the end.
- * @returns `false` when `next` is plain text starting with a word character.
+ * @returns `false` when `next` is plain text, or source, starting with a
+ *   word character.
  */
 function closesAfterPunctuation(next: Unit | undefined): boolean {
-    if (next?.kind !== "text" || next.code) {
+    if (next?.kind !== "source" && (next?.kind !== "text" || next.code)) {
         return true;
     }
 
-    const first = next.text[0] ?? "";
+    const first = (next.kind === "source" ? next.source : next.text)[0] ?? "";
 
     return /\s/.test(first) || ASCII_PUNCTUATION.test(first);
 }
@@ -1631,20 +2838,93 @@ function writeTextSegment(writer: InlineWriter, segment: TextSegment, marks: rea
     const underlined = segment.marks.includes("underline");
 
     if (core === "") {
-        const lowestMissing = writer.stack.findIndex((mark) => !marks.includes(mark));
-        const kept = lowestMissing === -1 ? writer.stack.slice() : writer.stack.slice(0, lowestMissing);
+        keepCarriedMarks(writer, marks);
 
-        syncMarks(writer, marks.includes("underline") && !kept.includes("underline") ? [...kept, "underline"] : kept, "");
-        writer.pendingUnderline = (writer.pending === "" || writer.pendingUnderline) && underlined;
-        writer.pending += segment.text;
+        if (marks.includes("underline") && !writer.stack.includes("underline")) {
+            syncMarks(writer, [...writer.stack, "underline"], "");
+        }
+
+        writer.pendingUnderline = (writer.pending.length === 0 || writer.pendingUnderline) && underlined;
+        writer.pending.push({ kind: "text", text: segment.text });
 
         return;
     }
 
     syncMarks(writer, marks, leading!);
     writer.pieces.push({ kind: "text", text: core! });
-    writer.pending = trailing!;
+    writer.pending = trailing === "" ? [] : [{ kind: "text", text: trailing! }];
     writer.pendingUnderline = underlined;
+}
+
+/**
+ * Closes the open marks a whitespace-only run does not carry, from the
+ * lowest one it lacks up, and keeps the rest open: whitespace alone never
+ * opens a mark.
+ *
+ * @param writer - The writer.
+ * @param marks - The marks the whitespace carries beyond the inherited ones.
+ */
+function keepCarriedMarks(writer: InlineWriter, marks: readonly Mark[]): void {
+    const lowestMissing = writer.stack.findIndex((mark) => !marks.includes(mark));
+
+    syncMarks(writer, lowestMissing === -1 ? writer.stack.slice() : writer.stack.slice(0, lowestMissing), "");
+}
+
+/**
+ * Tells whether a source segment is a kept shortcut reference: a whole kept
+ * construct written `[label]` or `![label]` that shows something other than
+ * its source — the reference resolves, so it shows the link's text or the
+ * image's alt text. Like any shortcut reference, it joins a bracket or
+ * parenthesis written right after it ({@link joinsShortcut}).
+ *
+ * @param segment - The source segment.
+ * @returns `true` for a kept shortcut reference.
+ */
+function isKeptShortcutReference(segment: SourceSegment): boolean {
+    if (segment.kept === undefined || !SHORTCUT_REFERENCE_SOURCE.test(segment.source)) {
+        return false;
+    }
+
+    const shown = segment.kept.shown.map((part) => (part.kind === "text" ? part.text : part.kind === "source" ? part.source : "\u0000")).join("");
+
+    return shown !== segment.source;
+}
+
+/**
+ * Writes a source segment inside its marks, unescaped: each newline in it is
+ * a line end (a space where content cannot span lines), and each `|` in a
+ * table cell is escaped. A whitespace-only source (a soft break) is held
+ * back like trailing whitespace, so a delimiter closing next is written
+ * before it, not at the start of the next line; it opens no mark but
+ * underline, as whitespace text does.
+ *
+ * @param writer - The writer.
+ * @param segment - The source segment.
+ * @param marks - Its marks beyond the inherited ones.
+ */
+function writeSourceSegment(writer: InlineWriter, segment: SourceSegment, marks: readonly Mark[]): void {
+    const context = writer.context;
+    const source = context.inTableCell ? segment.source.replace(/\|/g, "\\|") : segment.source;
+    const shortcut = segment.shortcut === true || isKeptShortcutReference(segment);
+    const pieces = source.split("\n").flatMap((line, index): Piece[] => [
+        ...(index > 0 ? [context.singleLine ? { kind: "text", text: " " } as const : { kind: "newline" } as const] : []),
+        ...(line === "" ? [] : [{ kind: "source", text: line, ...(shortcut ? { shortcut } : {}) } as const]),
+    ]);
+
+    if (/\S/.test(source)) {
+        syncMarks(writer, marks, "");
+        writer.pieces.push(...pieces);
+    } else {
+        keepCarriedMarks(writer, marks);
+
+        // Underline, whose grammar has no flanking rule, holds a soft break alone (`++` newline `++`).
+        if (marks.includes("underline") && !writer.stack.includes("underline")) {
+            syncMarks(writer, [...writer.stack, "underline"], "");
+        }
+
+        writer.pendingUnderline = (writer.pending.length === 0 || writer.pendingUnderline) && segment.marks.includes("underline");
+        writer.pending.push(...pieces);
+    }
 }
 
 /**
@@ -1758,15 +3038,17 @@ function unescapeCodeSpanBrackets(pieces: Piece[], from: number): void {
 
 /**
  * Tells whether the pieces between a bracket pair hold a code span with an
- * odd number of backticks in its content, and no bracket in any syntax.
+ * odd number of backticks in its content, and no bracket in any syntax or
+ * source.
  *
  * @param pieces - The pieces between the brackets.
  * @returns `true` when the pair must be written unescaped.
  */
 function holdsOddCodeSpan(pieces: readonly Piece[]): boolean {
     const syntax = pieces.filter((piece) => piece.kind === "syntax");
+    const unescaped = pieces.filter((piece) => piece.kind === "syntax" || piece.kind === "source");
 
-    if (syntax.some((piece) => /[[\]]/.test(piece.text))) {
+    if (unescaped.some((piece) => /[[\]]/.test(piece.text))) {
         return false;
     }
 
@@ -1779,8 +3061,8 @@ function holdsOddCodeSpan(pieces: readonly Piece[]): boolean {
 }
 
 /**
- * The marks every segment of a group carries beyond the inherited ones. An
- * image or break carries none. Underline is left out when the link's
+ * The marks every text or source segment of a group carries beyond the
+ * inherited ones. An image or break carries none. Underline is left out when the link's
  * destination holds a `+`, which the underline grammar cannot span.
  *
  * @param group - The group.
@@ -1794,7 +3076,7 @@ function commonMarks(group: LinkGroup | StyleGroup, inherited: readonly Mark[], 
     return MARK_ORDER.filter((mark) =>
         !inherited.includes(mark)
         && !(mark === "underline" && destination.includes("+"))
-        && segments.every((segment) => segment.kind === "text" && segment.marks.includes(mark)));
+        && segments.every((segment) => (segment.kind === "text" || segment.kind === "source") && segment.marks.includes(mark)));
 }
 
 /**
@@ -1888,17 +3170,15 @@ function closeMarks(writer: InlineWriter, from: number): void {
  * @param writer - The writer.
  */
 function flushPending(writer: InlineWriter): void {
-    if (writer.pending !== "") {
-        writer.pieces.push({ kind: "text", text: writer.pending });
-        writer.pending = "";
-    }
-
+    writer.pieces.push(...writer.pending);
+    writer.pending = [];
     writer.pendingUnderline = false;
 }
 
 /**
- * The piece a line break writes: the cell break in a table cell, a space in
- * a heading, else a hard break with its marker.
+ * The piece a line break writes: the cell paragraph break in a table cell (a
+ * line break the viewer reads, which loads back as a paragraph boundary), a
+ * space in a heading, else a hard break with its marker.
  *
  * @param marker - The break's authored marker.
  * @param context - Where it is written.
@@ -2074,7 +3354,7 @@ function writeAutolink(link: LinkNode, context: InlineContext, marked = false): 
 }
 
 /**
- * Writes an image with its attributes, as the image transformer does.
+ * Writes an image with its attributes, in the form the viewer reads.
  * Brackets are removed from the alt text, which the image grammar cannot hold.
  *
  * @param node - The image.
@@ -2126,13 +3406,15 @@ function imageAttributeText(node: MarkdownImageNode): string {
 /**
  * The reading of a block's segments, as the editor shows them: one unit per
  * visible character, image and line break — whitespace left out, since the
- * viewer collapses it — each keyed by its marks, link and span style.
+ * viewer collapses it, unless `context.readsWhitespace` asks for one unit per
+ * stretch of it — each keyed by its marks, link and span style. A source
+ * segment reads as its source does on its own, inside its marks.
  *
  * @param segments - The block's segments.
  * @param context - Where the content is written: a heading's breaks are spaces.
- * @returns The reading units, in order.
+ * @returns The reading units, in order, or `null` when a source segment's reading is not known on its own.
  */
-function segmentReading(segments: readonly Segment[], context: InlineContext): string[] {
+function segmentReading(segments: readonly Segment[], context: InlineContext): string[] | null {
     const reading: string[] = [];
 
     for (const segment of segments) {
@@ -2140,19 +3422,78 @@ function segmentReading(segments: readonly Segment[], context: InlineContext): s
 
         if (segment.kind === "break") {
             if (!context.singleLine || context.inTableCell) {
-                reading.push(BREAK_READING);
+                pushBreakReading(reading);
             }
         } else if (segment.kind === "image") {
             reading.push(imageReading(segment.node.getSrc(), link));
+        } else if (segment.kind === "source") {
+            if (!pushSourceReading(reading, segment, link, context)) {
+                return null;
+            }
         } else {
             const marks = segment.code ? [...segment.marks, "code"] : segment.marks;
-            const style = segment.style === "" ? "" : normalizedAttributes(parseAttributes(segment.style));
 
-            pushCharacterReading(reading, segment.text, { marks, link, style });
+            pushCharacterReading(reading, segment.text, { marks, link, style: styleReading(segment.style) }, context);
         }
     }
 
     return reading;
+}
+
+/**
+ * Appends the reading of a source segment: what its source shows when lexed
+ * on its own, inside the segment's marks, link and style. Whitespace-only
+ * source (a soft break) and source that shows nothing read as nothing. A
+ * whole kept construct ({@link keptSourceState}) and a run of a link nested
+ * in a link read as what their runs show.
+ *
+ * @param reading - The reading units so far. Extended in place.
+ * @param segment - The source segment.
+ * @param link - The reading key of its link.
+ * @param context - Where it is written.
+ * @returns `false` when its reading is not known on its own: source that does not lex as
+ *   inline content in a heading or table cell. In a paragraph's line, source that would open a block on its own
+ *   (an HTML tag) reads as the line's inline content.
+ */
+function pushSourceReading(reading: string[], segment: SourceSegment, link: string, context: InlineContext): boolean {
+    const kept = segment.kept ?? segment.nested;
+
+    if (kept !== undefined) {
+        const shown = segmentReading(kept.shown, context);
+
+        reading.push(...(shown ?? []));
+
+        return shown !== null;
+    }
+
+    if (!segment.shows) {
+        return true;
+    }
+
+    if (!/\S/.test(segment.source)) {
+        pushCharacterReading(reading, " ", { marks: segment.marks, link, style: styleReading(segment.style) }, context);
+
+        return true;
+    }
+
+    // Inside a paragraph's line, source that would start a block on its own (an HTML tag, a `#`) reads inline.
+    const tokens = readBackTokens(segment.source, context) ?? (context.singleLine || context.inTableCell ? null : lexMarkdownInline(segment.source));
+
+    if (tokens !== null) {
+        pushTokenReading(reading, tokens, { marks: segment.marks, link, style: styleReading(segment.style) }, context);
+    }
+
+    return tokens !== null;
+}
+
+/**
+ * The reading key of a span style: its normalized attribute text.
+ *
+ * @param style - The span's attribute text, authored or normalized; `""` for none.
+ * @returns The key.
+ */
+function styleReading(style: string): string {
+    return style === "" ? "" : normalizedAttributes(parseAttributes(style));
 }
 
 /**
@@ -2213,27 +3554,34 @@ function readBackTokens(markdown: string, context: InlineContext): Token[] | nul
  * @param tokens - The tokens.
  * @param scope - What the tokens inherit.
  * @param context - Where they are written.
+ * @param spans - When given, records the reading units each token (at any depth) reads as: `[start, end)`.
  */
-function pushTokenReading(reading: string[], tokens: readonly Token[], scope: ReadingScope, context: InlineContext): void {
+function pushTokenReading(
+    reading: string[], tokens: readonly Token[], scope: ReadingScope, context: InlineContext, spans?: Map<Token, readonly [number, number]>,
+): void {
     const marked = (mark: string): ReadingScope => ({ ...scope, marks: [...scope.marks, mark] });
 
     for (const token of tokens) {
         const children = (token as { tokens?: Token[] }).tokens ?? [];
+        const start = reading.length;
 
         switch (token.type) {
-            case "strong":     pushTokenReading(reading, children, marked("bold"), context);      break;
-            case "em":         pushTokenReading(reading, children, marked("italic"), context);    break;
-            case "del":        pushTokenReading(reading, children, marked("strike"), context);    break;
-            case "underline":  pushTokenReading(reading, children, marked("underline"), context); break;
-            case "link":       pushTokenReading(reading, children, linkScope(token as Tokens.Link, scope), context); break;
-            case "styledspan": pushTokenReading(reading, children, styleScope(token, scope), context); break;
-            case "codespan":   pushCharacterReading(reading, (token as Tokens.Codespan).text, marked("code")); break;
-            case "text":       pushTextReading(reading, token as Tokens.Text, scope, context); break;
-            case "escape":     pushCharacterReading(reading, (token as Tokens.Escape).text, scope); break;
-            case "br":         reading.push(BREAK_READING); break;
+            case "strong":     pushTokenReading(reading, children, marked("bold"), context, spans);      break;
+            case "em":         pushTokenReading(reading, children, marked("italic"), context, spans);    break;
+            case "del":        pushTokenReading(reading, children, marked("strike"), context, spans);    break;
+            case "underline":  pushTokenReading(reading, children, marked("underline"), context, spans); break;
+            case "link":       pushTokenReading(reading, children, linkScope(token as Tokens.Link, scope), context, spans); break;
+            case "styledspan": pushTokenReading(reading, children, styleScope(token, scope), context, spans); break;
+            case "codespan":   pushCharacterReading(reading, (token as Tokens.Codespan).text, marked("code"), context); break;
+            case "text":       pushTextReading(reading, token as Tokens.Text, scope, context, spans); break;
+            case "escape":     pushCharacterReading(reading, (token as Tokens.Escape).text, scope, context); break;
+            case "br":         pushBreakReading(reading); break;
             case "mdimage":    reading.push(imageReading((token as unknown as { src: string }).src, scope.link)); break;
-            default:           pushCharacterReading(reading, token.raw, scope);
+            // As the viewer shows any other token: its text (a `marked` image the dialect's image rule declined shows its alt text), else its source.
+            default:           pushCharacterReading(reading, (token as Tokens.Generic).text ?? token.raw, scope, context);
         }
+
+        spans?.set(token, [start, reading.length]);
     }
 }
 
@@ -2267,10 +3615,13 @@ function styleScope(span: Token, scope: ReadingScope): ReadingScope {
  * @param token - The `text` token.
  * @param scope - What it inherits.
  * @param context - Where it is written.
+ * @param spans - Where to record each token's reading units, as {@link pushTokenReading} does.
  */
-function pushTextReading(reading: string[], token: Tokens.Text, scope: ReadingScope, context: InlineContext): void {
+function pushTextReading(
+    reading: string[], token: Tokens.Text, scope: ReadingScope, context: InlineContext, spans?: Map<Token, readonly [number, number]>,
+): void {
     if (token.tokens !== undefined && token.tokens.length > 0) {
-        pushTokenReading(reading, token.tokens, scope, context);
+        pushTokenReading(reading, token.tokens, scope, context, spans);
 
         return;
     }
@@ -2279,28 +3630,73 @@ function pushTextReading(reading: string[], token: Tokens.Text, scope: ReadingSc
 
     lines.forEach((line, index) => {
         if (index > 0) {
-            reading.push(BREAK_READING);
+            pushBreakReading(reading);
         }
 
-        pushCharacterReading(reading, line, scope);
+        pushCharacterReading(reading, line, scope, context);
     });
 }
 
 /**
- * Appends one reading unit per visible character of a text.
+ * Appends one reading unit per visible character of a text; with
+ * {@link InlineContext.readsWhitespace}, one per stretch of whitespace too.
  *
  * @param reading - The reading units so far. Extended in place.
  * @param text - The text.
  * @param scope - Its marks, link and span style.
+ * @param context - Where it is written; only its `readsWhitespace` is read.
  */
-function pushCharacterReading(reading: string[], text: string, scope: ReadingScope): void {
-    const marks = [...scope.marks].sort().join();
+function pushCharacterReading(reading: string[], text: string, scope: ReadingScope, context?: InlineContext): void {
+    // A mark nested in itself (`__a __b__ c__`) shows once.
+    const marks = [...new Set(scope.marks)].sort().join();
+    const drawn = scope.marks.filter((mark) => DRAWN_ON_WHITESPACE.has(mark)).sort().join();
 
     for (const char of text) {
         if (!/\s/.test(char)) {
             reading.push([char, marks, scope.link, scope.style].join(READING_KEY_SEPARATOR));
+        } else if (context?.readsWhitespace === true && reading.length > 0 && !isWhitespaceReading(reading[reading.length - 1]!)
+            && reading[reading.length - 1] !== BREAK_READING) {
+            reading.push([" ", drawn, scope.link, ""].join(READING_KEY_SEPARATOR));
         }
     }
+}
+
+/**
+ * Tells whether a reading unit is a stretch of whitespace ({@link InlineContext.readsWhitespace}).
+ *
+ * @param unit - The unit.
+ * @returns `true` for whitespace.
+ */
+function isWhitespaceReading(unit: string): boolean {
+    return unit.startsWith(" " + READING_KEY_SEPARATOR);
+}
+
+/**
+ * Appends the reading unit of a line break, dropping whitespace before it,
+ * which the viewer does not show at a line's end.
+ *
+ * @param reading - The reading units so far. Extended in place.
+ */
+function pushBreakReading(reading: string[]): void {
+    if (reading.length > 0 && isWhitespaceReading(reading[reading.length - 1]!)) {
+        reading.pop();
+    }
+
+    reading.push(BREAK_READING);
+}
+
+/**
+ * Drops whitespace ending a reading, which the viewer does not show at a block's end.
+ *
+ * @param reading - The reading units, or `null`.
+ * @returns The same array, trimmed in place, or `null`.
+ */
+function withoutTrailingWhitespace<T extends string[] | null>(reading: T): T {
+    while (reading !== null && reading.length > 0 && isWhitespaceReading(reading[reading.length - 1]!)) {
+        reading.pop();
+    }
+
+    return reading;
 }
 
 /**
@@ -2329,11 +3725,11 @@ function imageReading(src: string, link: string): string {
 
 /**
  * Assembles the written pieces into lines: merges adjacent text, splits at
- * hard breaks, drops the spaces and tabs at each line's edges, writes each
- * bare autolink in the form its neighbours allow, writes with `_`
- * the emphasis pairs `marked` would mis-pair, escapes the text against its
- * neighbours and, outside single-line contexts, the block starters at each
- * line start.
+ * hard breaks and soft newlines, drops the spaces and tabs at each line's
+ * edges, writes each bare autolink in the form its neighbours allow, writes
+ * with `_` the emphasis pairs `marked` would mis-pair, escapes the text
+ * against its neighbours and, outside single-line contexts, the block
+ * starters at each line start.
  *
  * @param pieces - The written pieces.
  * @param context - Where they are written.
@@ -2341,15 +3737,15 @@ function imageReading(src: string, link: string): string {
  * @returns The inline Markdown.
  */
 function assembleLines(pieces: Piece[], context: InlineContext, choices: AssemblyChoices = NO_CHOICES): string {
-    const lines: Array<{ pieces: LinePiece[]; marker: string | null }> = [{ pieces: [], marker: null }];
+    const lines: Array<{ pieces: LinePiece[]; end: LineEnd | null }> = [{ pieces: [], end: null }];
 
     for (const piece of pieces) {
         const line = lines[lines.length - 1]!;
         const last = line.pieces[line.pieces.length - 1];
 
-        if (piece.kind === "break") {
-            line.marker = piece.marker;
-            lines.push({ pieces: [], marker: null });
+        if (piece.kind === "break" || piece.kind === "newline") {
+            line.end = piece;
+            lines.push({ pieces: [], end: null });
         } else if (piece.kind === "text" && last?.kind === "text") {
             line.pieces[line.pieces.length - 1] = { kind: "text", text: last.text + piece.text };
         } else {
@@ -2358,14 +3754,42 @@ function assembleLines(pieces: Piece[], context: InlineContext, choices: Assembl
     }
 
     const lineContents = underscoreMispairedEmphasis(
-        lines.map((line) => resolveAutolinks(trimLineEdges(line.pieces), choices.bare, line.marker === "\\")), choices.switched,
+        lines.map((line, index) => resolveAutolinks(
+            trimLineEdges(line.pieces, index === 0), choices.bare, line.end?.kind === "break" && line.end.marker === "\\",
+        )),
+        choices.switched,
     );
 
-    return lines.map((line, index) => {
-        const content = renderLine(lineContents[index]!, context);
+    lineContents.forEach((pieces, index) => {
+        lineContents[index] = strayTaskMarkersAsText(pieces, context.inListItem === true && index === 0);
+    });
 
-        return line.marker === null ? content : content + lineBreakMarker(line.marker, content) + "\n";
+    return lines.map((line, index) => {
+        const content = escapeHtmlBlockStart(renderLine(lineContents[index]!, context), lineContents[index]!, index === 0, context);
+
+        return content + lineEnding(line.end, content);
     }).join("");
+}
+
+/**
+ * What a line's end writes after its content: a hard break's marker and a
+ * newline; a newline for a soft newline, except after an empty line, where
+ * it would leave a blank line and end the paragraph.
+ *
+ * @param end - The line's end, or `null` for the last line.
+ * @param content - The line's rendered content.
+ * @returns The text that ends the line.
+ */
+function lineEnding(end: LineEnd | null, content: string): string {
+    if (end === null) {
+        return "";
+    }
+
+    if (end.kind === "newline") {
+        return content === "" ? "" : "\n";
+    }
+
+    return lineBreakMarker(end.marker, content) + "\n";
 }
 
 /**
@@ -2382,23 +3806,33 @@ function lineBreakMarker(marker: string, content: string): string {
 
 /**
  * Drops the spaces and tabs at a line's start and end, so text neither
- * becomes indented code nor a trailing-space hard break.
+ * becomes indented code nor a trailing-space hard break. Whitespace that
+ * only separates a source run from a line edge is kept as `marked` read
+ * it: the indent before a source run starting a continuation line (an
+ * indented `<div>` there is inline HTML, at column 0 an HTML block), and
+ * one space after a source run ending a line (more would be a hard break).
  *
  * @param pieces - The line's pieces.
+ * @param firstLine - Whether this is the block's first line, whose indent
+ *   `marked` strips, so it is never kept.
  * @returns The trimmed pieces.
  */
-function trimLineEdges(pieces: LinePiece[]): LinePiece[] {
+function trimLineEdges(pieces: LinePiece[], firstLine: boolean): LinePiece[] {
     const trimmed = pieces.slice();
     const first = trimmed[0];
+    const indentsSource = !firstLine && trimmed[1]?.kind === "source" && first?.kind === "text" && first.text.trim() === "";
 
-    if (first?.kind === "text") {
+    if (first?.kind === "text" && !indentsSource) {
         trimmed[0] = { kind: "text", text: first.text.replace(/^[ \t]+/, "") };
     }
 
-    const last = trimmed[trimmed.length - 1];
+    const lastIndex = trimmed.length - 1;
+    const last = trimmed[lastIndex];
 
     if (last?.kind === "text") {
-        trimmed[trimmed.length - 1] = { kind: "text", text: last.text.replace(/[ \t]+$/, "") };
+        const followsSource = lastIndex > 0 && trimmed[lastIndex - 1]?.kind === "source" && last.text.trim() === "";
+
+        trimmed[lastIndex] = { kind: "text", text: followsSource ? " " : last.text.replace(/[ \t]+$/, "") };
     }
 
     return trimmed.filter((piece) => piece.kind !== "text" || piece.text !== "");
@@ -2653,6 +4087,30 @@ function isFlankingPunctuation(char: string, run: string): boolean {
 }
 
 /**
+ * Writes a task item's checkbox kept as source as the text it shows wherever
+ * it is not that item's checkbox: anywhere but the start of a list item's
+ * first line, or there with no text after it. The viewer reads no checkbox
+ * there, but `[x]` as text, or as a reference link where a definition names
+ * it — so text typed before it, a line break moving it off the first line,
+ * or a paste carrying it elsewhere leaves it literal.
+ *
+ * @param pieces - A line's pieces.
+ * @param itemFirstLine - Whether the line is a list item's first line.
+ * @returns The pieces, each stray checkbox turned into its text.
+ */
+function strayTaskMarkersAsText(pieces: LinePiece[], itemFirstLine: boolean): LinePiece[] {
+    const isCheckbox = (index: number): boolean => itemFirstLine && index === 0 && pieces.length > 1;
+
+    return pieces.map((piece, index) => {
+        if (piece.kind !== "source" || !TASK_MARKER_SOURCE.test(piece.text) || isCheckbox(index)) {
+            return piece;
+        }
+
+        return { kind: "text", text: index === pieces.length - 1 ? piece.text.trimEnd() : piece.text };
+    });
+}
+
+/**
  * Renders one line's pieces, escaping each text against the characters on
  * either side of it.
  *
@@ -2662,6 +4120,10 @@ function isFlankingPunctuation(char: string, run: string): boolean {
  */
 function renderLine(pieces: LinePiece[], context: InlineContext): string {
     const rendered = pieces.map((piece, index) => {
+        if (piece.kind === "source" && piece.shortcut === true && joinsShortcut(pieces, index)) {
+            return piece.text + "[]";
+        }
+
         if (piece.kind !== "text") {
             return piece.text;
         }
@@ -2673,6 +4135,71 @@ function renderLine(pieces: LinePiece[], context: InlineContext): string {
     }).join("");
 
     return !context.singleLine && pieces[0]?.kind === "text" ? escapeLineStart(rendered) : rendered;
+}
+
+/**
+ * Tells whether a shortcut reference `[label]` or `![label]` written as a
+ * source run would join what follows it: a `(` (an inline link's
+ * destination), a `{` (a styled span's attributes) or a `[` (a full
+ * reference's second bracket); it is then written collapsed, `[label][]`,
+ * which reads the same. Text escapes its own `[`, so only its `(` and `{`
+ * count.
+ *
+ * @param pieces - The line's pieces.
+ * @param index - The shortcut's index in them.
+ * @returns `true` when the shortcut must be written `[label][]`.
+ */
+function joinsShortcut(pieces: LinePiece[], index: number): boolean {
+    const next = pieces[index + 1];
+    const char = next?.text[0] ?? "";
+
+    if (next === undefined || char === "") {
+        return false;
+    }
+
+    return next.kind === "text" ? char === "(" || char === "{" : AFTER_SHORTCUT_GUARDED.includes(char);
+}
+
+/**
+ * Escapes the `<` a line opens with when the line starts with a source run
+ * (inline HTML kept as written, after at most its kept indent) that `marked`
+ * would read there as the start of an HTML block — a block tag, a comment, a
+ * tag alone on a block's first line — so the line stays text of its block,
+ * as the editor shows it, instead of turning the block into raw HTML. The
+ * viewer shows inline HTML as its text, so the escaped `<` shows the same.
+ * Decided by lexing the line where it stands: alone for a block's first line,
+ * after a paragraph line for a continuation line (where only some HTML block
+ * starts interrupt the paragraph) — in a list item, after a paragraph line
+ * of the item, whose content an HTML block start can end where a top-level
+ * paragraph would take it in. An escaped continuation line loses its indent,
+ * which the next load drops from the text it now is.
+ *
+ * @param line - The rendered line.
+ * @param pieces - Its pieces.
+ * @param firstLine - Whether this is the block's first line.
+ * @param context - Where the line is written.
+ * @returns The line, its leading `<` escaped when it would open an HTML block.
+ */
+function escapeHtmlBlockStart(line: string, pieces: readonly LinePiece[], firstLine: boolean, context: InlineContext): string {
+    const indented = pieces[0]?.kind === "text" && pieces[0].text.trim() === "";
+    const opening = pieces[indented ? 1 : 0];
+
+    if (context.singleLine || opening?.kind !== "source" || !opening.text.startsWith("<")) {
+        return line;
+    }
+
+    const probe = (firstLine ? "" : PARAGRAPH_PROBE_LINE + "\n") + line;
+    const tokens = lexMarkdown(probe).filter((token) => token.type !== "space");
+    // A list item's content ends at an HTML block start that a paragraph at the top level takes in.
+    const itemProbe = `- ${PARAGRAPH_PROBE_LINE}\n  ${line}`;
+    const endsItem = context.inListItem === true && !firstLine && JSON.stringify(lexMarkdown(itemProbe)).includes('"type":"html"');
+
+    if (tokens.length === 1 && tokens[0]!.type === "paragraph" && !endsItem) {
+        return line;
+    }
+
+    // Escaped, the run is text, whose indent the next load drops; dropping it here keeps the save stable.
+    return firstLine ? line.replace("<", "\\<") : "\\" + line.trimStart();
 }
 
 /**
