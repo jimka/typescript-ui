@@ -703,3 +703,16 @@ With a stand-in for the new handler (a handler that reads the record and swallow
 [^no-second-copy]: After the field is `true`, each removed check can only repeat the field's answer. The widened selection spans one node, so `$selectionCoversSourceRun()` on it equals the per-node test the record made on the expansion, and `$selectionInNestedLinkRun()` reads the two end nodes, which widening does not change. A repeated check also hides a missing gate: with the check gone, replacing a gate by `true` makes the command act, which the consistency test catches (see `## Verification`).
 
 [^test-routes]: `FORMAT_TEXT_COMMAND` is what `$handleKeyDown` dispatches for Ctrl/Cmd+B, +I and +U and what the `beforeinput` switch dispatches for the four `format…` input types, so dispatching it tests everything behind the key binding offline. The binding itself was checked under jsdom: a `keydown` with `ctrlKey` on the root element reaches the command for `b`, `i` and `u`, and for none of eight other chords. The "applies" loop cannot catch defect 3 (the toggle changed the cached format, so the selection differed), which is why F has its own tests.
+
+---
+
+## Implementation Notes
+
+Deviations and gaps, recorded by the implementer. The audit loop and the move to `plans/implemented/` were skipped on the orchestrator's instruction.
+
+- **Code located by symbol.** The branch starts on `feature/marked-upgrade`, so line numbers in the plan were stale. `paste()` keeps the `$removeGuardedRangeForInsert` call and the `PASTE_TAG` update tag that landed after the plan was written; only the selection handling changed.
+- **One code commit, one docs commit.** The six defects are one functionality: every command follows its availability field. They share one invariant and the one consistency test (C1-C4) that pins it, so they ship as a single code commit and a single docs commit rather than six pairs.
+- **`unlinkSelection()` owns the read-only refusal.** `toggleLink` no longer calls `refuseIfReadOnly()` before branching, because the `canLink` path refuses through `commandApplies`; `unlinkSelection()` therefore starts with `refuseIfReadOnly()` so `toggleLink(null)` is still refused and reported once.
+- **The `editor.isEditable()` check was dropped; the plan's `[^handler-gate]` footnote is superseded.** `registerReadOnlyGuard` (`markdownReadOnly.ts`) refuses every `FORMAT_TEXT_COMMAND` in a read-only editor before `$handleFormatCommand` runs, so the check was unreachable and no test could pin it. The handler's JSDoc cites the guard as the gate. The other six gate pins were run and each failed the named tests.
+- **Tests written after the source for two files.** The step 1 consistency cases and the new `markdown-editor.test.ts` cases were seen red first (30 and 18 failures). The `markdown-document-panel.test.ts` cases (T1, T3-T5, F7) and the mounted S9 cases were added after the source change, so they were not seen failing.
+- **Not run.** The manual X cases (Chromium) were not run, since no browser may be started. `npm run build` was not run; the full suite (564 files, 18953 tests), typecheck, typecheck:test, lint, `docs:api` (no warnings) and `docs:llms:check` were. The branch was not rebased: it stays on its start point, `feature/marked-upgrade`.

@@ -235,6 +235,42 @@ cells are selected, and for a selection that runs out of its table). Enable
 it on `canEditTable || canMergeCells || canUnmergeCell` instead, which are
 `false` while the editor is read-only.
 
+## `MarkdownEditor.toggleLink(url)` needs a word, a selection or a link
+
+**What changed and why.** `toggleLink(url)` expands a caret to the word
+under it. With no word to expand to, it used to link the whole text run the
+caret stood in, or the image beside it, which nobody asked for. Outside a
+link it now does nothing there, as the source surface already did, and
+`canLink` is `false`:
+
+| Selection | Before | After |
+|---|---|---|
+| `hello wo\|rld` | `hello [world](https://z)` | the same |
+| `a \| b word`, between two spaces | `[a  b word](https://z)` | nothing |
+| `Left column.\|`, after a full stop | `[Left column.](https://z)` | nothing |
+| `A [te \| xt](https://x) link.` | the link re-pointed | the same |
+| `\|![i](/i.png)`, beside an image | the image linked | nothing |
+| the image selected | the image linked | the same |
+
+The toolbar's Link button and the menu's Insert link… follow `canLink` alone
+now; they also asked for selected text before.
+
+**Who needs to act.** Code that called `toggleLink(url)` at a caret and
+relied on the whole text run becoming the link: select the text first. A
+toolbar of your own enables its Link control on `canLink || canRemoveLink`.
+
+## `MarkdownEditor.paste()` pastes without a text selection
+
+**What changed and why.** With table cells selected, or with no selection,
+`paste()` read the clipboard and inserted nothing, though Ctrl/Cmd+V pastes
+into selected cells. It now puts the text into the cells, starting at the one
+the selection began in, and with no selection at the document's end, where
+`insertTable` and `insertImage` insert. The context menu's Paste is always
+enabled and now always pastes.
+
+**Who needs to act.** Code that called `paste()` with table cells selected or
+with no selection and relied on nothing being inserted.
+
 ## `Tree` and `TreeTable` no longer register `caret-down` / `caret-right`
 
 **What changed and why.** `Tree` and `TreeTable` row toggles are now one

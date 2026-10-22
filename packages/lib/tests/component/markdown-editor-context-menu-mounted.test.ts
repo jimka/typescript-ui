@@ -6,15 +6,17 @@
 // `@lexical/table`'s selection observer, registered when the view mounts. The
 // observer brings a format handler of its own, which would format the cells of
 // a table selection unchecked; the editor's handler, registered when the
-// editor is built, runs ahead of it and formats the cells itself, so the last
-// test here pins that this stays so with the observer present. This file keeps
+// editor is built, runs ahead of it and formats the cells itself, so one test
+// here pins that this stays so with the observer present, by dispatching the
+// format command where the two handlers meet. The format shortcuts are pinned
+// with real key events. This file keeps
 // the `@vitest-environment jsdom` pragma, gives the editor a real root element
 // and registers the observer itself, as the editor's WYSIWYG mount does, and
 // must not call installTestDOM — the same arrangement as
 // `markdown-editor-table-edge-mounted.test.ts`.
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { $getRoot, $getSelection, $isRangeSelection, $isTextNode, $setSelection } from 'lexical';
-import type { LexicalEditor, TextNode } from 'lexical';
+import { $getRoot, $getSelection, $isRangeSelection, $isTextNode, $setSelection, FORMAT_TEXT_COMMAND } from 'lexical';
+import type { LexicalEditor, RangeSelection, TextNode } from 'lexical';
 import { $createTableSelectionFrom, $isTableSelection, registerTableSelectionObserver } from '@lexical/table';
 import type { TableCellNode, TableNode, TableRowNode } from '@lexical/table';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
@@ -233,10 +235,11 @@ describe('MarkdownEditor context menu, mounted: a table selection', () => {
     it('the cells are formatted by the editor\'s own handler, not the observer\'s: a cell holding a run kept as source is left as it is', async () => {
         // The observer's handler formats every text node of the selected cells. The editor's leaves
         // out a cell whose source is kept as written, which a format would be shown on but not saved.
+        // The command is where the two handlers meet; toggleBold() does not dispatch it.
         const editor = mounted('| a | b |\n| - | - |\n| <b>c</b> | d |\n\nafter');
         selectLastRowCells(editor);
 
-        editor.toggleBold();
+        lexicalOf(editor).dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
         await Promise.resolve();
 
         expect(editor.getValue()).toContain('| <b>c</b> | **d** |');
@@ -292,5 +295,39 @@ describe('MarkdownEditor, mounted: a call that changes nothing hands the keyboar
         expect(browserSelection.anchorNode?.textContent).toBe(text);
         expect(editor.getValue()).toBe(source);
         expect(reported).not.toHaveBeenCalled();
+    });
+});
+
+describe('MarkdownEditor, mounted: the format shortcuts', () => {
+    const SOURCE_RUN = 'kept <span>x</span> source';
+
+    /** Presses `ctrl+key` on the editor's root element, as the browser delivers it. */
+    function pressCtrl(editor: MarkdownEditor, key: string): void {
+        const root = lexicalOf(editor).getRootElement() as HTMLElement;
+
+        root.dispatchEvent(new KeyboardEvent('keydown', { key, ctrlKey: true, bubbles: true, cancelable: true }));
+    }
+
+    /** The format pending at the selection. */
+    function pendingFormatOf(editor: MarkdownEditor): number {
+        return lexicalOf(editor).read(() => ($getSelection() as RangeSelection).format);
+    }
+
+    it.each([['b'], ['i'], ['u']])('Ctrl+%s in a run kept as Markdown source leaves no format pending', (key) => {
+        const editor = mounted(SOURCE_RUN);
+        caretIn(editor, '<span>', 3);
+
+        pressCtrl(editor, key);
+
+        expect(pendingFormatOf(editor)).toBe(0);
+    });
+
+    it.each([['b', 1], ['i', 2], ['u', 8]])('Ctrl+%s at a caret in a word leaves its format pending', (key, format) => {
+        const editor = mounted('hello world');
+        caretIn(editor, 'hello world', 8);
+
+        pressCtrl(editor, key);
+
+        expect(pendingFormatOf(editor)).toBe(format);
     });
 });

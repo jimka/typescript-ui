@@ -76,6 +76,23 @@ page resets to empty.
   match by Unicode case folding. Each is the reading CommonMark or GFM
   specifies. See [Migration](/reference/migration/next) for the table.
 
+- **`MarkdownEditor.toggleLink(url)` links nothing from a caret with no word
+  under it.** Outside a link, a caret between two spaces, after a full stop
+  or beside an image linked the whole text run it stood in, or the image.
+  The command now declines there, as it does on the source surface, and
+  `canLink` is `false`. A caret in a word still links the word, and a caret
+  inside a link still re-points it. See
+  [Migration](/reference/migration/next) for what to change.
+
+- **`MarkdownEditor.paste()` pastes without a text selection.** With table
+  cells selected it read the clipboard and inserted nothing, though
+  Ctrl/Cmd+V pastes into the cells; with no selection it did the same. It
+  now puts the text into the cells, starting at the one the selection began
+  in, and with no selection at the document's end, where `insertTable` and
+  `insertImage` insert. The context menu's Paste, which is always enabled,
+  therefore always pastes. See [Migration](/reference/migration/next) for
+  what to change.
+
 ### Core
 
 - **`DOM.sink` and `DOM.source` are now read-only.** Swap a seam through
@@ -1297,10 +1314,10 @@ page resets to empty.
   was formatted; `clearFormatting` with no format to clear, and a format
   toggle over a selection holding no text, ran an edit that changed
   nothing. Every command now declines on the rule its `can…` field reports
-  before it touches the document or the selection, and fires no event. One
-  case is as it was: a format, style or link whose result could not be
-  saved as it shows is found by trying it, so it is declined after a
-  collapsed caret was expanded to its word.
+  before it touches the document or the selection, and fires no event. That
+  includes a format, style or link whose result could not be saved as it
+  shows, which is found by trying it: the caret is put back where it was,
+  with the format and style pending at it.
 
 - **A call that asks for what is already there changes nothing.**
   `setBlockType` with the type every selected block already has,
@@ -1698,6 +1715,25 @@ page resets to empty.
 - **A reference keeps its form when its label and its definition's differ
   in case folding or outer spaces.** `[ẞ]` with the definition `[SS]: /url`
   was written `[ẞ](/url)` once its block was edited; it stays `[ẞ]`.
+
+- **`MarkdownEditor`'s format shortcuts decline where the format toggles
+  do.** Ctrl/Cmd+B, +I and +U, and a browser's own bold, italic, underline
+  and strikethrough commands, reached the editor past the rule the toggles
+  read. At a caret in text kept as Markdown source they left the format
+  pending for the next typed character; over a selection holding no text
+  they added an undo step that undid nothing. They now read `canFormat`, as
+  `toggleBold()` and the others do.
+
+- **Underline and inline code come off a selection made from code.** Over a
+  selection set through the API rather than by the mouse or the keyboard,
+  `toggleUnderline()` and `toggleInlineCode()` put the format on again
+  instead of taking it off, and the selection state and the menu's
+  checkmarks read it as off. All five formats are now read from the
+  selected text.
+
+- **`MarkdownDocumentPanel`'s Link button and the menu's Insert link…
+  follow `canLink`.** Both also asked for selected text, so with an image
+  alone selected they were disabled though `toggleLink` wraps the image.
 
 ### Core
 

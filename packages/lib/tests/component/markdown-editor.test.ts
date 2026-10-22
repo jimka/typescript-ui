@@ -25,7 +25,7 @@ import { ReferenceLinkNode } from '~/component/editor/markdownReferenceLinkNode'
 import { TableNode, TableRowNode, TableCellNode, $createTableSelectionFrom, $isTableCellNode } from '@lexical/table';
 import {
     $createRangeSelection, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isParagraphNode, $isTextNode, $selectAll,
-    $setSelection, KEY_ENTER_COMMAND, UNDO_COMMAND,
+    $setSelection, FORMAT_TEXT_COMMAND, KEY_ENTER_COMMAND, PASTE_COMMAND, UNDO_COMMAND,
 } from 'lexical';
 import type { LexicalEditor, ElementNode, LexicalNode, ParagraphNode, RangeSelection, TextNode } from 'lexical';
 import { lexMarkdown } from '~/component/display/markdownExtensions';
@@ -1476,6 +1476,8 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
 });
 
 describe('MarkdownEditor clipboard commands', () => {
+    afterEach(() => { vi.restoreAllMocks(); });
+
     /** Selects the exact substring `word` within the document's first paragraph's first text node. */
     function selectWord(editor: MarkdownEditor, word: string): void {
         lexicalOf(editor).update(() => {
@@ -1681,19 +1683,6 @@ describe('MarkdownEditor clipboard commands', () => {
 
         expect(result).toBe(true);
         expect(editor.getValue()).toContain('hello world');
-    });
-
-    it('paste() with the read stubbed to "X" and the selection explicitly cleared resolves true and inserts nothing', async () => {
-        const editor = new MarkdownEditor();
-        editor.setValue('hello world');
-        lexicalOf(editor).update(() => { $setSelection(null); }, { discrete: true });
-        vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
-
-        const result = await editor.paste();
-
-        expect(result).toBe(true);
-        expect(editor.getValue()).toContain('hello world');
-        expect(editor.getValue()).not.toContain('X');
     });
 
     it('copy() and cut() record no write for a multi-cell table selection, which is not a range selection', () => {
@@ -4402,13 +4391,8 @@ describe('MarkdownEditor.getSelectionState() / "selectionstate"', () => {
         const listener = vi.fn();
         editor.on('selectionstate', listener);
 
-        // toggleBold() dispatches FORMAT_TEXT_COMMAND, whose update is not
-        // `{ discrete: true }` and so — unlike setValue()'s discrete commits,
-        // which every other test in this suite exercises synchronously —
-        // settles on the next microtask in this headless harness rather than
-        // before this call returns (see this file's own updateSelectionState
-        // registration: it runs from the same registerUpdateListener callback
-        // handleChange() already relies on, which has the identical deferral).
+        // toggleBold() formats in one discrete update, so the emit has happened before this call returns; the
+        // await is harmless, kept from when the toggle went through a command whose update settled a microtask later.
         editor.toggleBold();
         await Promise.resolve();
 
@@ -4792,25 +4776,6 @@ describe('MarkdownEditor context menu', () => {
         expect(items.slice(19).map((item) => item.text ?? '(separator)')).toEqual([
             '(separator)', 'Insert line before block', 'Insert line after block',
         ]);
-    });
-
-    it('"Insert link…" is enabled exactly when hasSelectedText is true, in both "text" and "table-cell" contexts', () => {
-        const editor = new MarkdownEditor();
-
-        for (const kind of ['text', 'table-cell'] as const) {
-            const enabled = contextMenuMethodsOf(editor).buildContextMenuItems({
-                kind, hasSelectedText: true, linkUrl: null, ...SOME_FORMATS, availability: ALL_AVAILABLE,
-            });
-            const disabled = contextMenuMethodsOf(editor).buildContextMenuItems({
-                kind, hasSelectedText: false, linkUrl: null, ...SOME_FORMATS, availability: ALL_AVAILABLE,
-            });
-
-            expect(findItem(enabled, 'Insert link…')?.enabled).toBe(true);
-            expect(findItem(enabled, 'Edit link…')).toBeUndefined();
-            expect(findItem(enabled, 'Remove link')).toBeUndefined();
-
-            expect(findItem(disabled, 'Insert link…')?.enabled).toBe(false);
-        }
     });
 
     it('"Edit link…" and "Remove link" are enabled while every command is available, and replace "Insert link…", in both "text" and "table-cell" contexts', () => {
@@ -5909,11 +5874,46 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                 available: ['canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
             },
             {
-                // Offset 2 sits between the two spaces: the caret expands to nothing, and a format or style is
-                // left pending at it, while a link takes the whole run.
+                // Offset 2 sits between the two spaces: the caret expands to nothing, so a format or style is
+                // left pending at it, and there is no word for a link to take.
                 name: 'a bare caret in prose', markdown: BARE_CARET,
                 select: (editor) => caretIn(editor, BARE_CARET, 2),
-                available: ['canFormat', 'canStyle', 'canLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                name: 'N1: a caret inside the word of a task-list marker', markdown: '- [ ] one\n- [x] two',
+                select: (editor) => caretIn(editor, '[x] ', 1),
+                available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertParagraphAroundBlock', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                name: 'N2: a caret at the end of a run kept as Markdown source', markdown: 'kept <span>x</span> source',
+                select: (editor) => caretIn(editor, '<span>', 6),
+                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                name: 'N3: a bare caret inside a link', markdown: 'A [te  xt](https://x) link.',
+                select: (editor) => caretIn(editor, 'te  xt', 3),
+                available: [
+                    'canFormat', 'canLink', 'canRemoveLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage',
+                ],
+            },
+            {
+                name: 'N4: a caret at the end of a paragraph, after a full stop', markdown: 'Left column.',
+                select: (editor) => caretIn(editor, 'Left column.', 12),
+                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                name: 'N5: a caret in a paragraph holding an image alone', markdown: '![i](/i.png)',
+                select: (editor) => selectStart(editor),
+                available: ['canFormat', 'canStyle', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
+            },
+            {
+                name: 'N6: an underlined word selected from code', markdown: '++c++ x',
+                select: (editor) => selectPoints(editor, { text: 'c', offset: 0 }, { text: 'c', offset: 1 }),
+                available: [
+                    'canFormat', 'canStyle', 'canLink', 'canClearFormatting', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable',
+                    'canInsertImage',
+                ],
             },
             {
                 name: 'a caret inside a bold word', markdown: BOLD_WORD,
@@ -6204,6 +6204,22 @@ describe('MarkdownEditor context menu — caret and availability', () => {
             canUnmergeCell: [['unmergeTableCell', (editor) => editor.unmergeTableCell()]],
         };
 
+        /** The route Lexical's key and input handlers take to a format: the command, not the method. */
+        const FORMAT_COMMAND_ROUTES: Array<[string, (editor: MarkdownEditor) => void]> = (
+            [
+                ['Ctrl+B', 'bold'], ['Ctrl+I', 'italic'], ['Ctrl+U', 'underline'], ['formatStrikeThrough input', 'strikethrough'],
+                ['code', 'code'],
+            ] as const
+        ).map(([key, format]) => [
+            `${key} (FORMAT_TEXT_COMMAND ${format})`,
+            (editor: MarkdownEditor): void => { lexicalOf(editor).dispatchCommand(FORMAT_TEXT_COMMAND, format); },
+        ]);
+
+        /** Every route to the commands a field covers. */
+        const routesOf = (field: keyof CommandAvailability): Array<[string, (editor: MarkdownEditor) => void]> => (
+            field === 'canFormat' ? [...COMMANDS[field], ...FORMAT_COMMAND_ROUTES] : COMMANDS[field]
+        );
+
         /** The fields of the availability record the selection state reports. */
         const REPORTED = [
             'canFormat', 'canStyle', 'canLink', 'canRemoveLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage',
@@ -6282,7 +6298,7 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                 const undoDepth = undoDepthOf(untouched);
 
                 for (const field of unavailable) {
-                    for (const [command, run] of COMMANDS[field]) {
+                    for (const [command, run] of routesOf(field)) {
                         const editor = editorOf(markdown);
                         select(editor);
 
@@ -6310,7 +6326,7 @@ describe('MarkdownEditor context menu — caret and availability', () => {
 
             it(`${name}: every command reported available there applies`, () => {
                 for (const field of available) {
-                    for (const [command, run] of COMMANDS[field]) {
+                    for (const [command, run] of routesOf(field)) {
                         const editor = editorOf(markdown);
                         select(editor);
 
@@ -6321,6 +6337,31 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                         expect([editor.getValue(), selectionOf(editor)], command).not.toEqual(before);
                     }
                 }
+            });
+
+            it(`${name}: C3: the menu's link item is dimmed by canLink alone`, () => {
+                const editor = editorOf(markdown);
+                select(editor);
+
+                const context = classifyAtCaret(editor);
+                const items = contextMenuMethodsOf(editor).buildContextMenuItems(context);
+                const linkItem = findItem(items, 'Insert link…') ?? findItem(items, 'Edit link…');
+
+                if (linkItem !== undefined) {
+                    expect(linkItem.enabled).toBe(available.includes('canLink'));
+                }
+            });
+
+            it(`${name}: C4: paste() pastes there`, async () => {
+                const editor = editorOf(markdown);
+                select(editor);
+                vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('pasted');
+
+                const before = editor.getValue();
+                const pasted = await editor.paste();
+
+                expect(pasted).toBe(true);
+                expect(editor.getValue()).not.toBe(before);
             });
         }
 
@@ -6559,7 +6600,7 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                     const undoDepth = undoDepthOf(untouched);
 
                     for (const field of AVAILABILITY_FIELDS) {
-                        for (const [command, run] of COMMANDS[field]) {
+                        for (const [command, run] of routesOf(field)) {
                             const editor = editorOf(markdown);
                             select(editor);
                             editor.setReadOnly(true);
@@ -7305,5 +7346,439 @@ describe('MarkdownEditor dispose', () => {
         editor.dispose();
 
         expect(codeEditorDestructor).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('MarkdownEditor link, format and paste command fixes', () => {
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    const SOURCE_RUN = 'kept <span>x</span> source';
+    const TABLE = '| a | b |\n| - | - |\n| c | d |\n\nafter';
+
+    /** Builds an editor showing `markdown`. */
+    function editorOf(markdown: string): MarkdownEditor {
+        const editor = new MarkdownEditor();
+
+        editor.setValue(markdown);
+
+        return editor;
+    }
+
+    /** The first text node showing exactly `text`. Call inside a Lexical read or update. */
+    function $textNodeShowing(text: string): TextNode {
+        const node = $getRoot().getAllTextNodes().find((candidate) => candidate.getTextContent() === text);
+
+        if (node === undefined) {
+            throw new Error(`text node "${text}" not found`);
+        }
+
+        return node;
+    }
+
+    /** Places a collapsed caret at `offset` in the first text node showing exactly `text`. */
+    function caretIn(editor: MarkdownEditor, text: string, offset: number): void {
+        lexicalOf(editor).update(() => { $textNodeShowing(text).select(offset, offset); }, { discrete: true });
+    }
+
+    /** Selects from `fromOffset` in the text node showing `from` to `toOffset` in the one showing `to`, as code does (no cached format). */
+    function selectFromCode(editor: MarkdownEditor, from: string, fromOffset: number, to: string, toOffset: number): void {
+        lexicalOf(editor).update(() => {
+            const selection = $createRangeSelection();
+
+            selection.anchor.set($textNodeShowing(from).getKey(), fromOffset, 'text');
+            selection.focus.set($textNodeShowing(to).getKey(), toOffset, 'text');
+            $setSelection(selection);
+        }, { discrete: true });
+    }
+
+    /** Where the selection is, by place rather than node key, and the format and style pending at it. */
+    function selectionPlaceOf(editor: MarkdownEditor): string {
+        return lexicalOf(editor).read(() => {
+            const selection = $getSelection();
+
+            if (!$isRangeSelection(selection)) {
+                return 'not a range';
+            }
+
+            const place = (point: RangeSelection['anchor']): string => {
+                const path: number[] = [];
+
+                for (let node: LexicalNode | null = point.getNode(); node !== null && node.getParent() !== null; node = node.getParent()) {
+                    path.unshift(node.getIndexWithinParent());
+                }
+
+                return `${path.join('/')}:${point.offset}:${point.type}`;
+            };
+
+            return [place(selection.anchor), place(selection.focus), selection.format, selection.style].join('|');
+        });
+    }
+
+    /** How many steps Undo can take. */
+    function undoDepthOf(editor: MarkdownEditor): number {
+        const lexical = lexicalOf(editor);
+        let depth = 0;
+        let before = null;
+
+        while (before !== lexical.getEditorState()) {
+            before = lexical.getEditorState();
+            lexical.dispatchCommand(UNDO_COMMAND, undefined);
+            depth += 1;
+        }
+
+        return depth - 1;
+    }
+
+    /** Classifies the way a keyboard-opened menu does: its event target resolves to the root. */
+    function classifyAtCaret(editor: MarkdownEditor): ContextMenuTarget {
+        return lexicalOf(editor).read(() => $classifyContextMenuTarget($contextMenuNodeFor($getRoot())));
+    }
+
+    /** Types `text` at the selection, as the keyboard does. */
+    function typeText(editor: MarkdownEditor, text: string): void {
+        lexicalOf(editor).update(() => { ($getSelection() as RangeSelection).insertText(text); }, { discrete: true });
+    }
+
+    /** Dispatches the command Lexical's key and input handlers dispatch for a format. */
+    function dispatchFormat(editor: MarkdownEditor, format: 'bold' | 'italic' | 'underline' | 'strikethrough' | 'code'): void {
+        lexicalOf(editor).dispatchCommand(FORMAT_TEXT_COMMAND, format);
+    }
+
+    describe('S: the format shortcuts read canFormat', () => {
+        it('S7: bold pending in a kept-source run is not applied to the text typed next', () => {
+            const editor = editorOf(SOURCE_RUN);
+            caretIn(editor, '<span>', 3);
+
+            dispatchFormat(editor, 'bold');
+            typeText(editor, 'Q');
+
+            expect(editor.getValue()).toBe('kept Qx</span> source');
+        });
+
+        it('S8: bold pending at a caret in a word is applied to the text typed next', () => {
+            const editor = editorOf('hello world');
+            caretIn(editor, 'hello world', 8);
+
+            dispatchFormat(editor, 'bold');
+            typeText(editor, 'Q');
+
+            expect(editor.getValue()).toBe('hello wo**Q**rld');
+        });
+    });
+
+    describe('D: a command declined after trying puts back all the selection carried', () => {
+        const CASES: Array<{ name: string; markdown: string; text: string; offset: number; run: (editor: MarkdownEditor) => void; pending?: boolean }> = [
+            { name: 'D1: toggleUnderline() over a plus', markdown: '**a+b** x', text: 'a+b', offset: 1, run: (editor) => editor.toggleUnderline() },
+            { name: 'D2: setTextColor() over a bracket', markdown: '**a]b** x', text: 'a]b', offset: 1, run: (editor) => editor.setTextColor('#f00') },
+            { name: 'D3: toggleBold() in code beside parentheses', markdown: 'x`(a)`b', text: '(a)', offset: 1, run: (editor) => editor.toggleBold() },
+            { name: 'D4: toggleLink() with a URL holding a line break', markdown: 'hello world', text: 'hello world', offset: 8, run: (editor) => editor.toggleLink('a\nb') },
+            {
+                name: 'D5: D1 with a format and a style pending at the caret', markdown: '**a+b** x', text: 'a+b', offset: 1,
+                run: (editor) => editor.toggleUnderline(), pending: true,
+            },
+        ];
+
+        for (const { name, markdown, text, offset, run, pending } of CASES) {
+            it(`${name}: changes nothing, leaves the caret and what is pending at it, and adds no undo step`, () => {
+                const editor = editorOf(markdown);
+                caretIn(editor, text, offset);
+
+                if (pending === true) {
+                    lexicalOf(editor).update(() => {
+                        const selection = $getSelection() as RangeSelection;
+
+                        selection.setFormat(2);
+                        selection.setStyle('color: red');
+                    }, { discrete: true });
+                }
+
+                const value = editor.getValue();
+                const place = selectionPlaceOf(editor);
+                const untouched = editorOf(markdown);
+                caretIn(untouched, text, offset);
+
+                const undoDepth = undoDepthOf(untouched);
+                const state = editor.getSelectionState();
+                const reported = vi.fn();
+
+                editor.on('change', reported);
+                editor.on('selectionstate', reported);
+                run(editor);
+
+                expect(editor.getValue()).toBe(value);
+                expect(selectionPlaceOf(editor)).toBe(place);
+                expect(reported).not.toHaveBeenCalled();
+                expect(editor.getSelectionState()).toEqual(state);
+                expect(undoDepthOf(editor)).toBe(undoDepth);
+            });
+        }
+
+        /** Runs `run` at a range over `a+b`, which no format can be saved on, and checks it changed and reported nothing. */
+        function expectRangeLeftAlone(run: (editor: MarkdownEditor) => void): void {
+            const editor = editorOf('a+b x');
+
+            selectFromCode(editor, 'a+b x', 0, 'a+b x', 3);
+
+            const place = selectionPlaceOf(editor);
+            const untouched = editorOf('a+b x');
+
+            selectFromCode(untouched, 'a+b x', 0, 'a+b x', 3);
+
+            const undoDepth = undoDepthOf(untouched);
+            const reported = vi.fn();
+
+            editor.on('change', reported);
+            editor.on('selectionstate', reported);
+            run(editor);
+
+            expect(editor.getValue()).toBe('a+b x');
+            expect(selectionPlaceOf(editor)).toBe(place);
+            expect(reported).not.toHaveBeenCalled();
+            expect(undoDepthOf(editor)).toBe(undoDepth);
+        }
+
+        it('D6: toggleUnderline() over a range holding a plus is left as it was (control)', () => {
+            expectRangeLeftAlone((editor) => editor.toggleUnderline());
+        });
+
+        it('D7: the underline command route over the same range changes nothing either (control)', () => {
+            expectRangeLeftAlone((editor) => dispatchFormat(editor, 'underline'));
+        });
+    });
+
+    describe('F: every format is read from the selected text', () => {
+        const FORMATS: Array<{ format: 'bold' | 'italic' | 'strikethrough' | 'underline' | 'code'; markdown: string; toggle: (editor: MarkdownEditor) => unknown }> = [
+            { format: 'bold', markdown: '**c** x', toggle: (editor) => editor.toggleBold() },
+            { format: 'italic', markdown: '*c* x', toggle: (editor) => editor.toggleItalic() },
+            { format: 'strikethrough', markdown: '~~c~~ x', toggle: (editor) => editor.toggleStrikethrough() },
+            { format: 'underline', markdown: '++c++ x', toggle: (editor) => editor.toggleUnderline() },
+            { format: 'code', markdown: '`c` x', toggle: (editor) => editor.toggleInlineCode() },
+        ];
+
+        for (const { format, markdown, toggle } of FORMATS) {
+            it(`F1-F4: ${format} on a word selected from code reads as on, comes off and goes back on, by method and by command`, () => {
+                const viaCommand = editorOf(markdown);
+
+                selectFromCode(viaCommand, 'c', 0, 'c', 1);
+                dispatchFormat(viaCommand, format);
+
+                expect(viaCommand.getValue()).toBe('c x');
+
+                dispatchFormat(viaCommand, format);
+
+                expect(viaCommand.getValue()).toBe(markdown);
+
+                const editor = editorOf(markdown);
+
+                selectFromCode(editor, 'c', 0, 'c', 1);
+
+                expect(editor.getSelectionState()[format]).toBe(true);
+                expect((classifyAtCaret(editor) as unknown as Record<string, boolean>)[format]).toBe(true);
+
+                toggle(editor);
+
+                expect(editor.getValue()).toBe('c x');
+
+                toggle(editor);
+
+                expect(editor.getValue()).toBe(markdown);
+            });
+        }
+
+        it('F5: underline reads as off over a range reaching text that has none, and the toggle puts it on the whole range', () => {
+            const editor = editorOf('++c++ x');
+
+            selectFromCode(editor, 'c', 0, ' x', 2);
+
+            expect(editor.getSelectionState().underline).toBe(false);
+
+            editor.toggleUnderline();
+
+            expect(editor.getValue()).toBe('++c x++');
+
+            editor.toggleUnderline();
+
+            expect(editor.getValue()).toBe('c x');
+        });
+
+        it('F6: underline reads as on over a range across a soft line break inside the span, and the toggle takes it off', () => {
+            const editor = editorOf('++a\nb++ x');
+
+            selectFromCode(editor, 'a', 0, 'b', 1);
+
+            expect(editor.getSelectionState().underline).toBe(true);
+
+            editor.toggleUnderline();
+
+            expect(editor.getValue()).toBe('a\nb x');
+        });
+    });
+
+    describe('L: links', () => {
+        it('L1: a caret between two spaces links nothing', () => {
+            const editor = editorOf('a  b word');
+            caretIn(editor, 'a  b word', 2);
+
+            editor.toggleLink('https://z');
+
+            expect(editor.getValue()).toBe('a  b word');
+            expect(editor.getSelectionState().canLink).toBe(false);
+        });
+
+        it('L2: a caret after a full stop links nothing', () => {
+            const editor = editorOf('Left column.');
+            caretIn(editor, 'Left column.', 12);
+
+            editor.toggleLink('https://z');
+
+            expect(editor.getValue()).toBe('Left column.');
+        });
+
+        it('L3: a caret in a word links the word', () => {
+            const editor = editorOf('hello world');
+            caretIn(editor, 'hello world', 8);
+
+            editor.toggleLink('https://z');
+
+            expect(editor.getValue()).toBe('hello [world](https://z)');
+        });
+
+        it('L4: a caret inside a link re-points the link though no word is under it', () => {
+            const editor = editorOf('A [te  xt](https://x) link.');
+            caretIn(editor, 'te  xt', 3);
+
+            editor.toggleLink('https://z');
+
+            expect(editor.getValue()).toBe('A [te  xt](https://z) link.');
+        });
+
+        it('L5: the image selected alone is wrapped', () => {
+            const editor = editorOf('a ![i](/i.png) b');
+
+            selectFromCode(editor, 'a ', 2, ' b', 0);
+
+            expect(editor.getSelectionState().canLink).toBe(true);
+
+            editor.toggleLink('https://z');
+
+            expect(editor.getValue()).toBe('a [![i](/i.png)](https://z) b');
+        });
+
+        it('L6: a caret beside an image links nothing', () => {
+            const editor = editorOf('![i](/i.png)');
+
+            selectStart(editor);
+            editor.toggleLink('https://z');
+
+            expect(editor.getValue()).toBe('![i](/i.png)');
+            expect(editor.getSelectionState().canLink).toBe(false);
+        });
+
+        it('L7: a caret between two spaces inside a bold run links the run', () => {
+            const editor = editorOf('a **b  c** d');
+            caretIn(editor, 'b  c', 2);
+
+            editor.toggleLink('https://z');
+
+            expect(editor.getValue()).toBe('a **[b  c](https://z)** d');
+        });
+
+        it('L8: Insert link… is enabled exactly when canLink is true, whatever hasSelectedText says', () => {
+            const editor = new MarkdownEditor();
+            const availabilityWith = (canLink: boolean): CommandAvailability => ({ ...ALL_AVAILABLE, canLink });
+
+            for (const kind of ['text', 'table-cell'] as const) {
+                for (const hasSelectedText of [true, false]) {
+                    for (const canLink of [true, false]) {
+                        const items = contextMenuMethodsOf(editor).buildContextMenuItems({
+                            kind, hasSelectedText, linkUrl: null, ...SOME_FORMATS, availability: availabilityWith(canLink),
+                        });
+
+                        expect(findItem(items, 'Insert link…')?.enabled, `${kind} ${hasSelectedText} ${canLink}`).toBe(canLink);
+                    }
+                }
+            }
+        });
+    });
+
+    describe('P: paste', () => {
+        /** Selects the two cells of the last row, from the first to the second or the other way round. */
+        function selectCells(editor: MarkdownEditor, backward: boolean = false): void {
+            lexicalOf(editor).update(() => {
+                const table = $getRoot().getChildren().find((node) => node.getType() === 'table') as TableNode;
+                const [first, second] = (table.getLastChild() as TableRowNode).getChildren() as TableCellNode[];
+
+                $setSelection($createTableSelectionFrom(table, backward ? second : first, backward ? first : second));
+            }, { discrete: true });
+        }
+
+        it('P1: pasted into selected table cells, the text goes into the cell the selection began in', async () => {
+            const editor = editorOf(TABLE);
+            selectCells(editor);
+            vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('PASTED');
+
+            const pasted = await editor.paste();
+
+            expect(pasted).toBe(true);
+            expect(editor.getValue()).toBe('| a | b |\n| --- | --- |\n| PASTED | d |\n\nafter');
+        });
+
+        it('P2: with the cells selected backward the text goes into the cell the selection began in', async () => {
+            const editor = editorOf(TABLE);
+            selectCells(editor, true);
+            vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('PASTED');
+
+            await editor.paste();
+
+            expect(editor.getValue()).toContain('| c | PASTED |');
+        });
+
+        it('P3: tabbed text pasted into selected cells gives what Ctrl/Cmd+V gives', async () => {
+            const text = 'x\ty\nz\tw';
+            const viaMethod = editorOf(TABLE);
+            const viaKeyboard = editorOf(TABLE);
+
+            selectCells(viaMethod);
+            selectCells(viaKeyboard);
+            vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue(text);
+            await viaMethod.paste();
+
+            vi.stubGlobal('ClipboardEvent', class ClipboardEvent {});
+            vi.stubGlobal('DragEvent', class DragEvent {});
+            vi.stubGlobal('InputEvent', class InputEvent {});
+            vi.stubGlobal('KeyboardEvent', class KeyboardEvent {});
+
+            const event = Object.assign(new ClipboardEvent('paste'), {
+                clipboardData: { types: ['text/plain'], files: [], getData: (type: string) => (type === 'text/plain' ? text : '') },
+                preventDefault: () => {},
+            });
+
+            lexicalOf(viaKeyboard).update(() => { lexicalOf(viaKeyboard).dispatchCommand(PASTE_COMMAND, event); }, { discrete: true });
+            vi.unstubAllGlobals();
+
+            expect(viaMethod.getValue()).toBe(viaKeyboard.getValue());
+            expect(viaMethod.getValue()).not.toBe(editorOf(TABLE).getValue());
+        });
+
+        it('P4: with no selection the text goes in at the document end', async () => {
+            const editor = editorOf('hello world');
+            lexicalOf(editor).update(() => { $setSelection(null); }, { discrete: true });
+            vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+
+            const pasted = await editor.paste();
+
+            expect(pasted).toBe(true);
+            expect(editor.getValue()).toBe('hello worldX');
+        });
+
+        it('P5: with no selection in a document ending in a code block the text joins the code', async () => {
+            const editor = editorOf('para\n\n```\ncode\n```');
+            lexicalOf(editor).update(() => { $setSelection(null); }, { discrete: true });
+            vi.spyOn(DOM.source, 'readClipboardText').mockResolvedValue('X');
+
+            await editor.paste();
+
+            expect(editor.getValue()).toContain('codeX');
+        });
     });
 });

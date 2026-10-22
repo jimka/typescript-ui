@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { $getRoot, $isTextNode, $selectAll, $setSelection } from 'lexical';
-import type { LexicalEditor, ElementNode } from 'lexical';
+import { $createRangeSelection, $getRoot, $isTextNode, $selectAll, $setSelection } from 'lexical';
+import type { LexicalEditor, ElementNode, TextNode } from 'lexical';
 import { $createTableSelectionFrom } from '@lexical/table';
 import type { TableNode, TableRowNode, TableCellNode } from '@lexical/table';
 import { MarkdownDocumentPanel, LinkPopupPanel } from '~/component/editor/MarkdownDocumentPanel';
@@ -341,6 +341,57 @@ describe('MarkdownDocumentPanel live toolbar state', () => {
         }, { discrete: true });
 
         expect(findPopupButton(panel, 'Link…').isEnabled()).toBe(false);
+    });
+
+    /** Shows `markdown` in a panel and selects from `from` (at `fromOffset`) to `to` (at `toOffset`), as code does. */
+    function panelSelecting(markdown: string, from: string, fromOffset: number, to: string, toOffset: number): MarkdownDocumentPanel {
+        const panel = new MarkdownDocumentPanel();
+
+        panel.setValue(markdown);
+        lexicalOf(panel.getEditor()).update(() => {
+            const nodeShowing = (text: string): TextNode => $getRoot().getAllTextNodes().find((node) => node.getTextContent() === text)!;
+            const selection = $createRangeSelection();
+
+            selection.anchor.set(nodeShowing(from).getKey(), fromOffset, 'text');
+            selection.focus.set(nodeShowing(to).getKey(), toOffset, 'text');
+            $setSelection(selection);
+        }, { discrete: true });
+
+        return panel;
+    }
+
+    it('T1: the Link button is enabled with an image alone selected, as canLink says', () => {
+        const panel = panelSelecting('a ![i](/i.png) b', 'a ', 2, ' b', 0);
+
+        expect(panel.getEditor().getSelectionState().hasSelectedText).toBe(false);
+        expect(findPopupButton(panel, 'Link…').isEnabled()).toBe(true);
+    });
+
+    it('T3: the Link button is enabled for a caret in a word', () => {
+        const panel = panelSelecting('hello world', 'hello world', 8, 'hello world', 8);
+
+        expect(findPopupButton(panel, 'Link…').isEnabled()).toBe(true);
+    });
+
+    it('T4: the Link button is enabled for a caret inside a link with no word under it', () => {
+        const panel = panelSelecting('A [te  xt](https://x) link.', 'te  xt', 3, 'te  xt', 3);
+
+        expect(findPopupButton(panel, 'Link…').isEnabled()).toBe(true);
+    });
+
+    it('T5: the Link button is disabled for a caret beside an image', () => {
+        const panel = new MarkdownDocumentPanel();
+
+        panel.setValue('![i](/i.png)');
+        selectStart(panel.getEditor());
+
+        expect(findPopupButton(panel, 'Link…').isEnabled()).toBe(false);
+    });
+
+    it('F7: the Underline button reads as on for an underlined word selected from code', () => {
+        const panel = panelSelecting('++c++ x', 'c', 0, 'c', 1);
+
+        expect(findToggleButton(panel, 'Underline').isSelected()).toBe(true);
     });
 
     it('the Bold button presses when the caret sits inside a bold run, and no other format button does', () => {
