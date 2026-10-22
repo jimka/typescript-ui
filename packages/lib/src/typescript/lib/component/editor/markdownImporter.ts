@@ -283,9 +283,11 @@ export interface RawBlockReading {
 const HELD_BLOCK_TYPES: ReadonlySet<string> = new Set(["heading", "paragraph", "code", "blockquote", "list", "mdtable", "mdblock"]);
 
 /**
- * Reads a raw block's text where it stands — a line end after it, as a save
- * writes it before the next block — and builds the blocks it reads as, the
- * way a load builds them, when that is more than one block and not link
+ * Reads a raw block's text with a line end after it, as a save writes it
+ * before the next block. The last block of a document or `:::` column may
+ * have none after it and reads the same: the lexer takes the end of its input
+ * as the line end an HTML block start needs. Builds the blocks it reads as,
+ * the way a load builds them, when that is more than one block and not link
  * reference definitions alone (which show nothing, one block or several),
  * or one block a load builds a node of its own for (a paragraph, a heading,
  * a code block, …), which the editor shows as that node, not as Markdown

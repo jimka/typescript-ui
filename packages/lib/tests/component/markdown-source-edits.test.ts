@@ -1177,6 +1177,13 @@ describe('line commands leave multi-line constructs whole', () => {
         expectAllDecline('<!-- a\n\nb -->', 8, 8);
     });
 
+    // A block tag name with nothing after it starts an HTML block as the last line of the text too.
+    it('declines a block tag name that ends the text, as it does before a line end', () => {
+        expectAllDecline('a\n\n<div', 5, 5);
+        expectAllDecline('a\n\n<div\n', 5, 5);
+        expectAllDecline('::: columns\na\n\n<div\n|||\nb\n:::', 17, 17);
+    });
+
     it('still rewrites paragraph text next to a construct', () => {
         expect(runAll('| c |\n| - |\n\npara', 14, 14).heading).toBe('| c |\n| - |\n\n## para');
         expect(runAll('```\nx\n```\n\npara', 12, 12).quote).toBe('```\nx\n```\n\n> para');
@@ -1893,6 +1900,12 @@ describe('source mode finds inline text inside containers', () => {
         const [from, to] = rangeOf(text, 'hello', 10);
 
         expect(apply(text, BOLD_SOURCE(text, from, to)!)).toBe('```\nhello\n```\n\n**hello**');
+    });
+
+    it('finds none in an HTML block, a block tag name that ends the text included', () => {
+        expect(BOLD_SOURCE('<div>\nhi\n</div>', 6, 8)).toBeNull();
+        expect(BOLD_SOURCE('a\n\n<div\n', 4, 7)).toBeNull();
+        expect(BOLD_SOURCE('a\n\n<div', 4, 7)).toBeNull();
     });
 });
 

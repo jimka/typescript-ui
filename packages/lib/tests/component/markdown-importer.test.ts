@@ -3980,6 +3980,137 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         });
     });
 
+    describe('a raw block ending in an HTML block start reads the same where its input ends', () => {
+        /**
+         * Loads `source`, selects a range and presses Backspace over it.
+         *
+         * @param source - The Markdown to load.
+         * @param from - The range's start: a needle and an offset from the needle's start.
+         * @param to - The range's end, in the same form.
+         * @returns The edited editor.
+         */
+        function backspaceOver(source: string, from: [string, number], to: [string, number]): MarkdownEditor {
+            const editor = load(source);
+
+            select(editor, from, to);
+            edit(editor, () => {
+                lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+            });
+
+            return editor;
+        }
+
+        it('HE1. an HTML block cut down to its tag name as the last block stays a raw block its save reads as', () => {
+            const editor = backspaceOver('a\n\n<div>', ['<div>', 4], ['<div>', 5]);
+
+            expect(rootTypes(editor)).toEqual(['paragraph', 'markdown-raw-block']);
+            expect(rootTexts(editor)).toEqual(['a', '<div']);
+            expect(editor.getValue()).toBe('a\n\n<div');
+            expectSaveShowsSurface(editor);
+        });
+
+        it('HE2. one cut down to its tag name as the last block of a column shows as its save reads', () => {
+            const editor = backspaceOver('::: columns\na\n\n<div>\n|||\nb\n:::', ['<div>', 4], ['<div>', 5]);
+
+            expect(editor.getValue()).toBe('::: columns\na\n\n<div\n|||\nb\n:::');
+            expectSaveShowsSurface(editor);
+        });
+
+        it('HE3. one cut down to its tag name as the last block of the last column shows as its save reads', () => {
+            const editor = backspaceOver('::: columns\na\n|||\nb\n\n<div>\n:::', ['<div>', 4], ['<div>', 5]);
+
+            expect(editor.getValue()).toBe('::: columns\na\n|||\nb\n\n<div\n:::');
+            expectSaveShowsSurface(editor);
+        });
+
+        it('HE4. a closing tag cut down to its tag name as the last block stays a raw block its save reads as', () => {
+            const editor = backspaceOver('a\n\n</div>', ['</div>', 5], ['</div>', 6]);
+
+            expect(rootTypes(editor)).toEqual(['paragraph', 'markdown-raw-block']);
+            expect(editor.getValue()).toBe('a\n\n</div');
+            expectSaveShowsSurface(editor);
+        });
+
+        it('HE5. a three-line HTML block cut down to its opening tag name stays a raw block its save reads as', () => {
+            const editor = backspaceOver('a\n\n<div>\nw\n</div>', ['<div>', 4], ['</div>', 6]);
+
+            expect(rootTexts(editor)).toEqual(['a', '<div']);
+            expect(editor.getValue()).toBe('a\n\n<div');
+            expectSaveShowsSurface(editor);
+        });
+
+        it('HE6. typing the > back gives the HTML block again (control)', () => {
+            const editor = backspaceOver('a\n\n<div>', ['<div>', 4], ['<div>', 5]);
+
+            edit(editor, () => {
+                ($getSelection() as RangeSelection).insertText('>');
+            });
+
+            expect(rootTypes(editor)).toEqual(['paragraph', 'markdown-raw-block']);
+            expect(editor.getValue()).toBe('a\n\n<div>');
+            expectSaveShowsSurface(editor);
+        });
+
+        it('HE7. one cut down to its tag name before another block stays a raw block (control)', () => {
+            const editor = backspaceOver('a\n\n<div>\n\nb', ['<div>', 4], ['<div>', 5]);
+
+            expect(rootTypes(editor)).toEqual(['paragraph', 'markdown-raw-block', 'paragraph']);
+            expect(editor.getValue()).toBe('a\n\n<div\n\n\nb');
+            expectSaveShowsSurface(editor);
+        });
+
+        it('HE8. one cut down to its tag name in a document ending in a line end stays a raw block (control)', () => {
+            const editor = backspaceOver('a\n\n<div>\n', ['<div>', 4], ['<div>', 5]);
+
+            expect(rootTypes(editor)).toEqual(['paragraph', 'markdown-raw-block']);
+            expect(editor.getValue()).toBe('a\n\n<div\n');
+            expectSaveShowsSurface(editor);
+        });
+
+        it('HE9. one cut down to part of its tag name shows as the paragraph it saves as (control)', () => {
+            const editor = backspaceOver('a\n\n<div>', ['<div>', 3], ['<div>', 5]);
+
+            expect(rootTypes(editor)).toEqual(['paragraph', 'paragraph']);
+            expect(editor.getValue()).toBe('a\n\n\\<di');
+            expectSaveShowsSurface(editor);
+        });
+
+        it('HE10. one cut down to its < shows as the paragraph it saves as (control)', () => {
+            const editor = backspaceOver('a\n\n<div>', ['<div>', 1], ['<div>', 5]);
+
+            expect(rootTypes(editor)).toEqual(['paragraph', 'paragraph']);
+            expect(editor.getValue()).toBe('a\n\n<');
+            expectSaveShowsSurface(editor);
+        });
+
+        // HE11–HE13 do not compare with the viewer, which shows a list or a quote there: the editor has no rich form
+        // for a list item or a quote holding an HTML block (the round-trip harness's known `listItemBlocks` and
+        // `quoteBlocks` divergences).
+        it.each([
+            ['HE11', 'a raw list', '- <div>', '- <div'],
+            ['HE12', 'a raw quote', '> <div>', '> <div'],
+        ])('%s. %s whose HTML block is cut down to its tag name stays a raw block, also after a reload', (_row, _what, source, cut) => {
+            const editor = backspaceOver(source, ['<div>', 4], ['<div>', 5]);
+            const value = editor.getValue();
+            const reloaded = load(value);
+
+            expect(rootTypes(editor)).toEqual(['markdown-raw-block']);
+            expect(rootTexts(editor)).toEqual([cut]);
+            expect(value).toBe(cut);
+            expect(reloaded.getValue()).toBe(value);
+            expect(rootTypes(reloaded)).toEqual(['markdown-raw-block']);
+        });
+
+        it('HE13. a raw list whose second paragraph is an HTML block cut down to its tag name stays a raw block (control)', () => {
+            const editor = backspaceOver('- a\n\n  <div>', ['<div>', 4], ['<div>', 5]);
+            const value = editor.getValue();
+
+            expect(rootTypes(editor)).toEqual(['markdown-raw-block']);
+            expect(value).toBe('- a\n\n  <div');
+            expect(load(value).getValue()).toBe(value);
+        });
+    });
+
     describe('stack fuzz round 2: what an edit leaves shows as it saves', () => {
         /**
          * Pastes nodes at the selection, as a paste does: `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND`, else `insertNodes`.
@@ -4333,5 +4464,90 @@ describe('$importMarkdown — viewer block fixes (VB rows)', () => {
         const source = '- [ ] task';
 
         expectSurface(load(source), source);
+    });
+});
+
+describe('$importMarkdown — an HTML block start ending its input (HT rows)', () => {
+    it('HT1. a block tag name ending the document loads as a raw block', () => {
+        const source = 'a\n\n<div';
+        const editor = load(source);
+
+        expect(rootTypes(editor)).toEqual(['paragraph', 'markdown-raw-block']);
+        expect(rootTexts(editor)).toEqual(['a', '<div']);
+        expectSurface(editor, source);
+        expect(editor.getValue()).toBe(source);
+    });
+
+    it('HT2. a block tag name that is the whole document loads as a raw block', () => {
+        const source = '<div';
+        const editor = load(source);
+
+        expect(rootTypes(editor)).toEqual(['markdown-raw-block']);
+        expect(editor.getValue()).toBe(source);
+    });
+
+    it('HT3. a block tag name ending a column loads as a raw block in that column', () => {
+        const source = '::: columns\na\n\n<div\n|||\nb\n:::';
+        const editor = load(source);
+        const firstColumnTypes = readDocument(editor, () => {
+            const firstColumn = ($getRoot().getFirstChild() as ElementNode).getFirstChild() as ElementNode;
+
+            return firstColumn.getChildren().map((node) => node.getType());
+        });
+
+        expect(rootTypes(editor)).toEqual(['markdown-block']);
+        expectSurface(editor, source);
+        expect(firstColumnTypes).toEqual(['paragraph', 'markdown-raw-block']);
+    });
+
+    it.each(['- <div', '> <div'])('HT4. %j loads as a raw block, as a list or quote holding <div> does', (source) => {
+        const editor = load(source);
+
+        expect(rootTypes(editor)).toEqual(['markdown-raw-block']);
+        expect(rootTexts(editor)).toEqual([source]);
+        expect(editor.getValue()).toBe(source);
+    });
+
+    it('HT5. an inline tag name ending the document still loads as a paragraph (control)', () => {
+        expect(rootTypes(load('a\n\n<span'))).toEqual(['paragraph', 'paragraph']);
+    });
+
+    it('HT6. <div on the last line of a paragraph still loads as that paragraph (control)', () => {
+        expect(rootTypes(load('a\n<div'))).toEqual(['paragraph']);
+    });
+
+    // `marked` lexes a list item's content, and each run of a quote's `>` lines, as an input of its own, so the
+    // tag name ends an input here although the list or the quote goes on.
+    it.each([
+        ['a quote line before a lazy line', '> <div\nfoo'],
+        ['a list item\'s continuation line', '- a\n  <div'],
+        ['an ordered item', '1. <div'],
+        ['an item of a loose list', '- a\n\n- <div'],
+    ])('HT7. a block tag name on %s loads as a raw block, as the same line closed by > does', (_where, source) => {
+        const editor = load(source);
+
+        expect(rootTypes(editor)).toEqual(['markdown-raw-block']);
+        expect(rootTypes(load(source.replace('<div', '<div>')))).toEqual(['markdown-raw-block']);
+        expect(rootTexts(editor)).toEqual([source]);
+        expect(editor.getValue()).toBe(source);
+    });
+
+    it('HT8. an inline tag name on a quote line before a lazy line still loads as a quote (control)', () => {
+        const source = '> <span\nfoo';
+        const editor = load(source);
+
+        expect(rootTypes(editor)).toEqual(['quote']);
+        expectSurface(editor, source);
+    });
+
+    // `<pre` ends the paragraph above it in `marked` with nothing after it, where `<div` (HT6) does not.
+    it('HT9. <pre on the line after a paragraph loads as a raw block after that paragraph', () => {
+        const source = 'a\n<pre';
+        const editor = load(source);
+
+        expect(rootTypes(editor)).toEqual(['paragraph', 'markdown-raw-block']);
+        expect(rootTexts(editor)).toEqual(['a', '<pre']);
+        expectSurface(editor, source);
+        expect(editor.getValue()).toBe(source);
     });
 });

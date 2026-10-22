@@ -1318,6 +1318,27 @@ describe('Markdown task-list items', () => {
     });
 });
 
+describe('Markdown HTML block start ending its input', () => {
+    it('BF18. shows a block tag name ending the document as an HTML block\'s fallback text, not a paragraph', () => {
+        new Markdown('a\n\n<div').getElement(true);
+
+        expect(textWriteTags()).toEqual(['P', 'SPAN']);
+        expect(textWrites()).toEqual(['a', '<div']);
+    });
+
+    it('BF19. shows a block tag name ending a column as an HTML block\'s fallback text in that column', () => {
+        new Markdown('::: columns\na\n\n<div\n|||\nb\n:::').getElement(true);
+
+        expect(textWriteTags()).toEqual(['P', 'SPAN', 'P']);
+    });
+
+    it('BF20. still shows an inline tag name ending the document as a paragraph (control)', () => {
+        new Markdown('a\n\n<span').getElement(true);
+
+        expect(textWriteTags()).toEqual(['P', 'P']);
+    });
+});
+
 describe('Markdown nested inline in a heading', () => {
     it('nests <strong> inside the <h2> for ## **bold** head', () => {
         new Markdown('## **bold** head').getElement(true);
