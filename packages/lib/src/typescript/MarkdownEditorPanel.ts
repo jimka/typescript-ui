@@ -19,7 +19,7 @@ A **WYSIWYG** editor whose value is a *Markdown* string, built on Lexical.
 - Use Ctrl/Cmd+B and Ctrl/Cmd+I
 - Right-click a word for [coloured]{color=#cc0000} or [sized]{size=1.3em} text
 
-1. It emits only the [Markdown](https://commonmark.org) subset the viewer renders
+1. It emits only the [Markdown][commonmark] subset the viewer renders
 2. The panel on the right renders \`getValue()\` live
 
 > Edit on the left; the read-only Markdown viewer on the right stays in sync.
@@ -44,6 +44,8 @@ Right column.
 \`\`\`
 const editor = new MarkdownEditor("# Hello");
 \`\`\`
+
+[commonmark]: https://commonmark.org
 `;
 
 /**

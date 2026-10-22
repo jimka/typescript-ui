@@ -14,14 +14,15 @@ import { $isCodeNode } from "@lexical/code";
 import type { CodeNode } from "@lexical/code";
 import { $isTableCellNode, $isTableNode, $isTableRowNode } from "@lexical/table";
 import type { TableCellNode, TableNode, TableRowNode } from "@lexical/table";
-import type { Token, Tokens } from "marked";
+import { $dfs } from "@lexical/utils";
+import type { Links, Token, Tokens } from "marked";
 import {
     blockStyleToAttributes, cssTextToAttributes, formatAttributes, joinColumnSections, parseAttributes, resolveBlockStyle, resolveImageSpec,
     resolveSpanStyle, spanStyleToAttributes,
 } from "~/component/display/markdownAttributes.js";
-import { lexMarkdown, lexMarkdownInline } from "~/component/display/markdownExtensions.js";
+import { lexMarkdown, lexMarkdownInline, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions } from "~/component/display/markdownExtensions.js";
 import type { MdTableToken } from "~/component/display/markdownTableExtension.js";
-import { $isMarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
+import { $isMarkdownBlockNode, $isMarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import type { MarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import type { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
@@ -31,6 +32,8 @@ import {
     nestedLinkState, spanAttributesState,
 } from "~/component/editor/markdownNodeState.js";
 import type { KeptSource } from "~/component/editor/markdownNodeState.js";
+import { $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
+import type { ReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import type { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 
@@ -38,16 +41,6 @@ import type { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/e
 
 /** A thematic break: three or more of one of `-`, `*` and `_`, spaces between them allowed (CommonMark §4.1). */
 const THEMATIC_BREAK = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
-
-/**
- * The characters that, written right after a shortcut reference `[label]`,
- * would make it part of another construct: an inline link's destination, a
- * styled span's attributes, or a full reference's second bracket.
- */
-const AFTER_SHORTCUT_GUARDED = "([{";
-
-/** A task item's checkbox as the importer keeps it, a source run: its marker and the space after it. */
-const TASK_MARKER_SOURCE = /^\[[ xX]\] $/;
 
 /**
  * A source run's text that is a shortcut reference: `[label]` or
@@ -249,6 +242,22 @@ const BREAK_READING = "\u0001break";
 /** The marks whitespace shows, read with {@link InlineContext.readsWhitespace}: a line or a background drawn across it. */
 const DRAWN_ON_WHITESPACE: ReadonlySet<string> = new Set(["strike", "underline", "code"]);
 
+/**
+ * The characters that, written right after a shortcut reference `[label]`,
+ * would make it part of another construct: an inline link's destination, a
+ * styled span's attributes, or a full reference's second bracket.
+ */
+const AFTER_SHORTCUT_GUARDED = "([{";
+
+/** A shortcut reference that, opening a list item's text before whitespace, is a task item's checkbox instead. */
+const TASK_CHECKBOX_SHORTCUT = /^\[[ xX]\]$/;
+
+/** A task item's checkbox as the importer keeps it, a source run: its marker and the space after it. */
+const TASK_MARKER_SOURCE = /^\[[ xX]\] $/;
+
+/** A blank line in a link title: a line break, then whitespace alone up to the next one. */
+const BLANK_LINE_IN_TITLE = /\n[ \t]*\n/;
+
 // ---------------------------------------------------------------- types
 
 /** Where inline content is being written. */
@@ -280,16 +289,21 @@ interface InlineContext {
      * read-back; never for a writing.
      */
     readonly readsWhitespace?: boolean;
+    /**
+     * The saved document's link reference definitions, as the viewer resolves
+     * them; `null` when the document holds no reference link to resolve.
+     */
+    readonly definitions: Links | null;
 }
 
 /** The context of a paragraph, quote or list item. */
-const MULTI_LINE: InlineContext = { singleLine: false, inTableCell: false };
+const MULTI_LINE: InlineContext = { singleLine: false, inTableCell: false, definitions: null };
 
 /** The context of a heading. */
-const HEADING_LINE: InlineContext = { singleLine: true, inTableCell: false };
+const HEADING_LINE: InlineContext = { singleLine: true, inTableCell: false, definitions: null };
 
 /** The context of a table cell's paragraph. */
-const TABLE_CELL: InlineContext = { singleLine: true, inTableCell: true };
+const TABLE_CELL: InlineContext = { singleLine: true, inTableCell: true, definitions: null };
 
 /** An emphasis-like mark, written as a delimiter pair. `code` is handled separately, as a code span. */
 type Mark = "bold" | "italic" | "strike" | "underline";
@@ -308,6 +322,9 @@ const UNDERSCORE_DELIMITERS: Readonly<Partial<Record<Mark, string>>> = { bold: "
 
 /** A Unicode punctuation or symbol character: what `marked`'s flanking rules count as punctuation. */
 const FLANKING_PUNCTUATION = /^[\p{P}\p{S}]$/u;
+
+/** The mark each emphasis-like inline token of the viewer's lexer writes. */
+const TOKEN_MARKS: Readonly<Record<string, Mark>> = { strong: "bold", em: "italic", del: "strike", underline: "underline" };
 
 /** The Lexical text format each mark reads. */
 const MARK_FORMATS: Readonly<Record<Mark, TextFormatType>> = {
@@ -386,6 +403,7 @@ type Piece =
     | { kind: "delimiter"; text: string; mark: Mark; opens: boolean } // an emphasis delimiter, written as is
     | { kind: "autolink"; text: string; bare: string } // `bare` where its neighbours bound it, else `text`
     | { kind: "source"; text: string; shortcut?: boolean } // a source node's Markdown, written as is; `shortcut` for a shortcut reference
+    | { kind: "reference"; text: string; shortcut: boolean } // `[label]` or `[label][]`, written as is
     | { kind: "break"; marker: string }     // a hard line break with its marker
     | { kind: "newline" };                  // a soft line break kept from the source
 
@@ -500,7 +518,81 @@ interface InlineWriter {
  * @returns The Markdown: blocks joined by one blank line, no trailing newline.
  */
 export function $serializeMarkdown(): string {
-    return serializeBlockList($getRoot().getChildren());
+    return serializeBlockList($getRoot().getChildren(), $collectDefinitions());
+}
+
+/**
+ * Serializes a link's text as the body of its brackets — marks, styles and
+ * escaping as in any link — in a paragraph's context with no marks open
+ * around it, so the result depends only on the link's own children.
+ * Comparing it with the same function's output at load tells whether the
+ * text has been edited or formatted since.
+ *
+ * @param link - The link.
+ * @returns The text between the link's brackets.
+ */
+export function $serializeLinkContent(link: LinkNode): string {
+    const writer: InlineWriter = {
+        pieces: [], context: MULTI_LINE, policy: WRITING_POLICIES[0]!, stack: [], pending: [], pendingUnderline: false,
+        inLink: true, openOrder: () => MARK_ORDER,
+    };
+
+    writeUnits(writer, groupSegments(flattenInline(link.getChildren())), []);
+    closeMarks(writer, 0);
+    flushPending(writer);
+
+    return assembleLines(writer.pieces, MULTI_LINE);
+}
+
+/**
+ * Reads the link reference definitions the saved document will hold, as the
+ * viewer resolves them: only raw blocks can hold one (the serializer escapes
+ * the `[` of any other text), and a raw block lexes alone as it does in the
+ * document, so their text, joined as blocks, is lexed for `marked`'s own map.
+ *
+ * @returns The definitions, or `null` when the document holds no reference
+ *   link, so none is needed.
+ */
+function $collectDefinitions(): Links | null {
+    const hasReference = $dfs().some(({ node }) => $isReferenceLinkNode(node));
+
+    if (!hasReference) {
+        return null;
+    }
+
+    return lexMarkdownLinkDefinitions(rawBlockTexts($getRoot().getChildren()).join(BLOCK_SEPARATOR));
+}
+
+/**
+ * The text of every raw block among `nodes`, in their `:::` fences' columns
+ * and in their lists' items — every place a block is written as a block of
+ * the saved document, where `marked` reads a definition it holds.
+ *
+ * @param nodes - Blocks, in document order.
+ * @returns The raw blocks' text, in document order.
+ */
+function rawBlockTexts(nodes: LexicalNode[]): string[] {
+    return nodes.flatMap((node): string[] => {
+        if ($isMarkdownRawBlockNode(node)) {
+            return [node.getTextContent()];
+        }
+
+        const holdsBlocks = $isMarkdownBlockNode(node) || $isMarkdownColumnNode(node) || $isListNode(node) || $isListItemNode(node);
+
+        return holdsBlocks ? rawBlockTexts(node.getChildren()) : [];
+    });
+}
+
+/**
+ * The Markdown the document's link reference definitions are read from: its
+ * raw blocks' text, joined as blocks, as {@link $collectDefinitions} lexes it.
+ * Two documents whose texts are equal hold the same definitions. Must run
+ * inside an `editor.read` or `editor.update`.
+ *
+ * @returns The raw blocks' text.
+ */
+export function $definitionsSource(): string {
+    return rawBlockTexts($getRoot().getChildren()).join(BLOCK_SEPARATOR);
 }
 
 /**
@@ -512,7 +604,7 @@ export function $serializeMarkdown(): string {
  * @returns Its Markdown, or `""` when it writes nothing.
  */
 export function $serializeBlock(node: LexicalNode): string {
-    return serializeBlock(node);
+    return serializeBlock(node, $collectDefinitions());
 }
 
 /**
@@ -524,7 +616,7 @@ export function $serializeBlock(node: LexicalNode): string {
  * @returns Their Markdown, lines separated by `\n`.
  */
 export function $serializeInlineNodes(nodes: LexicalNode[]): string {
-    return serializeInlineNodes(nodes, MULTI_LINE);
+    return serializeInlineNodes(nodes, { ...MULTI_LINE, definitions: $collectDefinitions() });
 }
 
 /**
@@ -565,8 +657,12 @@ export function $readsBackAsShown(node: LexicalNode, inTableCell?: boolean): boo
  */
 export function $runsReadingOtherwise(node: LexicalNode, inTableCell?: boolean): Array<{ nodes: LexicalNode[]; tokens: Token[] }> {
     const inCell = inTableCell ?? $findMatchingParent(node, $isTableCellNode) !== null;
+    // A reference — a reference link, or one kept as source — reads back with the document's definitions, as saved.
+    const definitions = lexMarkdownLinkDefinitions($definitionsSource());
 
-    return inlineRuns(node, inCell).flatMap(([nodes, context]) => {
+    return inlineRuns(node, inCell).flatMap(([nodes, base]) => {
+        const context: InlineContext = { ...base, definitions };
+
         if (nodes.length === 0 || inlineReadsBack(nodes, context)) {
             return [];
         }
@@ -602,26 +698,30 @@ export interface StandardFormReading {
  * @param container - The block (a table cell for a cell's content).
  * @param tokens - The inline tokens it was loaded from (a task item's checkbox first).
  * @param headingText - A heading's source text, as `marked` gives it; `null` for any other block.
+ * @param definitions - The document's link reference definitions, which keep a reference link in its written form; `null` for none.
  * @returns How far the standard form reads as the tokens do.
  */
-export function $readStandardForm(container: ElementNode, tokens: readonly Token[], headingText: string | null): StandardFormReading {
+export function $readStandardForm(
+    container: ElementNode, tokens: readonly Token[], headingText: string | null, definitions: Links | null,
+): StandardFormReading {
     const cell = $isTableCellNode(container);
     const heading = $isHeadingNode(container) ? container : null;
-    const context = cell ? TABLE_CELL : heading !== null ? headingContext(heading) : $isListItemNode(container) ? { ...MULTI_LINE, inListItem: true } : MULTI_LINE;
+    const base = cell ? TABLE_CELL : heading !== null ? headingContext(heading) : $isListItemNode(container) ? { ...MULTI_LINE, inListItem: true } : MULTI_LINE;
+    const context: InlineContext = { ...base, definitions };
     const reading: InlineContext = { ...context, readsWhitespace: true };
     const intended: string[] = [];
     const spans = new Map<Token, readonly [number, number]>();
 
     pushTokenReading(intended, tokens, { marks: [], link: "", style: "" }, reading, spans);
 
-    const written = cell ? serializeTableCell(container) : serializeInline(container, context);
+    const written = cell ? serializeTableCell(container, definitions) : serializeInline(container, context);
     const score = readingScore(withoutTrailingWhitespace(markdownReading(written, reading)), withoutTrailingWhitespace(intended));
 
     if (heading === null || headingText === null) {
         return { score, spans, idScore: Infinity };
     }
 
-    const writtenHeading = lexMarkdown(serializeHeading(heading)).find((token) => token.type === "heading") as Tokens.Heading | undefined;
+    const writtenHeading = lexMarkdown(serializeHeading(heading, definitions)).find((token) => token.type === "heading") as Tokens.Heading | undefined;
     const [id, writtenId] = [headingSlug(headingText), headingSlug(writtenHeading?.text ?? "")];
     const differs = [...id].findIndex((char, index) => writtenId[index] !== char);
 
@@ -781,7 +881,7 @@ function cellReading(cell: TableCellNode, reading: InlineContext): string[] | nu
 function runMarkdown(nodes: LexicalNode[], context: InlineContext): string {
     const cell = nodes.length === 1 && $isTableCellNode(nodes[0]) ? nodes[0] : null;
 
-    return cell !== null ? serializeTableCell(cell) : serializeInlineNodes(nodes, context);
+    return cell !== null ? serializeTableCell(cell, context.definitions) : serializeInlineNodes(nodes, context);
 }
 
 /**
@@ -878,15 +978,18 @@ export function formatDelimiterRow(alignments: ElementFormatType[], widths: read
  * continuing a raw list of its marker) is kept apart by {@link LIST_SEPARATOR}.
  *
  * @param nodes - The blocks, in document order.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  * @returns The blocks joined by one blank line.
  */
-function serializeBlockList(nodes: LexicalNode[]): string {
+function serializeBlockList(nodes: LexicalNode[], definitions: Links | null): string {
     const written: string[] = [];
     let previousJoinable: string | undefined;
     let previousRaw: string | undefined;
 
     nodes.forEach((node, index) => {
-        const markdown = $isListNode(node) ? serializeListApart(node, previousJoinable, nodes.slice(index + 1)) : serializeBlock(node);
+        const markdown = $isListNode(node)
+            ? serializeListApart(node, previousJoinable, nodes.slice(index + 1), definitions)
+            : serializeBlock(node, definitions);
 
         if (markdown === "") {
             return;
@@ -922,12 +1025,13 @@ function serializeBlockList(nodes: LexicalNode[]): string {
  * @param before - The Markdown of the raw block or list written right
  *   before it, if one was.
  * @param following - The blocks after it.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  * @returns The list's Markdown, with any separator.
  */
-function serializeListApart(list: ListNode, before: string | undefined, following: LexicalNode[]): string {
-    const markdown = serializeList(list);
-    const nextNode = following.find((node) => !$isParagraphNode(node) || serializeBlock(node) !== "");
-    const after = $isMarkdownRawBlockNode(nextNode) ? serializeBlock(nextNode) : undefined;
+function serializeListApart(list: ListNode, before: string | undefined, following: LexicalNode[], definitions: Links | null): string {
+    const markdown = serializeList(list, definitions);
+    const nextNode = following.find((node) => !$isParagraphNode(node) || serializeBlock(node, definitions) !== "");
+    const after = $isMarkdownRawBlockNode(nextNode) ? serializeBlock(nextNode, definitions) : undefined;
 
     if (before === undefined && after === undefined) {
         return markdown;
@@ -937,7 +1041,7 @@ function serializeListApart(list: ListNode, before: string | undefined, followin
     const joinsAfter = (candidate: string): boolean => after !== undefined && blocksJoin(candidate, after);
     const markers = list.getListType() === "number" ? ORDERED_DELIMITERS : BULLET_MARKERS;
     const own = $getState(list, listMarkerState);
-    const candidates = [markdown, ...markers.filter((marker) => marker !== own).map((marker) => serializeList(list, false, marker))];
+    const candidates = [markdown, ...markers.filter((marker) => marker !== own).map((marker) => serializeList(list, definitions, false, marker))];
     const apart = candidates.find((candidate) => !joinsBefore(candidate) && !joinsAfter(candidate));
 
     if (apart !== undefined) {
@@ -993,19 +1097,20 @@ function blocksJoin(first: string, second: string): boolean {
  * Serializes one block node.
  *
  * @param node - The block.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  * @returns Its Markdown, or `""` when it writes nothing.
  */
-function serializeBlock(node: LexicalNode): string {
+function serializeBlock(node: LexicalNode, definitions: Links | null): string {
     if ($isParagraphNode(node)) {
-        return serializeInline(node, MULTI_LINE);
+        return serializeInline(node, { ...MULTI_LINE, definitions });
     }
 
     if ($isHeadingNode(node)) {
-        return serializeHeading(node);
+        return serializeHeading(node, definitions);
     }
 
     if ($isQuoteNode(node)) {
-        return serializeQuote(node);
+        return serializeQuote(node, definitions);
     }
 
     if ($isCodeNode(node)) {
@@ -1013,22 +1118,22 @@ function serializeBlock(node: LexicalNode): string {
     }
 
     if ($isListNode(node)) {
-        return serializeList(node);
+        return serializeList(node, definitions);
     }
 
     if ($isTableNode(node)) {
-        return serializeTable(node);
+        return serializeTable(node, definitions);
     }
 
     if ($isMarkdownBlockNode(node)) {
-        return serializeFence(node);
+        return serializeFence(node, definitions);
     }
 
     if ($isMarkdownRawBlockNode(node)) {
-        return serializeRawBlock(node);
+        return serializeRawBlock(node, definitions);
     }
 
-    return $isElementNode(node) ? serializeBlockList(node.getChildren()) : node.getTextContent();
+    return $isElementNode(node) ? serializeBlockList(node.getChildren(), definitions) : node.getTextContent();
 }
 
 /**
@@ -1040,17 +1145,18 @@ function serializeBlock(node: LexicalNode): string {
  * blocks after it stay their own, as the editor shows them.
  *
  * @param node - The raw block.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  * @returns Its Markdown.
  */
-function serializeRawBlock(node: MarkdownRawBlockNode): string {
-    if ($rawBlockWritesAsParagraph(node)) {
+function serializeRawBlock(node: MarkdownRawBlockNode, definitions: Links | null): string {
+    if ($rawBlockWritesAsParagraph(node, definitions)) {
         return serializeInline(node, MULTI_LINE);
     }
 
     const text = node.getTextContent();
 
     // A block only a second blank line ends writes that line itself, so the block after it stays its own.
-    return rawBlockEnd(text) === "wide" && $writesBlockAfter(node) ? `${text}\n` : text;
+    return rawBlockEnd(text) === "wide" && $writesBlockAfter(node, definitions) ? `${text}\n` : text;
 }
 
 /**
@@ -1060,10 +1166,12 @@ function serializeRawBlock(node: MarkdownRawBlockNode): string {
  * `editor.read` or `editor.update`.
  *
  * @param node - The raw block.
+ * @param definitions - The saved document's link reference definitions, or
+ *   `null`; read off the document when omitted.
  * @returns `true` when it is written as a paragraph.
  */
-export function $rawBlockWritesAsParagraph(node: MarkdownRawBlockNode): boolean {
-    return rawBlockEnd(node.getTextContent()) === "runsOn" && $writesBlockAfter(node);
+export function $rawBlockWritesAsParagraph(node: MarkdownRawBlockNode, definitions: Links | null = $collectDefinitions()): boolean {
+    return rawBlockEnd(node.getTextContent()) === "runsOn" && $writesBlockAfter(node, definitions);
 }
 
 /**
@@ -1071,10 +1179,11 @@ export function $rawBlockWritesAsParagraph(node: MarkdownRawBlockNode): boolean 
  * Must run inside an `editor.read` or `editor.update`.
  *
  * @param node - The node.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  * @returns `true` when a later sibling writes Markdown.
  */
-function $writesBlockAfter(node: LexicalNode): boolean {
-    return node.getNextSiblings().some((sibling) => serializeBlock(sibling) !== "");
+function $writesBlockAfter(node: LexicalNode, definitions: Links | null): boolean {
+    return node.getNextSiblings().some((sibling) => serializeBlock(sibling, definitions) !== "");
 }
 
 /**
@@ -1129,21 +1238,22 @@ function runsOn(markdown: string, separator: string): boolean {
  * line breaks as spaces.
  *
  * @param node - The heading.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  * @returns `#`×level, then a space and the content when there is any; or the
  *   content's lines and a `===` / `---` underline.
  */
-function serializeHeading(node: HeadingNode): string {
+function serializeHeading(node: HeadingNode, definitions: Links | null): string {
     const level = Number(node.getTag().slice(1));
 
     if (level <= SETEXT_MAX_LEVEL) {
-        const lines = serializeInline(node, MULTI_LINE);
+        const lines = serializeInline(node, { ...MULTI_LINE, definitions });
 
         if (lines.includes("\n") && !lines.split("\n").some((line) => SETEXT_INTERRUPTING_LINE.test(line))) {
             return `${lines}\n${level === 1 ? SETEXT_H1_UNDERLINE : SETEXT_H2_UNDERLINE}`;
         }
     }
 
-    const content = serializeInline(node, HEADING_LINE).replace(/(^|[ \t])(#+)$/, "$1\\$2");
+    const content = serializeInline(node, { ...HEADING_LINE, definitions }).replace(/(^|[ \t])(#+)$/, "$1\\$2");
 
     return "#".repeat(level) + (content === "" ? "" : " " + content);
 }
@@ -1152,10 +1262,11 @@ function serializeHeading(node: HeadingNode): string {
  * Serializes a quote: every line of its content prefixed `> `.
  *
  * @param node - The quote.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  * @returns The quoted lines, or `>` for an empty quote.
  */
-function serializeQuote(node: QuoteNode): string {
-    const content = serializeInline(node, MULTI_LINE);
+function serializeQuote(node: QuoteNode, definitions: Links | null): string {
+    const content = serializeInline(node, { ...MULTI_LINE, definitions });
 
     if (content === "") {
         return ">";
@@ -1213,20 +1324,21 @@ function indentLines(markdown: string, indent: string): string[] {
  * marker width plus one. A loose list separates its items with a blank line.
  *
  * @param list - The list.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  * @param underText - Whether the list's first line follows a line of text in
  *   the same container: a bare `-` marker there would be a setext underline,
  *   so a `-` bullet list whose first line is a bare marker is written with `*`.
  * @param marker - The bullet or delimiter to write instead of the authored one.
  * @returns One line or more per item, joined by newlines.
  */
-function serializeList(list: ListNode, underText = false, marker?: string): string {
+function serializeList(list: ListNode, definitions: Links | null, underText = false, marker?: string): string {
     const items: ItemBlock[][] = [];
 
     for (const item of list.getChildren().filter($isListItemNode)) {
         const continues = $isListNode(item.getFirstChild()) && items.length > 0;
         const blocks = continues ? items[items.length - 1]! : [];
 
-        appendItemBlocks(item, blocks);
+        appendItemBlocks(item, blocks, definitions);
 
         if (!continues) {
             items.push(blocks);
@@ -1252,8 +1364,9 @@ function serializeList(list: ListNode, underText = false, marker?: string): stri
  *
  * @param item - The list item.
  * @param blocks - The blocks of the item it belongs to. Extended in place.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  */
-function appendItemBlocks(item: ListItemNode, blocks: ItemBlock[]): void {
+function appendItemBlocks(item: ListItemNode, blocks: ItemBlock[], definitions: Links | null): void {
     let inline: LexicalNode[] = [];
 
     const push = (markdown: string, isList: boolean, isText: boolean, more?: Pick<ItemBlock, "marker" | "withMarker" | "isRaw" | "continuesText">): void => {
@@ -1263,7 +1376,7 @@ function appendItemBlocks(item: ListItemNode, blocks: ItemBlock[]): void {
     };
 
     const flushInline = (): void => {
-        push(serializeInlineNodes(inline, { ...MULTI_LINE, inListItem: true }), false, true);
+        push(serializeInlineNodes(inline, { ...MULTI_LINE, definitions, inListItem: true }), false, true);
         inline = [];
     };
 
@@ -1280,15 +1393,15 @@ function appendItemBlocks(item: ListItemNode, blocks: ItemBlock[]): void {
             const previous = blocks[blocks.length - 1];
             // A list of bare markers under text reads as more lines of that text, so a list after it is under text too.
             const underText = previous !== undefined && (!previous.isList || previous.continuesText === true);
-            const markdown = serializeList(child, underText);
+            const markdown = serializeList(child, definitions, underText);
 
             push(markdown, true, false, {
                 marker:        writtenListMarker(markdown),
-                withMarker:    (marker) => serializeList(child, underText, marker),
+                withMarker:    (marker) => serializeList(child, definitions, underText, marker),
                 continuesText: underText && markdown.split("\n").every((line) => BARE_LIST_MARKER_LINE.test(line)),
             });
         } else {
-            push(serializeBlock(child), false, $isParagraphNode(child), { isRaw: $isMarkdownRawBlockNode(child) });
+            push(serializeBlock(child, definitions), false, $isParagraphNode(child), { isRaw: $isMarkdownRawBlockNode(child) });
         }
     }
 
@@ -1325,7 +1438,8 @@ function itemBlockKinds(item: ListItemNode): Array<"list" | "text" | "block"> {
 
         flushInline();
 
-        if ($isListNode(child) ? child.getChildrenSize() > 0 : serializeBlock(child) !== "") {
+        // Definitions only choose how a reference link is written, never whether a block writes anything.
+        if ($isListNode(child) ? child.getChildrenSize() > 0 : serializeBlock(child, null) !== "") {
             kinds.push($isListNode(child) ? "list" : $isParagraphNode(child) ? "text" : "block");
         }
     }
@@ -1486,9 +1600,10 @@ function writtenListMarker(markdown: string): string {
  * columns.
  *
  * @param table - The table.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  * @returns The table's lines, or `""` for a table with no rows.
  */
-function serializeTable(table: TableNode): string {
+function serializeTable(table: TableNode, definitions: Links | null): string {
     const rows = table.getChildren().filter($isTableRowNode);
 
     if (rows.length === 0) {
@@ -1502,12 +1617,12 @@ function serializeTable(table: TableNode): string {
     const pendingRowSpans = new Map<number, number>();
 
     const lines = [
-        formatPipeRow([...headerCells.map((cell) => serializeTableCell(cell)), ...padding]),
+        formatPipeRow([...headerCells.map((cell) => serializeTableCell(cell, definitions)), ...padding]),
         formatDelimiterRow(alignments, table.getColWidths() ?? []),
     ];
 
     for (const row of rows.slice(1)) {
-        lines.push(formatPipeRow(serializeBodyRow(row, columnCount, pendingRowSpans)));
+        lines.push(formatPipeRow(serializeBodyRow(row, columnCount, pendingRowSpans, definitions)));
     }
 
     return lines.join("\n");
@@ -1543,9 +1658,12 @@ function formatPipeRow(cells: string[]): string {
  * @param row - The body row.
  * @param columnCount - The table's column count (the header's cell count).
  * @param pendingRowSpans - Per column, how many more rows a span above still covers. Updated in place.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  * @returns One text per column.
  */
-function serializeBodyRow(row: TableRowNode, columnCount: number, pendingRowSpans: Map<number, number>): string[] {
+function serializeBodyRow(
+    row: TableRowNode, columnCount: number, pendingRowSpans: Map<number, number>, definitions: Links | null,
+): string[] {
     const cells = row.getChildren().filter($isTableCellNode);
     const texts: string[] = [];
     let cellIndex = 0;
@@ -1570,7 +1688,7 @@ function serializeBodyRow(row: TableRowNode, columnCount: number, pendingRowSpan
             continue;
         }
 
-        texts.push(serializeTableCell(cell));
+        texts.push(serializeTableCell(cell, definitions));
         column = writeCellSpans(cell, column, texts, pendingRowSpans);
     }
 
@@ -1615,11 +1733,12 @@ function writeCellSpans(cell: TableCellNode, column: number, texts: string[], pe
  * whole text is a merge marker is escaped so it reads back as content.
  *
  * @param cell - The cell.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  * @returns The cell's text for its pipe row.
  */
-function serializeTableCell(cell: TableCellNode): string {
+function serializeTableCell(cell: TableCellNode, definitions: Links | null): string {
     const text = cell.getChildren()
-        .map((child) => serializeCellChild(child))
+        .map((child) => serializeCellChild(child, definitions))
         .map((paragraph, index) => (index > 0 && /^[*_~]/.test(paragraph) ? " " + paragraph : paragraph))
         .join(CELL_PARAGRAPH_BREAK)
         .trim();
@@ -1636,19 +1755,20 @@ function serializeTableCell(cell: TableCellNode): string {
  * into the cell's text.
  *
  * @param child - The cell's child.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  * @returns Its text for the pipe row.
  */
-function serializeCellChild(child: LexicalNode): string {
+function serializeCellChild(child: LexicalNode, definitions: Links | null): string {
     if (!$isListNode(child)) {
-        return serializeInlineNodes($isElementNode(child) ? child.getChildren() : [child], TABLE_CELL);
+        return serializeInlineNodes($isElementNode(child) ? child.getChildren() : [child], { ...TABLE_CELL, definitions });
     }
 
     return child.getChildren().filter($isListItemNode).flatMap((item) => {
         const children = item.getChildren();
         const inline = children.filter((node) => !$isListNode(node));
-        const lines = inline.length > 0 ? [serializeInlineNodes(inline, TABLE_CELL)] : [];
+        const lines = inline.length > 0 ? [serializeInlineNodes(inline, { ...TABLE_CELL, definitions })] : [];
 
-        return [...lines, ...children.filter($isListNode).map((list) => serializeCellChild(list))];
+        return [...lines, ...children.filter($isListNode).map((list) => serializeCellChild(list, definitions))];
     }).join(CELL_PARAGRAPH_BREAK);
 }
 
@@ -1658,13 +1778,14 @@ function serializeCellChild(child: LexicalNode): string {
  * open a fence).
  *
  * @param node - The fence.
+ * @param definitions - The saved document's link reference definitions, or `null`.
  * @returns The fence, or its children's blocks when it has no columns.
  */
-function serializeFence(node: MarkdownBlockNode): string {
+function serializeFence(node: MarkdownBlockNode, definitions: Links | null): string {
     const columns = node.getColumns();
 
     if (columns.length === 0) {
-        return serializeBlockList(node.getChildren());
+        return serializeBlockList(node.getChildren(), definitions);
     }
 
     const attributes = fenceAttributeText(node);
@@ -1673,7 +1794,7 @@ function serializeFence(node: MarkdownBlockNode): string {
         + (columns.length > 1 ? " columns" : "")
         + (attributes !== "" ? ` {${attributes}}` : columns.length > 1 ? "" : " {}");
 
-    const body = joinColumnSections(columns.map((column) => serializeBlockList(column.getChildren())));
+    const body = joinColumnSections(columns.map((column) => serializeBlockList(column.getChildren(), definitions)));
 
     return `${opening}\n${body}\n:::`;
 }
@@ -2404,16 +2525,22 @@ function rewrapNestedLinkRuns(run: SourceSegment[]): Segment[] {
 
 /**
  * Tells whether Markdown reads as nothing but whole links, one after
- * another.
+ * another — with the document's link reference definitions in force when it
+ * does not without them, since an outer link written as a reference
+ * (`[[a](/in)][label]`) reads as one only with its definition. Must run
+ * inside an `editor.read` or `editor.update`.
  *
  * @param source - The Markdown.
  * @returns `true` when it lexes to link tokens alone, together its whole text.
  */
 function formsWholeLinks(source: string): boolean {
-    const paragraph = lexMarkdown(source)[0];
-    const tokens = paragraph?.type === "paragraph" ? (paragraph as Tokens.Paragraph).tokens : [];
+    const whole = (blocks: Token[]): boolean => {
+        const tokens = blocks[0]?.type === "paragraph" ? (blocks[0] as Tokens.Paragraph).tokens : [];
 
-    return tokens.length > 0 && tokens.every((token) => token.type === "link") && tokens.map((token) => token.raw).join("") === source;
+        return tokens.length > 0 && tokens.every((token) => token.type === "link") && tokens.map((token) => token.raw).join("") === source;
+    };
+
+    return whole(lexMarkdown(source)) || whole(lexMarkdownWithDefinitions(source, lexMarkdownLinkDefinitions($definitionsSource())));
 }
 
 /**
@@ -2928,21 +3055,35 @@ function writeSourceSegment(writer: InlineWriter, segment: SourceSegment, marks:
 }
 
 /**
- * Writes a link or style group: marks every segment carries stay open
- * across it (opening if needed); the rest close before its `[`. Inside, the
- * stack starts empty and is closed before its `]`.
+ * Writes a link or style group: a reference link whose label the saved
+ * document resolves to its URL and title in its reference form, any other
+ * link as an autolink or `[…](…)`, a style group as `[…]{…}`.
  *
  * @param writer - The writer.
  * @param group - The group.
  * @param inherited - The marks open at enclosing group levels.
  */
 function writeGroup(writer: InlineWriter, group: LinkGroup | StyleGroup, inherited: readonly Mark[]): void {
+    if (group.kind === "style") {
+        writeBracketed(writer, group, inherited, "", `]{${group.style}}`);
+
+        return;
+    }
+
+    const link = group.link;
+
+    if ($isReferenceLinkNode(link) && resolvesToNode(link, writer.context.definitions)) {
+        writeReference(writer, group, link, inherited);
+
+        return;
+    }
+
     // A marked bare autolink holds its marks outside it, bare or in its
     // `[…](…)` fallback; a link loaded from that fallback is no longer bare,
     // so where the marks go inside links it is written with them inside —
     // and so is this one, for a save loaded and saved again to be unchanged.
     const marksInside = writer.policy.marksInsideGroups && commonMarks(group, inherited, "").length > 0;
-    const bare = group.kind === "link" && !marksInside ? writeBareAutolink(group.link, writer.context) : null;
+    const bare = marksInside ? null : writeBareAutolink(link, writer.context);
 
     if (bare !== null) {
         syncMarks(writer, commonMarks(group, inherited, ""), "");
@@ -2951,7 +3092,7 @@ function writeGroup(writer: InlineWriter, group: LinkGroup | StyleGroup, inherit
         return;
     }
 
-    const autolink = group.kind === "link" ? writeAutolink(group.link, writer.context, true) : null;
+    const autolink = writeAutolink(link, writer.context, true);
 
     if (autolink !== null) {
         syncMarks(writer, commonMarks(group, inherited, ""), "");
@@ -2960,9 +3101,28 @@ function writeGroup(writer: InlineWriter, group: LinkGroup | StyleGroup, inherit
         return;
     }
 
-    const destination = group.kind === "link" ? writeLinkDestination(group.link, writer.context) : "";
+    const destination = writeLinkDestination(link, writer.context);
 
-    syncMarks(writer, writer.policy.marksInsideGroups ? [] : commonMarks(group, inherited, destination), "");
+    writeBracketed(writer, group, inherited, destination, `]${destination}`);
+}
+
+/**
+ * Writes a group in brackets: marks every segment carries stay open across
+ * it (opening if needed); the rest close before its `[`. Inside, the stack
+ * starts empty and is closed before `closing`.
+ *
+ * @param writer - The writer.
+ * @param group - The group.
+ * @param inherited - The marks open at enclosing group levels.
+ * @param after - What a link writes after its text (its destination, or its
+ *   reference's label), whose `+` keeps underline from spanning it; `""` for
+ *   a style group.
+ * @param closing - The syntax that closes the group, from its `]` on.
+ */
+function writeBracketed(
+    writer: InlineWriter, group: LinkGroup | StyleGroup, inherited: readonly Mark[], after: string, closing: string,
+): void {
+    syncMarks(writer, writer.policy.marksInsideGroups ? [] : commonMarks(group, inherited, after), "");
 
     const outer = writer.stack;
     const outerInLink = writer.inLink;
@@ -2979,11 +3139,116 @@ function writeGroup(writer: InlineWriter, group: LinkGroup | StyleGroup, inherit
 
     if (group.kind === "link") {
         unescapeCodeSpanBrackets(writer.pieces, textStart);
+        protectLabelBrackets(writer.pieces, textStart);
     }
 
     writer.stack = outer;
     writer.inLink = outerInLink;
-    writer.pieces.push({ kind: "syntax", text: group.kind === "link" ? `]${destination}` : `]{${group.style}}` });
+    writer.pieces.push({ kind: "syntax", text: closing });
+}
+
+/**
+ * Tells whether `definitions` resolve `node`'s label to exactly its current
+ * URL and title, matching labels as `marked` does: whitespace runs collapsed
+ * to one space, then lowercased. An empty title counts as none, as `marked`
+ * gives a reference link with an empty title none. A title holding a blank
+ * line only a definition can write — an inline link's would end its block —
+ * so a link with one keeps its reference form while its label resolves to
+ * its URL, whatever title the definition now gives it; the editor then
+ * shows that title, as the save reads.
+ *
+ * @param node - The reference link.
+ * @param definitions - The saved document's definitions, or `null`.
+ * @returns `true` when its reference form would point where it points now.
+ */
+function resolvesToNode(node: ReferenceLinkNode, definitions: Links | null): boolean {
+    if (definitions === null) {
+        return false;
+    }
+
+    const key = node.getReference().label.replace(/\s+/g, " ").toLowerCase();
+
+    if (!Object.hasOwn(definitions, key)) {
+        return false;
+    }
+
+    const definition = definitions[key]!;
+    const title = node.getTitle() || null;
+
+    return definition.href === node.getURL() && ((definition.title || null) === title || BLANK_LINE_IN_TITLE.test(title ?? ""));
+}
+
+/**
+ * Writes a resolving reference link in the form it was loaded in while its
+ * text is as loaded: `[label]` (a `reference` piece the line renderer turns
+ * into `[label][]` before a character that would join it to another
+ * construct) or `[label][]`. Once its text has been edited or formatted, or
+ * when it was loaded in the full form, it is written `[text][label]`.
+ *
+ * Marks every segment carries are written outside the brackets, as for any
+ * link — except a mark the label itself wraps all of its text in (`*foo*`,
+ * `_foo_`), which is kept open only when it already is, so the label gains no
+ * second emphasis around it.
+ *
+ * @param writer - The writer.
+ * @param group - The link's group.
+ * @param link - The reference link.
+ * @param inherited - The marks open at enclosing group levels.
+ */
+function writeReference(writer: InlineWriter, group: LinkGroup, link: ReferenceLinkNode, inherited: readonly Mark[]): void {
+    const reference = link.getReference();
+    const label = writtenLabel(reference.label, writer.context);
+    const unchanged = $serializeLinkContent(link) === reference.importedContent;
+
+    if (reference.form === "full" || !unchanged) {
+        writeBracketed(writer, group, inherited, `[${label}]`, `][${label}]`);
+
+        return;
+    }
+
+    const own = labelMarks(reference.label);
+    const marks = commonMarks(group, inherited, `[${label}]`).filter((mark) => !own.includes(mark) || writer.stack.includes(mark));
+
+    syncMarks(writer, marks, "");
+
+    writer.pieces.push(reference.form === "shortcut"
+        ? { kind: "reference", text: `[${label}]`, shortcut: true }
+        : { kind: "reference", text: `[${label}][]`, shortcut: false });
+}
+
+/**
+ * The marks a label wraps all of its text in, read as the viewer reads them:
+ * while the label lexes to a single emphasis-like token, that token's mark,
+ * then the marks of the single token inside it.
+ *
+ * @param label - The label as authored.
+ * @returns The marks, outermost first; none for a label not wholly emphasised.
+ */
+function labelMarks(label: string): Mark[] {
+    const marks: Mark[] = [];
+    let tokens: Token[] = lexMarkdownInline(label);
+
+    while (tokens.length === 1 && TOKEN_MARKS[tokens[0]!.type] !== undefined) {
+        marks.push(TOKEN_MARKS[tokens[0]!.type]!);
+        tokens = (tokens[0] as Tokens.Generic).tokens ?? [];
+    }
+
+    return marks;
+}
+
+/**
+ * A reference's label as written where it stands: as authored, except that
+ * where content cannot span lines its line breaks become spaces (the label
+ * matches the same definition) and in a table cell its `|` is escaped.
+ *
+ * @param label - The label as authored.
+ * @param context - Where it is written.
+ * @returns The label to write between brackets.
+ */
+function writtenLabel(label: string, context: InlineContext): string {
+    const line = context.singleLine ? label.replace(/[ \t]*\n[ \t]*/g, " ") : label;
+
+    return context.inTableCell ? line.replace(/\|/g, "\\|") : line;
 }
 
 /**
@@ -3037,6 +3302,58 @@ function unescapeCodeSpanBrackets(pieces: Piece[], from: number): void {
 }
 
 /**
+ * Writes each bracket pair of a link's text that holds no other bracket as
+ * `\\[` … `\\]`, so it stays text whatever the document defines. `marked`
+ * unescapes the brackets of link text before reading it, so a pair written
+ * `\[r\]` reads there as `[r]` — a reference whenever `r` is defined, and
+ * with the next pair a full reference (`[x][r]`). Written `\\[r\\]`, the
+ * pair is unescaped to `\[r\]`, which reads as the text `[r]`; to `marked`'s
+ * link pattern its brackets are a bracket pair, which link text may hold
+ * one level deep — so a pair holding a pair keeps its single escapes (it
+ * reads as a reference only to a label holding escaped brackets), and a
+ * bracket without a partner, which no reference can be made of, keeps its
+ * own. Left as it is when the text's syntax or source holds a bracket of its
+ * own, which the pattern pairs too.
+ *
+ * @param pieces - The written pieces. Updated in place.
+ * @param from - The index of the link text's first piece.
+ */
+function protectLabelBrackets(pieces: Piece[], from: number): void {
+    const text = pieces.slice(from);
+    const pairedElsewhere = text.some((piece) => piece.kind !== "text" && "text" in piece && /[[\]]/.test(piece.text));
+
+    if (pairedElsewhere) {
+        return;
+    }
+
+    const brackets: Array<{ piece: number; offset: number; char: string }> = [];
+
+    text.forEach((piece, index) => {
+        if (piece.kind === "text") {
+            [...piece.text].forEach((char, offset) => {
+                if (char === "[" || char === "]") {
+                    brackets.push({ piece: from + index, offset, char });
+                }
+            });
+        }
+    });
+
+    const paired = brackets.filter((bracket, index) => (bracket.char === "["
+        ? brackets[index + 1]?.char === "]"
+        : brackets[index - 1]?.char === "["));
+
+    for (const bracket of paired.reverse()) {
+        const piece = pieces[bracket.piece] as { text: string };
+
+        pieces.splice(bracket.piece, 1, ...[
+            { kind: "text", text: piece.text.slice(0, bracket.offset) } as const,
+            { kind: "syntax", text: "\\\\" + bracket.char } as const,
+            { kind: "text", text: piece.text.slice(bracket.offset + 1) } as const,
+        ].filter((part) => part.text !== ""));
+    }
+}
+
+/**
  * Tells whether the pieces between a bracket pair hold a code span with an
  * odd number of backticks in its content, and no bracket in any syntax or
  * source.
@@ -3062,12 +3379,13 @@ function holdsOddCodeSpan(pieces: readonly Piece[]): boolean {
 
 /**
  * The marks every text or source segment of a group carries beyond the
- * inherited ones. An image or break carries none. Underline is left out when the link's
- * destination holds a `+`, which the underline grammar cannot span.
+ * inherited ones. An image or break carries none. Underline is left out when
+ * what the link writes after its text (its destination, or its reference's
+ * label) holds a `+`, which the underline grammar cannot span.
  *
  * @param group - The group.
  * @param inherited - The marks open at enclosing group levels.
- * @param destination - The link's written destination, or `""` for a style group.
+ * @param destination - The link's written destination or label, or `""` for a style group.
  * @returns The common marks, in the fixed order.
  */
 function commonMarks(group: LinkGroup | StyleGroup, inherited: readonly Mark[], destination: string): Mark[] {
@@ -3412,13 +3730,19 @@ function imageAttributeText(node: MarkdownImageNode): string {
  *
  * @param segments - The block's segments.
  * @param context - Where the content is written: a heading's breaks are spaces.
- * @returns The reading units, in order, or `null` when a source segment's reading is not known on its own.
+ * @returns The reading units, in order, or `null` when a source segment's
+ *   reading is not known on its own, or a reference link's depends on the
+ *   document's definitions.
  */
 function segmentReading(segments: readonly Segment[], context: InlineContext): string[] | null {
     const reading: string[] = [];
 
     for (const segment of segments) {
         const link = linkReading(segment.link?.getURL() ?? "", segment.link?.getTitle() ?? "");
+
+        if ($isReferenceLinkNode(segment.link)) {
+            return null;
+        }
 
         if (segment.kind === "break") {
             if (!context.singleLine || context.inTableCell) {
@@ -3527,19 +3851,22 @@ function markdownReading(markdown: string, context: InlineContext): string[] | n
  * @returns The block's inline tokens, or `null` when it does not lex as one such block.
  */
 function readBackTokens(markdown: string, context: InlineContext): Token[] | null {
+    // A reference link reads as a link only with the document's definitions, as in the saved document.
+    const lex = (probe: string): Token[] => (context.definitions === null ? lexMarkdown(probe) : lexMarkdownWithDefinitions(probe, context.definitions));
+
     if (context.inTableCell) {
-        const table = lexMarkdown(`| ${markdown} |\n| --- |`)[0];
+        const table = lex(`| ${markdown} |\n| --- |`)[0];
 
         return table?.type === "mdtable" ? (table as unknown as MdTableToken).header[0]?.tokens ?? null : null;
     }
 
     if (context.singleLine) {
-        const heading = lexMarkdown(`# ${markdown} #`)[0];
+        const heading = lex(`# ${markdown} #`)[0];
 
         return heading?.type === "heading" ? (heading as Tokens.Heading).tokens : null;
     }
 
-    const blocks = lexMarkdown(markdown).filter((token) => token.type !== "space");
+    const blocks = lex(markdown).filter((token) => token.type !== "space");
 
     return blocks.length === 1 && blocks[0]!.type === "paragraph" ? (blocks[0] as Tokens.Paragraph).tokens : null;
 }
@@ -3759,13 +4086,16 @@ function assembleLines(pieces: Piece[], context: InlineContext, choices: Assembl
         )),
         choices.switched,
     );
+    let written = false;
 
     lineContents.forEach((pieces, index) => {
         lineContents[index] = strayTaskMarkersAsText(pieces, context.inListItem === true && index === 0);
     });
 
     return lines.map((line, index) => {
-        const content = escapeHtmlBlockStart(renderLine(lineContents[index]!, context), lineContents[index]!, index === 0, context);
+        const content = escapeHtmlBlockStart(renderLine(lineContents[index]!, context, !written), lineContents[index]!, index === 0, context);
+
+        written ||= content !== "";
 
         return content + lineEnding(line.end, content);
     }).join("");
@@ -4112,52 +4442,36 @@ function strayTaskMarkersAsText(pieces: LinePiece[], itemFirstLine: boolean): Li
 
 /**
  * Renders one line's pieces, escaping each text against the characters on
- * either side of it.
+ * either side of it, and writing a shortcut reference collapsed where the
+ * next character would join it to another construct.
  *
  * @param pieces - The line's pieces.
  * @param context - Where the line is written.
+ * @param startsBlock - Whether nothing of the block has been written before
+ *   this line, so it is where a link reference definition could start.
  * @returns The line.
  */
-function renderLine(pieces: LinePiece[], context: InlineContext): string {
+function renderLine(pieces: LinePiece[], context: InlineContext, startsBlock: boolean): string {
     const rendered = pieces.map((piece, index) => {
-        if (piece.kind === "source" && piece.shortcut === true && joinsShortcut(pieces, index)) {
-            return piece.text + "[]";
+        if (piece.kind === "reference" || piece.kind === "source") {
+            return piece.shortcut === true && joinsShortcut(pieces, index, startsBlock, context) ? piece.text + "[]" : piece.text;
         }
 
         if (piece.kind !== "text") {
             return piece.text;
         }
 
-        const before = pieces[index - 1]?.text.slice(-1) ?? "\n";
+        const previous = pieces[index - 1];
+
+        // A reference's closing `]` is never read as a link's or span's
+        // opening bracket, so it is no reason to escape a `(` or `{` after it.
+        const before = previous === undefined ? "\n" : previous.kind === "reference" ? "" : previous.text.slice(-1);
         const after = pieces[index + 1]?.text[0] ?? "\n";
 
         return escapeText(piece.text, before, after, context);
     }).join("");
 
     return !context.singleLine && pieces[0]?.kind === "text" ? escapeLineStart(rendered) : rendered;
-}
-
-/**
- * Tells whether a shortcut reference `[label]` or `![label]` written as a
- * source run would join what follows it: a `(` (an inline link's
- * destination), a `{` (a styled span's attributes) or a `[` (a full
- * reference's second bracket); it is then written collapsed, `[label][]`,
- * which reads the same. Text escapes its own `[`, so only its `(` and `{`
- * count.
- *
- * @param pieces - The line's pieces.
- * @param index - The shortcut's index in them.
- * @returns `true` when the shortcut must be written `[label][]`.
- */
-function joinsShortcut(pieces: LinePiece[], index: number): boolean {
-    const next = pieces[index + 1];
-    const char = next?.text[0] ?? "";
-
-    if (next === undefined || char === "") {
-        return false;
-    }
-
-    return next.kind === "text" ? char === "(" || char === "{" : AFTER_SHORTCUT_GUARDED.includes(char);
 }
 
 /**
@@ -4200,6 +4514,41 @@ function escapeHtmlBlockStart(line: string, pieces: readonly LinePiece[], firstL
 
     // Escaped, the run is text, whose indent the next load drops; dropping it here keeps the save stable.
     return firstLine ? line.replace("<", "\\<") : "\\" + line.trimStart();
+}
+
+/**
+ * Tells whether a shortcut reference `[label]` — a reference link's, or a
+ * source run's `[label]` or `![label]` — would join what follows it:
+ * a `(` (an inline link's destination), a `{` (a styled span's attributes) or
+ * a `[` (a full reference's second bracket); or, at the start of a block, a
+ * `:` (a link reference definition); or, opening a list item's text, the
+ * whitespace that makes a `[ ]`, `[x]` or `[X]` a task item's checkbox. Text
+ * escapes its own `[`, so only its `(`, `{`, `:` and whitespace count.
+ *
+ * @param pieces - The line's pieces.
+ * @param index - The shortcut's index in them.
+ * @param startsBlock - Whether the line is the first the block writes.
+ * @param context - Where the line is written.
+ * @returns `true` when the shortcut must be written `[label][]`.
+ */
+function joinsShortcut(pieces: LinePiece[], index: number, startsBlock: boolean, context: InlineContext): boolean {
+    const next = pieces[index + 1];
+    const char = next?.text[0] ?? "";
+    const opensItem = context.inListItem === true && startsBlock && index === 0;
+
+    if (next === undefined || char === "") {
+        return false;
+    }
+
+    if (opensItem && /\s/.test(char) && TASK_CHECKBOX_SHORTCUT.test(pieces[index]!.text)) {
+        return true;
+    }
+
+    if (next.kind === "text") {
+        return char === "(" || char === "{" || (char === ":" && startsBlock && index === 0);
+    }
+
+    return AFTER_SHORTCUT_GUARDED.includes(char);
 }
 
 /**

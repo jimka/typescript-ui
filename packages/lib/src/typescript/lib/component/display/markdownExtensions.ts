@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Marked, Tokenizer } from "marked";
-import type { Lexer, Token, TokenizerExtension, TokenizerObject, Tokens } from "marked";
+import type { Lexer, Links, Token, TokenizerExtension, TokenizerObject, Tokens } from "marked";
 import { lineEndAt, parseAttributes, splitColumnSections } from "~/component/display/markdownAttributes.js";
 import { TABLE_EXTENSION } from "~/component/display/markdownTableExtension.js";
 
@@ -494,6 +494,41 @@ export function lexMarkdownUnbounded(source: string): Token[] {
  */
 export function lexMarkdown(source: string): Token[] {
     return _marked.lexer(source);
+}
+
+/**
+ * Lexes Markdown source through the same scoped `marked` instance as
+ * {@link lexMarkdown} and returns only its link reference definitions, so a
+ * caller resolves a reference label exactly as the viewer does: the first
+ * definition of a label wins, and a definition inside a blockquote, list item
+ * or `:::` fence counts, while a definition-shaped line inside code does not.
+ *
+ * @param source - The Markdown source to lex.
+ * @returns `marked`'s map from normalised label (whitespace runs collapsed to
+ *   one space, lowercased) to `{ href, title }`.
+ */
+export function lexMarkdownLinkDefinitions(source: string): Links {
+    return _marked.lexer(source).links;
+}
+
+/**
+ * Lexes Markdown source through the same scoped `marked` instance as
+ * {@link lexMarkdown}, as if `definitions` had been defined before it: a
+ * reference label resolves through them first, so the tokens show how the
+ * source reads in a document holding those definitions. Comparing two such
+ * lexes tells whether a change of definitions changes what the source says.
+ *
+ * @param source - The Markdown source to lex.
+ * @param definitions - The link reference definitions in force, as
+ *   {@link lexMarkdownLinkDefinitions} returns them.
+ * @returns The top-level token list.
+ */
+export function lexMarkdownWithDefinitions(source: string, definitions: Links): Token[] {
+    const lexer = new _marked.Lexer(_marked.defaults);
+
+    Object.assign(lexer.tokens.links, definitions);
+
+    return lexer.lex(source);
 }
 
 /**

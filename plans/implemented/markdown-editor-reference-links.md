@@ -417,3 +417,262 @@ Each row is `setValue(source)`, the stated edit, then `getValue()`.
     lexing the block's current text is simpler and follows edits: a definition
     the user rewrites into prose stops being hidden, exactly as the viewer
     starts rendering it.
+
+---
+
+## Implementation Notes
+
+- **A run of definitions is one raw block (plan flaw; changes plan 2's
+  I18).** RL10 and RL16 expect `[a]: …\n[a]: …` and `[a\_b]: …\n[a&#35;b]: …`
+  to save unchanged, but plan 2 builds one raw block per `def` token (and per
+  dropped duplicate), and blocks are written a blank line apart. The importer
+  now joins each run of definition-only entries on consecutive lines
+  (`joinDefinitionRuns`: a `def` token, or a gap that lexes to definitions
+  alone) into one raw block of their source, so definitions round-trip
+  verbatim. Definitions a blank line separates stay separate blocks. The I18
+  rows in `markdown-importer.test.ts` now expect one block per run, plus a
+  new row for definitions kept apart.
+- **RL4 keeps the title.** `toggleLink` updates a link's URL in place and
+  keeps its title, as it does for every link, so RL4 saves
+  `See [text](https://new "T").`, not the plan's `See [text](https://new).`.
+  The inline form writes the link's current URL and title, as the user's
+  decision says.
+- **RL8 writes `**[ref][ref]**`, not `[**ref**][ref]` (design choice).** The
+  full form goes through the writer's link-group path, which writes the marks
+  every character of a link carries outside its brackets, as it does for
+  every link (`**[x](u)**`). Writing them inside would make a full reference
+  save differently from an inline link with the same content, and would
+  rewrite `**[text][ref]**` as `[**text**][ref]` on every save. The test also
+  checks that both read the same in the viewer. `$serializeLinkContent` keeps
+  the marks inside the brackets, so formatting the text is still noticed.
+- **A label's own emphasis is not repeated around it.** A shortcut or
+  collapsed reference writes the marks all of its text carries outside its
+  brackets, as any link does (`A **[ref]**` stays as written), except a mark
+  the label itself wraps all of its text in, read by lexing the label with
+  the viewer's inline lexer (the new `lexMarkdownInline` beside
+  `lexMarkdown`): that mark stays open only when it already is. So
+  `[*foo*][]`, `[_foo_]`, `[__foo__]`, `[~foo~]` and `**[*foo*][]**` save as
+  written. A label emphasised only in part (`[*foo* bar][]`) needs nothing.
+- **More characters make a shortcut collapsed (plan gap).** Beside `(` and
+  `{`, a shortcut is written `[label][]` before a `[` (a following link, style
+  group or reference would make `[label][x]` a full reference) and, on the
+  first line a block writes, before a `:` (`[label]: x` would load as a
+  definition). The decision is taken where a line is rendered
+  (`joinsShortcut`), when the next character is known, through a new
+  `reference` piece kind. The `(` / `{` escape after a `]` is not applied
+  after a reference piece, whose `]` opens nothing, so RL9 saves
+  `[ref][](x)` as the plan says rather than `[ref][]\(x)`.
+- **An empty definition title is no title.** `marked` gives a reference link
+  `title: e.title || null`, so `resolvesToNode` compares titles with `""`
+  read as none; with `?? null`, `[x]: /u ""` made `[x]` save inline.
+- **Labels in single-line contexts and cells.** A label is written as
+  authored, except that in a heading or table cell its line breaks become
+  spaces (it still matches the same definition) and in a cell its `|` is
+  escaped, as the table extension unescapes it before the inline lexer reads
+  it.
+- **`$collectDefinitions` walks fences through their columns** generically
+  (a `:::` fence or column node recurses into its children), which also
+  covers a fence written without columns.
+- **Harness baseline.** Before: 91 known entries (`referenceLinks` 66 surface
+  + 2 parity, `quoteBlocks` 12, `listItemBlocks` 5, `taskListMarker` 3,
+  `listMarkers` 2, `plainImage` 1). After: 29 (`quoteBlocks` 16,
+  `listItemBlocks` 7, `taskListMarker` 3, `listMarkers` 2, `plainImage` 1).
+  Exactly the predicted 62 entries flipped (60 surface, the 2 parity entries
+  of CommonMark 214 and `reference in a heading`); the six cases the plan
+  names were relabelled, each failing only on the quote or list raw block
+  (the viewer shows an empty quote or item). `referenceLinks` left
+  `DIVERGENCES`; the `quoteBlocks` and `listItemBlocks` reasons now say that
+  a definition inside one counts and that the viewer shows it empty.
+- **Manual M1–M3** were run in the MD Editor demo (`vite`, Chrome): M1 — the
+  link is a link in both views, the definition is one monospace raw block in
+  the editor and absent from the viewer. M2 — **Edit link…** showed
+  `https://commonmark.org`; changing it to `https://new.example` moved both
+  views' link, source mode showed `[Markdown](https://new.example)`, and the
+  definition line was unchanged. M3 — the sample's reference is in the full
+  form already; typing inside its text saved `[Markydown][commonmark]`, while
+  typing at its very end lands after the link (Lexical's link boundary), so
+  the plan's `[Markdownx][commonmark]` is not what the end of the text gives:
+  it saved `[Markdown][commonmark]x`. No console errors.
+- **Performance.** `getValue()` on 300 paragraphs holding 600 references
+  plus 300 definitions took about 4.7 ms against 3.2 ms for the same
+  document with inline links.
+- **Observed, out of scope (fixed since, below):** a link with empty text — inline `[](u)` or
+  reference `[][ref]` — produces no link node, so its source is dropped on
+  save (the viewer renders nothing for it). This is plan 2's importer, for
+  both forms; keeping it needs an invisible source node, a decision for a
+  later plan.
+- **Restacked onto the marked-import review fixes (round 2).** That plan
+  keeps a link with no text of its own outside nested links as one source
+  run of its `raw`, before this plan reads a reference from it, so an empty
+  reference (`a [][ref] b`) saves whole rather than losing its label; a
+  test here pins it. Its new `$serializeBlock` (a paragraph joined to a raw
+  block) and run-on raw-block check now take the document's definitions,
+  as every other block serializer here does.
+
+## Whole-stack review fixes
+
+- **Loading a run of consecutive definitions was quadratic (B7).**
+  `joinDefinitionRuns` re-lexed the growing joined run for every definition
+  it added (`holdsOnlyDefinitions(last)`), so 2000 definitions on
+  consecutive lines took about 1.9 s to load against 145 ms with blank lines
+  between. Each entry is now tested once, as it is met, and a joined run
+  counts as definitions without a second lex: the next entry opens with `[`,
+  and only a title (opening with a quote or parenthesis) continues a
+  definition onto the next line. 2000 definitions now load in about 27 ms. A
+  test counts the characters a load lexes (a spy on `lexMarkdown`) and fails
+  on the quadratic version (2.8 M characters lexed for a 14 k source).
+- **`shouldMergeAdjacentLink` removed (deviation from the Public API).** The
+  plan gave `ReferenceLinkNode` `AutoLinkNode`'s `false` override, but the
+  only caller is `@lexical/link`'s `$linkNodeTransform`, which the editor
+  never registers (no `registerLink` / `LinkExtension`), so the override was
+  inert and its JSDoc promised behaviour nothing provided. Two neighbouring
+  references already load as two links, built one per token.
+
+## Stack fuzz round
+
+The marked-import plan's stack fuzz round (an inline construct the
+standard form would write differently is kept as written, decided there)
+needs this plan's definitions wherever it reads a standard form:
+
+- **`$readStandardForm` takes the document's definitions.** The importer
+  sets them for the load (`IMPORT_DEFINITIONS`, set and cleared by
+  `$importMarkdown`) and reads each block through `$readKeepingForm`,
+  which also records each reference link's loaded text first, as the load
+  does at its end — so a reference link is not kept as source just because
+  a read without definitions shows it as text.
+- **A raw block that reads as several blocks** (`$readRawBlockAsBlocks`)
+  joins definition runs as a load does, so a run of definitions stays one
+  raw block.
+
+## Definition-change fuzz round
+
+The stack fuzz (seeds 601, 1709 and 2207, 3 000 documents each, two edits
+per document) found the editor and the viewer apart after an edit that
+changed the document's definitions — about 930 parity and 33 dropped-word
+failures over three seeds — and bracket text in a link's text read as a
+reference. The user's rule: what the editor shows is what is saved and what
+the viewer renders, a save never changes where a link points, and no source
+is dropped.
+
+- **What a definition can change.** Text escapes its brackets, so it never
+  becomes a link; a `ReferenceLinkNode` keeps its own URL and saves inline
+  once its label no longer resolves to it (RL5, RL6). Only source kept as
+  written depends on the definitions: a run whose source holds a `[` — an
+  empty reference (`[][ref]`), a reference image (`![alt][ref]`, the viewer
+  shows its alt text), a reference inside a construct kept as written —
+  shows what its source read as at load, while the save writes the source
+  unchanged.
+- **The definition rule (`registerDefinitionRules`, a root transform in
+  `markdownWritable.ts`).** Each update compares the raw blocks' text
+  (`$definitionsSource`, the text `$collectDefinitions` lexes) with the text
+  of the state it started from, which an update listener carries from one
+  committed state to the next (read off the state itself after an update
+  that only moved the selection, or an undo or redo). Only when the text
+  changed are the definitions lexed (one lex per change, the previous one
+  memoised), and only when a label resolves differently is any block looked
+  at: a top-level block whose source runs, joined, name a changed label in
+  brackets is serialized, and when its save shows differently under the new
+  definitions than under the old (`shownReading`: its tokens, `raw` kept,
+  except that a link with no content and a reference image drop where they
+  point, which the viewer does not show), it is replaced by the blocks a
+  load builds from that save under the new definitions
+  (`$readBlocksWithDefinitions`, through the new
+  `lexMarkdownWithDefinitions`, moved down from the source-preservation
+  plan). The block then shows what a save and a reload would show. A caret
+  in it keeps its offset in the block's text. A load and an undo or redo
+  bring back a state that shows its own definitions, so they are not
+  checked.
+- **Behaviour decided.** A kept reference whose label stops resolving shows
+  as its text and from then on is text: re-typing the label does not make it
+  a reference again, as text never becomes one (the user's preference for
+  escaping over turning text into a link). A reference link in a block shown
+  anew is rebuilt from its save, so one that no longer resolves becomes an
+  inline link with its own URL. A block whose save shows the same under both
+  definition sets keeps its nodes.
+- **Bracket text in a link's text (serializer).** `marked` unescapes the
+  brackets of link text before reading it, so `[\[x\]\[r\]](u)` read
+  `[x][r]` as a reference wherever `r` was defined. Each bracket pair in a
+  link's text that holds no other bracket is now written `\\[` … `\\]`
+  (`protectLabelBrackets`), which the unescape turns into `\[` … `\]`; to
+  `marked`'s link pattern those brackets are a bracket pair, which link text
+  may hold one level deep, so a pair holding a pair keeps single escapes
+  (it reads as a reference only to a label holding escaped brackets), a
+  bracket without a partner keeps its own, and a link whose syntax or source
+  holds a bracket is left as it was. Two serializer tests now expect the
+  doubled escapes. The fix lives here rather than in the serializer plan:
+  before this plan a save kept no definitions for a label to resolve to.
+- **Cost.** On 300 paragraphs each holding `[][r]` and `![i][r]`, typing in
+  a paragraph or in the definition without changing it costs what it did
+  (about 7 ms per update, within noise); changing the definition's URL, which
+  every block names, costs about 140 ms per keystroke (300 blocks serialized
+  and lexed twice; none is rebuilt, since neither form shows where it
+  points). Without kept references the rule costs nothing measurable.
+- **Tests.** DEF1–DEF14 in `markdown-reference-links.test.ts` (removed,
+  edited, added, typed and pasted definitions; definitions in a quote, a list
+  item and a `:::` fence; undo; blocks left as they are), and twelve cases of
+  bracket text in a link's text.
+
+## Stack fuzz round 2
+
+A fifth whole-stack fuzz, at the stack's top with the harness cleaned of its
+own artifacts, on the same rule, found these, each fixed here and pinned by
+a test in `markdown-reference-links.test.ts`:
+
+- **A blank line in a reference's title (decision: keep the reference
+  form, take the definition's title).** An inline link cannot write a title
+  holding a blank line (it ends the block), so a reference whose title holds
+  one fell back to an inline form that the viewer read as text once its
+  definition's title was edited. `resolvesToNode` now keeps the reference
+  form while the definition resolves the label to the link's URL, whatever
+  title it gives; the definition rule gives the node that title
+  (`$adoptDefinitionTitles`), so the editor shows what the save reads. A
+  link whose URL no longer resolves still falls back inline, its title's
+  blank lines written as one line break (the serializer plan's fix).
+- **A shortcut reference opening a list item's text.** `- [x] y` reads as a
+  task item; such a reference (`[ ]`, `[x]`, `[X]` before whitespace) is
+  written `[x][]` (`joinsShortcut`, which also guards a shortcut reference
+  kept as source, the marked-import plan's fix).
+- **A definition in a list item.** A paste can put a definition's raw block
+  in a list item, where `marked` reads it; `rawBlockTexts` now looks in
+  lists and items, so a link it would re-point is written inline.
+- **A link nested in a link closed by a reference.** A nested-link group
+  written `[[a](/in)][label]` reads as whole links only with the label's
+  definition; `formsWholeLinks` now tries the document's definitions, so the
+  group is not rewritten and its empty inner links kept.
+- **Runs read back with the definitions.** The marked-import plan's
+  last-resort rebuild of a run that does not read back (`$showRunsAsSaved`)
+  reads with the document's definitions (`readBackTokens` lexing with them,
+  as the source-preservation plan later does for every read-back), so a
+  reference kept as source is not rebuilt as text; after a definition
+  change, a block holding a reference link is checked too.
+- **Restacked onto the serializer's canonical mark placement
+  (`markdown-editor-serializer`).** `writeGroup` conflicted between this
+  branch's reference-link branch and the serializer's rule that a marked
+  bare autolink is not written bare under a marks-inside-groups policy;
+  resolved as the union: a style group and a resolving reference link are
+  written first, as here, then the bare-autolink rule applies to the link.
+- **Restacked onto round 3's importer fixes (`markdown-editor-marked-import`).**
+  The serializer conflicted where this branch moves `AFTER_SHORTCUT_GUARDED`
+  beside the reference-link constants: resolved with it there and the new
+  `TASK_MARKER_SOURCE` beside `TASK_CHECKBOX_SHORTCUT`. `markdownWritable.ts`
+  conflicted on its serializer import list: the union
+  (`$headingWritesOneLine` with this branch's `$definitionsSource` and
+  `$serializeBlock`).
+
+## Stack fuzz round 4
+
+No case of this round belongs here. **Restacked onto the importer
+branch's round 4 fixes (`markdown-editor-marked-import`).** The serializer
+conflicted where this branch threads the document's definitions through
+the block serializers: `serializeRawBlock` and `$rawBlockWritesAsParagraph`
+(now reading the importer branch's `rawBlockEnd` and the new
+`$writesBlockAfter`, which takes the definitions too) and
+`appendItemBlocks`' nested-list branch (the list's Markdown written once
+with the definitions, its marker read from that Markdown); resolved as the
+union.
+
+**Review fixes.** The combined plan `plans/markdown-link-reference-definitions.md`
+is retired — this branch removes it. Its viewer half was replaced by
+`markdown-viewer-link-reference-definitions` and its editor half by this plan.
+Round 2 moved the removal into the commit holding these notes, so the plan's
+move to `plans/implemented/` is a pure rename again.

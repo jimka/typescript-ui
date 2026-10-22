@@ -291,7 +291,13 @@ describe('editor surface projection', () => {
         ]);
     });
 
-    it('S9. maps a newline inside a text node to a break run, as the editor\'s pre-wrap surface shows it', () => {
+    it('S9. drops a raw block holding only link reference definitions, which the viewer renders nothing for', () => {
+        expect(editorSurfaceModel(loadedEditor('# H\n\n[x]: https://e.com'))).toEqual([
+            { kind: 'heading', depth: 1, runs: [textRun('H')] },
+        ]);
+    });
+
+    it('S10. maps a newline inside a text node to a break run, as the editor\'s pre-wrap surface shows it', () => {
         // A code block turned into a paragraph keeps its lines in one text node; the save writes each newline as a
         // hard break, which the viewer shows as the editor does.
         const editor = loadedEditor('');
