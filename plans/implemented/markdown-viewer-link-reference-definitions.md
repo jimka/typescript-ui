@@ -356,3 +356,61 @@ From the repo root:
     definition of a label in `tokens.links` and pushes only that one as a
     `def` token. The second definition is dropped without producing any
     token, so after this change neither line renders.
+
+---
+
+## Implementation Notes
+
+- **Extra test for header cells.** The plan's Expected Behaviour table only
+  lists a body-cell case (V5, L1), so reverting the header-cell swap at
+  `markdownTableExtension.ts:210` left every test green. `markdownLexer.test.ts`
+  gains a header-cell variant of L1. It fails with `inlineTokens` on that
+  line and passes with `inline`.
+- **Queueing cells exposed `marked`'s task-marker scan to cells; fixed in the
+  dialect.** Footnote `[^inline-queue]` says nothing reads a cell's queued
+  entry during the block pass. That is not quite true. `marked` 18's list
+  tokenizer lexes each item's blocks, then strips a GFM task marker by
+  searching `lexer.inlineQueue` backwards for the *last* entry that starts with
+  `[ ] `/`[x] ` — not the entry of the item's own first text. Once cells were
+  queued, that entry could be a table cell: `- [ ] foo` followed by a table
+  whose cell reads `[x] baz` rendered the item text as `[ ] [ ] foo` (marker
+  twice) and the cell as `baz`. A later paragraph in the same task item
+  (`- [ ] foo\n\n  [x] bar`) already lost its marker the same way on
+  `master`. The first version of this note accepted the regression as an
+  upstream bug; the whole-stack review overruled that (user decision: fix it
+  on our side, do not report upstream) — see the fix below.
+
+### Whole-stack review fixes
+
+- **A2 — a task item's marker comes off its own first text only.**
+  `markdownExtensions.ts` gains `listWithOwnTaskMarker`, installed in
+  `marked`'s `list` slot: `BOUNDED_BLOCK_TOKENIZERS.list` calls it behind its
+  guard and window, and the unbounded twin installs it through a new
+  `DIALECT_BLOCK_TOKENIZERS` object, so the two lexers still differ only in
+  guards and windows (the same shape as the existing bounded-tokenizer
+  wrappers). It runs `marked`'s own list tokenizer against a view of the lexer
+  whose `blockTokens` records, per item, the inline-queue entries that item's
+  lexing queued and their text — the call `marked` makes just before its
+  queue search. Afterwards every recorded entry gets its recorded text back
+  (undoing whichever strip `marked` made) and a task item's own entry — the
+  one sharing its first paragraph/text token's `tokens` array — loses the
+  marker. The token tree, checkbox placement included, stays exactly
+  `marked`'s; only queued sources change. Nested lists fix their own items
+  inside the parent item's lexing, before the parent records, so the parent
+  restores their entries to the already-fixed text. Tests, written first and
+  failing before the fix (all but the last): `markdownLexer.test.ts` "a
+  task-list item's marker comes off the item's own first text" — a later
+  table cell, a later paragraph, a loose item (checkbox inside the first
+  paragraph, `[X]  ` with two spaces kept literal), a nested plain item inside
+  a task item, nested task items, and a list with no task items (unchanged);
+  each also asserts `lexMarkdown` equals `lexMarkdownUnbounded`. `Markdown.test.ts`
+  adds a render-level case for the review's table example.
+- **A8 — manual check M1 run.** Run on this branch with the fix applied: the
+  worktree's library demo served by Vite (on port 8115 with a separate cache
+  directory, because the main tree's dev server held 8015), **MD Editor**,
+  **Edit Markdown source** on, document replaced with M1's source. The live
+  viewer showed exactly two links, "the spec" and the table cell's "cm", both
+  to `https://spec.commonmark.org/`, and no `[cm]: …` line. Passed. (Typing
+  the A2 table example into the source editor was not a usable manual check:
+  the editor continues the `- [ ] ` list marker on every Enter, so the typed
+  document was not the example; A2 is covered by the unit tests above.)

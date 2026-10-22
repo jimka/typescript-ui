@@ -56,6 +56,8 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | `-`/`*` and `1.` lists | `<ul>`/`<ol>` with `<li>` items |
 | `> quote` | `<blockquote>` |
 | `[text](url)` | `<a href target="_blank" rel="noopener noreferrer">` |
+| `[text][label]`, `[label][]`, `[label]` | `<a>` whose href is the matching reference definition's URL; labels match case-insensitively, and an undefined label renders as literal text |
+| `[label]: url "title"` | nothing — the definition only supplies a URL, wherever it sits (top level, blockquote, list item, `:::` fence) |
 | pipe table | `<table>` with `<thead>`/`<tbody>` |
 | delimiter cell `{width=240}` | `<colgroup>` / `<col style="width:240px">` — see [Extension syntax](#extension-syntax) |
 | body cell `<<` / `^^` | merges into the preceding cell as `colspan`/`rowspan` — see [Extension syntax](#extension-syntax) |

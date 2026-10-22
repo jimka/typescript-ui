@@ -22,7 +22,7 @@
 // quadratic cost was measured — actually pays for.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Lexer } from 'marked';
+import { Lexer, type Token, type Tokens } from 'marked';
 import { lexMarkdown, lexMarkdownUnbounded, type MdBlockToken } from '~/component/display/markdownExtensions';
 import type { MdTableToken } from '~/component/display/markdownTableExtension';
 import { Markdown } from '~/component/display/Markdown';
@@ -86,6 +86,110 @@ describe('the table extension emits the same tokens as the line-splitting origin
 
             expect(tokens.map((token) => token.type)).toEqual(['paragraph']);
         }
+    });
+});
+
+describe('the table extension lexes cells after the definitions are known', () => {
+    it('resolves a cell reference whose definition follows the table (L1)', () => {
+        const table = tokenAt<MdTableToken>('| a |\n| --- |\n| [ref] |\n\n[ref]: https://e.com', 0);
+
+        expect(table.rows[0]![0]!.tokens[0]).toMatchObject({ type: 'link', href: 'https://e.com' });
+    });
+
+    it('resolves a header-cell reference whose definition follows the table', () => {
+        const table = tokenAt<MdTableToken>('| [ref] |\n| --- |\n| b |\n\n[ref]: https://e.com', 0);
+
+        expect(table.header[0]!.tokens[0]).toMatchObject({ type: 'link', href: 'https://e.com' });
+    });
+});
+
+/**
+ * The source text of a token's inline children, with the task-item checkbox
+ * `marked` prepends to a loose item's first paragraph left out — so the result
+ * is exactly the text the inline pass lexed.
+ */
+function inlineSource(token: { tokens?: Token[] }): string {
+    return (token.tokens ?? []).filter((child) => child.type !== 'checkbox').map((child) => child.raw).join('');
+}
+
+/** The items of the list token at `index` of `source`'s top-level tokens. */
+function listItemsAt(source: string, index: number): Tokens.ListItem[] {
+    return tokenAt<Tokens.List>(source, index).items;
+}
+
+/** The item's tokens that carry inline children — its paragraphs and text runs. */
+function textBlocks(item: Tokens.ListItem): (Tokens.Paragraph | Tokens.Text)[] {
+    return item.tokens.filter((token): token is Tokens.Paragraph | Tokens.Text => token.type === 'paragraph' || token.type === 'text');
+}
+
+/** The first token of `type` among the item's own block tokens. */
+function childOfType<T>(item: Tokens.ListItem, type: string): T {
+    return item.tokens.find((token) => token.type === type) as T;
+}
+
+describe("a task-list item's marker comes off the item's own first text", () => {
+    it('leaves a later table cell that starts with a marker untouched', () => {
+        const source = '- [ ] foo\n  | a |\n  | - |\n  | [x] baz |';
+        const [item] = listItemsAt(source, 0);
+
+        expect(item).toMatchObject({ task: true, checked: false });
+        expect(inlineSource(textBlocks(item!)[0]!)).toBe('foo');
+        expect(inlineSource(childOfType<MdTableToken>(item!, 'mdtable').rows[0]![0]!)).toBe('[x] baz');
+        expect(lexMarkdown(source)).toEqual(lexMarkdownUnbounded(source));
+    });
+
+    it('leaves a later paragraph that starts with a marker untouched', () => {
+        const source = '- [ ] foo\n\n  [x] bar';
+        const [item] = listItemsAt(source, 0);
+
+        expect(item).toMatchObject({ task: true, checked: false });
+        expect(textBlocks(item!).map(inlineSource)).toEqual(['foo', '[x] bar']);
+        expect(lexMarkdown(source)).toEqual(lexMarkdownUnbounded(source));
+    });
+
+    it('strips a loose item, whose checkbox sits inside its first paragraph, from its own text', () => {
+        const source = '- [x] one\n\n- [ ] two\n\n  [X]  three';
+        const items = listItemsAt(source, 0);
+
+        expect(items.map((item) => [item.loose, item.task, item.checked])).toEqual([[true, true, true], [true, true, false]]);
+        expect(textBlocks(items[1]!)[0]).toMatchObject({ tokens: [{ type: 'checkbox', checked: false }, { type: 'text' }] });
+        expect(textBlocks(items[0]!).map(inlineSource)).toEqual(['one']);
+        expect(textBlocks(items[1]!).map(inlineSource)).toEqual(['two', '[X]  three']);
+        expect(lexMarkdown(source)).toEqual(lexMarkdownUnbounded(source));
+    });
+
+    it('keeps the marker text of a nested plain item inside an outer task item', () => {
+        const source = '- [ ] a\n  - c\n\n    [x] d';
+        const [outer] = listItemsAt(source, 0);
+        const nested = childOfType<Tokens.List>(outer!, 'list');
+
+        expect(outer).toMatchObject({ task: true, checked: false });
+        expect(inlineSource(textBlocks(outer!)[0]!)).toBe('a');
+        expect(nested.items[0]!.task).toBe(false);
+        expect(textBlocks(nested.items[0]!).map(inlineSource)).toEqual(['c', '[x] d']);
+        expect(lexMarkdown(source)).toEqual(lexMarkdownUnbounded(source));
+    });
+
+    it('strips each nested task item from its own text, and no later block', () => {
+        const source = '- [ ] outer\n  - [x] inner\n\n    [ ] inner para\n\n  [x] outer para';
+        const [outer] = listItemsAt(source, 0);
+        const nested = childOfType<Tokens.List>(outer!, 'list');
+
+        expect(outer).toMatchObject({ task: true, checked: false });
+        expect(nested.items[0]).toMatchObject({ task: true, checked: true });
+        expect(textBlocks(outer!).map(inlineSource)).toEqual(['outer', '[x] outer para']);
+        expect(textBlocks(nested.items[0]!).map(inlineSource)).toEqual(['inner', '[ ] inner para']);
+        expect(lexMarkdown(source)).toEqual(lexMarkdownUnbounded(source));
+    });
+
+    it('changes nothing in a list with no task items', () => {
+        const source = '- a\n\n  [x] b\n- c [ ] d\n- e\n  | h |\n  | - |\n  | [ ] f |';
+        const items = listItemsAt(source, 0);
+
+        expect(items.map((item) => item.task)).toEqual([false, false, false]);
+        expect(items.map((item) => textBlocks(item).map(inlineSource))).toEqual([['a', '[x] b'], ['c [ ] d'], ['e']]);
+        expect(inlineSource(childOfType<MdTableToken>(items[2]!, 'mdtable').rows[0]![0]!)).toBe('[ ] f');
+        expect(lexMarkdown(source)).toEqual(lexMarkdownUnbounded(source));
     });
 });
 

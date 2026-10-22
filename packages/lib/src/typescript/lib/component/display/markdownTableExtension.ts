@@ -207,7 +207,7 @@ export const TABLE_EXTENSION: TokenizerExtension = {
         const header: MdTableHeaderCell[] = headerCells.map((text, column) => ({
             text,
             align:  delimiter.align[column] ?? null,
-            tokens: this.lexer.inlineTokens(text),
+            tokens: this.lexer.inline(text),
         }));
 
         const bodyGrid = bodyLines.map((line) => {
@@ -253,7 +253,7 @@ export const TABLE_EXTENSION: TokenizerExtension = {
                     align: delimiter.align[column] ?? null,
                     colSpan,
                     rowSpan,
-                    tokens: this.lexer.inlineTokens(text),
+                    tokens: this.lexer.inline(text),
                 });
             }
 
