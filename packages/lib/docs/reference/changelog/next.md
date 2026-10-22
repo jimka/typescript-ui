@@ -1445,6 +1445,22 @@ page resets to empty.
   typed in a row close as a triple-quoted pair, each Backspace between the
   two triples deletes one quote on each side; it deleted one quote on the
   left only. No consumer action is needed.
+- **Enter inside HTML in a Markdown blockquote or list item keeps the new
+  line in it.** In `MarkdownEditor`'s `"source"` mode, and in any
+  `CodeEditor` with `language: "markdown"`, Enter inside an HTML block in a
+  blockquote started the new line without the `>`, which ends the quote and
+  splits the HTML block. Enter between `<div>` and `</div>` on a list item's
+  first line left the close tag outside the item. Inside HTML that sits in a
+  blockquote or list item, the new line now starts with the same prefix as
+  the line the caret is on: its `>` markers and its indentation, with a list
+  marker replaced by spaces. It never starts a new list item. The prefix is
+  copied as written, so a tab stays a tab whatever the editor's `tabSize`.
+  Inside `<script>` and `<style>` in a blockquote or list item, the new line
+  gets that prefix too, in place of JavaScript's or CSS's own indentation,
+  and Enter between a bracket pair there (`f(|)`) adds one line: the closing
+  bracket no longer moves to a line of its own, as it does not in other text
+  of a quote or item. Markdown's own continuation at the end of an HTML
+  block is unchanged. No consumer action is needed.
 
 ### Core
 

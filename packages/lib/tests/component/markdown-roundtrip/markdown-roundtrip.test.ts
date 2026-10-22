@@ -6,7 +6,9 @@ import { assertCheck, canonicalSave, checkTitle, loadAndSave } from './harness';
 import { editorSurfaceModel, linkTargets, viewerModel } from './viewModel';
 import { CORPUS } from './corpus';
 import { DIVERGENCES } from './corpus/divergences';
+import { ENTER_INSIDE_HTML_CASES } from './corpus/enterInsideHtml';
 import type { CorpusCase } from './corpus/types';
+import type { Block } from './viewModel';
 
 const CONFIG = {
     rootMountOffset: { x: 0, y: 0 },
@@ -93,6 +95,67 @@ for (const testCase of CORPUS) {
         });
     });
 }
+
+/**
+ * Lists the blocks of a document that hold no blocks themselves, in document order, each with the blockquote or list
+ * item that holds it, written as a path: `''` at the top level, `'/0'` in a quote that is the document's first block,
+ * `'/0.1/2'` in a quote that is the third block of the second item of a list that is the first block.
+ *
+ * @param blocks - The blocks of the document, or of one quote or list item.
+ * @param container - The path of the quote or list item that holds `blocks`.
+ * @returns Each such block's kind and the path of what holds it.
+ */
+function leavesWithContainer(blocks: readonly Block[], container: string = ''): { kind: Block['kind']; container: string }[] {
+    return blocks.flatMap((block, index) => {
+        if (block.kind === 'quote') {
+            return leavesWithContainer(block.blocks, `${container}/${index}`);
+        }
+
+        if (block.kind === 'list') {
+            return block.items.flatMap((item, itemIndex) => leavesWithContainer(item, `${container}/${index}.${itemIndex}`));
+        }
+
+        return [{ kind: block.kind, container }];
+    });
+}
+
+/**
+ * The Enter-inside-HTML cases in which the viewer reads a line below the HTML's first line outside the list item that
+ * line is in, each with the reason. A listed case must not pass the check, so a fix turns its test red until the
+ * entry is removed, as a corpus case's known divergence does.
+ */
+const READ_OUT_OF_ITS_ITEM: Readonly<Record<string, string>> = {
+    // Not the line Enter added, which carries the marker line's own prefix: the two six-space lines the row starts
+    // with. The viewer counts the tab of a ` \t- ` marker line as four columns wherever it starts, so it puts the
+    // item's content at column 7 where CommonMark puts it at 6, and after the empty line those lines are an indented
+    // code block of the outer item. The case after it holds the same lines with the marker line's prefix, and passes.
+    'Enter on a marker line indented by a space and a tab (M36)': 'the viewer counts a tab that follows a space as four columns',
+};
+
+describe('what Enter leaves inside HTML stays in its blockquote or list item', () => {
+    // Each of these documents is one blockquote or one list, and its HTML
+    // starts in the innermost quote or item of its first HTML line. A new
+    // line that left one of them would show as a block after it: `> <div>`,
+    // an empty line and `> x` are two quotes, and a close tag one level out
+    // of a nested item is a block of the outer item.
+    it.each(ENTER_INSIDE_HTML_CASES.map((testCase) => [testCase.name, testCase.source] as const))('%s', (name, source) => {
+        const { blocks } = viewerModel(source);
+        const leaves     = leavesWithContainer(blocks);
+        // The viewer shows an HTML block as a raw block. A document with
+        // none holds inline tags only, in its one paragraph.
+        const firstHtml  = Math.max(leaves.findIndex((leaf) => leaf.kind === 'raw'), 0);
+        const containers = new Set(leaves.slice(firstHtml).map((leaf) => leaf.container));
+        const known      = READ_OUT_OF_ITS_ITEM[name];
+
+        expect(blocks.map((block) => block.kind)).toEqual([source.startsWith('>') ? 'quote' : 'list']);
+
+        if (known === undefined) {
+            expect([...containers]).toHaveLength(1);
+        } else {
+            expect([...containers], `${name}: now read in one item — remove its entry (${known})`).not.toHaveLength(1);
+        }
+    });
+});
 
 describe('corpus integrity', () => {
     it('case names are unique', () => {
