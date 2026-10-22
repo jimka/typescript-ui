@@ -40,6 +40,14 @@ const MENU_ANIM_DURATION_MS = 120;
 const VIEWPORT_MARGIN = 4;
 
 /**
+ * How many rows of room `showClearOf` needs on the roomier side of the area it
+ * keeps clear before it gives up keeping it clear: four, enough to read and
+ * reach a few items and to scroll the rest. With less room the menu is a sliver
+ * (or, at none, off screen), so it opens at the pointer as `show` does instead.
+ */
+const MIN_CLEAR_OF_ROWS = 4;
+
+/**
  * A zero-size rect at a cursor point. A cursor is a degenerate anchor: with
  * `left === right` and `top === bottom`, the adjacency and alignment flips
  * collapse to the same operation — grow down-right from the point, or end at it.
@@ -47,6 +55,15 @@ const VIEWPORT_MARGIN = 4;
  */
 function pointRect(x: number, y: number): Rect {
     return { x, y, left: x, top: y, right: x, bottom: y, width: 0, height: 0 };
+}
+
+/**
+ * A zero-width anchor at the pointer's x spanning `top` to `bottom`. Placed against, the menu
+ * opens below the span (or above it when the room below is short) and aligns to the pointer's x,
+ * so it covers neither the pointer nor anything the span stands for; see `Menu.showClearOf`.
+ */
+function pointerSpanRect(x: number, top: number, bottom: number): Rect {
+    return { x, y: top, left: x, top, right: x, bottom, width: 0, height: bottom - top };
 }
 
 // Resting-tier chrome shared by both modes — see `## Architecture Decisions`'
@@ -68,12 +85,13 @@ const MENU_PERSISTENT_DECLARATIONS: StyleBag = {
  * A floating menu panel that operates in one of two modes:
  *
  * - **Rebuild mode** (`new Menu()`): a right-click context menu. Items are passed per
- *   `show(x, y, items)` call and disposed on the next show or hide.
+ *   `show(x, y, items)` call (or `showClearOf(x, y, keepClear, items)`, which keeps a
+ *   rectangle uncovered) and disposed on the next show or hide.
  * - **Persistent mode** (`new Menu(items, onClose)`): a [`MenuBar`](/api/component/menubar/classes/MenuBar) dropdown. Items are
  *   built once in the constructor and reused across `open()` / `close()` cycles.
  *
  * The two API surfaces are disjoint by mode:
- * `show()` / `hide()` / `setMenuWidth()` are valid only in rebuild mode;
+ * `show()` / `showClearOf()` / `hide()` / `setMenuWidth()` are valid only in rebuild mode;
  * `open()` / `close()` / `setExcludedElement()` are valid only in persistent mode.
  * The keyboard-highlight methods (`focusItem`, `focusNext`, `focusPrev`,
  * `activateFocused`, `getFocusedIndex`, `handleKey`) work in both.
@@ -214,6 +232,10 @@ class Menu extends Component implements DismissableLayer {
     // A submenu panel's parent menu (set by handleItemOpenSubmenu right after
     // construction); null for a top-level menu.
     private _parentMenu: Menu | null = null;
+    // The vertical range of the viewport a submenu of this rebuild-mode menu is
+    // placed in, on the menu's side of the area showClearOf kept clear; null when
+    // the menu was opened by show() or toggleFor(), or is a persistent menu.
+    private _submenuBand: { top: number; bottom: number } | null = null;
 
     // Assigned in the constructor body, after super() returns. Menu overrides no
     // applyOptions, so no `declare` is needed (CODE_CONVENTIONS.md, super() cascade).
@@ -382,7 +404,7 @@ class Menu extends Component implements DismissableLayer {
 
         this.showAnchored(
             pointRect(Util.clamp(x, 0, vp.width), Util.clamp(y, 0, vp.height)),
-            configs, onClose ?? null, excludeEl ?? null,
+            configs, onClose ?? null, excludeEl ?? null, null,
         );
 
         if (Menu.lastInputWasKey) {
@@ -393,9 +415,76 @@ class Menu extends Component implements DismissableLayer {
     }
 
     /**
-     * Rebuild-mode geometry-and-content core shared by {@link show} (pointer-anchored)
-     * and {@link toggleFor} (rect-anchored). Both grow down-right from `anchorRect`
-     * and flip per axis when the room runs short. Tears down and rebuilds the item
+     * Shows the menu near the given viewport coordinates, but above or below a
+     * rectangle it must not cover, replacing any previously displayed items with
+     * the new list. **Rebuild-mode only.**
+     *
+     * Opens like {@link show}, aligned to the pointer horizontally, but the menu
+     * lands below the span that covers both `keepClear` and the pointer, and
+     * flips above it when the room below is short and the room above is larger.
+     * It covers neither the area nor the pointer, and moves away from the pointer
+     * only vertically, by at most the height of the span covering the area and
+     * the pointer. A menu taller than the room on its side is capped and scrolls.
+     * `keepClear` is first cut to the viewport's height; an area with no part on
+     * screen is ignored and the menu opens as {@link show} would.
+     *
+     * The one exception: when the room on the roomier side of the area is
+     * both less than the menu's natural height and less than four rows, the
+     * area is given up and the menu opens at the pointer exactly as
+     * {@link show} places it, covering the area if it must. This is what a
+     * tall image, or an area filling the viewport, leaves.
+     *
+     * The menu's submenus stay on the menu's side of `keepClear` where they fit:
+     * a submenu opened from a menu that sits above the area flips up against its
+     * item instead of growing down over the area, unless it is too tall for the
+     * room on that side, in which case it is placed as usual. A menu below the
+     * area places its submenus as usual.
+     *
+     * Keyboard focus, `onClose` and `excludeEl` behave exactly as in {@link show}.
+     *
+     * @param x - Horizontal viewport coordinate (e.g. `MouseEvent.clientX`).
+     * @param y - Vertical viewport coordinate (e.g. `MouseEvent.clientY`).
+     * @param keepClear - Viewport rectangle the menu must not cover, such as the
+     *   text the menu's items will change.
+     * @param configs - Ordered list of item descriptors to render.
+     * @param onClose - Optional callback invoked once when the menu next closes.
+     * @param excludeEl - Optional element whose subtree is exempt from the
+     *   outside-click-to-close check.
+     * @returns This menu, for method chaining.
+     */
+    showClearOf(
+        x: number,
+        y: number,
+        keepClear: Rect,
+        configs: MenuItemConfig[],
+        onClose?: () => void,
+        excludeEl?: Handle | null,
+    ): this {
+        this.assertRebuildMode("showClearOf");
+
+        const vp = DOM.source.getViewportSize();
+        const px = Util.clamp(x, 0, vp.width);
+        const py = Util.clamp(y, 0, vp.height);
+        const top = Math.max(keepClear.top, 0);
+        const bottom = Math.min(keepClear.bottom, vp.height);
+        const onScreen = bottom >= top;
+        const pointer = pointRect(px, py);
+        const anchor = onScreen ? pointerSpanRect(px, Math.min(top, py), Math.max(bottom, py)) : pointer;
+
+        this.showAnchored(anchor, configs, onClose ?? null, excludeEl ?? null, onScreen ? pointer : null);
+
+        if (Menu.lastInputWasKey) {
+            this.takeKeyboardFocus();
+        }
+
+        return this;
+    }
+
+    /**
+     * Rebuild-mode geometry-and-content core shared by {@link show} (pointer-anchored),
+     * {@link showClearOf} (pointer-anchored, clear of an area) and {@link toggleFor}
+     * (rect-anchored). All grow down-right from `anchorRect` and flip per axis when
+     * the room runs short. Tears down and rebuilds the item
      * list, then resolves `anchorRect` to a placement and applies the resulting
      * position and height clamp.
      *
@@ -405,8 +494,21 @@ class Menu extends Component implements DismissableLayer {
      * @param onClose - Callback invoked once when the menu next closes, or `null`.
      * @param excludeEl - Element whose subtree is exempt from the outside-click
      *   check, or `null`.
+     * @param fallbackPoint - For an `anchorRect` that spans an area the menu keeps
+     *   clear (only {@link showClearOf} passes one), the pointer as a zero-size
+     *   rect. The menu then records the submenu band, the part of the viewport on
+     *   its side of that area, which its submenus are placed within; but when
+     *   neither side of the area has room for the menu (see
+     *   {@link MIN_CLEAR_OF_ROWS}) it is placed at `fallbackPoint` instead and
+     *   records no band. Otherwise `null`.
      */
-    private showAnchored(anchorRect: Rect, configs: MenuItemConfig[], onClose: (() => void) | null, excludeEl: Handle | null): this {
+    private showAnchored(
+        anchorRect: Rect,
+        configs: MenuItemConfig[],
+        onClose: (() => void) | null,
+        excludeEl: Handle | null,
+        fallbackPoint: Rect | null,
+    ): this {
         this._rebuildOnClose = onClose;
         this._excludedEl = excludeEl;
 
@@ -477,15 +579,25 @@ class Menu extends Component implements DismissableLayer {
         // First pass at the natural width resolves the vertical room. Width does not
         // affect the vertical placement, so `available` stays correct after the
         // scrollbar-gutter widening below; only `x` needs the second pass.
-        const available = positionAnchoredFlexible(anchorRect, { width: naturalWidth, height: totalHeight }, vp, VIEWPORT_MARGIN).available;
+        const clearAvailable = positionAnchoredFlexible(anchorRect, { width: naturalWidth, height: totalHeight }, vp, VIEWPORT_MARGIN).available;
+        const givesUpArea = fallbackPoint !== null && clearAvailable < Math.min(totalHeight, MIN_CLEAR_OF_ROWS * MenuItem.HEIGHT);
+        const placeAt = givesUpArea ? fallbackPoint : anchorRect;
+        const confinesSubmenus = fallbackPoint !== null && !givesUpArea;
+        const available = positionAnchoredFlexible(placeAt, { width: naturalWidth, height: totalHeight }, vp, VIEWPORT_MARGIN).available;
 
         this.applyScrollbarGutterWidth(totalHeight > available);
 
-        const placement = positionAnchoredFlexible(anchorRect, { width: this.getWidth(), height: totalHeight }, vp, VIEWPORT_MARGIN);
+        const placement = positionAnchoredFlexible(placeAt, { width: this.getWidth(), height: totalHeight }, vp, VIEWPORT_MARGIN);
 
         this.setX(placement.x);
         this.setY(placement.y);
         this.applyViewportHeightClamp(placement.available, totalHeight);
+
+        const landedBelow = placement.y >= placeAt.bottom;
+
+        this._submenuBand = !confinesSubmenus ? null
+            : landedBelow ? { top: placeAt.bottom, bottom: vp.height }
+            : { top: 0, bottom: placeAt.top };
 
         this.scheduleLayout();
 
@@ -572,7 +684,7 @@ class Menu extends Component implements DismissableLayer {
         }
 
         // Closed, or open for a different opener: (re)show anchored for this one.
-        this.showAnchored(anchorRect, configs, onClose ?? null, openerEl);
+        this.showAnchored(anchorRect, configs, onClose ?? null, openerEl, null);
         this._currentOpener = openerEl;
 
         return this;
@@ -733,7 +845,7 @@ class Menu extends Component implements DismissableLayer {
 
             // A submenu grows down from the anchor item's top, and flips up
             // against that same top edge when there is more room above.
-            const y = this.placeVertically(anchorRect.top, anchorRect.top, totalHeight, vp.height);
+            const y = this.placeSubmenuVertically(anchorRect.top, totalHeight, vp.height);
 
             // A submenu sits beside its parent panel: right of the parent's
             // right edge, flipping to the parent's left edge when the right
@@ -1120,6 +1232,37 @@ class Menu extends Component implements DismissableLayer {
         this.applyViewportHeightClamp(available, totalHeight);
 
         return start;
+    }
+
+    /**
+     * Resolves a submenu's top coordinate. Inside the root menu's submenu band
+     * (the part of the viewport on the menu's side of the area it keeps clear)
+     * the submenu is placed as {@link placeVertically} would place it in a
+     * viewport of that band, provided it fits there at its full height; when
+     * there is no band, or it does not fit, it is placed as usual.
+     *
+     * @param itemTop - The top (px) of the item the submenu opens from.
+     * @param totalHeight - The unclamped preferred height (px) of the submenu's items.
+     * @param viewportHeight - The current viewport height (px).
+     * @returns The resolved top coordinate (px) for the submenu.
+     */
+    private placeSubmenuVertically(itemTop: number, totalHeight: number, viewportHeight: number): number {
+        const band = this.rootMenu()._submenuBand;
+
+        if (band !== null) {
+            const inBand = positionFlexibleAnchored(
+                itemTop - band.top, itemTop - band.top, totalHeight, band.bottom - band.top, VIEWPORT_MARGIN,
+            );
+
+            if (totalHeight <= inBand.available) {
+                this.applyScrollbarGutterWidth(false);
+                this.applyViewportHeightClamp(inBand.available, totalHeight);
+
+                return inBand.start + band.top;
+            }
+        }
+
+        return this.placeVertically(itemTop, itemTop, totalHeight, viewportHeight);
     }
 
     /**

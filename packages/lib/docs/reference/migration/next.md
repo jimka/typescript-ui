@@ -193,6 +193,34 @@ class MySource implements DOMSource {
 }
 ```
 
+## `DOMSource` gains `readRangeRects`
+
+**What changed and why.** `MarkdownEditor`'s context menu now opens clear of
+the text its items act on, which needs that text's screen rectangles. Lexical
+turns a range of its own nodes into a DOM range over the elements it
+rendered, and the seam measures it, so `DOMSource` gains one member:
+`readRangeRects(build)`, which calls `build` for the range, takes its client
+rectangles and returns them as plain `Rect`s. The live `Range` exists only for
+the length of the call.
+
+**Who needs to act.** Only code that implements `DOMSource` itself — a custom
+source installed through `DOM.install`. `ProductionDOMSource` implements it,
+and code that only calls the seam is unaffected. A source that wraps another
+forwards the call. A source that answers from its own model has no ranges to
+measure and returns `[]` without calling `build`, which callers treat as "no
+text to keep clear":
+
+```typescript
+import type { DOMSource, Rect } from '@jimka/typescript-ui/core';
+
+class MySource implements DOMSource {
+    // …
+    readRangeRects(_build: () => Range | null): Rect[] {
+        return [];
+    }
+}
+```
+
 ## A read-only `MarkdownEditor` refuses its editing commands
 
 **What changed and why.** `setReadOnly(true)` and the `readOnly` option are

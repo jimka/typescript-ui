@@ -2,12 +2,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import type { MockInstance } from 'vitest';
 import {
     MarkdownEditor, $adoptDomSelection, $classifyContextMenuTarget, $contextMenuNodeFor, $selectEnclosingWordIfCollapsed,
+    $keptClearPoints, contextMenuKeptClearArea,
 } from '~/component/editor/MarkdownEditor';
 import type {
     MarkdownBlockType, MarkdownEditorChange, MarkdownEditorSelectionState, ContextMenuTarget, CommandAvailability,
 } from '~/component/editor/MarkdownEditor';
 import type { MenuItemConfig } from '~/component/container/MenuItem';
 import type { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
+import type { RadioMenuRow } from '~/component/container/RadioMenuRow';
+import { Menu } from '~/overlay/Menu';
+import { LayerManager } from '~/core/LayerManager';
 import { Component } from '~/core/Component';
 import { HORIZONTAL_RULE_SHORTCUT, ORDERED_LIST_SHORTCUT, SHORTCUT_TRANSFORMERS } from '~/component/editor/markdownTransformers';
 import { EDITOR_NODES } from '~/component/editor/editorNodes';
@@ -30,10 +34,11 @@ import {
 import type { LexicalEditor, ElementNode, LexicalNode, ParagraphNode, RangeSelection, TextNode } from 'lexical';
 import { lexMarkdown } from '~/component/display/markdownExtensions';
 import { DOM } from '~/core/DOM';
+import type { Rect } from '~/core/DOM';
 import { Notification } from '~/overlay/Notification';
 import { _Dialog as Dialog } from '~/overlay/Dialog';
 import type { TextField } from '~/component/input/TextField';
-import { installTestDOM, ruleStyleWrites, type RecordingDOMSink } from '../dom/TestDOM';
+import { installTestDOM, makeEvent, ruleStyleWrites, type RecordingDOMSink } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { EditorState } from '@codemirror/state';
 import { editorSurfaceModel, viewerModel } from './markdown-roundtrip/viewModel';
@@ -4867,6 +4872,11 @@ function submenuItemsOf(item: MenuItemConfig | undefined): MenuItemConfig[] | un
     return typeof items === 'function' ? items() : items;
 }
 
+/** Builds the `RadioMenuRow` a `row`-based `MenuItemConfig` renders. */
+function radioRowOf(item: MenuItemConfig | undefined): RadioMenuRow {
+    return item?.row?.() as RadioMenuRow;
+}
+
 /** Builds the `CheckboxMenuRow` a `row`-based `MenuItemConfig` renders. */
 function rowOf(item: MenuItemConfig | undefined): CheckboxMenuRow {
     return item?.row?.() as CheckboxMenuRow;
@@ -5082,12 +5092,12 @@ describe('MarkdownEditor context menu', () => {
         const items = contextMenuMethodsOf(editor).buildContextMenuItems({
             kind: 'text', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE,
         });
-        const colorItems = submenuItemsOf(findItem(submenuItemsOf(findItem(items, 'Text style')) ?? [], 'Colour'));
+        const colorItems = submenuItemsOf(findItem(submenuItemsOf(findItem(items, 'Text style')) ?? [], 'Colour')) ?? [];
 
-        colorItems?.find((item) => item.text === 'Red')?.action?.();
+        radioRowOf(colorItems[0]).activate();
         expect(editor.getValue()).toContain('[word]{color=#cc0000}');
 
-        colorItems?.find((item) => item.text === 'Default')?.action?.();
+        radioRowOf(colorItems[3]).activate();
         expect(normalize(editor.getValue())).toBe('word');
     });
 
@@ -5457,6 +5467,195 @@ describe('MarkdownEditor context menu', () => {
             await contextMenuMethodsOf(editor).promptAndApplyLink('Edit link', 'https://old');
 
             expect(editor.getValue()).toBe(before);
+        });
+    });
+    describe('the Text style presets are radio rows that keep the menu open', () => {
+        const TEXT_CONTEXT: ContextMenuTarget = {
+            kind: 'text', hasSelectedText: true, ...SOME_FORMATS, availability: ALL_AVAILABLE,
+        };
+
+        /** The Colour, Font or Size items of the "Text style" submenu for an editor holding `markdown`, the caret at its start. */
+        function presetItemsOf(editor: MarkdownEditor, submenu: 'Colour' | 'Font' | 'Size'): MenuItemConfig[] {
+            const items = contextMenuMethodsOf(editor).buildContextMenuItems(TEXT_CONTEXT);
+
+            return submenuItemsOf(findItem(submenuItemsOf(findItem(items, 'Text style')) ?? [], submenu)) ?? [];
+        }
+
+        /** Builds every row of `items` and returns them in order. */
+        function buildRows(items: MenuItemConfig[]): RadioMenuRow[] {
+            return items.map((item) => radioRowOf(item));
+        }
+
+        /** Which rows of the group are checked, as their indexes. */
+        function checkedIndexes(rows: RadioMenuRow[]): number[] {
+            return rows.flatMap((row, index) => (row.isChecked() ? [index] : []));
+        }
+
+        /** An editor holding `markdown`, the caret at its start. */
+        function editorAtStart(markdown: string): MarkdownEditor {
+            const editor = new MarkdownEditor();
+
+            editor.setValue(markdown);
+            selectStart(editor);
+
+            return editor;
+        }
+
+        it('every Colour item builds a RadioMenuRow, and with the caret in plain text only Default is checked', () => {
+            const editor = editorAtStart('word');
+            const items = presetItemsOf(editor, 'Colour');
+            const rows = buildRows(items);
+
+            expect(items.map((item) => item.row !== undefined)).toEqual([true, true, true, true]);
+            expect(checkedIndexes(rows)).toEqual([3]);
+        });
+
+        it('shows the current value: a colour with a preset checks it, one without checks nothing', () => {
+            const blue = editorAtStart('[word]{color=#2563eb}');
+
+            expect(checkedIndexes(buildRows(presetItemsOf(blue, 'Colour')))).toEqual([2]);
+
+            const orange = editorAtStart('[word]{color=orange}');
+
+            expect(checkedIndexes(buildRows(presetItemsOf(orange, 'Colour')))).toEqual([]);
+        });
+
+        it('a pick styles the word and moves the check; a second pick restyles the same word', () => {
+            const editor = editorAtStart('word');
+            const rows = buildRows(presetItemsOf(editor, 'Colour'));
+
+            rows[0].activate();
+
+            expect(editor.getValue()).toContain('[word]{color=#cc0000}');
+            expect(checkedIndexes(rows)).toEqual([0]);
+
+            rows[2].activate();
+
+            expect(editor.getValue()).toContain('[word]{color=#2563eb}');
+            expect(checkedIndexes(rows)).toEqual([2]);
+        });
+
+        it('Default clears the colour and takes the check', () => {
+            const editor = editorAtStart('word');
+            const rows = buildRows(presetItemsOf(editor, 'Colour'));
+
+            rows[0].activate();
+            rows[3].activate();
+
+            expect(normalize(editor.getValue())).toBe('word');
+            expect(checkedIndexes(rows)).toEqual([3]);
+        });
+
+        it('Font and Size presets apply and take the check the same way', () => {
+            const editor = editorAtStart('word');
+            const fonts = buildRows(presetItemsOf(editor, 'Font'));
+
+            fonts[0].activate();
+
+            expect(editor.getValue()).toContain('[word]{font="Georgia, serif"}');
+            expect(checkedIndexes(fonts)).toEqual([0]);
+
+            const sizes = buildRows(presetItemsOf(editor, 'Size'));
+
+            sizes[1].activate();
+
+            expect(editor.getValue()).toContain('size=1.2em');
+            expect(checkedIndexes(sizes)).toEqual([1]);
+        });
+
+        it('shows the value of the word under a caret set at its end, at its start and inside it', () => {
+            for (const offset of [0, 2, 4]) {
+                const editor = new MarkdownEditor();
+
+                editor.setValue('[word]{color=#2563eb}');
+                lexicalOf(editor).update(() => {
+                    const node = $getRoot().getAllTextNodes().find((candidate) => candidate.getTextContent() === 'word')!;
+
+                    node.select(offset, offset);
+                }, { discrete: true });
+
+                expect(checkedIndexes(buildRows(presetItemsOf(editor, 'Colour')))).toEqual([2]);
+            }
+        });
+
+        it('reopening a submenu reads the live value', () => {
+            const editor = editorAtStart('word');
+            const items = presetItemsOf(editor, 'Colour');
+
+            buildRows(items)[0].activate();
+
+            expect(checkedIndexes(buildRows(items))).toEqual([0]);
+        });
+
+        it('each pick is its own undo step', () => {
+            const editor = editorAtStart('word');
+            const rows = buildRows(presetItemsOf(editor, 'Colour'));
+
+            rows[0].activate();
+            rows[2].activate();
+
+            lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+
+            expect(editor.getValue()).toContain('[word]{color=#cc0000}');
+
+            lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+
+            expect(normalize(editor.getValue())).toBe('word');
+        });
+
+        describe('in an open menu', () => {
+            /** Opens the editor's text menu on a fresh Menu and its Text style then Colour submenus; returns the three panels. */
+            function openColourSubmenu(editor: MarkdownEditor): { menu: Menu; textStyle: Menu; colour: Menu } {
+                const menu = new Menu();
+                const items = contextMenuMethodsOf(editor).buildContextMenuItems(TEXT_CONTEXT);
+
+                menu.show(10, 10, items);
+
+                const rowsOf = (panel: Menu): any[] => (panel as any)._menuItems;
+                const textStyleItem = rowsOf(menu)[items.indexOf(findItem(items, 'Text style')!)];
+
+                textStyleItem._onOpenSubmenu(textStyleItem);
+
+                const textStyle = (menu as any)._openSubmenuPanel as Menu;
+                const colourItem = rowsOf(textStyle)[0];
+
+                colourItem._onOpenSubmenu(colourItem);
+
+                return { menu, textStyle, colour: (textStyle as any)._openSubmenuPanel as Menu };
+            }
+
+            afterEach(() => {
+                let stray = LayerManager.getTopLayer();
+
+                while (stray) {
+                    LayerManager.unregister(stray);
+                    stray = LayerManager.getTopLayer();
+                }
+            });
+
+            it('picking a preset leaves the submenu open', () => {
+                const editor = editorAtStart('word');
+                const { textStyle, colour } = openColourSubmenu(editor);
+
+                ((colour as any)._menuItems[0] as RadioMenuRow).activate();
+
+                expect(editor.getValue()).toContain('[word]{color=#cc0000}');
+                expect((textStyle as any)._openSubmenuPanel).toBe(colour);
+                expect(LayerManager.getTopLayer()).toBe(colour);
+            });
+
+            it('what dismisses a menu (Escape, an outside press, window blur) still closes it all', () => {
+                const editor = editorAtStart('word');
+                const { menu, colour } = openColourSubmenu(editor);
+
+                ((colour as any)._menuItems[0] as RadioMenuRow).activate();
+                menu.requestClose();
+
+                expect((menu as any)._openSubmenuPanel).toBeNull();
+                expect(LayerManager.getTopLayer()).not.toBe(menu);
+                // Unregistered, not just buried: no layer of the tree is the menu or its submenus any more.
+                expect(LayerManager.getTopLayer()).toBeNull();
+            });
         });
     });
 });
@@ -7181,6 +7380,411 @@ describe('MarkdownEditor context menu — caret and availability', () => {
 
             expect(findItem(contextMenuMethodsOf(editor).buildContextMenuItems(context), 'Paste')).toBeDefined();
         });
+    });
+
+    describe('the menu opens clear of the text it acts on', () => {
+        const WORD_RECT: Rect = rect(30, 40, 80, 60);
+
+        /** Replaces the editor's context menu `showClearOf` with a spy. */
+        function spyOnMenuShowClearOf(editor: MarkdownEditor): MockInstance<(x: number, y: number, keepClear: Rect, items: MenuItemConfig[]) => unknown> {
+            const menu = (editor as unknown as { _contextMenu: { showClearOf(...args: unknown[]): unknown } })._contextMenu;
+
+            return vi.spyOn(menu, 'showClearOf').mockImplementation(() => menu) as never;
+        }
+
+        /** The user presses a key: a real `keydown`, which the menu's input watch records. */
+        function pressKey(): void {
+            // The watch's window registrations belong to the DOM of the test that first started it: start it afresh on this one.
+            Menu._stopInputWatch();
+            Menu._startInputWatch();
+
+            const target = DOM.sink.createElement('div');
+
+            DOM.sink.dispatchEvent(target, makeEvent(target, 'keydown', { key: 'F10' }));
+        }
+
+        /** The user presses a pointer button, which clears a recorded key press. */
+        function pressPointer(): void {
+            const target = DOM.sink.createElement('div');
+
+            DOM.sink.dispatchEvent(target, makeEvent(target, 'pointerdown', { button: 2 }));
+        }
+
+        afterEach(() => Menu._stopInputWatch());
+
+        it('a word is kept clear, grown by the Large size preset\'s extra height', () => {
+            const editor = editorOf('hello');
+            const show = spyOnMenuShow(editor);
+            const showClearOf = spyOnMenuShowClearOf(editor);
+
+            vi.spyOn(DOM.source, 'readRangeRects').mockReturnValue([WORD_RECT]);
+            browserCaretIs('hello', 2);
+
+            const key = lexicalOf(editor).read(() => $textNodeShowing('hello').getKey());
+
+            contextMenuMethodsOf(editor).handleWysiwygContextMenu(contextMenuEventOn(editor, key, 40, 50));
+
+            expect(show).not.toHaveBeenCalled();
+            expect(showClearOf).toHaveBeenCalledOnce();
+
+            const [x, y, keepClear] = showClearOf.mock.calls[0];
+
+            expect([x, y]).toEqual([40, 50]);
+            expect(keepClear).toEqual(rect(30, 36, 80, 64));
+        });
+
+        it('opens at the pointer with show when nothing is measured', () => {
+            const editor = editorOf('hello');
+            const show = spyOnMenuShow(editor);
+            const showClearOf = spyOnMenuShowClearOf(editor);
+
+            vi.spyOn(DOM.source, 'readRangeRects').mockReturnValue([]);
+
+            rightClickIn(editor, 'hello', 2);
+
+            expect(show.mock.calls[0].slice(0, 2)).toEqual([40, 50]);
+            expect(showClearOf).not.toHaveBeenCalled();
+        });
+
+        it('a keyboard open is placed under the caret, with the same area kept clear', () => {
+            const editor = editorOf('hello');
+            const showClearOf = spyOnMenuShowClearOf(editor);
+
+            vi.spyOn(DOM.source, 'readRangeRects')
+                .mockReturnValueOnce([rect(200, 100, 260, 120)])
+                .mockReturnValueOnce([rect(230, 100, 230, 120)]);
+            vi.spyOn(DOM.source, 'getViewportRect').mockReturnValue(rect(0, 0, 1000, 700));
+            browserCaretIs('hello', 2);
+            pressKey();
+
+            contextMenuMethodsOf(editor).handleWysiwygContextMenu(contextMenuEventOn(editor, 'root', 5, 5));
+
+            expect(showClearOf.mock.calls[0].slice(0, 3)).toEqual([230, 120, rect(200, 96, 260, 124)]);
+        });
+
+        it('a keyboard open pins the caret\'s corner to the editor\'s visible box', () => {
+            const editor = editorOf('hello');
+            const showClearOf = spyOnMenuShowClearOf(editor);
+
+            vi.spyOn(DOM.source, 'readRangeRects')
+                .mockReturnValueOnce([rect(200, 100, 260, 120)])
+                .mockReturnValueOnce([rect(230, 100, 230, 120)]);
+            vi.spyOn(DOM.source, 'getViewportRect').mockReturnValue(rect(0, 0, 220, 110));
+            browserCaretIs('hello', 2);
+            pressKey();
+
+            contextMenuMethodsOf(editor).handleWysiwygContextMenu(contextMenuEventOn(editor, 'root', 5, 5));
+
+            expect(showClearOf.mock.calls[0].slice(0, 2)).toEqual([220, 110]);
+        });
+
+        it('a keyboard open whose caret cannot be measured uses the browser\'s point', () => {
+            const editor = editorOf('hello');
+            const showClearOf = spyOnMenuShowClearOf(editor);
+
+            vi.spyOn(DOM.source, 'readRangeRects')
+                .mockReturnValueOnce([rect(200, 100, 260, 120)])
+                .mockReturnValueOnce([]);
+            browserCaretIs('hello', 2);
+            pressKey();
+
+            contextMenuMethodsOf(editor).handleWysiwygContextMenu(contextMenuEventOn(editor, 'root', 5, 5));
+
+            expect(showClearOf.mock.calls[0].slice(0, 3)).toEqual([5, 5, rect(200, 96, 260, 124)]);
+        });
+
+        it('a right-click on the root after a pointer press is not a keyboard open', () => {
+            const editor = editorOf('hello');
+            const read = vi.spyOn(DOM.source, 'readRangeRects').mockReturnValue([]);
+
+            spyOnMenuShow(editor);
+            pressKey();
+            pressPointer();
+            browserCaretIs('hello', 2);
+
+            contextMenuMethodsOf(editor).handleWysiwygContextMenu(contextMenuEventOn(editor, 'root', 5, 5));
+
+            expect(read).toHaveBeenCalledTimes(1);
+        });
+
+        it('a 600-px image in a partly selected paragraph, the pointer on the image: the menu opens on screen', () => {
+            const editor = editorOf('one ![i](/a.png) two');
+            const image = rect(30, 120, 630, 720);
+
+            lexicalOf(editor).update(() => {
+                $textNodeShowing('one ').select(1, 1);
+            }, { discrete: true });
+
+            // The browser's selection runs from inside 'one ' to inside ' two', across the image.
+            vi.spyOn(DOM.source, 'readDocumentSelection').mockImplementation(() => {
+                const selection = $createRangeSelection();
+
+                selection.anchor.set($textNodeShowing('one ').getKey(), 1, 'text');
+                selection.focus.set($textNodeShowing(' two').getKey(), 1, 'text');
+
+                return selection;
+            });
+            vi.spyOn(DOM.source, 'readRangeRects')
+                .mockReturnValueOnce([rect(30, 60, 300, 80), image, rect(630, 700, 700, 720)])
+                .mockReturnValueOnce([image]);
+
+            const menu = (editor as unknown as { _contextMenu: Menu })._contextMenu;
+            const showClearOf = vi.spyOn(menu, 'showClearOf');
+            const key = lexicalOf(editor).read(() => $textNodeShowing('one ').getKey());
+
+            contextMenuMethodsOf(editor).handleWysiwygContextMenu(contextMenuEventOn(editor, key, 40, 400));
+
+            // The image joined with the 20-px text beside it, grown by 4 px above and below.
+            expect(showClearOf.mock.calls[0].slice(0, 3)).toEqual([40, 400, rect(30, 116, 700, 724)]);
+            expect(menu.getHeight()).toBeGreaterThan(0);
+            expect(menu.getY()).toBeGreaterThanOrEqual(0);
+            expect(menu.getY() + menu.getHeight()).toBeLessThanOrEqual(800);
+        });
+
+        it('a table selection measures nothing and opens at the pointer', () => {
+            const editor = editorOf(TABLE);
+            const read = vi.spyOn(DOM.source, 'readRangeRects').mockReturnValue([WORD_RECT]);
+            const show = spyOnMenuShow(editor);
+
+            selectLastRowCells(editor);
+
+            const cellKey = lexicalOf(editor).read(() => $textNodeShowing('c').getKey());
+
+            contextMenuMethodsOf(editor).handleWysiwygContextMenu(contextMenuEventOn(editor, cellKey, 40, 50));
+
+            expect(read).not.toHaveBeenCalled();
+            expect(show.mock.calls[0].slice(0, 2)).toEqual([40, 50]);
+        });
+    });
+});
+
+/** A full Rect from its four edges. */
+function rect(left: number, top: number, right: number, bottom: number): Rect {
+    return { x: left, y: top, left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
+describe('contextMenuKeptClearArea', () => {
+    const VIEWPORT_HEIGHT = 800;
+
+    /** One 20-px-high line of text on a 36-px pitch, starting at `top`. */
+    const line = (top: number): Rect => rect(30, top, 300, top + 20);
+
+    const THREE_LINES = [line(100), line(136), line(172)];
+    const FOUR_LINES = [line(100), line(136), line(172), line(208)];
+
+    it('keeps one line clear, grown above and below for the Large size preset', () => {
+        expect(contextMenuKeptClearArea([rect(30, 100, 80, 120)], 110, VIEWPORT_HEIGHT)).toEqual(rect(30, 96, 80, 124));
+    });
+
+    it('keeps three lines clear whole', () => {
+        expect(contextMenuKeptClearArea(THREE_LINES, 150, VIEWPORT_HEIGHT)).toEqual(rect(30, 96, 300, 196));
+    });
+
+    it('keeps only the pointer\'s line clear for four lines', () => {
+        expect(contextMenuKeptClearArea(FOUR_LINES, 150, VIEWPORT_HEIGHT)).toEqual(rect(30, 132, 300, 160));
+    });
+
+    it('keeps the nearer line clear when the pointer is between two', () => {
+        expect(contextMenuKeptClearArea(FOUR_LINES, 126, VIEWPORT_HEIGHT)).toEqual(rect(30, 96, 300, 124));
+    });
+
+    it('keeps the whole line clear when it holds inline code, which is shorter than the line', () => {
+        const runs = [rect(30, 100, 100, 120), rect(100, 103, 140, 117), rect(140, 100, 300, 120)];
+
+        expect(contextMenuKeptClearArea(runs, 110, VIEWPORT_HEIGHT)).toEqual(rect(30, 96, 300, 124));
+    });
+
+    it('keeps the larger word clear when the line holds one, though a smaller fragment is under the pointer', () => {
+        const runs = [rect(30, 100, 100, 120), rect(100, 103, 140, 117), rect(140, 100, 200, 120), rect(200, 96, 260, 124), rect(260, 100, 300, 120)];
+
+        // The line is 28 high with the larger word: grown by 5.6 above and below.
+        const area = contextMenuKeptClearArea(runs, 110, VIEWPORT_HEIGHT);
+
+        expect(area?.top).toBeCloseTo(96 - 5.6);
+        expect(area?.bottom).toBeCloseTo(124 + 5.6);
+        expect(area?.left).toBe(30);
+        expect(area?.right).toBe(300);
+    });
+
+    it('leaves out an element\'s box that holds the lines', () => {
+        expect(contextMenuKeptClearArea([rect(0, 96, 600, 232), ...FOUR_LINES], 150, VIEWPORT_HEIGHT)).toEqual(rect(30, 132, 300, 160));
+    });
+
+    it('keeps only the pointer\'s line clear when the selection is over a third of the viewport', () => {
+        expect(contextMenuKeptClearArea(THREE_LINES, 150, 240)).toEqual(rect(30, 132, 300, 160));
+    });
+
+    it('keeps a zero-width caret clear', () => {
+        expect(contextMenuKeptClearArea([rect(40, 100, 40, 120)], 110, VIEWPORT_HEIGHT)).toEqual(rect(40, 96, 40, 124));
+    });
+
+    it('a zero-height rectangle inside a line does not drop the line', () => {
+        expect(contextMenuKeptClearArea([rect(30, 100, 300, 120), rect(40, 110, 200, 110)], 110, VIEWPORT_HEIGHT)).toEqual(rect(30, 96, 300, 124));
+    });
+
+    describe('with an image in the selection', () => {
+        const IMAGE = rect(30, 120, 630, 720);
+        const TEXT_ABOVE = rect(30, 60, 300, 80);
+        const TEXT_BESIDE_IMAGE = rect(630, 700, 700, 720);
+        const TEXT_BELOW = rect(30, 740, 300, 760);
+        const MEASURED = [TEXT_ABOVE, IMAGE, TEXT_BESIDE_IMAGE, TEXT_BELOW];
+
+        // A small selection: a text line, then a 40-px image with text beside it, its descenders 4 px lower.
+        const SMALL_IMAGE = rect(30, 136, 70, 176);
+        const SMALL_SELECTION = [rect(30, 100, 300, 120), SMALL_IMAGE, rect(70, 162, 200, 180)];
+
+        it('keeps a small selection clear whole when the pointer is on the image', () => {
+            expect(contextMenuKeptClearArea(SMALL_SELECTION, 145, VIEWPORT_HEIGHT, [SMALL_IMAGE])).toEqual(rect(30, 96, 300, 184));
+        });
+
+        it('keeps a small selection clear whole when the pointer is on the text', () => {
+            expect(contextMenuKeptClearArea(SMALL_SELECTION, 110, VIEWPORT_HEIGHT, [SMALL_IMAGE])).toEqual(rect(30, 96, 300, 184));
+        });
+
+        it('in a large selection, with the pointer on the image, keeps clear the image joined with the text beside it', () => {
+            // Image 120-720 and the 20-px text beside it, in a selection of 700 px: too large to keep whole.
+            expect(contextMenuKeptClearArea(MEASURED, 400, VIEWPORT_HEIGHT, [IMAGE])).toEqual(rect(30, 116, 700, 724));
+        });
+
+        it('in a large selection, with the pointer on an image alone on its line, keeps clear the image\'s own box, without growth', () => {
+            expect(contextMenuKeptClearArea([TEXT_ABOVE, IMAGE, TEXT_BELOW], 400, VIEWPORT_HEIGHT, [IMAGE])).toEqual(IMAGE);
+        });
+
+        it('keeps the text beside the image clear, grown by the text\'s own height, when the pointer is on that text', () => {
+            expect(contextMenuKeptClearArea(MEASURED, 710, VIEWPORT_HEIGHT, [IMAGE])).toEqual(rect(630, 696, 700, 724));
+        });
+
+        it('keeps the pointer\'s text line clear, not the image, when the pointer is on text away from it', () => {
+            expect(contextMenuKeptClearArea(MEASURED, 70, VIEWPORT_HEIGHT, [IMAGE])).toEqual(rect(30, 56, 300, 84));
+        });
+
+        it('treats an image box in the measured rectangles as an image only when it is named as one', () => {
+            // Without naming the image, its box is the line under the pointer and grows by 0.2 of its height.
+            expect(contextMenuKeptClearArea(MEASURED, 400, VIEWPORT_HEIGHT)?.height).toBeCloseTo(600 + 2 * 120);
+        });
+
+        it('keeps the image clear when it is all that was measured', () => {
+            expect(contextMenuKeptClearArea([IMAGE], 400, VIEWPORT_HEIGHT, [IMAGE])).toEqual(IMAGE);
+        });
+    });
+
+    it('returns null when nothing with a height was measured', () => {
+        expect(contextMenuKeptClearArea([], 110, VIEWPORT_HEIGHT)).toBeNull();
+        expect(contextMenuKeptClearArea([rect(30, 100, 80, 100)], 100, VIEWPORT_HEIGHT)).toBeNull();
+    });
+});
+
+describe('$keptClearPoints', () => {
+    /** An editor holding `markdown`. */
+    function editorOf(markdown: string): MarkdownEditor {
+        const editor = new MarkdownEditor();
+
+        editor.setValue(markdown);
+
+        return editor;
+    }
+
+    /** The first text node showing exactly `text`. Call inside a Lexical read or update. */
+    function $textNodeShowing(text: string): TextNode {
+        const node = $getRoot().getAllTextNodes().find((candidate) => candidate.getTextContent() === text);
+
+        if (node === undefined) {
+            throw new Error(`text node "${text}" not found`);
+        }
+
+        return node;
+    }
+
+    /** What `$keptClearPoints` gives, as the text of each end's node and its offset, read in a Lexical read. */
+    function pointsOf(editor: MarkdownEditor): [[string, number], [string, number]] | null {
+        return lexicalOf(editor).read(() => {
+            const points = $keptClearPoints();
+
+            if (points === null) {
+                return null;
+            }
+
+            return [
+                [points.anchor.node.getTextContent(), points.anchor.offset],
+                [points.focus.node.getTextContent(), points.focus.offset],
+            ];
+        });
+    }
+
+    it('a caret in a plain word gives the word', () => {
+        const editor = editorOf('hello world');
+
+        lexicalOf(editor).update(() => { $textNodeShowing('hello world').select(2, 2); }, { discrete: true });
+
+        expect(pointsOf(editor)).toEqual([['hello world', 0], ['hello world', 5]]);
+    });
+
+    it('a caret in a formatted run gives the whole run', () => {
+        const editor = editorOf('**bold text** end');
+
+        lexicalOf(editor).update(() => { $textNodeShowing('bold text').select(3, 3); }, { discrete: true });
+
+        expect(pointsOf(editor)).toEqual([['bold text', 0], ['bold text', 9]]);
+    });
+
+    it('a caret between two spaces gives the caret itself', () => {
+        const editor = editorOf('a  b');
+
+        lexicalOf(editor).update(() => { $textNodeShowing('a  b').select(2, 2); }, { discrete: true });
+
+        expect(pointsOf(editor)).toEqual([['a  b', 2], ['a  b', 2]]);
+    });
+
+    it('a range selection gives its anchor and focus as they are, backward included', () => {
+        const editor = editorOf('hello world');
+
+        lexicalOf(editor).update(() => {
+            const selection = $textNodeShowing('hello world').select(4, 4);
+
+            selection.focus.set(selection.anchor.key, 1, 'text');
+        }, { discrete: true });
+
+        expect(pointsOf(editor)).toEqual([['hello world', 4], ['hello world', 1]]);
+    });
+
+    it('a caret in an empty paragraph gives the paragraph\'s own point twice', () => {
+        const editor = editorOf('');
+
+        lexicalOf(editor).update(() => {
+            const paragraph = $createParagraphNode();
+
+            $getRoot().clear().append(paragraph);
+            paragraph.select();
+        }, { discrete: true });
+
+        const keys = lexicalOf(editor).read(() => {
+            const points = $keptClearPoints();
+
+            return points === null ? null : [points.anchor.node.getType(), points.focus.node.getType(), points.anchor.offset, points.focus.offset];
+        });
+
+        expect(keys).toEqual(['paragraph', 'paragraph', 0, 0]);
+    });
+
+    it('a table selection gives nothing', () => {
+        const editor = editorOf('| a | b |\n| - | - |\n| c | d |');
+
+        lexicalOf(editor).update(() => {
+            const table = $getRoot().getChildren().find((node) => node.getType() === 'table') as TableNode;
+            const [first, second] = (table.getLastChild() as TableRowNode).getChildren() as TableCellNode[];
+
+            $setSelection($createTableSelectionFrom(table, first, second));
+        }, { discrete: true });
+
+        expect(pointsOf(editor)).toBeNull();
+    });
+
+    it('no selection gives nothing', () => {
+        const editor = editorOf('hello');
+
+        lexicalOf(editor).update(() => { $setSelection(null); }, { discrete: true });
+
+        expect(pointsOf(editor)).toBeNull();
     });
 });
 

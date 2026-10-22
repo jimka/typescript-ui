@@ -1518,6 +1518,11 @@ export class ModelledDOMSource implements DOMSource {
         return null;
     }
 
+    /** No live DOM offline; `build` is never called, mirroring readDocumentSelection. */
+    readRangeRects(_build: () => Range | null): Rect[] {
+        return [];
+    }
+
     /** No system clipboard offline; always reports the read as unavailable. */
     readClipboardText(): Promise<string | null> {
         return Promise.resolve(null);

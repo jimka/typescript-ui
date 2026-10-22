@@ -172,6 +172,13 @@ page resets to empty.
   `DOMSource` is affected. See [Migration](/reference/migration/next) for
   the full note.
 
+- **`DOMSource` gains one required member: `readRangeRects()`.** It calls a
+  build callback for a text range, measures it and returns its client
+  rectangles as plain `Rect`s, for a mounted foreign widget that builds a
+  range over the elements it rendered. Only a consumer implementing its own
+  `DOMSource` is affected. See [Migration](/reference/migration/next) for
+  the full note.
+
 - **`SpatialNavigation`'s region chord is now `Ctrl+Alt+Shift`+arrow.**
   The `"target"` tier's default modifiers change from `Ctrl+Shift` to
   `Ctrl+Alt+Shift`, because `Ctrl+Shift+←`/`→` is word selection in every
@@ -271,6 +278,21 @@ page resets to empty.
 ## Changed
 
 ### Components
+
+- **`MarkdownEditor`'s context menu opens clear of the text it acts on, and
+  its Text style presets keep it open.** The menu opens below the selection,
+  the word or formatted run under the caret, or the caret's line (above it
+  when the room below is short), so the text stays visible while a format or
+  style is picked; for a selection taller than five heights of the pointer's
+  line (three lines at the default line height) or a third of the window it
+  keeps clear only the line under the pointer; with the pointer on an image
+  in such a selection, that is the image and the text beside it. When
+  neither side of the text has room for the menu, it opens at the pointer
+  instead and may cover the text. Shift+F10 and the ContextMenu key place it
+  under the caret. The Colour, Font and Size presets
+  are radio rows showing the current value, and picking one applies it and
+  leaves the menu open, one undo step per pick. No consumer action is
+  needed. See [MarkdownEditor](/components/MarkdownEditor).
 
 - **`MarkdownEditor.setValue()` and `setMode("wysiwyg")` no longer move
   keyboard focus into the editor.** Loading a document used to pull the
@@ -1055,6 +1077,15 @@ page resets to empty.
   therefore now read by two managers rather than one.
 
 ### Overlay
+
+- **`Menu.showClearOf(x, y, keepClear, items, onClose?, excludeEl?)`** opens
+  a context menu at the pointer but clear of a rectangle: below it, or above
+  it when the room below is short, aligned to the pointer horizontally. Its
+  submenus stay on the menu's side of the rectangle where they fit. When the
+  rectangle leaves less room than the menu's height and than four rows on
+  either side, the menu opens at the pointer as `show()` places it, covering
+  the rectangle. See
+  [Menu](/components/Menu).
 
 - **`DialogConfig.closeButtonLabel`** names the title-bar close button of one
   dialog, including one built by `Dialog.show`. See
