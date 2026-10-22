@@ -790,10 +790,12 @@ export function $serializeBlock(node: LexicalNode): string {
  * another block. Must run inside an `editor.read` or `editor.update`.
  *
  * @param nodes - The inline nodes.
+ * @param inListItem - Whether the nodes are a list item's text, whose first
+ *   line may open with a task marker.
  * @returns Their Markdown, lines separated by `\n`.
  */
-export function $serializeInlineNodes(nodes: LexicalNode[]): string {
-    return serializeInlineNodes(nodes, { ...MULTI_LINE, definitions: $collectDefinitions() });
+export function $serializeInlineNodes(nodes: LexicalNode[], inListItem: boolean = false): string {
+    return serializeInlineNodes(nodes, { ...MULTI_LINE, definitions: $collectDefinitions(), inListItem });
 }
 
 /**

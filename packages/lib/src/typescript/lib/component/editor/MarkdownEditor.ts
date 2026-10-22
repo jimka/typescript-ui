@@ -27,7 +27,7 @@ import {
     COMMAND_PRIORITY_CRITICAL,
     $caretFromPoint, $normalizeCaret, $setPointFromCaret, KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND, $isRootOrShadowRoot,
     $getChildCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection, COMMAND_PRIORITY_LOW,
-    INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND, $getNodeByKey, $addUpdateTag,
+    INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND, $getNodeByKey, $addUpdateTag, $setState,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
@@ -38,7 +38,7 @@ import { registerMarkdownShortcuts } from "@lexical/markdown";
 import { registerRichText, $createHeadingNode, $createQuoteNode, QuoteNode, $isQuoteNode, $isHeadingNode } from "@lexical/rich-text";
 import type { HeadingTagType } from "@lexical/rich-text";
 import {
-    registerList, INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, ListNode, $isListNode, $isListItemNode,
+    registerList, ListNode, $isListNode, $isListItemNode,
     $createListItemNode, $createListNode,
 } from "@lexical/list";
 import type { ListType } from "@lexical/list";
@@ -60,7 +60,7 @@ import { mergeRegister, $getNearestNodeOfType, $handleIndentAndOutdent } from "@
 import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent } from "@lexical/selection";
 import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
-import { $serializeBlock, $serializeInlineNodes, $serializeMarkdown } from "~/component/editor/markdownSerializer.js";
+import { $serializeBlock, $serializeInlineNodes, $serializeMarkdown, $writtenListMarker } from "~/component/editor/markdownSerializer.js";
 import {
     $breakRuleContainerOf, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
     $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $selectionHasFormat, $takeBlocksOutOf, RUN_EDGE_TAG,
@@ -72,10 +72,11 @@ import type { MarkdownSourceBlock, MarkdownSourceMap } from "~/component/editor/
 import {
     $createMarkdownRawBlockNode, $isMarkdownRawBlockNode, $isMarkdownSourceTextNode, MarkdownRawBlockNode,
 } from "~/component/editor/markdownSourceNodes.js";
-import { keptSourceState, nestedLinkState } from "~/component/editor/markdownNodeState.js";
+import { keptSourceState, listLooseState, nestedLinkState } from "~/component/editor/markdownNodeState.js";
 import { EDITOR_NODES } from "~/component/editor/editorNodes.js";
 import {
-    $createMarkdownListItemTextNode, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $liftItemOut, $outdentItem, $splitItemAfterText,
+    $createMarkdownListItemTextNode, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $liftItemOut, $movePointsBetween, $outdentItem,
+    $splitItemAfterText, $splitItemBefore,
 } from "~/component/editor/markdownListItemNode.js";
 import { EDITOR_THEME, ensureMarkdownEditorClassRules } from "~/component/editor/editorTheme.js";
 import {
@@ -190,8 +191,10 @@ export interface MarkdownEditorSelectionState {
     /**
      * Whether the block conversions (`setBlockType` and the two list
      * toggles) would apply at the selection. `false` with no selection,
-     * while table cells are selected, and when the selection reaches into a
-     * table cell, which holds text only. Always `true` in `"source"` mode.
+     * while table cells are selected, when the selection reaches into a
+     * table cell, which holds text only, and when it stands on a table
+     * between two rows or two cells and holds no block of text, where only
+     * code can put it. Always `true` in `"source"` mode.
      */
     canSetBlockType: boolean;
     /**
@@ -349,8 +352,10 @@ function createBlockNode(type: MarkdownBlockType): ElementNode {
  * copies the block's format and indent, as the default hook does, and
  * replaces its inline content with that content's Markdown, so the code
  * block shows — and saves — the source of the formatting, links and images
- * it cannot hold, and nothing is lost. A raw block or a code block already
- * holds only its text and is left as it is.
+ * it cannot hold, and nothing is lost. A list item's text is written as an
+ * item's text is, so a task marker it opens with goes into the code as it
+ * was written (`[ ] `). A raw block or a code block already holds only its
+ * text and is left as it is.
  *
  * @param block - The block being converted; its children move into `code`.
  * @param code - The new code block.
@@ -362,7 +367,7 @@ function $copyBlockAsCodeSource(block: ElementNode, code: ElementNode): void {
         return;
     }
 
-    const markdown = $serializeInlineNodes(block.getChildren());
+    const markdown = $serializeInlineNodes(block.getChildren(), $isMarkdownListItemTextNode(block));
 
     block.clear();
 
@@ -3072,6 +3077,50 @@ function $isTextOnlyBlock(node: LexicalNode | null | undefined): node is Markdow
 }
 
 /**
+ * Whether a node holds blocks rather than text: the root, a `:::` block or
+ * one of its columns, a list, a list item, a table, a row or a cell. It is
+ * told by what the node is, never by what it holds at the moment: a column
+ * or a document that a deleted table left empty holds blocks all the same.
+ *
+ * @param node - The node.
+ * @returns `true` for such a node.
+ */
+function $holdsBlocks(node: LexicalNode | null): node is ElementNode {
+    // A column and a table cell are shadow roots.
+    const isRegion = $isRootOrShadowRoot(node) || $isMarkdownBlockNode(node);
+    const isListPart = $isListNode(node) || $isListItemNode(node);
+    const isTablePart = $isTableNode(node) || $isTableRowNode(node);
+
+    return isRegion || isListPart || isTablePart;
+}
+
+/**
+ * Whether a selection point stands on a node that holds blocks
+ * ({@link $holdsBlocks}), between its children, rather than in a block of
+ * text: where a deleted table leaves the caret, and where code can put a
+ * point; no click does.
+ *
+ * @param point - The point.
+ * @returns Whether it does.
+ */
+function $standsOnHolder(point: PointType): boolean {
+    return point.type === "element" && $holdsBlocks(point.getNode());
+}
+
+/**
+ * Whether a node is a block of text: a block that holds no blocks
+ * ({@link $holdsBlocks}) — a paragraph, the text of a list item, a heading,
+ * a quote, a code block or a raw block. These are the blocks a block type
+ * and a list toggle act on.
+ *
+ * @param node - The node.
+ * @returns `true` for such a block.
+ */
+function $isBlockOfText(node: LexicalNode | null): node is ElementNode {
+    return $isElementNode(node) && !node.isInline() && !$holdsBlocks(node);
+}
+
+/**
  * Whether a node is a block a table cannot go into: a raw Markdown block or
  * a code block, which hold only text, or another table, whose cells hold no
  * table.
@@ -3134,73 +3183,204 @@ function $selectionTouchesTableCell(): boolean {
 }
 
 /**
- * Whether every block the selection touches is an item of a list of one
- * kind, which is where a list toggle of that kind takes the items out of
- * their list instead of making a list ({@link $blocksTouchedBy} says which
- * blocks those are).
+ * Whether a block is what an item of a list of one kind opens with, as its
+ * text or as a heading: the block a list toggle reads as the item, which is
+ * the block source mode finds on the item's marker line. Any other block of
+ * an item — a paragraph, quote or code block after its text, or a quote,
+ * code block or raw block it opens with — is a block the item holds.
  *
+ * @param block - The block.
  * @param type - The kind of list.
- * @returns `false` when some block is no item of such a list, and for a
- *   selection that is not a range.
+ * @returns `true` for the text or heading an item of such a list opens with.
  */
-function $selectionLiesInListOfType(type: ListType): boolean {
-    const selection = $getSelection();
+function $opensItemOfListType(block: ElementNode | null, type: ListType): boolean {
+    const item = block === null ? null : block.getParent();
+    const list = $isListItemNode(item) ? item.getParent() : null;
+    const opensItem = block !== null && block.getPreviousSibling() === null;
+    const readsAsItem = $isMarkdownListItemTextNode(block) || $isHeadingNode(block);
 
-    if (!$isRangeSelection(selection)) {
-        return false;
-    }
-
-    return $blocksTouchedBy(selection).every((block) => {
-        // An item's text stands for its item; a further block of an item is no item.
-        const item = $isMarkdownListItemTextNode(block) ? block.getParent() : block;
-        const list = $isListItemNode(item) ? item.getParent() : null;
-
-        return $isListNode(list) && list.getListType() === type;
-    });
+    return opensItem && readsAsItem && $isListNode(list) && list.getListType() === type;
 }
 
 /**
- * Converts the list of an empty list item the caret is in to a list of
- * `type`, its items kept as they are. Lexical's own list insert reads the
- * item's empty text as an empty block to make a list of, and would nest a
- * new list in the item.
- *
- * @param type - The kind of list to convert to.
- * @returns Whether the caret was in an empty list item, its list now converted.
- */
-function $convertListOfEmptyItem(type: ListType): boolean {
-    const selection = $getSelection();
-    const block = $isRangeSelection(selection) && selection.isCollapsed() ? $findEnclosingBlock(selection.anchor.getNode()) : null;
-    const item = $isMarkdownListItemTextNode(block) && block.isEmpty() ? block.getParent() : null;
-    const list = item === null ? null : item.getParent();
-
-    if (!$isListNode(list)) {
-        return false;
-    }
-
-    const converted = $createListNode(type);
-
-    list.insertBefore(converted);
-    converted.splice(0, 0, list.getChildren());
-    list.remove();
-
-    return true;
-}
-
-/**
- * The blocks a range selection touches: those holding its two ends and
- * every selected leaf, and an empty block it covers. A list item is no block
- * of its own: its text and the other blocks it holds are.
+ * The blocks a range selection touches ({@link $blocksTouchedBy}), each
+ * once, the last in the document first: an order in which changing one block
+ * never moves a block still to be changed.
  *
  * @param selection - The selection.
- * @returns The blocks, one entry per end and leaf, so a block can repeat;
- *   `null` for a node in no block.
+ * @returns The blocks.
  */
-function $blocksTouchedBy(selection: RangeSelection): Array<ElementNode | null> {
-    // A selected element that holds blocks (a list, a list item) is no block itself.
+function $touchedBlocksLastFirst(selection: RangeSelection): ElementNode[] {
+    const byKey = new Map<NodeKey, ElementNode>();
+
+    for (const block of $blocksTouchedBy(selection)) {
+        byKey.set(block.getKey(), block);
+    }
+
+    return [...byKey.values()].sort((a, b) => (a.isBefore(b) ? 1 : -1));
+}
+
+/**
+ * Takes a block out of every list it is in, with what follows it in its
+ * item up to the item's first nested list ({@link $liftItemOut}). A block
+ * that an item holds after its first block opens an item of its own first
+ * ({@link $splitItemBefore}), so what leaves the list starts at the block.
+ *
+ * @param block - The block.
+ * @returns The blocks now standing outside every list, the block (or the
+ *   paragraph an item's text became) first; the block alone when it was in
+ *   no list item.
+ */
+function $liftBlockOutOfLists(block: ElementNode): LexicalNode[] {
+    const holder = block.getParent();
+
+    if (!$isMarkdownListItemNode(holder)) {
+        return [block];
+    }
+
+    const opensItem = block.getPreviousSibling() === null;
+    const item = opensItem ? holder : $splitItemBefore(holder, block);
+
+    return $liftItemOut(item);
+}
+
+/**
+ * Makes each group of blocks standing outside every list one item of a list
+ * of one kind, where it stands. Groups standing side by side are one run,
+ * and a run's items go into one list ({@link $makeItemsOfRun}).
+ *
+ * @param groups - The groups, in document order; none is empty.
+ * @param type - The kind of list.
+ */
+function $makeItemsOf(groups: LexicalNode[][], type: ListType): void {
+    let run: LexicalNode[][] = [];
+
+    for (const blocks of groups) {
+        const before = run[run.length - 1];
+        // Compared by key: a block a later lift wrote to is no longer the object its own lift returned.
+        const standsApart = before !== undefined && !before[before.length - 1]!.is(blocks[0]!.getPreviousSibling());
+
+        if (standsApart) {
+            $makeItemsOfRun(run, type);
+            run = [];
+        }
+
+        run.push(blocks);
+    }
+
+    $makeItemsOfRun(run, type);
+}
+
+/**
+ * Makes the groups of one run the items of one list of a kind, where the
+ * run stands: a list of that kind right before the run, which they are
+ * appended to; else one right after it, which they are put at the start of;
+ * else a new list.
+ *
+ * @param run - The run's groups, in document order.
+ * @param type - The kind of list.
+ */
+function $makeItemsOfRun(run: LexicalNode[][], type: ListType): void {
+    const lastGroup = run[run.length - 1];
+
+    if (lastGroup === undefined) {
+        return;
+    }
+
+    const first = run[0]![0]!;
+    const above = first.getPreviousSibling();
+    const below = lastGroup[lastGroup.length - 1]!.getNextSibling();
+    const joinsAbove = $isListNode(above) && above.getListType() === type;
+    const joinsBelow = $isListNode(below) && below.getListType() === type;
+    const list = joinsAbove ? above : joinsBelow ? below : $createListNode(type);
+
+    if (!joinsAbove && !joinsBelow) {
+        first.insertBefore(list);
+    }
+
+    // The list transform joins `below` into `above` when their markers match; a loose one makes the whole list loose.
+    const meetsLoose = joinsAbove && joinsBelow && $getState(below, listLooseState) && $writtenListMarker(below) === $writtenListMarker(above);
+
+    if (meetsLoose) {
+        $setState(above, listLooseState, true);
+    }
+
+    list.splice(joinsAbove ? list.getChildrenSize() : 0, 0, run.map($itemOfBlocks));
+}
+
+/**
+ * Makes one list item of blocks standing outside every list: the first
+ * block gives the item its text, the others are the blocks the item holds.
+ *
+ * @param blocks - The blocks, in document order, the first one a block of text.
+ * @returns The item, in no list yet.
+ */
+function $itemOfBlocks(blocks: LexicalNode[]): LexicalNode {
+    const [first, ...rest] = blocks;
+    const item = $createListItemNode();
+    const text = $createMarkdownListItemTextNode();
+
+    item.append(text, ...rest);
+
+    if ($isElementNode(first)) {
+        text.splice(0, 0, first.getChildren());
+        // A caret in an empty block is held on the block itself, which goes.
+        $movePointsBetween(first, text);
+        first.remove();
+    }
+
+    return item;
+}
+
+/**
+ * Toggles a list of one kind over the blocks a selection touches. Where
+ * every block opens an item of such a list ({@link $opensItemOfListType})
+ * the toggle is off: each item leaves its lists ({@link $liftBlockOutOfLists})
+ * and what it opened with is a paragraph. Otherwise it is on: each block
+ * that does not open such an item yet leaves the lists it is in the same
+ * way, and what left with it becomes one item of such a list
+ * ({@link $makeItemsOf}).
+ *
+ * @param selection - The selection.
+ * @param type - The kind of list.
+ */
+function $toggleListOfTouchedBlocks(selection: RangeSelection, type: ListType): void {
+    const blocks = $touchedBlocksLastFirst(selection);
+    const isOff = blocks.every((block) => $opensItemOfListType(block, type));
+    const changed = blocks.filter((block) => isOff || !$opensItemOfListType(block, type));
+    // Lifted last first; `reverse` then puts the groups in document order.
+    const lifted = changed.map($liftBlockOutOfLists).reverse();
+
+    if (!isOff) {
+        $makeItemsOf(lifted, type);
+
+        return;
+    }
+
+    for (const [first] of lifted) {
+        // An item's text is a paragraph once it is out; a heading the item opened with becomes one.
+        if ($isHeadingNode(first)) {
+            first.replace($createParagraphNode(), true);
+        }
+    }
+}
+
+/**
+ * The blocks of text ({@link $isBlockOfText}) a range selection touches:
+ * those holding its two ends and every selected leaf, and an empty one it
+ * covers. A node that holds blocks ({@link $holdsBlocks}) is never one of
+ * them, whatever it holds: a list item is no block of its own — its text
+ * and the other blocks it holds are — and a column a deleted table left
+ * empty is passed over by a range that covers it, as is a table an end
+ * stands on.
+ *
+ * @param selection - The selection.
+ * @returns The blocks, one entry per end and leaf, so a block can repeat.
+ */
+function $blocksTouchedBy(selection: RangeSelection): ElementNode[] {
     const leaves = selection.getNodes().filter((node) => !$isElementNode(node) || node.isInline() || node.isEmpty());
 
-    return [selection.anchor.getNode(), selection.focus.getNode(), ...leaves].map($findEnclosingBlock);
+    return [selection.anchor.getNode(), selection.focus.getNode(), ...leaves].map($findEnclosingBlock).filter($isBlockOfText);
 }
 
 /**
@@ -3211,8 +3391,11 @@ function $blocksTouchedBy(selection: RangeSelection): Array<ElementNode | null> 
  * language.
  *
  * @param type - The block type asked for.
- * @returns `false` when some block is of another type, and for a selection
- *   that is not a range.
+ * @returns `false` when some block is of another type; for a selection with
+ *   an end on a node that holds blocks ({@link $standsOnHolder}), whose
+ *   blocks are known once its ends are settled
+ *   ({@link $settleEndsIntoBlocksOfText}); and for a selection that is not a
+ *   range.
  */
 function $selectedBlocksHaveType(type: MarkdownBlockType): boolean {
     const selection = $getSelection();
@@ -3221,8 +3404,10 @@ function $selectedBlocksHaveType(type: MarkdownBlockType): boolean {
         return false;
     }
 
+    const isSettled = !$standsOnHolder(selection.anchor) && !$standsOnHolder(selection.focus);
+
     // A heading's type is its level; a paragraph, a quote and a code block are named as their nodes are.
-    return $blocksTouchedBy(selection).every((block) => ($isHeadingNode(block) ? block.getTag() : block?.getType()) === type);
+    return isSettled && $blocksTouchedBy(selection).every((block) => ($isHeadingNode(block) ? block.getTag() : block.getType()) === type);
 }
 
 /**
@@ -4235,6 +4420,383 @@ function $moveBlockPointsIntoText(selection: RangeSelection): void {
 }
 
 /**
+ * Moves each end of a range selection into a block of text
+ * ({@link $isBlockOfText}), so that a command acting on the blocks the
+ * selection touches ({@link $blocksTouchedBy}) finds one for each end. An
+ * end in text, or on a block of text, stays in its block. An end on a node
+ * that holds blocks ({@link $holdsBlocks}) is where a deleted table leaves
+ * the caret, and where code can put a point; no click does. An end of a
+ * range goes inward from there, so that no block outside the range is
+ * touched ({@link $settleRangeEndsInward}). A caret, and a range that holds
+ * no block of text, settles beside the point it starts at
+ * ({@link $settleCaretIntoBlockOfText}). Each end is then named as a point
+ * in text where its block has text ({@link $moveBlockPointsIntoText}), so a
+ * range from one block's end to the next one's start takes both blocks
+ * however its points were held.
+ *
+ * @param selection - A selection the block commands are available for
+ *   (`canSetBlockType`); its points are moved.
+ */
+function $settleEndsIntoBlocksOfText(selection: RangeSelection): void {
+    const isCollapsed = selection.isCollapsed();
+    const holdsBlock = !isCollapsed && $settleRangeEndsInward(selection);
+
+    if (!holdsBlock) {
+        const [start, end] = $orderedPoints(selection);
+
+        $settleCaretIntoBlockOfText(start);
+        end.set(start.key, start.offset, start.type);
+    }
+
+    $moveBlockPointsIntoText(selection);
+}
+
+/**
+ * Moves the ends of a range that stand on a node that holds blocks into the
+ * range: its start to the start of the first block of text at or after it,
+ * its end to the end of the last block of text at or before it, in document
+ * order ({@link $blockOfRangeEnd}). The blocks the range touches are then
+ * the blocks of text between its ends and no other. A range with no block
+ * of text between its ends is left as it is.
+ *
+ * @param selection - A range that is no caret; its points are moved.
+ * @returns Whether the range holds a block of text.
+ */
+function $settleRangeEndsInward(selection: RangeSelection): boolean {
+    const [start, end] = $orderedPoints(selection);
+    const first = $blockOfRangeEnd(start, "next");
+    const last = $blockOfRangeEnd(end, "previous");
+    const holdsBlock = first !== null && last !== null && !last.isBefore(first);
+
+    if (!holdsBlock) {
+        return false;
+    }
+
+    const startsOnHolder = $standsOnHolder(start);
+    const endsOnHolder = $standsOnHolder(end);
+
+    if (startsOnHolder) {
+        $setPointFromCaret(start, $normalizeCaret($getChildCaret(first, "next")));
+    }
+
+    if (endsOnHolder) {
+        $setPointFromCaret(end, $normalizeCaret($getChildCaret(last, "previous")));
+    }
+
+    return true;
+}
+
+/**
+ * The block of text one end of a range belongs to: the block that holds
+ * it; or, for an end on a node that holds blocks, the first block of text
+ * that follows the point in document order (`"next"`, for the range's
+ * start) or the last one before it (`"previous"`, for its end)
+ * ({@link $blockOfTextPast}). An end that stands on a document or a column
+ * a deleted table left empty stands in it: the holder gets an empty
+ * paragraph, which is the block ({@link $fillEmptyHolder}).
+ *
+ * @param point - The end.
+ * @param direction - `"next"` for the range's start, `"previous"` for its end.
+ * @returns The block, or `null` when the document has none on that side.
+ */
+function $blockOfRangeEnd(point: PointType, direction: CaretDirection): ElementNode | null {
+    const node = point.getNode();
+    const isOnHolder = $standsOnHolder(point) && $isElementNode(node);
+
+    if (!isOnHolder) {
+        return $findEnclosingBlock(node);
+    }
+
+    const [holder, offset] = $holderPointOffTable(node, point.offset, direction);
+
+    return $fillEmptyHolder(holder) ?? $blockOfTextPast(holder, offset, direction);
+}
+
+/**
+ * The first block of text past a point on a node that holds blocks, in
+ * document order: among the holder's children on that side, each searched
+ * through ({@link $blockOfTextIn}); then past the holder itself, in the
+ * node that holds it, and so on up to the root.
+ *
+ * @param holder - The node the point stands on.
+ * @param offset - The point's offset: the index of the child after it.
+ * @param direction - `"next"` to look forward, `"previous"` to look back.
+ * @returns The block, or `null` when the document has none on that side.
+ */
+function $blockOfTextPast(holder: ElementNode, offset: number, direction: CaretDirection): ElementNode | null {
+    const children = holder.getChildren();
+    const ahead = direction === "next" ? children.slice(offset) : children.slice(0, offset).reverse();
+    const found = $firstBlockOfTextIn(ahead, direction);
+    const parent = holder.getParent();
+
+    if (found !== null || parent === null) {
+        return found;
+    }
+
+    const index = holder.getIndexWithinParent();
+
+    return $blockOfTextPast(parent, direction === "next" ? index + 1 : index, direction);
+}
+
+/**
+ * The first block of text in a node, in document order (the last one,
+ * looking back): the node itself when it is one, else the first found in
+ * its children. A table has none to offer, since its cells hold text only,
+ * and neither has a column a deleted table left empty: a range passes over
+ * both.
+ *
+ * @param node - The node.
+ * @param direction - `"next"` for the first block, `"previous"` for the last.
+ * @returns The block, or `null`.
+ */
+function $blockOfTextIn(node: LexicalNode, direction: CaretDirection): ElementNode | null {
+    if ($isBlockOfText(node)) {
+        return node;
+    }
+
+    const isSearched = $holdsBlocks(node) && !$isTableNode(node);
+
+    if (!isSearched) {
+        return null;
+    }
+
+    const children = node.getChildren();
+
+    return $firstBlockOfTextIn(direction === "next" ? children : children.reverse(), direction);
+}
+
+/**
+ * The first block of text found in a list of nodes, each searched through
+ * in turn ({@link $blockOfTextIn}).
+ *
+ * @param nodes - The nodes, in the order to search them.
+ * @param direction - `"next"` when that order is document order, `"previous"` when it is its reverse.
+ * @returns The block, or `null`.
+ */
+function $firstBlockOfTextIn(nodes: readonly LexicalNode[], direction: CaretDirection): ElementNode | null {
+    for (const node of nodes) {
+        const found = $blockOfTextIn(node, direction);
+
+        if (found !== null) {
+            return found;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Moves a caret off a node that holds blocks, into a block of text beside
+ * it: the block after it ({@link $blockBeside}), else the one before it,
+ * else a new empty paragraph ({@link $newParagraphBeside}). A table is no
+ * block to go into, since its cells hold text only: the way to either side
+ * stops at one, and a point on a table or one of its rows is first taken
+ * off the table ({@link $holderPointOffTable}). A column a deleted table
+ * left empty is a place to go into: it gets an empty paragraph, as does the
+ * document or the column the caret itself stands on when that is empty
+ * ({@link $fillEmptyHolder}). A point in text, or on a block of text, is
+ * left alone.
+ *
+ * @param point - The caret's point; moved.
+ */
+function $settleCaretIntoBlockOfText(point: PointType): void {
+    const node = point.getNode();
+    const isOnHolder = $standsOnHolder(point) && $isElementNode(node);
+
+    if (!isOnHolder) {
+        return;
+    }
+
+    const [holder, offset] = $holderPointOffTable(node, point.offset, "next");
+    const after = $blockBeside(holder, offset, "next");
+    const before = $blockBeside(holder, offset, "previous");
+    const goesAfter = $takesCaret(after);
+    const goesBefore = !goesAfter && $takesCaret(before);
+    const place = goesAfter ? after : goesBefore ? before : null;
+    const own = $fillEmptyHolder(holder);
+    const block = own ?? (place === null ? $newParagraphBeside(after, before) : $blockOfTextAt(place));
+
+    $setPointFromCaret(point, $normalizeCaret($getChildCaret(block, goesBefore ? "previous" : "next")));
+}
+
+/**
+ * The same place as a point on a table, a row or a cell, named on the node
+ * that holds the table: the point after the table for one that looks
+ * forward, the point before the table for one that looks back. Where the
+ * block commands are available the selection covers no cell, so its start
+ * can only stand at a table's end and its end at a table's start. Any
+ * other point is returned as it is.
+ *
+ * @param node - The node the point stands on.
+ * @param offset - The point's offset.
+ * @param direction - `"next"` for a point that looks forward (a range's start, a caret), `"previous"` for one that looks back.
+ * @returns The node holding blocks the point is named on, and its offset there.
+ */
+function $holderPointOffTable(node: ElementNode, offset: number, direction: CaretDirection): [ElementNode, number] {
+    const table = $findMatchingParent(node, $isTableNode);
+
+    if (table === null) {
+        return [node, offset];
+    }
+
+    const index = table.getIndexWithinParent();
+
+    return [table.getParentOrThrow(), direction === "next" ? index + 1 : index];
+}
+
+/**
+ * What a point on a node that holds blocks has on one side: the child
+ * there, or, for a child that holds blocks itself, its first block (its
+ * last, looking back), and so on down. The way down stops at a table, and
+ * at a node that holds nothing: a `:::` column a deleted table left empty.
+ * Nothing is changed.
+ *
+ * @param holder - The node the point stands on.
+ * @param offset - The point's offset: the index of the child after it.
+ * @param direction - `"next"` for the side after the point, `"previous"` for the side before it.
+ * @returns A block of text ({@link $isBlockOfText}); or the table or the
+ *   empty column the way down met; or `null` when that side has no child.
+ */
+function $blockBeside(holder: ElementNode, offset: number, direction: CaretDirection): LexicalNode | null {
+    let node = holder.getChildAtIndex(direction === "next" ? offset : offset - 1);
+    let inner = $blockBelow(node, direction);
+
+    while (inner !== null) {
+        node = inner;
+        inner = $blockBelow(node, direction);
+    }
+
+    return node;
+}
+
+/**
+ * The next node on the way down from a node ({@link $blockBeside}): the
+ * first child (the last, looking back) of a node that holds blocks and is
+ * no table.
+ *
+ * @param node - The node the way down has reached.
+ * @param direction - `"next"` for the first child, `"previous"` for the last.
+ * @returns The child; `null` where the way down ends: at a block of text,
+ *   a table, or a node that holds nothing.
+ */
+function $blockBelow(node: LexicalNode | null, direction: CaretDirection): LexicalNode | null {
+    const goesDown = $holdsBlocks(node) && !$isTableNode(node);
+
+    if (!goesDown) {
+        return null;
+    }
+
+    return direction === "next" ? node.getFirstChild() : node.getLastChild();
+}
+
+/**
+ * Whether a caret can go into what it has on one side ({@link $blockBeside}):
+ * a block of text, or a column a deleted table left empty, which gets a
+ * paragraph for it ({@link $blockOfTextAt}).
+ *
+ * @param place - What the side has.
+ * @returns `true` for a block of text and for an empty column.
+ */
+function $takesCaret(place: LexicalNode | null): place is ElementNode {
+    const isEmptyColumn = $isElementNode(place) && $isRootOrShadowRoot(place) && place.isEmpty();
+
+    return $isBlockOfText(place) || isEmptyColumn;
+}
+
+/**
+ * The block of text a caret goes into at a place that takes it
+ * ({@link $takesCaret}): the block itself, or the empty paragraph an empty
+ * column is given for it ({@link $fillEmptyHolder}).
+ *
+ * @param place - A block of text or an empty column.
+ * @returns The block of text.
+ */
+function $blockOfTextAt(place: ElementNode): ElementNode {
+    return $fillEmptyHolder(place) ?? place;
+}
+
+/**
+ * Gives a document or a `:::` column that holds nothing — what a deleted
+ * table leaves of one that held nothing else — an empty paragraph, since
+ * neither can stay empty once the caret is in it. Any other node is left
+ * alone.
+ *
+ * @param holder - The node.
+ * @returns The new paragraph, or `null` when nothing was added.
+ */
+function $fillEmptyHolder(holder: ElementNode): ParagraphNode | null {
+    const isEmptyHolder = $isRootOrShadowRoot(holder) && holder.isEmpty();
+
+    if (!isEmptyHolder) {
+        return null;
+    }
+
+    const paragraph = $createParagraphNode();
+
+    holder.append(paragraph);
+
+    return paragraph;
+}
+
+/**
+ * Makes the empty paragraph a caret goes into when it stands on a node that
+ * holds blocks and has no place to go into on either side
+ * ({@link $takesCaret}): right before what stands after it, else right
+ * after what stands before it. That is a table, or a table inside the node
+ * on that side. {@link $settleCaretIntoBlock} makes the same paragraph for
+ * an insert.
+ *
+ * @param after - What the caret has after it ({@link $blockBeside}), or `null`.
+ * @param before - What it has before it, or `null`; one of the two is a node.
+ * @returns The paragraph, in the document.
+ */
+function $newParagraphBeside(after: LexicalNode | null, before: LexicalNode | null): ParagraphNode {
+    const paragraph = $createParagraphNode();
+
+    if (after !== null) {
+        after.insertBefore(paragraph);
+    } else {
+        before?.insertAfter(paragraph);
+    }
+
+    return paragraph;
+}
+
+/**
+ * Whether a selection point stands on a table or one of its rows, between
+ * its rows or cells.
+ *
+ * @param point - The point.
+ * @returns Whether it does.
+ */
+function $standsOnTableOrRow(point: PointType): boolean {
+    const node = point.getNode();
+
+    return point.type === "element" && ($isTableNode(node) || $isTableRowNode(node));
+}
+
+/**
+ * Whether a range selection names no block of text for a block type or a
+ * list toggle to act on: both of its ends stand on a table or one of its
+ * rows ({@link $standsOnTableOrRow}), and no block of text lies between
+ * them. Such a selection — a caret code put between two rows, say — is in a
+ * table as much as one in a cell is.
+ *
+ * @returns `true` for such a selection; `false` for one that is not a range.
+ */
+function $selectionStandsOnTablesAlone(): boolean {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return false;
+    }
+
+    const standsOnTables = $standsOnTableOrRow(selection.anchor) && $standsOnTableOrRow(selection.focus);
+
+    return standsOnTables && $blocksTouchedBy(selection).length === 0;
+}
+
+/**
  * Whether a link put on a range selection would have something to hold:
  * text, or an image, which a link wraps as it wraps text. A caret in text
  * has the run it sits in, which `toggleLink` links whole; a caret in an
@@ -4351,7 +4913,7 @@ function $readCommandAvailability(expansion: WordExpansion | null): CommandAvail
 
     return {
         ...$readInlineAvailability(expansion, touchesTextOnlyBlock),
-        canSetBlockType:               isRange && !$selectionTouchesTableCell(),
+        canSetBlockType:               isRange && !$selectionTouchesTableCell() && !$selectionStandsOnTablesAlone(),
         canSetBlockLayout:             isRange,
         canInsertParagraphAroundBlock: inInsertableBlock,
         canInsertTable:                $tableInsertApplies(touchesTextOnlyBlock),
@@ -5188,49 +5750,38 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Shared body of {@link MarkdownEditor.toggleUnorderedList} and
-     * {@link MarkdownEditor.toggleOrderedList} on the WYSIWYG surface. Where
-     * every block the selection touches is already an item of a list of
-     * `type` ({@link $selectionLiesInListOfType}), the toggle is off: those
-     * items leave their list as {@link MarkdownEditor.setBlockType} makes
-     * them paragraphs, the list split around them, which is what the
-     * source-mode toggle does to the same lines. Otherwise `insert` is
-     * dispatched, and Lexical makes the selected blocks items of such a list,
-     * a list of the other kind converting whole. Lexical's insert goes by
-     * the selected leaves, so a selection point on a block itself is first
-     * moved into the text beside it ({@link $moveBlockPointsIntoText}): a
-     * range from one block's end to the next one's start then takes both
-     * blocks however its points are held. A caret in an empty list item has
-     * no leaf, and that item's list is converted here
-     * ({@link $convertListOfEmptyItem}).
+     * {@link MarkdownEditor.toggleOrderedList} on the WYSIWYG surface, in one
+     * update, so one undo step ({@link $toggleListOfTouchedBlocks}). Where
+     * every block the selection touches opens an item of a list of `type`
+     * the toggle is off: those items leave their list, the list split around
+     * them, which is what the source-mode toggle does to the same lines.
+     * Otherwise each block that does not open such an item yet becomes an
+     * item of such a list, taken out of the lists it was in. The blocks are
+     * blocks of text, read from the selection's ends and the selected
+     * leaves, so each end is first settled into one
+     * ({@link $settleEndsIntoBlocksOfText}): a caret on a node that holds
+     * blocks — where a deleted table leaves it — goes into the block of
+     * text beside it, and into a new empty paragraph where it has a table,
+     * or nothing, on both sides, as in a column or a document that a
+     * deleted table left empty; the toggle makes that paragraph an item.
+     * An end of a range that stands on such a node goes into the nearest
+     * block of text inside the range, so no block outside it is changed.
+     * Where `canSetBlockType` is true every end so has a block, and the
+     * toggle changes the document.
      *
      * @param type - The kind of list toggled.
-     * @param insert - Lexical's command inserting a list of that kind.
      */
-    private toggleList(type: ListType, insert: LexicalCommand<void>): void {
-        const editor = this.ensureEditor();
-        const liesInListOfType = editor.read(() => $selectionLiesInListOfType(type));
-
-        if (liesInListOfType) {
-            this.setBlockType("paragraph");
-
-            return;
-        }
-
-        let converted = false;
-
-        editor.update(() => {
+    private toggleList(type: ListType): void {
+        this.ensureEditor().update(() => {
             const selection = $getSelection();
 
-            if ($isRangeSelection(selection)) {
-                $moveBlockPointsIntoText(selection);
+            if (!$isRangeSelection(selection)) {
+                return;
             }
 
-            converted = $convertListOfEmptyItem(type);
+            $settleEndsIntoBlocksOfText(selection);
+            $toggleListOfTouchedBlocks(selection, type);
         }, { discrete: true });
-
-        if (!converted) {
-            editor.dispatchCommand(insert, undefined);
-        }
     }
 
     /**
@@ -5819,14 +6370,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Converts the selected blocks into an unordered (bulleted) list, or out
-     * of one: when every selected block is already an item of a bulleted
-     * list, those items become paragraphs and the list is split around them.
-     * A numbered list the selection touches converts whole. No-op without a
-     * range selection, and when the selection touches a table cell (whole
-     * cells selected included), which holds text only.
+     * of one. When every selected block is the text an item of a bulleted
+     * list opens with, those items leave the list: each text becomes a
+     * paragraph, the blocks its item holds up to its first nested list follow
+     * it, and the list is split around them; a task item's `[ ]` / `[x]`
+     * marker stays as the text it shows. Otherwise every other selected
+     * block becomes a bulleted item at the top level (or in its `:::`
+     * column): an item of a numbered list changes alone, its list split
+     * around it and the blocks it holds up to its first nested list kept in
+     * it, and a new item joins a bulleted list right before or after it.
+     * No-op without a range selection, and when the selection touches a
+     * table cell (whole cells selected included), which holds text only.
      *
-     * In `"source"` mode, toggles the `- ` list over the raw Markdown's
-     * selected lines instead.
+     * In `"source"` mode, does the same to the blocks the raw Markdown's
+     * selected lines touch, except that the blocks an item holds after its
+     * text stay in the list, in an item of their own.
      *
      * @returns This component, for method chaining.
      */
@@ -5839,21 +6397,28 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (!applies) { return this; }
 
-        this.toggleList("bullet", INSERT_UNORDERED_LIST_COMMAND);
+        this.toggleList("bullet");
 
         return this;
     }
 
     /**
      * Converts the selected blocks into an ordered (numbered) list, or out
-     * of one: when every selected block is already an item of a numbered
-     * list, those items become paragraphs and the list is split around them.
-     * A bulleted list the selection touches converts whole. No-op without a
-     * range selection, and when the selection touches a table cell (whole
-     * cells selected included), which holds text only.
+     * of one. When every selected block is the text an item of a numbered
+     * list opens with, those items leave the list: each text becomes a
+     * paragraph, the blocks its item holds up to its first nested list follow
+     * it, and the list is split around them; a task item's `[ ]` / `[x]`
+     * marker stays as the text it shows. Otherwise every other selected
+     * block becomes a numbered item at the top level (or in its `:::`
+     * column): an item of a bulleted list changes alone, its list split
+     * around it and the blocks it holds up to its first nested list kept in
+     * it, and a new item joins a numbered list right before or after it.
+     * No-op without a range selection, and when the selection touches a
+     * table cell (whole cells selected included), which holds text only.
      *
-     * In `"source"` mode, toggles the `1. ` list over the raw Markdown's
-     * selected lines instead.
+     * In `"source"` mode, does the same to the blocks the raw Markdown's
+     * selected lines touch, except that the blocks an item holds after its
+     * text stay in the list, in an item of their own.
      *
      * @returns This component, for method chaining.
      */
@@ -5866,7 +6431,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (!applies) { return this; }
 
-        this.toggleList("number", INSERT_ORDERED_LIST_COMMAND);
+        this.toggleList("number");
 
         return this;
     }
@@ -6186,12 +6751,20 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Converts the selected blocks to `type` (paragraph, `h1`–`h6`, blockquote,
-     * or fenced code). No-op without a range selection, and when the selection
+     * or fenced code). A list item's text is taken out of its lists, and the
+     * blocks the item holds up to its first nested list follow it; a task
+     * item's marker stays as the text it shows, and in a code block as it was
+     * written. No-op without a range selection, and when the selection
      * touches a table cell (whole cells selected included), which holds text
      * only. Where every block the selection touches is already of `type` the
      * call changes nothing: no block is replaced, so a heading or a code
      * block keeps the form it was written in and a code block its language,
-     * and no undo step is added.
+     * and no undo step is added. A caret that stands between two blocks
+     * rather than in one, where a deleted table leaves it, is first moved
+     * into the block of text beside it — a new empty paragraph in a `:::`
+     * column or a document that the table left empty — and an end of a
+     * range that stands there into the nearest block of text inside the
+     * range, as the list toggles move them.
      *
      * In `"source"` mode, converts the raw Markdown's selected blocks instead —
      * see `sourceTransformForBlockType`.
@@ -6216,7 +6789,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         editor.update(() => {
             const selection = $getSelection();
 
-            if ($isRangeSelection(selection)) {
+            if (!$isRangeSelection(selection)) {
+                return;
+            }
+
+            $settleEndsIntoBlocksOfText(selection);
+
+            // Asked again: the blocks of a selection with an end on a node that holds blocks are known only now.
+            const isSetOnceSettled = $selectedBlocksHaveType(type);
+
+            if (!isSetOnceSettled) {
                 $setBlocksType(selection, () => createBlockNode(type), type === "code" ? $copyBlockAsCodeSource : undefined);
             }
         }, { discrete: true });

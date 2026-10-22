@@ -22,7 +22,7 @@ import { $dfs } from '@lexical/utils';
 import { EDITOR_NODES } from '~/component/editor/editorNodes';
 import {
     $createMarkdownListItemTextNode, $indentItem, $isMarkdownListItemNode, $isMarkdownListItemTextNode, $liftItemOut, $outdentItem,
-    MarkdownListItemNode, MarkdownListItemTextNode,
+    $splitItemBefore, MarkdownListItemNode, MarkdownListItemTextNode,
 } from '~/component/editor/markdownListItemNode';
 import { registerWritableStateRules } from '~/component/editor/markdownWritable';
 
@@ -266,6 +266,14 @@ describe('the list operations on hand-built trees (S1 to S8)', () => {
 
         expect(lifted).toEqual([]);
         expect(shapeOf(editor)).toBe('ul(i(ul(i(t(n)))))');
+    });
+
+    it('S26: $splitItemBefore gives a later block of an item an item of its own, with every block after it', () => {
+        const editor = editorHolding(() => [ul(i(t('a'), p('b'), ul(i(t('n'))), p('c')), i(t('z')))]);
+        const made = update(editor, () => shape($splitItemBefore($itemOf('a'), $textOf('b').getParentOrThrow())));
+
+        expect(made).toBe('i(p(b), ul(i(t(n))), p(c))');
+        expect(shapeOf(editor)).toBe('ul(i(t(a)), i(p(b), ul(i(t(n))), p(c)), i(t(z)))');
     });
 });
 

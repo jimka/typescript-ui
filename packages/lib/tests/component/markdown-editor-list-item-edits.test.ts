@@ -10,12 +10,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
     $createRangeSelection, $createTextNode, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isTextNode, $setSelection,
     CONTROLLED_TEXT_INSERTION_COMMAND, DELETE_CHARACTER_COMMAND, DELETE_LINE_COMMAND, INDENT_CONTENT_COMMAND, INSERT_LINE_BREAK_COMMAND,
-    INSERT_TAB_COMMAND, KEY_BACKSPACE_COMMAND, KEY_ENTER_COMMAND, OUTDENT_CONTENT_COMMAND,
+    $getNodeByKey, INSERT_TAB_COMMAND, KEY_BACKSPACE_COMMAND, KEY_ENTER_COMMAND, OUTDENT_CONTENT_COMMAND, UNDO_COMMAND,
 } from 'lexical';
-import type { ElementNode, LexicalEditor, LexicalNode, TextNode } from 'lexical';
-import { $createQuoteNode } from '@lexical/rich-text';
+import type { ElementNode, LexicalEditor, LexicalNode, PointType, RangeSelection, TextNode } from 'lexical';
+import { $isListNode } from '@lexical/list';
+import { $createQuoteNode, $isHeadingNode } from '@lexical/rich-text';
 import { $dfs } from '@lexical/utils';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
+import type { MarkdownBlockType } from '~/component/editor/MarkdownEditor';
 import { $createMarkdownRawBlockNode, $isMarkdownRawBlockNode } from '~/component/editor/markdownSourceNodes';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
@@ -1587,6 +1589,37 @@ describe('an item that is indented or moved out keeps its own nested list under 
 });
 
 describe('a block type or a list toggle in a list item acts on the block the caret is in', () => {
+    const TABLE = '| h |\n| --- |\n| cell |';
+
+    /**
+     * Puts one end of the selection on a node that holds blocks, between its children: a point no click makes,
+     * which a removed table leaves. The node is the one `levels` above the text node showing `text`
+     * (2: its list item, 3: its list, and so on); the other end stays where it is unless `collapses`.
+     *
+     * @param text - The text.
+     * @param levels - How many parents up.
+     * @param offset - The child index the point stands before.
+     * @param collapses - Whether the selection becomes a caret there, rather than a range ending there.
+     * @returns A step's command.
+     */
+    const pointOnHolder = (text: string, levels: number, offset: number, collapses: boolean) => (editor: MarkdownEditor): void => {
+        lexicalOf(editor).update(() => {
+            let holder: LexicalNode = $textNode(text);
+
+            for (let level = 0; level < levels; level++) {
+                holder = holder.getParentOrThrow();
+            }
+
+            const selection = $getSelection() as RangeSelection;
+
+            selection.focus.set(holder.getKey(), offset, 'element');
+
+            if (collapses) {
+                selection.anchor.set(holder.getKey(), offset, 'element');
+            }
+        }, { discrete: true });
+    };
+
     it.each<Row>([
         {
             name:   'H1: a heading set on an item\'s paragraph changes the paragraph in place',
@@ -1607,22 +1640,22 @@ describe('a block type or a list toggle in a list item acts on the block the car
             saved:  'one\n\nsecond\n\n- two',
         },
         {
-            name:   'H4: the list toggled on an item\'s paragraph, in a list of that kind, changes nothing',
+            name:   'H4: the list toggled on an item\'s paragraph, in a list of that kind, makes the paragraph an item of its own',
             source: '- one\n\n  second\n\n- two',
             steps:  [{ key: 'command', run: (editor) => editor.toggleUnorderedList(), at: ['second', 1] }],
-            saved:  '- one\n\n  second\n\n- two',
+            saved:  '- one\n\n- second\n\n- two',
         },
         {
-            name:   'H5: the other list kind toggled in an empty item converts the item\'s list',
+            name:   'H5: the other list kind toggled in an empty item changes that item alone, its list split around it',
             source: '- a\n-\n- z',
             steps:  [{ key: 'Enter', at: ['a', 1] }, { key: 'command', run: (editor) => editor.toggleOrderedList() }],
-            saved:  '1. a\n2.\n3.\n4. z',
+            saved:  '- a\n\n1.\n\n-\n- z',
         },
         {
-            name:   'H6: the other list kind toggled in an item\'s text converts the item\'s list',
+            name:   'H6: the other list kind toggled in an item\'s text changes that item alone, its list split around it',
             source: '- a\n- b',
             steps:  [{ key: 'command', run: (editor) => editor.toggleOrderedList(), at: ['b', 1] }],
-            saved:  '1. a\n2. b',
+            saved:  '- a\n\n1. b',
         },
         {
             name:   'H7: a heading set in an empty item takes the item out of its list, the caret in the heading',
@@ -1639,7 +1672,752 @@ describe('a block type or a list toggle in a list item acts on the block the car
             saved:  'p\n\n- X',
             shape:  'paragraph("p") | list(markdown-list-item(markdown-list-item-text("X")))',
         },
+        {
+            name:   'H9: the other list kind toggled on the text of an item holding a paragraph changes the item\'s kind, the paragraph kept in it',
+            source: '- one\n\n  second\n\n- two',
+            steps:  [{ key: 'command', run: (editor) => editor.toggleOrderedList(), at: ['one', 1] }],
+            saved:  '1. one\n\n   second\n\n- two',
+            shape:  'list(markdown-list-item(markdown-list-item-text("one"), paragraph("second"))) | list(markdown-list-item(markdown-list-item-text("two")))',
+        },
+        {
+            name:   'H10: the list toggled off takes a quote, a table, a ::: block and a raw block out with the item\'s text, each as it is',
+            source: '- one\n\n  > q\n\n  | h |\n  | --- |\n  | c |\n\n  ::: {align=center}\n  f\n  :::\n\n  <div>x</div>\n\n- two',
+            steps:  [{ key: 'command', run: (editor) => editor.toggleUnorderedList(), at: ['one', 1] }],
+            saved:  'one\n\n> q\n\n| h |\n| --- |\n| c |\n\n::: {align=center}\nf\n:::\n\n<div>x</div>\n\n- two',
+            shape:  'paragraph("one") | quote("q") | table(tablerow(tablecell(paragraph("h"))), tablerow(tablecell(paragraph("c")))) | markdown-block(markdown-column(paragraph("f"))) | markdown-raw-block("<div>x</div>") | list(markdown-list-item(markdown-list-item-text("two")))',
+        },
+        {
+            name:   'H11: the other list kind toggled there keeps all four in the item',
+            source: '- one\n\n  > q\n\n  | h |\n  | --- |\n  | c |\n\n  ::: {align=center}\n  f\n  :::\n\n  <div>x</div>\n\n- two',
+            steps:  [{ key: 'command', run: (editor) => editor.toggleOrderedList(), at: ['one', 1] }],
+            saved:  '1. one\n\n   > q\n\n   | h |\n   | --- |\n   | c |\n\n   ::: {align=center}\n   f\n   :::\n\n   <div>x</div>\n\n- two',
+            shape:  'list(markdown-list-item(markdown-list-item-text("one"), quote("q"), table(tablerow(tablecell(paragraph("h"))), tablerow(tablecell(paragraph("c")))), markdown-block(markdown-column(paragraph("f"))), markdown-raw-block("<div>x</div>"))) | list(markdown-list-item(markdown-list-item-text("two")))',
+        },
+        {
+            name:   'H12: the blocks after the item\'s first nested list stay in the list, in an item with no text',
+            source: '- one\n\n  second\n\n  - inner\n\n  after\n\n- two',
+            steps:  [{ key: 'command', run: (editor) => editor.toggleUnorderedList(), at: ['one', 1] }],
+            saved:  'one\n\nsecond\n\n- - inner\n\n  after\n\n- two',
+            shape:  'paragraph("one") | paragraph("second") | list(markdown-list-item(list(markdown-list-item(markdown-list-item-text("inner"))), paragraph("after")), markdown-list-item(markdown-list-item-text("two")))',
+        },
+        {
+            name:   'H13: the list toggled on a later paragraph of an item gives the new item the blocks after it',
+            source: '- one\n\n  second\n\n  third\n\n- two',
+            steps:  [{ key: 'command', run: (editor) => editor.toggleUnorderedList(), at: ['second', 1] }],
+            saved:  '- one\n\n- second\n\n  third\n\n- two',
+            shape:  'list(markdown-list-item(markdown-list-item-text("one")), markdown-list-item(markdown-list-item-text("second"), paragraph("third")), markdown-list-item(markdown-list-item-text("two")))',
+        },
+        {
+            name:   'H14: the other list kind toggled there does the same in a list of its own',
+            source: '- one\n\n  second\n\n  third\n\n- two',
+            steps:  [{ key: 'command', run: (editor) => editor.toggleOrderedList(), at: ['second', 1] }],
+            saved:  '- one\n\n1. second\n\n   third\n\n- two',
+        },
+        {
+            name:   'H15: the list toggled off on the heading an item opens with takes the item out, the heading a paragraph',
+            source: '- # Foo\n\n  para\n\n- bar',
+            steps:  [{ key: 'command', run: (editor) => editor.toggleUnorderedList(), at: ['Foo', 1] }],
+            saved:  'Foo\n\npara\n\n- bar',
+        },
+        {
+            name:   'H16: a nested item taken out leaves its own nested list one level up, beside the items that followed it',
+            source: '- o\n  - x\n    - n\n  - y\n- z',
+            steps:  [{ key: 'command', run: (editor) => editor.toggleUnorderedList(), at: ['x', 1] }],
+            saved:  '- o\n\nx\n\n- - n\n  - y\n- z',
+            shape:  'list(markdown-list-item(markdown-list-item-text("o"))) | paragraph("x") | list(markdown-list-item(list(markdown-list-item(markdown-list-item-text("n")), markdown-list-item(markdown-list-item-text("y")))), markdown-list-item(markdown-list-item-text("z")))',
+        },
+        {
+            name:   'H17: the caret stays in the text of an item that changes kind',
+            source: '- one\n- two\n- three',
+            steps:  [{ key: 'command', run: (editor) => editor.toggleOrderedList(), at: ['two', 1] }, { key: 'type', text: 'X' }],
+            saved:  '- one\n\n1. tXwo\n\n- three',
+        },
+        {
+            name:   'H18: a range over an item\'s text and its paragraph makes two items of the other kind',
+            source: '- one\n\n  second\n\n- two',
+            steps:  [{ key: 'command', run: (editor) => editor.toggleOrderedList(), at: ['one', 1], to: ['second', 1] }],
+            saved:  '1. one\n2. second\n\n- two',
+            shape:  'list(markdown-list-item(markdown-list-item-text("one")), markdown-list-item(markdown-list-item-text("second"))) | list(markdown-list-item(markdown-list-item-text("two")))',
+        },
+        {
+            name:   'H19: the same toggle a second time takes the new item out of its list',
+            source: '- one\n- two\n- three',
+            steps:  [
+                { key: 'command', run: (editor) => editor.toggleOrderedList(), at: ['two', 1] },
+                { key: 'command', run: (editor) => editor.toggleOrderedList() },
+            ],
+            saved:  '- one\n\ntwo\n\n- three',
+        },
+        {
+            name:   'H20: a new item made between a tight list and a loose one of its kind makes one loose list',
+            source: '- a\n- b\n\nmid\n\n- c\n\n- d',
+            steps:  [{ key: 'command', run: (editor) => editor.toggleUnorderedList(), at: ['mid', 1] }],
+            saved:  '- a\n\n- b\n\n- mid\n\n- c\n\n- d',
+        },
+        {
+            name:   'H21: a new item made after a loose list of its kind leaves that list loose',
+            source: '- one\n\n- two\n\nthree',
+            steps:  [{ key: 'command', run: (editor) => editor.toggleUnorderedList(), at: ['three', 1] }],
+            saved:  '- one\n\n- two\n\n- three',
+        },
+        {
+            name:   'H22: the list toggled in a ::: block of an item makes the list inside the block',
+            source: '- one\n\n  ::: {align=center}\n  fenced\n  :::\n\n- two',
+            steps:  [{ key: 'command', run: (editor) => editor.toggleUnorderedList(), at: ['fenced', 1] }],
+            saved:  '- one\n\n  ::: {align=center}\n  - fenced\n  :::\n\n- two',
+            shape:  'list(markdown-list-item(markdown-list-item-text("one"), markdown-block(markdown-column(list(markdown-list-item(markdown-list-item-text("fenced")))))), markdown-list-item(markdown-list-item-text("two")))',
+        },
+        {
+            name:   'H23: text typed after the other list kind is toggled in an empty item goes into the new item',
+            source: '- a\n- z',
+            steps:  [{ key: 'Enter', at: ['a', 1] }, { key: 'command', run: (editor) => editor.toggleOrderedList() }, { key: 'type', text: 'X' }],
+            saved:  '- a\n\n1. X\n\n- z',
+        },
+        {
+            name:   'H24: a code block made of a task item holds the marker as it was written',
+            source: '- [ ] one\n- [x] two',
+            steps:  [{ key: 'command', run: (editor) => editor.setBlockType('code'), at: ['one', 1] }],
+            saved:  '```\n[ ] one\n```\n\n- [x] two',
+        },
+        {
+            name:   'H25: after a table below a list is deleted the caret is on the list, and the other list kind changes the item before it',
+            source: `- a\n- b\n\n${TABLE}`,
+            steps:  [{ key: 'command', run: (editor) => editor.deleteTable(), at: ['cell', 1] }, { key: 'command', run: (editor) => editor.toggleOrderedList() }],
+            saved:  '- a\n\n1. b',
+        },
+        {
+            name:   'H26: the list toggled off there takes that item out',
+            source: `- a\n- b\n\n${TABLE}`,
+            steps:  [{ key: 'command', run: (editor) => editor.deleteTable(), at: ['cell', 1] }, { key: 'command', run: (editor) => editor.toggleUnorderedList() }],
+            saved:  '- a\n\nb',
+        },
+        {
+            name:   'H27: with the caret on a list whose last item ends in a paragraph, the toggle makes that paragraph an item',
+            source: `- a\n\n  held\n\n${TABLE}`,
+            steps:  [{ key: 'command', run: (editor) => editor.deleteTable(), at: ['cell', 1] }, { key: 'command', run: (editor) => editor.toggleUnorderedList() }],
+            saved:  '- a\n\n- held',
+        },
+        {
+            name:   'H28: with the caret on a ::: block, the toggle makes the last block of its last column an item, in the column',
+            source: `::: columns\n- one\n- two\n|||\nRight\n:::\n\n${TABLE}`,
+            steps:  [{ key: 'command', run: (editor) => editor.deleteTable(), at: ['cell', 1] }, { key: 'command', run: (editor) => editor.toggleUnorderedList() }],
+            saved:  '::: columns\n- one\n- two\n|||\n- Right\n:::',
+        },
+        {
+            name:   'H29: with the caret on a nested list, where a table its item held was deleted, the toggle takes the nested item out',
+            source: '- a\n  - n\n\n  | h |\n  | --- |\n  | cell |\n\n- b',
+            steps:  [{ key: 'command', run: (editor) => editor.deleteTable(), at: ['cell', 1] }, { key: 'command', run: (editor) => editor.toggleUnorderedList() }],
+            saved:  '- a\n\nn\n\n- b',
+        },
+        {
+            name:   'H30: the other list kind toggled there makes the nested item an item at the top level',
+            source: '- a\n  - n\n\n  | h |\n  | --- |\n  | cell |\n\n- b',
+            steps:  [{ key: 'command', run: (editor) => editor.deleteTable(), at: ['cell', 1] }, { key: 'command', run: (editor) => editor.toggleOrderedList() }],
+            saved:  '- a\n\n1. n\n\n- b',
+        },
+        {
+            name:   'H31: a caret on a list item, after its last block, is a caret in that block',
+            source: '- a\n- b',
+            steps:  [{ key: 'command', run: pointOnHolder('b', 2, 1, true), at: ['b', 1] }, { key: 'command', run: (editor) => editor.toggleUnorderedList() }],
+            saved:  '- a\n\nb',
+        },
+        {
+            name:   'H32: a range that ends on the root, between a list and the paragraph after it, ends in the list\'s last item',
+            source: '- a\n- b\n\nlast',
+            steps:  [{ key: 'command', run: pointOnHolder('a', 4, 1, false), at: ['a', 1] }, { key: 'command', run: (editor) => editor.toggleUnorderedList() }],
+            saved:  'a\n\nb\n\nlast',
+        },
+        {
+            name:   'H33: a range that ends on a list, before its first item, ends in the paragraph before the list',
+            source: 'first\n\n- a\n- b',
+            steps:  [{ key: 'command', run: pointOnHolder('a', 3, 0, false), at: ['first', 1] }, { key: 'command', run: (editor) => editor.toggleOrderedList() }],
+            saved:  '1. first\n\n- a\n- b',
+        },
+        {
+            name:   'H34: a caret on the root between a paragraph and a table goes into the paragraph, never into the table',
+            source: `x\n\n${TABLE}\n\ny`,
+            steps:  [{ key: 'command', run: pointOnHolder('x', 2, 1, true), at: ['x', 1] }, { key: 'command', run: (editor) => editor.toggleUnorderedList() }],
+            saved:  `- x\n\n${TABLE}\n\ny`,
+        },
+        {
+            name:   'H35: a caret on a list item between its text and a table it holds goes into the text',
+            source: '- one\n\n  | h |\n  | --- |\n  | cell |\n\n- two',
+            steps:  [{ key: 'command', run: pointOnHolder('one', 2, 1, true), at: ['one', 1] }, { key: 'command', run: (editor) => editor.toggleUnorderedList() }],
+            saved:  `one\n\n${TABLE}\n\n- two`,
+        },
+        {
+            name:   'H36: a caret with a table on both sides gets a new paragraph between them, which the toggle makes an item',
+            source: `${TABLE}\n\n${TABLE}`,
+            steps:  [{ key: 'command', run: pointOnHolder('cell', 5, 1, true), at: ['cell', 1] }, { key: 'command', run: (editor) => editor.toggleUnorderedList() }],
+            saved:  `${TABLE}\n\n-\n\n${TABLE}`,
+        },
+        {
+            name:   'H37: on a ::: block between two columns that hold a table alone, the paragraph goes before the table of the column after',
+            source: `::: columns\n${TABLE}\n|||\n${TABLE}\n:::`,
+            steps:  [{ key: 'command', run: pointOnHolder('cell', 6, 1, true), at: ['cell', 1] }, { key: 'command', run: (editor) => editor.toggleUnorderedList() }],
+            saved:  `::: columns\n${TABLE}\n|||\n-\n\n${TABLE}\n:::`,
+        },
+        {
+            name:   'H38: in a column a deleted table left empty, the toggle makes an item in the column, and typed text goes into it',
+            source: `::: columns\n${TABLE}\n|||\nRight\n:::`,
+            steps:  [
+                { key: 'command', run: (editor) => editor.deleteTable(), at: ['cell', 1] },
+                { key: 'command', run: (editor) => editor.toggleUnorderedList() },
+                { key: 'type', text: 'Q' },
+            ],
+            saved:  '::: columns\n- Q\n|||\nRight\n:::',
+        },
+        {
+            name:   'H39: in a centred block a deleted table left empty, the toggle makes the item inside the block',
+            source: `::: {align=center}\n${TABLE}\n:::`,
+            steps:  [{ key: 'command', run: (editor) => editor.deleteTable(), at: ['cell', 1] }, { key: 'command', run: (editor) => editor.toggleOrderedList() }],
+            saved:  '::: {align=center}\n1.\n:::',
+        },
+        {
+            name:   'H40: in a document a deleted table left empty, the toggle makes an item, and typed text goes into it',
+            source: TABLE,
+            steps:  [
+                { key: 'command', run: (editor) => editor.deleteTable(), at: ['cell', 1] },
+                { key: 'command', run: (editor) => editor.toggleUnorderedList() },
+                { key: 'type', text: 'Q' },
+            ],
+            saved:  '- Q',
+        },
+        {
+            name:   'H41: a caret on a table, between its rows, is left where it is, and the toggle changes nothing',
+            source: `x\n\n${TABLE}`,
+            steps:  [{ key: 'command', run: pointOnHolder('cell', 4, 1, true), at: ['cell', 1] }, { key: 'command', run: (editor) => editor.toggleUnorderedList() }],
+            saved:  `x\n\n${TABLE}`,
+            shape:  'paragraph("x") | table(tablerow(tablecell(paragraph("h"))), tablerow(tablecell(paragraph("cell"))))',
+        },
     ])('$name', runRow);
+});
+
+describe('a block type or a list toggle acts on blocks of text, wherever the ends of the selection stand', () => {
+    const TABLE = '| h |\n| --- |\n| cell |';
+    const OTHER_TABLE = '| h |\n| --- |\n| zell |';
+    const EMPTIED_CELL_TABLE = '| h |\n| --- |\n|  |';
+
+    /** One end of a selection: a point in text, or a point on the node at `on` (child indexes from the root), before its child `offset`. */
+    type End = TextPoint | { readonly on: readonly number[]; readonly offset: number };
+
+    /**
+     * Resolves one end of a selection.
+     *
+     * @param end - The end.
+     * @returns The key, offset and type of its point.
+     */
+    const $pointOf = (end: End): [string, number, 'text' | 'element'] => {
+        if ('on' in end) {
+            const node = end.on.reduce<LexicalNode>((at, index) => (at as ElementNode).getChildAtIndex(index)!, $getRoot());
+
+            return [node.getKey(), end.offset, 'element'];
+        }
+
+        return [$textNode(end[0]).getKey(), end[1], 'text'];
+    };
+
+    /**
+     * Selects from one end to another, either of which can stand on a node that holds blocks: a point no click
+     * makes, which a removed table leaves and code can set.
+     *
+     * @param anchor - The anchor.
+     * @param focus - The focus; the anchor when omitted (a caret).
+     * @returns A step's command.
+     */
+    const select = (anchor: End, focus: End = anchor) => (editor: MarkdownEditor): void => {
+        lexicalOf(editor).update(() => {
+            const selection = $createRangeSelection();
+
+            selection.anchor.set(...$pointOf(anchor));
+            selection.focus.set(...$pointOf(focus));
+            $setSelection(selection);
+        }, { discrete: true });
+    };
+
+    /**
+     * Moves the focus alone, leaving the anchor where the step before left it.
+     *
+     * @param focus - The focus.
+     * @returns A step's command.
+     */
+    const extendTo = (focus: End) => (editor: MarkdownEditor): void => {
+        lexicalOf(editor).update(() => {
+            ($getSelection() as RangeSelection).focus.set(...$pointOf(focus));
+        }, { discrete: true });
+    };
+
+    const deleteTable: Step = { key: 'command', run: (editor) => editor.deleteTable(), at: ['cell', 1] };
+    const bullets: Step = { key: 'command', run: (editor) => editor.toggleUnorderedList() };
+    const numbers: Step = { key: 'command', run: (editor) => editor.toggleOrderedList() };
+    const typed = (type: MarkdownBlockType): Step => ({ key: 'command', run: (editor) => editor.setBlockType(type) });
+
+    it.each<Row>([
+        {
+            name:   'H42: a caret on a ::: block, before a column a deleted table left empty, goes into that column',
+            source: `x\n\n::: columns\n${TABLE}\n|||\nRight\n:::\n\ny`,
+            steps:  [deleteTable, { key: 'command', run: select({ on: [1], offset: 0 }) }, bullets, { key: 'type', text: 'Q' }],
+            saved:  'x\n\n::: columns\n- Q\n|||\nRight\n:::\n\ny',
+        },
+        {
+            name:   'H43: a caret on a ::: block, after its last column, which a deleted table left empty, goes into that column',
+            source: `::: columns\nLeft\n|||\n${TABLE}\n:::\n\n- z`,
+            steps:  [deleteTable, { key: 'command', run: select({ on: [0], offset: 2 }) }, numbers],
+            saved:  '::: columns\nLeft\n|||\n1.\n:::\n\n- z',
+        },
+        {
+            name:   'H44: a caret on the root, before a ::: block whose first column is empty, goes into that column',
+            source: `x\n\n::: columns\n${TABLE}\n|||\nRight\n:::\n\ny`,
+            steps:  [deleteTable, { key: 'command', run: select({ on: [], offset: 1 }) }, bullets],
+            saved:  'x\n\n::: columns\n-\n|||\nRight\n:::\n\ny',
+        },
+        {
+            name:   'H45: a caret between two empty columns goes into the one after it, and the other stays as it is',
+            source: `::: columns\n${TABLE}\n|||\n${OTHER_TABLE}\n:::`,
+            steps:  [deleteTable, { key: 'command', run: (editor) => editor.deleteTable(), at: ['zell', 1] }, { key: 'command', run: select({ on: [0], offset: 1 }) }, bullets],
+            saved:  '::: columns\n\n|||\n-\n:::',
+            shape:  'markdown-block(markdown-column(), markdown-column(list(markdown-list-item(markdown-list-item-text()))))',
+        },
+        {
+            name:   'H46: a caret on a list item, after a centred block it holds that a deleted table left empty, goes into that block',
+            source: '- one\n\n  ::: {align=center}\n  | h |\n  | --- |\n  | cell |\n  :::\n\n- two',
+            steps:  [deleteTable, { key: 'command', run: select({ on: [0, 0], offset: 2 }) }, bullets],
+            saved:  '- one\n\n  ::: {align=center}\n  -\n  :::\n\n- two',
+        },
+        {
+            name:   'H47: a heading set where a deleted table left a column empty is made in the column, and typed text goes into it',
+            source: `::: columns\n${TABLE}\n|||\nRight\n:::`,
+            steps:  [deleteTable, typed('h2'), { key: 'type', text: 'Q' }],
+            saved:  '::: columns\n## Q\n|||\nRight\n:::',
+        },
+        {
+            name:   'H48: a code block set in a document a deleted table left empty is made there, and typed text goes into it',
+            source: TABLE,
+            steps:  [deleteTable, typed('code'), { key: 'type', text: 'Q' }],
+            saved:  '```\nQ\n```',
+        },
+        {
+            name:   'H49: a quote set with the caret on the root between two blocks changes the block after it',
+            source: 'x\n\ny',
+            steps:  [{ key: 'command', run: select({ on: [], offset: 1 }) }, typed('quote')],
+            saved:  'x\n\n> y',
+        },
+        {
+            name:   'H50: a code block set with the caret on a list, after its last item, changes that item, as it does from the item\'s text',
+            source: 'first\n\n- a\n  - n\n- b',
+            steps:  [{ key: 'command', run: select({ on: [1], offset: 2 }) }, typed('code')],
+            saved:  'first\n\n- a\n  - n\n\n```\nb\n```',
+        },
+        {
+            name:   'H51: a range over a column a deleted table left empty makes items of the blocks of text, and the column stays as it is',
+            source: `x\n\n::: columns\n${TABLE}\n|||\nRight\n:::\n\ny`,
+            steps:  [deleteTable, { key: 'command', run: select(['x', 0], ['y', 1]) }, bullets],
+            saved:  '- x\n\n::: columns\n\n|||\n- Right\n:::\n\n- y',
+            shape:  'list(markdown-list-item(markdown-list-item-text("x"))) | markdown-block(markdown-column(), '
+                + 'markdown-column(list(markdown-list-item(markdown-list-item-text("Right"))))) | list(markdown-list-item(markdown-list-item-text("y")))',
+        },
+        {
+            name:   'H52: the other list kind over that range does the same',
+            source: `x\n\n::: columns\nLeft\n|||\n${TABLE}\n:::\n\ny`,
+            steps:  [deleteTable, { key: 'command', run: select(['y', 1], ['x', 0]) }, numbers],
+            saved:  '1. x\n\n::: columns\n1. Left\n|||\n\n:::\n\n1. y',
+        },
+        {
+            name:   'H53: a heading set over that range changes the blocks of text alone',
+            source: `x\n\n::: columns\n${TABLE}\n|||\nRight\n:::\n\ny`,
+            steps:  [deleteTable, { key: 'command', run: select(['x', 0], ['y', 1]) }, typed('h2')],
+            saved:  '## x\n\n::: columns\n\n|||\n## Right\n:::\n\n## y',
+        },
+        {
+            name:   'H54: a code block set over that range does too',
+            source: `x\n\n::: columns\n${TABLE}\n|||\nRight\n:::\n\ny`,
+            steps:  [deleteTable, { key: 'command', run: select(['x', 0], ['y', 1]) }, typed('code')],
+            saved:  '```\nx\n```\n\n::: columns\n\n|||\n```\nRight\n```\n:::\n\n```\ny\n```',
+        },
+        {
+            name:   'H55: a range over a centred block a deleted table left empty leaves the block as it is',
+            source: `x\n\n::: {align=center}\n${TABLE}\n:::\n\ny`,
+            steps:  [deleteTable, { key: 'command', run: select(['x', 0], ['y', 1]) }, bullets],
+            saved:  '- x\n\n::: {align=center}\n\n:::\n\n- y',
+            shape:  'list(markdown-list-item(markdown-list-item-text("x"))) | markdown-block(markdown-column()) | list(markdown-list-item(markdown-list-item-text("y")))',
+        },
+        {
+            name:   'H56: the list toggled off over two items, the first holding such a block, takes the block out with its item, as it is',
+            source: '- one\n\n  ::: {align=center}\n  | h |\n  | --- |\n  | cell |\n  :::\n\n- two',
+            steps:  [deleteTable, { key: 'command', run: select(['one', 0], ['two', 1]) }, bullets],
+            saved:  'one\n\n::: {align=center}\n\n:::\n\ntwo',
+            shape:  'paragraph("one") | markdown-block(markdown-column()) | paragraph("two")',
+        },
+        {
+            name:   'H57: a range that starts on the empty column, where the deleted table left the caret, takes the column\'s new paragraph',
+            source: `x\n\n::: columns\n${TABLE}\n|||\nRight\n:::\n\ny`,
+            steps:  [deleteTable, { key: 'command', run: extendTo(['y', 1]) }, bullets],
+            saved:  'x\n\n::: columns\n-\n|||\n- Right\n:::\n\n- y',
+        },
+        {
+            name:   'H58: a range that ends on the empty column takes the column\'s new paragraph',
+            source: `x\n\n::: columns\n${TABLE}\n|||\nRight\n:::\n\ny`,
+            steps:  [deleteTable, { key: 'command', run: select(['x', 0], { on: [1, 0], offset: 0 }) }, typed('h2')],
+            saved:  '## x\n\n::: columns\n##\n|||\nRight\n:::\n\ny',
+        },
+        {
+            name:   'H59: a range over an item a deleted table left empty takes the item\'s empty text, as it takes an empty paragraph',
+            source: '- a\n- | h |\n  | --- |\n  | cell |\n- z',
+            steps:  [deleteTable, { key: 'command', run: select(['a', 0], ['z', 1]) }, numbers],
+            saved:  '1. a\n2.\n3. z',
+        },
+        {
+            name:   'H60: a heading set over that range makes the empty text a heading',
+            source: '- a\n- | h |\n  | --- |\n  | cell |\n- z',
+            steps:  [deleteTable, { key: 'command', run: select(['a', 0], ['z', 1]) }, typed('h2')],
+            saved:  '## a\n\n##\n\n## z',
+        },
+        {
+            name:   'H61: a range from a paragraph back to the end of the table before it changes the paragraph alone',
+            source: `x\n\n${TABLE}\n\ny`,
+            steps:  [{ key: 'command', run: select(['y', 1], { on: [1], offset: 2 }) }, bullets],
+            saved:  `x\n\n${TABLE}\n\n- y`,
+        },
+        {
+            name:   'H62: a range from a paragraph to the start of the table after it does too, the end standing on the table\'s first row',
+            source: `x\n\n${TABLE}\n\ny`,
+            steps:  [{ key: 'command', run: select(['x', 0], { on: [1, 0], offset: 0 }) }, numbers],
+            saved:  `1. x\n\n${TABLE}\n\ny`,
+        },
+        {
+            name:   'H63: a heading set over a range that starts at the end of a table changes the paragraph after the table',
+            source: `x\n\n${TABLE}\n\ny`,
+            steps:  [{ key: 'command', run: select({ on: [1, 1], offset: 1 }, ['y', 1]) }, typed('h2')],
+            saved:  `x\n\n${TABLE}\n\n## y`,
+        },
+        {
+            name:   'H64: a range between the end of one table and the start of the next takes the paragraph between them',
+            source: `${TABLE}\n\nmid\n\n${OTHER_TABLE}`,
+            steps:  [{ key: 'command', run: select({ on: [0], offset: 2 }, { on: [2], offset: 0 }) }, bullets],
+            saved:  `${TABLE}\n\n- mid\n\n${OTHER_TABLE}`,
+        },
+        {
+            name:   'H65: a range over a table with an empty cell changes nothing: it touches the table\'s cells',
+            source: `x\n\n${EMPTIED_CELL_TABLE}\n\ny`,
+            steps:  [{ key: 'command', run: select(['x', 0], ['y', 1]) }, bullets, typed('h2'), typed('code')],
+            saved:  `x\n\n${EMPTIED_CELL_TABLE}\n\ny`,
+        },
+        {
+            name:   'H66: a range from the end of an item, after its nested list, to the next item changes that item alone',
+            source: '- a\n  - n\n- b',
+            steps:  [{ key: 'command', run: select({ on: [0, 0], offset: 2 }, ['b', 1]) }, typed('h3')],
+            saved:  '- a\n  - n\n\n### b',
+        },
+        {
+            name:   'H67: the list toggled off over that range takes that item out, and leaves the nested item',
+            source: '- a\n  - n\n- b',
+            steps:  [{ key: 'command', run: select(['b', 1], { on: [0, 0], offset: 2 }) }, bullets],
+            saved:  '- a\n  - n\n\nb',
+        },
+        {
+            name:   'H68: a range that ends on the root, between two paragraphs, ends in the first',
+            source: 'x\n\ny',
+            steps:  [{ key: 'command', run: select(['x', 0], { on: [], offset: 1 }) }, typed('h2')],
+            saved:  '## x\n\ny',
+        },
+        {
+            name:   'H69: a range that starts there starts in the second',
+            source: 'x\n\ny',
+            steps:  [{ key: 'command', run: select({ on: [], offset: 1 }, ['y', 1]) }, numbers],
+            saved:  'x\n\n1. y',
+        },
+        {
+            name:   'H70: a range between two points with no block of text between them is a caret where it starts',
+            source: 'x\n\n- a',
+            steps:  [{ key: 'command', run: select({ on: [], offset: 1 }, { on: [1], offset: 0 }) }, bullets],
+            saved:  'x\n\na',
+        },
+        {
+            name:   'H71: a range from a holder before an empty column to one after it holds no block, and the caret goes into the column',
+            source: `::: columns\n${TABLE}\n|||\nRight\n:::`,
+            steps:  [deleteTable, { key: 'command', run: select({ on: [0], offset: 0 }, { on: [0], offset: 1 }) }, bullets],
+            saved:  '::: columns\n-\n|||\nRight\n:::',
+        },
+        {
+            name:   'H72: a range that starts on a holder before an empty column and ends in a text passes over the column',
+            source: `x\n\n::: columns\n${TABLE}\n|||\nRight\n:::\n\ny`,
+            steps:  [deleteTable, { key: 'command', run: select({ on: [], offset: 1 }, ['y', 1]) }, bullets],
+            saved:  'x\n\n::: columns\n\n|||\n- Right\n:::\n\n- y',
+        },
+    ])('$name', runRow);
+
+    it.each<{ name: string; source: string; anchor: End; focus?: End; available: boolean }>([
+        { name: 'a caret on a table, between two rows', source: `x\n\n${TABLE}\n\ny`, anchor: { on: [1], offset: 1 }, available: false },
+        { name: 'a caret on a row, after its cell', source: `x\n\n${TABLE}\n\ny`, anchor: { on: [1, 0], offset: 1 }, available: false },
+        { name: 'a range from the end of one table to the start of the next, nothing between them', source: `${TABLE}\n\n${OTHER_TABLE}`, anchor: { on: [0], offset: 2 }, focus: { on: [1], offset: 0 }, available: false },
+        { name: 'a range from the end of one table to the start of the next, a paragraph between them', source: `${TABLE}\n\nmid\n\n${OTHER_TABLE}`, anchor: { on: [0], offset: 2 }, focus: { on: [2], offset: 0 }, available: true },
+        { name: 'a range from a paragraph to the start of the table after it', source: `x\n\n${TABLE}\n\ny`, anchor: ['x', 0], focus: { on: [1], offset: 0 }, available: true },
+        { name: 'a range from a paragraph into the table after it', source: `x\n\n${TABLE}\n\ny`, anchor: ['x', 0], focus: { on: [1], offset: 1 }, available: false },
+        { name: 'a caret on the root between two tables', source: `${TABLE}\n\n${OTHER_TABLE}`, anchor: { on: [], offset: 1 }, available: true },
+    ])('canSetBlockType is $available for $name, and each command changes the document only where it is true', ({ source, anchor, focus, available }) => {
+        const commands: ReadonlyArray<(editor: MarkdownEditor) => void> = [
+            (editor) => editor.toggleUnorderedList(), (editor) => editor.toggleOrderedList(), (editor) => editor.setBlockType('h2'), (editor) => editor.setBlockType('code'),
+        ];
+
+        for (const command of commands) {
+            const editor = load(source);
+
+            select(anchor, focus)(editor);
+            expect(editor.getSelectionState().canSetBlockType).toBe(available);
+            command(editor);
+            expect(editor.getValue() !== source).toBe(available);
+            expectSaveKeepsDocument(editor, 'the command');
+        }
+    });
+
+    it('adds no undo step for a block type every block of the range already has, over a column a deleted table left empty', () => {
+        const editor = load(`x\n\n::: columns\n${TABLE}\n|||\nRight\n:::\n\ny`);
+
+        press(editor, deleteTable);
+
+        const emptied = shapeOf(editor);
+
+        select(['x', 0], ['y', 1])(editor);
+        editor.setBlockType('paragraph');
+        expect(shapeOf(editor)).toBe(emptied);
+
+        lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+        expect(editor.getValue()).toBe(`x\n\n::: columns\n${TABLE}\n|||\nRight\n:::\n\ny`);
+    });
+
+    it('changes no block, and adds no undo step, when the caret settles into a block that is of the type already', () => {
+        const editor = load('x\n\n```js\ncode\n```');
+
+        press(editor, { key: 'type', text: 'A', at: ['x', 1] });
+        select({ on: [], offset: 1 })(editor);
+        editor.setBlockType('code');
+        // The code block is not replaced by an equal one: it keeps its language.
+        expect(editor.getValue()).toBe('xA\n\n```js\ncode\n```');
+        expect(endsOnHolder(editor)).toBe(false);
+
+        lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+        expect(editor.getValue()).toBe('x\n\n```js\ncode\n```');
+    });
+
+    it('settles a caret on a table\'s holder beside the table, never in a cell', () => {
+        const editor = load(`${TABLE}\n\n${OTHER_TABLE}`);
+
+        select({ on: [], offset: 1 })(editor);
+        editor.setBlockType('h2');
+        expect(editor.getValue()).toBe(`${TABLE}\n\n##\n\n${OTHER_TABLE}`);
+        press(editor, { key: 'type', text: 'Q' });
+        expect(editor.getValue()).toBe(`${TABLE}\n\n## Q\n\n${OTHER_TABLE}`);
+    });
+
+    /** The nodes that hold blocks, by type name. */
+    const HOLDERS: readonly string[] = ['root', 'markdown-block', 'markdown-column', 'list', 'markdown-list-item', 'table', 'tablerow', 'tablecell'];
+
+    /**
+     * Loads a sweep document: its source, after the table holding "cell" is deleted when it starts with `DEL:`, and
+     * the one holding "zell" too when it starts with `DEL2:`.
+     *
+     * @param source - The source, with its prefix.
+     * @returns The editor.
+     */
+    const loadEmptied = (source: string): MarkdownEditor => {
+        const prefix = /^DEL2?:/.exec(source)?.[0] ?? '';
+        const editor = load(source.slice(prefix.length));
+
+        if (prefix !== '') {
+            press(editor, deleteTable);
+        }
+
+        if (prefix === 'DEL2:') {
+            press(editor, { key: 'command', run: (target) => target.deleteTable(), at: ['zell', 1] });
+        }
+
+        return editor;
+    };
+
+    /**
+     * Every point on a node that holds blocks, and one point in each block of text, of a document.
+     *
+     * @param editor - The editor.
+     * @returns The points on holders, and the points in text.
+     */
+    const endsOf = (editor: MarkdownEditor): { holders: End[]; texts: End[] } => lexicalOf(editor).read(() => {
+        const pathOf = (node: LexicalNode): number[] => node.getParents().length === 0 ? [] : [...pathOf(node.getParentOrThrow()), node.getIndexWithinParent()];
+        const elements = [$getRoot(), ...$dfs($getRoot()).map(({ node }) => node).filter($isElementNode).filter((node) => !node.is($getRoot()))];
+        const holders = elements.filter((node) => HOLDERS.includes(node.getType()))
+            .flatMap((node) => Array.from({ length: node.getChildrenSize() + 1 }, (unused, offset): End => ({ on: pathOf(node), offset })));
+        const texts = elements.filter((node) => !node.isInline() && !HOLDERS.includes(node.getType()))
+            .map((node): End => ({ on: [...pathOf(node), 0].slice(0, -1), offset: 0 }));
+
+        return { holders, texts };
+    });
+
+    /**
+     * Whether an end of the selection stands on a node that holds blocks.
+     *
+     * @param editor - The editor.
+     * @returns Whether one does.
+     */
+    const endsOnHolder = (editor: MarkdownEditor): boolean => lexicalOf(editor).read(() => {
+        const selection = $getSelection() as RangeSelection;
+
+        return [selection.anchor, selection.focus].some((point) => point.type === 'element' && HOLDERS.includes(point.getNode().getType()));
+    });
+
+    /**
+     * The child indexes that lead from the root down to a node.
+     *
+     * @param node - The node.
+     * @returns The indexes, outermost first.
+     */
+    const $pathOf = (node: LexicalNode): number[] => {
+        const parent = node.getParent();
+
+        return parent === null ? [] : [...$pathOf(parent), node.getIndexWithinParent()];
+    };
+
+    /**
+     * Compares two places in document order, each a list of child indexes.
+     *
+     * @param a - One place.
+     * @param b - The other.
+     * @returns A negative number when `a` comes first, a positive one when `b` does.
+     */
+    const inOrder = (a: readonly number[], b: readonly number[]): number => {
+        const differs = a.findIndex((index, depth) => index !== b[depth]);
+
+        return differs === -1 ? a.length - b.length : a[differs]! - (b[differs] ?? -1);
+    };
+
+    /**
+     * Where a selection point stands in document order. A point on an element stands between two of its children.
+     *
+     * @param point - The point.
+     * @returns The place.
+     */
+    const $placeOf = (point: PointType): number[] => {
+        const path = $pathOf(point.getNode());
+
+        return point.type === 'element' ? [...path, point.offset - 0.5] : path;
+    };
+
+    /**
+     * What a block of text is, as far as a command on another block must leave it: its type, a heading's level,
+     * the kind of list it opens an item of, and its text.
+     *
+     * @param block - The block.
+     * @returns The description.
+     */
+    const $describe = (block: ElementNode): string => {
+        const list = block.getParent()?.getParent();
+        const opens = block.getPreviousSibling() === null && $isListNode(list) ? list.getListType() : '';
+
+        return [block.getType(), $isHeadingNode(block) ? block.getTag() : '', opens, block.getTextContent()].join('|');
+    };
+
+    /**
+     * The blocks of text outside a range: each by its key, with what it is ({@link $describe}). A block is inside
+     * when an end of the range stands in it or it lies between the two ends.
+     *
+     * @param editor - The editor.
+     * @returns The blocks outside; `null` for a caret, and for a range that holds no block of text, which acts as one.
+     */
+    const blocksOutsideRange = (editor: MarkdownEditor): Map<string, string> | null => lexicalOf(editor).read(() => {
+        const selection = $getSelection() as RangeSelection;
+        const [start, end] = selection.isBackward() ? [selection.focus, selection.anchor] : [selection.anchor, selection.focus];
+        const blocks = $dfs($getRoot()).map(({ node }) => node).filter($isElementNode)
+            .filter((node) => !node.isInline() && !HOLDERS.includes(node.getType()));
+        const holds = (block: ElementNode, point: PointType): boolean => block.is(point.getNode()) || block.isParentOf(point.getNode());
+        const isOutside = (block: ElementNode): boolean => {
+            const isBefore = !holds(block, start) && inOrder($pathOf(block), $placeOf(start)) < 0;
+            const isAfter = !holds(block, end) && inOrder($pathOf(block), $placeOf(end)) > 0;
+
+            return isBefore || isAfter;
+        };
+        const outside = blocks.filter(isOutside);
+        const holdsBlock = outside.length < blocks.length;
+
+        return selection.isCollapsed() || !holdsBlock ? null : new Map(outside.map((block) => [block.getKey(), $describe(block)]));
+    });
+
+    /**
+     * The blocks among `outside` that are no longer what they were: gone, or of another type, level, list kind or text.
+     *
+     * @param editor - The editor.
+     * @param outside - The blocks, as {@link blocksOutsideRange} gave them.
+     * @returns What each changed block was.
+     */
+    const changedOutside = (editor: MarkdownEditor, outside: ReadonlyMap<string, string>): string[] => lexicalOf(editor).read(() => (
+        [...outside].filter(([key, was]) => {
+            const block = $getNodeByKey(key);
+            const isSame = $isElementNode(block) && block.isAttached() && $describe(block) === was;
+
+            return !isSame;
+        }).map(([, was]) => was)
+    ));
+
+    const SWEEP_COMMANDS: ReadonlyArray<[string, (editor: MarkdownEditor) => void]> = [
+        ['a bulleted list', (editor) => editor.toggleUnorderedList()],
+        ['a numbered list', (editor) => editor.toggleOrderedList()],
+        ['a heading', (editor) => editor.setBlockType('h3')],
+        ['a code block', (editor) => editor.setBlockType('code')],
+    ];
+
+    // Vitest's default per-test timeout is 5s. A sweep loads some thousand editors, which takes about two seconds
+    // for the largest document alone and several times that with the whole suite running beside it.
+    const SWEEP_TIMEOUT_MS = 60_000;
+
+    // None of these holds a level 3 heading or a code block, so a command that is available has a block to change.
+    it.each([
+        'x\n\ny',
+        'first\n\n- a\n  - n\n- b\n\nlast',
+        `x\n\n${TABLE}\n\ny`,
+        `${TABLE}\n\n${OTHER_TABLE}`,
+        '- one\n\n  | h |\n  | --- |\n  | cell |\n\n- two',
+        `- ${TABLE.replace(/\n/g, '\n  ')}`,
+        `::: columns\n${TABLE}\n|||\n${OTHER_TABLE}\n:::`,
+        '::: columns\n- one\n- two\n|||\nRight\n:::\n\n> after',
+        `DEL:x\n\n::: columns\n${TABLE}\n|||\nRight\n:::\n\ny`,
+        `DEL:::: columns\nLeft\n|||\n${TABLE}\n:::\n\n- z`,
+        `DEL:::: {align=center}\n${TABLE}\n:::`,
+        `DEL:${TABLE}`,
+        '- one\n\n  ::: {align=center}\n  | h |\n  | --- |\n  | cell |\n  :::\n\n- two'.replace(/^/, 'DEL:'),
+        `DEL:- a\n- ${TABLE.replace(/\n/g, '\n  ')}\n- z`,
+        `DEL2:x\n\n::: columns\n${TABLE}\n|||\n${OTHER_TABLE}\n:::\n\n1. y`,
+        `DEL:::: columns\nA\n|||\n${TABLE}\n|||\nC\n:::`,
+    ])('with an end on any node that holds blocks, a command changes the document exactly where canSetBlockType is true, and no block outside a range: %j', (source) => {
+        const { holders, texts } = endsOf(loadEmptied(source));
+        const carets = holders.map((holder): [End, End] => [holder, holder]);
+        const ranges = holders.flatMap((holder) => texts.slice(0, 2).flatMap((text): Array<[End, End]> => [[text, holder], [holder, text]]));
+
+        for (const [anchor, focus] of [...carets, ...ranges]) {
+            for (const [name, command] of SWEEP_COMMANDS) {
+                const editor = loadEmptied(source);
+                // The save tells a bulleted item from a numbered one, the shape an empty column from one holding an empty paragraph.
+                const before = [editor.getValue(), shapeOf(editor)];
+                const context = `${name} from ${JSON.stringify(anchor)} to ${JSON.stringify(focus)}`;
+
+                select(anchor, focus)(editor);
+
+                const available = editor.getSelectionState().canSetBlockType;
+                const outside = blocksOutsideRange(editor);
+
+                command(editor);
+
+                const after = [editor.getValue(), shapeOf(editor)];
+                const changed = after[0] !== before[0] || after[1] !== before[1];
+
+                expect(changed, `${context}: ${after[1]}`).toBe(available);
+
+                if (available) {
+                    expect(endsOnHolder(editor), `an end left on a node that holds blocks after ${context}`).toBe(false);
+                    expect(outside === null ? [] : changedOutside(editor, outside), `a block outside the range changed after ${context}`).toEqual([]);
+                    expectSaveKeepsDocument(editor, context);
+                    lexicalOf(editor).dispatchCommand(UNDO_COMMAND, undefined);
+                    expect([editor.getValue(), shapeOf(editor)], `one undo step after ${context}`).toEqual(before);
+                }
+            }
+        }
+    }, SWEEP_TIMEOUT_MS);
 });
 
 describe('a list whose every item a removal takes is left with an empty item holding the caret, or goes', () => {

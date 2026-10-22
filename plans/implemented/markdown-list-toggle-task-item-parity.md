@@ -74,6 +74,20 @@ The contract's other rules are unchanged: the task marker (rule 5), a toggle
 of the other kind changing the touched items only, a converted block landing
 at the top level, and joining.
 
+## Narrowed on 2026-10-11
+
+One part of this plan is not on its branch: the source-mode lift rule, that
+is, rule 2 as reversed above applied in source mode ("Source mode gets a
+new lift rule for list items, in `liftLines`"). It was implemented, went
+through five reviews, did not converge, and was deferred to a plan of its
+own. Everything else below is implemented as written, with the deviations
+the *Implementation Notes* list. Where this plan's text says that source
+mode takes what an item holds out of the list with its text, read: the
+WYSIWYG surface does, and source mode leaves it in the list as before, a
+difference that `DIFFERS` rows pin and the docs state. The notes' last
+section, *For the follow-up plan (source-mode lift rule)*, says where the
+deferred work is kept and what was learned from it.
+
 ---
 
 ## What the two surfaces do today
@@ -270,6 +284,69 @@ No code of the field changes. The stack's rule for it — `true` means the
 command changes the document or the selection — holds for the toggles on
 every row of the parity tables once rows 10 and 11 of the table in *What the
 two surfaces do today* are fixed.[^availability]
+
+*Amended during implementation.* The field gained one clause: `false` for a
+selection whose two ends stand on a table or one of its rows with no block
+of text between them. The next section says why; note D17 has the detail.
+
+### WYSIWYG: the ends of the selection are settled into blocks of text first
+
+*Added during implementation.* The plan's code reads the touched blocks
+from the selection's two ends and the selected leaves, and takes each for a
+block of text. That holds for every selection a click or a drag makes. It
+does not hold for a selection end that stands on a node that holds blocks:
+the root, a `:::` block or one of its columns, a list, a list item, a
+table or a row. `deleteTable()` leaves the caret there, and code can put a
+point there. With the plan's own route (no Lexical list insert) such a
+point made the toggles take a whole list for one block, write a list into a
+`:::` block, or throw, with `canSetBlockType` `true`.
+
+Three ways out were weighed.
+
+| Way | Why not, or why |
+|---|---|
+| Make `canSetBlockType` `false` for any end on a holder | The caret after `deleteTable()` is such an end. The parent's toggles acted there, so this takes a working command away where a user stands |
+| Act on the holder: convert every block it holds | It is what went wrong. A caret would convert a whole list or a whole column |
+| Settle each end into a block of text first, then act as on any selection | Taken. The commands keep one definition of "the touched blocks", blocks of text only, and a holder is never one of them |
+
+The precedent is in the same file: `$settleCaretIntoBlock` moves a caret a
+removal leaves at a table's edge into the neighbouring block, or makes "a
+new empty paragraph when the parent holds no block any more", for the
+inserts; `$refillEmptiedColumn` gives a `:::` column a removal emptied its
+paragraph. `plans/markdown-editor-table-command-fixes.md` writes down the
+same rule for its own `$settlePoint`.
+
+The rule has two halves, because a caret and a range ask for different
+things.
+
+- A caret has no extent, so it goes into the block of text **beside** it:
+  the one after it, else the one before it, else a new empty paragraph. A
+  table is passed over, since its cells hold text only. A column or a
+  document that holds nothing gets a paragraph for it.
+- A range says which blocks it means. Its ends go **inward**: the start
+  into the first block of text after it, the end into the last one before
+  it, in document order. No block outside the range is touched. A range
+  with no block of text between its ends says nothing, and is a caret
+  where it starts.
+
+`setBlockType` shares the step with the two toggles, though the plan
+changes only the toggles: the caret after `deleteTable()` is the same
+caret for all three, and all three answer to the one field
+`canSetBlockType`. For a selection made by a click or a drag the step does
+nothing.
+
+One selection is left with no block of text after this: both ends on a
+table or a row, nothing between them (a caret between two rows). A table is
+no block of text, the commands change nothing there, and the field is
+`false` for it, as it already was for a caret at a table's first or last
+edge. That is the one clause added to the field.
+
+The functions are `$settleEndsIntoBlocksOfText`, `$settleRangeEndsInward`
+and `$settleCaretIntoBlockOfText` with their helpers, after
+`$moveBlockPointsIntoText` in `MarkdownEditor.ts`, and `$holdsBlocks`,
+`$standsOnHolder` and `$isBlockOfText` after `$isTextOnlyBlock`. The
+functions that find a block write nothing; `$fillEmptyHolder` and
+`$newParagraphBeside` are the two that write.
 
 ### WYSIWYG: one update lifts the touched blocks, then makes the items
 
@@ -3363,3 +3440,1129 @@ are pinned by `DIFFERS` rows, so none can change unnoticed.
     documents where a nested list is followed by a block, and 9 in documents
     that are not written the way the editor saves them, where looseness
     cannot be compared.
+
+## Implementation Notes
+
+Implemented on `feature/markdown-list-toggle-task-item-parity`, on top of
+`feature/markdown-language-enter-inside-html` at `d685c8a54`, which these
+notes call "the parent". Scratch files named below are under
+`~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/impl/list-toggle/`
+("the scratch folder"). They are not in the repository. The planner's files
+are under `…/scratch-keep/plans3/list-toggle/` ("the planner's folder").
+In these notes W is the WYSIWYG surface and S is source mode.
+
+**The scope was narrowed on 2026-10-11.** The source-mode lift rule — rule
+2 reversed in source mode too, so that what a list item holds after its
+text leaves the list with it there as it does on W — was implemented, went
+through five reviews, did not converge, and was deferred on 2026-10-11 to
+a plan of its own. Each review found new defects in it; the fifth found
+four blocking ones, all in source mode, all in the lift rule or in the
+reading of tabs added for it. This branch holds the rest of the plan: the
+W toggles, the task marker on both surfaces, the joining of new items on
+both surfaces, and the rows that pin them. In S an item's later blocks
+stay in the list, as at the parent. Every row where the surfaces differ
+for that reason is a pinned `DIFFERS` row, and the docs state the
+difference. The deferred work is kept whole on the branch
+`wip/markdown-source-list-lift`, at `1fab9b22b`. The last section of
+these notes says what a later plan needs from it.
+
+**Where the review stands.** Six reviews, each by a fresh reviewer; the
+audit loop's cap is three, and the coordinator ran the fourth to the
+sixth. The fifth held the W half under 40,068 cases with nothing found.
+After it the branch was measured without the lift rule (*State I*, next)
+and rebuilt as that state, with the two fixes the measurement and the
+fifth review asked for in it (D19, D20) and the fifth review's advisory
+points that apply. The sixth review read the rebuilt branch. Over about
+2.3 million cases it found no defect in what the code does and no
+regression. Its one blocking finding was about pinning and documenting:
+shapes where the surfaces differ that no row pinned and the docs did not
+state, while the docs said their list was complete. Its advisory points
+were about test names, these notes, two docs sentences, one timing and the
+code conventions.
+
+The changes made after the sixth review are test rows, docs, these notes
+and D21 (in `markdownSourceLines.ts`, six blank lines and one loop
+rewritten so that its condition holds no call). **No reviewer has read
+them**, and the coordinator closed the plan without a seventh review. What
+was checked instead:
+
+- Every expected text of the new rows and tests was taken from the output
+  of the planner's probe on the branch (`adhoc/r7rows-tipN.jsonl` and
+  `adhoc/r7rows2-tipN.jsonl` in the scratch folder; `r7_rows.py` wrote
+  most rows from it), not written from what the result should be.
+- After D21 the source-mode result of all 68,522 cases of the differential
+  sets is the one recorded before it (`why/srcall-tip7.txt`: 0 differ; the
+  same probe on the code before D21, as a control, also 0).
+- Every case of those sets where the surfaces differ was put under a clause
+  of the docs' list, by the reason source mode itself gives for declining
+  (D22).
+- The checks of *Checks*, on the final code.
+
+*Narrowed on 2026-10-11*, the amended decision "`canSetBlockType` keeps
+its rule" and the decision "WYSIWYG: the ends of the selection are settled
+into blocks of text first" stand outside these notes, in the plan's own
+text, and were added during implementation, in the sixth round. They are
+there because a plan in `plans/implemented/` is read as what the code
+does: a reader of *Architecture Decisions* would otherwise find the lift
+rule described as landed and no decision at all for the settling step,
+which is the largest piece of code the plan did not foresee. The sixth
+review asked that this be said here. Nothing else outside these notes was
+changed.
+
+### State I, and what the measurement showed
+
+State I is the branch without the two lift-rule commits: the first code
+commit of the fifth round (`9ad203923` on `wip/markdown-source-list-lift`).
+Before anything was changed it was built in a private copy and run against
+the parent on every set there is: my nine differential sets, the sets of
+reviewers 1 to 4, and the fifth review's probes and its 267,212 source
+rows. The full table is `stateI-measure.md` in the scratch folder. In
+short, per finding of the fifth review:
+
+| Finding | With the lift rule | In state I |
+|---|---|---|
+| B1: `setBlockType("code")` does nothing on text that holds a tab | yes | no |
+| B2: `analyzeMarkdownSource` slows down quadratically on tab-indented code of a list item (821 ms at 400 lines, 13 s at 1,600) | yes | no (2 ms, 6 ms; the parent: 1 ms, 4 ms) |
+| A1: the tab-aware search can find a block on a later look-alike line | yes | no (`markdownSourceTokens.ts` is the parent's) |
+| B3 (a) to (f): six families where a command that acted at the parent declines | 91, 210 and 542 to 721 rows of the reviewer's plain, trailing-whitespace and tab sets | none of the lift's; one family of its own, 48 rows, see D19 |
+| B4: docs and changelog overstate what is done about tabs | yes | no: nothing of state I's docs speaks of tabs |
+| A2: a range end on a holder's edge settles into a block outside the range | yes | yes, the W code is the same; see D20 |
+
+So state I had two things to fix, both caused by the first code commit,
+and both are fixed on this branch. Over the planner's probe (68,522 cases)
+and the fourth reviewer's (2,822) state I already had no command that
+acted at the parent and declines; the 48 rows showed only in the fifth
+reviewer's source rows.
+
+### The rules
+
+For the areas where the reviews kept finding corners, the rule that decides
+every case was written down, the shapes it has to cover were listed, and
+the rows were built from that list.
+
+**Rule B: where an end of the selection settles, and what the commands act
+on** (D16, D17, D20). A block type or a list toggle acts on blocks of text
+and on nothing else. Before it reads them, each end of the selection that
+stands on a node that holds blocks is settled into a block of text.
+
+- **A caret** goes into the block of text beside it: the one after it,
+  else the one before it. The way to a side goes down through lists,
+  items, `:::` blocks and columns, and stops at a table. A column it finds
+  empty takes the caret and gets a paragraph for it. With no place to go
+  on either side the caret goes into a new empty paragraph, beside the
+  table that stood in the way, or as the one block of an empty document or
+  column.
+- **The ends of a range** go inward, in document order: the start into the
+  first block of text after it, the end into the last block of text before
+  it, wherever in the document that block stands. A table, and a column a
+  deleted table left empty, are passed over. So the blocks the command
+  changes are the blocks of text between the two ends, and never one
+  outside them. An end that stands on an empty document or column stands
+  in it, and that holder gets its paragraph.
+- **A range with no block of text between its ends** names nothing. It is
+  a caret where it starts.
+
+A node that holds blocks is told by what it is (the root, a `:::` block, a
+column, a list, a list item, a table, a row, a cell), never by what it
+holds at the moment. `canSetBlockType` is `true` exactly when this leaves
+a block to act on: the selection touches no table cell and does not stand
+on tables alone.
+
+The shapes: each kind of holder; each offset on it (before the first
+child, between two, after the last, and in an empty one); what stands
+beside (a block of text, a holder to go down, an empty column, a table,
+nothing); the selection (a caret, a range's start, a range's end, both
+ends on holders, a range that holds no block); and the command (both
+toggles, a heading, a code block). Rows `H25` to `H72` and seven
+availability rows pin single cases. The test "with an end on any node that
+holds blocks, a command changes the document exactly where canSetBlockType
+is true, and no block outside a range" runs every point on every holder of
+sixteen documents, as a caret and as either end of a range, with four
+commands. For each it checks that the document changes exactly when the
+field is `true`, that no end is left on a holder, that no block of text
+outside the range is another block afterwards (its type, a heading's
+level, the kind of list it opens an item of, its text), that the save
+reloads and the viewer reads it alike, and that one undo step takes it
+back.
+
+**Rule C: a range over a node that holds nothing** (D16). A node that
+holds blocks is never one of the blocks a command touches. So a range that
+covers a column a deleted table left empty, or the `:::` block around it,
+leaves it as it is and changes the blocks of text around it. An item a
+deleted table left empty has an empty text, which is a block of text and
+is converted like an empty paragraph. A table cell left empty is in a
+table: the selection touches a cell and the commands are unavailable. An
+emptied document holds no range, only a caret, which rule B gives a
+paragraph. An emptied column gets its paragraph only when an end of the
+selection stands on it or a caret settles into it.
+
+| What is empty | A range covers it | An end stands on it, or a caret beside it |
+|---|---|---|
+| a `:::` column | `H51` to `H54` (both toggles, a heading, a code block), `H72`: left as it is | `H57` (the start), `H58` (the end), `H38`, `H42` to `H45`, `H47`, `H71` (a caret): gets a paragraph |
+| a centred `:::` block | `H55`, `H56`: left as it is | `H39`, `H46` |
+| the document | holds no range | `H40`, `H48` |
+| a table cell | `H65`: unavailable, nothing changes | unavailable |
+| a list item | `H59`, `H60`: its empty text is converted | the caret is in its text |
+
+**Rule D: a new item joins the list next to it, unless that changes how
+the list reads** (D19). In S, `listOn` writes the new items of a run line
+after line and joins them to the list of their kind next to them, as the
+plan says and as W does. A list that gains an item below it no longer ends
+where it did. When no form of the joined edit reads as intended, the
+items are written as a list of their own (`-`, or `1.` counting from one),
+each block's where it stands and the blank lines around it left alone,
+which is what the parent wrote, and that edit is checked the same way. So
+a list toggle never declines because of the joining.
+
+### Decisions that await the user's sign-off
+
+**1. The source-mode lift rule is deferred, and the surfaces differ where
+it would have applied.** The user had been told of the lift rule and had
+not yet confirmed it. It is not on this branch. What an item holds after
+its text leaves the list with the text on W, and stays in the list in S,
+in an item its marker re-opens, as at the parent.
+
+| Document | Caret | Command | W on the branch | S on the branch (and at the parent) |
+|---|---|---|---|---|
+| `- one ⏎⏎   second ⏎⏎ - two` | `one` | bulleted toggle | `one ⏎⏎ second ⏎⏎ - two` | `one ⏎⏎ - second ⏎⏎ - two` |
+| same | `one` | `setBlockType("h2")` | `## one ⏎⏎ second ⏎⏎ - two` | `## one ⏎⏎ - second ⏎⏎ - two` |
+| `- one ⏎⏎   second ⏎⏎   third ⏎⏎ - two` | `second` | bulleted toggle | `- one ⏎⏎ - second ⏎⏎   third ⏎⏎ - two` | `- one ⏎⏎ - second ⏎⏎ - third ⏎⏎ - two` |
+| `- o ⏎   - m ⏎     - x ⏎       - n ⏎     - y ⏎   - k` | `x` | bulleted toggle | `x`, then `- - n ⏎   - y ⏎   - k` | `x`, then `- - - - n ⏎     - y ⏎   - k` |
+| `- [ ] one ⏎⏎   second ⏎⏎ - [x] two` | `one` | any | converts, `second` goes with it | does nothing (the parent did nothing on any task item) |
+| `- one ⏎⏎   --- ⏎⏎ - two` | `one` | either toggle | converts | does nothing |
+
+These are the 70 rows that the two surfaces read alike only with the lift
+rule: 60 of the plan's `SAME` rows and ten that were written for the lift.
+They are `DIFFERS` rows now, each with the text S gives: `T9`, `T14`,
+`T16`, `X23` to `X25`,
+`S6`, `M1`, `M6` to `M8`, `M10`, `M12` to `M15`, `M17`, `M18`, `M20`,
+`M22`, `M24` to `M28`, `M30` to `M32` and `C3`. In 60 of them S acts and
+leaves the blocks in the list; in 10 (`T9`, `T14`, `T16`, `M27`) S does
+nothing. The docs state the difference first in their list, as one that
+is to go, and the changelog entry says it stays for now.
+
+The deferral leaves S doing nothing in more places than those ten rows
+show, which the sixth review found unpinned and missing from the docs. S
+re-opens what stays behind in the list by the item's marker and checks
+the result by lexing it. Where the lines would not read as they did under
+that marker, it declines, at the parent and on this branch alike.
+
+| Shape | Documents, and the caret | S here and at the parent | S with the lift rule | Rows |
+|---|---|---|---|---|
+| a block or a nested item inside a task item, with more of that task item after it: the marker re-opens a plain item | `- [x] alpha ⏎   - beta ⏎   - gamma ⏎ - delta`, `beta`; `- [x] alpha ⏎⏎   beta ⏎⏎   gamma ⏎ - delta`, `beta`; `- [ ] a ⏎   - b ⏎⏎     held ⏎ - c`, `b` | nothing | acts | `T19` to `T21` (eight) |
+| a block right before a thematic break written in the list's marker character: `- ---` is a break outside the list | `- one ⏎⏎   para ⏎⏎   --- ⏎⏎ - two`, `para`; `- one ⏎   - inner ⏎⏎   --- ⏎⏎ - two`, `inner`; `* one ⏎⏎   *** ⏎⏎ * two`, `one` | nothing | acts | `M33` to `M35` (eight); `M27` is the item's own text |
+| the same with the break in another character, or a block between the two | `- one ⏎⏎   *** ⏎⏎ - two`; `- one ⏎⏎   mid ⏎⏎   --- ⏎⏎ - two`; `one` | acts, the break stays in the list | acts, and reads as W | `M36`, `M37` |
+
+Both thematic-break shapes of the sixth review are left by the deferral,
+not something the lift rule had too: on `wip/markdown-source-list-lift`
+S acts on each of them. The last block of a task item converts on both
+surfaces (`T15`, a `SAME` row). Of these 18 rows, 16 read alike on the two
+surfaces with the lift rule; `T20 h2` and `M33 h2` then still differ, by
+the Non-Goal on `setBlockType` inside an item. Five of the rows of
+sign-off 8 also change with the lift rule and then read alike: `E24`
+(two, a tab-indented block after the item's text), `E30` (two, text that
+opens with `[ ] ` after it) and `E34` (an HTML block indented deeper than
+its item's content). A command over several blocks does nothing in S when
+one of them is such a block. The docs say all of this in the paragraph on
+the difference that is to go, and the changelog entry names the two
+shapes.
+
+**2. Corrections to the plan's code that remain.** The plan's code was
+applied as written first, and at that point the four modules were byte for
+byte the planner's prototype. Of the defects found after that, these are
+in code this branch keeps: D1 (W, a comparison of two nodes), D10 (S, the
+sides a new item joins on), D16, D17 and D20 (W, what the commands do with
+a selection end on a node that holds blocks, which the plan does not
+decide), and D19 (S, rule D).
+
+**3. `canSetBlockType` is `false` for a selection that stands on tables
+alone** (D17). The plan says the field's code does not change. It gained
+one clause: `false` when both ends of the selection stand on a table or
+one of its rows and no block of text lies between them. Only code makes
+such a selection.
+
+| Selection | At the parent | On the branch |
+|---|---|---|
+| a caret on a table, between two rows | `true`; both toggles and `setBlockType` change nothing | `false`; they change nothing |
+| a caret on a table at its first or last edge | `false` | `false` |
+| a range from a paragraph to the edge of the table next to it | `true`; the paragraph is converted | the same |
+
+If the answer is no, take the clause out of `$readCommandAvailability`
+and say what a caret between two rows should make the commands do: with
+the field `true` they have to change something there.
+
+**4. `setBlockType` settles the ends of the selection as the toggles do**
+(D16). The plan changes the toggles. A caret where a deleted table leaves
+it is the same caret for `setBlockType`, with the same field `true`.
+
+| Document, after `deleteTable()` | Command | At the parent | On the branch |
+|---|---|---|---|
+| a `:::` block of two columns, the table was all the first one held | `setBlockType("h2")` | nothing | `::: columns ⏎ ## ⏎ \|\|\| ⏎ Right ⏎ :::`, the caret in the heading |
+| the table was all the document held | `setBlockType("code")` | nothing | an empty code block, the caret in it |
+| `- a ⏎ - b`, the table stood below the list | `setBlockType("quote")` | nothing | `- a ⏎⏎ > b` |
+
+For a selection made by a click or a drag nothing changes: the step only
+moves an end that stands on a node that holds blocks.
+
+**5. A range's ends go inward, so no block outside the range is changed**
+(D20). The fifth review found that a range end on a holder's edge was
+settled into the block beside it even when that block lay outside the
+range, and the command then changed it.
+
+| Document | Range | Command | At the parent | Before D20 | On the branch |
+|---|---|---|---|---|---|
+| `- a ⏎   - n ⏎ - b` | from the end of item `a`, after its nested list, to `b` | `setBlockType("h3")` | `b` alone | `n` and `b` | `b` alone |
+| `first ⏎⏎ - a ⏎ - b` | from `first` to the list's start, before `a` | numbered toggle | the whole list, as its toggles did then | `first` and `a` | `first` alone (`H33`, restated) |
+| `x ⏎⏎ - a` | from the root before the list to the list's start (no block between) | bulleted toggle | `- x ⏎ - a` | `x ⏎⏎ a` | the same: a range that holds nothing is a caret where it starts, and a caret goes into the block after it |
+
+In the scratch sweep of 25,620 selections with an end on a holder a block
+outside the range changes in none on the branch. At the parent one does in
+1,007.
+
+**6. A range over an emptied column leaves the column as it is** (D16,
+rule C). At the parent a list toggle over such a range took the column for
+a block: it wrote the list straight into the `:::` block and the column
+was gone (`- x ⏎⏎ ::: {} ⏎ - Right ⏎ ::: ⏎⏎ - y`). Now the column stays,
+empty, and the blocks of text around it are converted
+(`- x ⏎⏎ ::: columns ⏎⏎ ||| ⏎ - Right ⏎ ::: ⏎⏎ - y`). `setBlockType`
+always left it. The other reading, that a covered empty column gets an
+empty item or heading of its own, was not taken: a column holds no block
+until the caret needs one.
+
+**7. In S a new item that cannot join stands apart** (D19, rule D). Where
+joining the list next to it would change how that list reads, S writes
+the item as a list of its own, as the parent did, and W still joins. For
+`2) a`, a blank line, an indented code line that ends in a space, `- b`,
+the numbered toggle on `b` gives `1. b` in S. The shapes are documents
+the editor does not save itself: trailing whitespace, indented code, a
+fence left open at a list's end.
+
+**8. Differences between the surfaces that were there at the parent are
+pinned** (D11, D22). In a block that holds a backslash line break the S
+list toggles do nothing when the selection takes the line after the
+break, and the S heading types do nothing at all, where W converts the
+block as one (rows `E16`, `E17`). And on the text of a list item whose
+marker line holds a tab, right after the marker with further lines in the
+item or inside the text, W converts and S does nothing (rows `E19`).
+
+The sixth review found three more that no row pinned and the docs did not
+list, and the check made after it (D22) found the rest. All are the parent's; none is changed here.
+
+| Difference | Rows |
+|---|---|
+| a heading type on a block of several lines: a heading per line in S, one heading on W. The plan's Non-Goal on single lines says so; no row and no docs clause had it | `E20`, `E21` |
+| a list toggle on a heading written with a setext underline, the form W saves a heading of several lines in: S does nothing | `E31` (two), `E36` |
+| a list W keeps as a raw block (written tight, with a block right under another): W acts on the block as a whole and S on its lines; a new item beside it joins it in S alone; nested in an item, it leaves with the item's text on W alone | `E22` (two), `E23`, and two tests after the `DIFFERS` loop, whose documents still hold the raw block afterwards |
+| a block or a nested list of an item indented with a tab: S does nothing on it, or on a block before it in the item | `E24` (two), `E25` to `E27`, and the plan's own source-mode row "a list toggle declines over a tab-indented block of the item" |
+| text that opens with an unescaped `[ ] ` or `[x] `: the S toggles do nothing (the new item would read as a task item, and `listOn` tries no escaped form), W writes `\[ \]`; and S does nothing on the block right before such text in a list item | `E28` (two), `E29`, `E30` (two) |
+| indentation the editor does not write, where the lines after the result would read otherwise: a block indented below an empty list item, a list whose markers are indented, an HTML block indented deeper than its item's content | `E32`, `E33`, `E34` |
+| an item whose marker stands on a line of its own: S converts the text and leaves the emptied marker as an empty item, W removes it | `E35` |
+
+The docs state each. What S does with tabs and with a task item belongs
+to the follow-up plan; an escaped form for the `[ ] ` text and the setext
+heading under a toggle are small changes to `listOn` and `toggleList`
+that no plan holds yet.
+
+**9. The documentation is one commit**, and says these things beyond the
+plan's text in `docs/components/MarkdownEditor.md`. In the *Lists*
+bullet, for rules B and C: "With an end of the selection between two
+blocks rather than in a text — `deleteTable()` leaves the caret on a
+list, a list item, a `:::` block or one of its columns, or on the
+document itself — a list toggle and `setBlockType` act on blocks of text
+all the same. …", through "… where these commands are unavailable, as
+they are for any caret on a table." In the Command API table the
+`canSetBlockType` row gains "or stands on a table and holds no block of
+text". In the source-mode paragraph, rule D. In the paragraph that lists
+where the surfaces differ: the deferred difference, named first as one
+that is to go, and the clause on a backslash line break. The plan's own
+sentences on the lift rule in source mode are not in the docs: the
+source-mode paragraph keeps the parent's "what followed it inside them
+stays there, re-opened by its own marker". The changelog entry for the
+toggles says the difference stays for now, and one entry under *Fixed*
+that the plan does not ask for covers the commands where a deleted table
+leaves the caret.
+
+After the sixth review the paragraph on the differences is three
+paragraphs (D22). The first is the difference that is to go, with the
+shapes where S does nothing because of it. The second holds the
+differences that stay, for Markdown the editor writes. The third holds
+the ones that only Markdown written by hand has. The first sentence now
+limits the claim that the list is complete to Markdown written as the
+editor saves it. The clause on raw Markdown blocks no longer says that S
+does nothing on every one: on a blockquote or a list that W keeps raw, S
+acts on the lines. The toggles' row in the Command API table says when a
+joined list is tight and when it is loose, where it said "which stays
+tight".
+
+**10. On W a toggle of the other kind over a whole list takes about twice
+the parent's time, and the docs now point to that selection.** The
+toggles' row and the changelog say "select a whole list to convert it
+whole". Measured on an idle machine with the sixth reviewer's probe
+(`a5/` in the scratch folder): a tight bulleted list, the numbered toggle
+over all of it, headless.
+
+| Items | Parent | Branch |
+|---|---|---|
+| 125 | 42 ms | 91 ms |
+| 250 | 175 ms | 362 ms |
+| 500 | 707 ms | 1,296 ms |
+| 1,000 | 2,652 ms | 5,208 ms |
+
+Both grow with the square of the list, and the cause is not in this
+branch's code. Of the 5.2 s at 1,000 items the toggle's own work is about
+60 ms: 2 ms to read the touched blocks, 42 ms to lift them out, 9 ms to
+make the items. A CPU profile at 600 items puts 1,724 of 1,857 ms in
+`$keepLoosenessWritable` (`markdownWritable.ts:584`) and the
+`$listReadsLoose` it calls, which reads the whole list. That is a node
+transform from before this plan. It runs once for every list item an
+update leaves dirty (`markdownWritable.ts:367`) and once more for every
+dirty item text or paragraph (`$keepLoosenessOfItemHolding`, `:391`). The
+parent changed each item's list in place and paid it once per item (656
+of 940 ms at 600 items). The branch lifts each item out and makes a new
+one, so each item has a new item node and a new text node and pays it
+twice. Making 1,000 paragraphs a list pays the same on both (4,422 ms at
+the parent, 4,994 ms on the branch), and taking a whole list out of its
+kind got faster (640 ms to 140 ms).
+
+It was not fixed here. Nothing the toggle does per item can be done once
+instead, short of a second route for the whole-list case that changes the
+list in place, which is the code this plan replaced. And the transform is
+not this plan's. The fix belongs there: let a dirty item mark its list,
+and read the list's looseness once per update, in the `ListNode`
+transform. That takes the square out of every list edit, this toggle and
+the 1,000 paragraphs alike. If twice the parent's time is not acceptable
+until then, take the advice out of the docs; the toggle should not go
+back to converting a list it was not asked to convert.
+
+### The base
+
+The plan was written against `85b55a8f4`. The parent is two branches above
+it. `git diff --stat 85b55a8f4 d685c8a54` names none of the four source
+modules, none of the four test files, and neither `markdownSourceTokens.ts`
+nor `markdownWritable.ts`, the round-trip harness or
+`docs/components/MarkdownEditor.md`. Every line number of the plan holds.
+`docs/reference/changelog/next.md` gained 30 lines from the two branches.
+
+The plan's source-mode claims hold at the parent: the planner's probe, run
+at `d685c8a54`, writes output byte-identical to the planner's
+`parent-final`, `parent-differs`, `parent-grid` and `parent-rand` files
+(7,979 cases).
+
+### How the plan's steps went
+
+| Step | The plan's check | Measured |
+|---|---|---|
+| 2 | `S26` fails, 27 pass | so |
+| 3 | 14 named `H` rows fail | the same 14 |
+| 4 | 181 fail: 157 `SAME`, 8 `DIFFERS`, 2 `CASES`, 9 source rows, 5 availability | the same 181, by name; the 25 controls pass |
+| 5 | 2 fail | the same 2 |
+| 8 | 139 fail in the step 4 file: 126 `SAME`, `Q2 UL`, `Q2 OL`, `E5 code`, `E15 OL`, 9 source rows | the same 139 |
+| 9, 10 | all pass | all pass (7,439 tests in the step 10 list) |
+| 12 | the probe's output equals `expected-*.jsonl` | identical for all four sets at that point |
+
+The test rows were applied from the planner's `tests-on-85b55a8f4.diff`
+after checking it line by line against the plan's code blocks: every line
+of the plan's test code is in it, and it holds nothing the plan does not
+ask for. The
+comment above `describe('line commands act on the blocks the viewer reads')`
+was not in that diff. The plan changes it to describe the lift rule; on
+this branch it is the parent's comment, since the lift rule is not here.
+
+Steps 6 to 8 are `$splitItemBefore`, the `inListItem` parameter of
+`$serializeInlineNodes`, and `MarkdownEditor.ts`. Step 9 is
+`markdownSourceLines.ts`, the lift rule in `liftLines` among its changes.
+All were carried out and their rows passed; the lift rule was then taken
+out again with the deferral. The counts in the table were measured on the
+full plan.
+
+### Deviations
+
+D2, D3, D7, D8's `rand` rows, D12 to D15 and D18 of earlier rounds concern
+the lift rule. They are in the last section. The numbers of the others are
+kept.
+
+**D1. `$makeItemsOf` compares two blocks by key.** The plan's code read
+`blocks[0]!.getPreviousSibling() !== before[before.length - 1]`. Lexical
+clones a node the first time an update writes to it. A block lifted early
+stays in its group as the object it was then, and `getPreviousSibling()`
+returns the clone. When a later lift had written to that block — putting an
+item's paragraph in front of it sets its previous-sibling pointer — the
+comparison read two neighbours as standing apart and split one run in two.
+The first half found no list below it and made a new list; the second half
+joined that list instead of the list of its kind below the run.
+
+`- zero ⏎⏎ one ⏎⏎ two ⏎⏎ 1) three`, range `zero` to `two`, numbered toggle
+gave `1. zero ⏎ 2. one ⏎ 3. two ⏎⏎ 1) three`: two lists, where rule 4 and
+source mode make one. It now gives `1) zero ⏎ 2) one ⏎ 3) two ⏎ 4) three`.
+The comparison is `before[before.length - 1]!.is(…)`. Rows `X21` and `X22`
+pin it. In the extra scenario set `dxa` (below) it changed 72 of 2,112
+cases, all on W; none of the planner's sets holds the shape.
+
+**D4. Three calls moved out of `if` conditions in two functions**, by the
+user's rule that a call's result is assigned to a named constant first:
+`isTaskMarker` in `readLeaves`, and `isOfKind` / `holdsTarget` in
+`neighbourList`. Type guards that narrow stay in the condition, as the
+plan says. Conditions the plan carried over from existing lines are left
+as they were.
+
+**D5. One code commit, which is state I with four changes.** The fifth
+round had two code commits, so that the lift rule could be read and
+reverted alone; its first one, state I, was derived from the full state by
+`split/make_I_source.py` and `split/make_I_tests.py` in the scratch
+folder. This branch's code commit is that state plus D19, D20, the
+seventy rows of sign-off 1, the fifth review's advisory points, and what
+followed the sixth review: D21 and the rows and tests D6 counts. In it
+`markdownSourceLines.ts` has the parent's `liftLines`, `reopenContainers`,
+`LineReplacement`, `containerPrefix` and `itemIndent`; `expectLeaves`
+takes several leaves for one (the task marker) but no lifts; `listOn` and
+its helpers are the plan's without `follow` and without the lifts.
+`markdownSourceTokens.ts` is the parent's and is not in the diff.
+
+**D6. Rows beyond the plan's, and rows of the plan that moved.** `SAME`
+has 132 rows: 122 of the plan's 182, and `X21`, `X22` and `X26` to `X33`.
+`DIFFERS` has 142 rows: the plan's 26, `E16` (three), `E17`, `E19` (two),
+the 70 of sign-off 1 and the 40 added after the sixth review (18 under
+sign-off 1, 22 under sign-off 8); two tests follow its loop. The `H`
+table has seventeen more rows than the plan's, `H25` to `H41`, and a
+second table after it has `H42` to `H72`, seven availability rows, three
+single tests and the sweep of sixteen documents.
+`markdown-source-edits.test.ts` has 4 new tests.
+
+Of the plan's nine new source-mode rows three are in the test file: "a
+new item written against a tight list takes every blank line between
+them", "a task marker stays with the first line of its item's text" and
+"a list toggle declines over a tab-indented block of the item". The third
+needs no lift rule, passes at the parent, and was left out by mistake
+when the branch was narrowed; the sixth review found it missing. The
+other six need the lift rule and are not here. The two restated
+source-mode rows and the two restated tests of
+`markdown-source-edits.test.ts` keep the parent's expected text. Two
+tests of that file had been renamed for the lift rule while their
+expected text stayed the parent's; they are named for what they pin now:
+"lifts a block out of a quote that a list item holds, and re-opens the
+item on the quote's next line" and "re-opens the item around a quote on
+the next item of the quote's list".
+
+**D8. The plan's differential step 3** asks for output identical to the
+planner's `expected-*.jsonl`. Those hold the lift rule's results in S, so
+they are not met in S on this branch where the lift applies. In W the
+probe's output is the planner's for `final`, `differs`, `grid` and `rand`
+(7,979 rows, none differs).
+
+**D9, D16. One step settles the ends of the selection, for both toggles
+and `setBlockType`.** The plan's code reads the touched blocks from the
+selection's two ends and the selected leaves, and takes each for a block
+of text. `deleteTable()` leaves the caret on the node that held the
+table's neighbour: a list, a nested list, a `:::` block, an emptied column
+or the emptied document. Code can put a point on any node that holds
+blocks. For such a point the plan's code took the holder itself for the
+touched block: it moved a whole list's items into one item's text, made
+an empty item, wrote a list into a `:::` block in a column's place, or
+threw (`Expected node … to have a parent`). Lexical's list insert, which
+the toggles no longer use, did not fail there. The first four reviews
+each found another corner of this (a point on a list; a point beside a
+table; a column or a document a deleted table left empty; a caret beside
+such a column, and a range over it).
+
+`$holdsBlocks` and `$isBlockOfText` tell the two kinds of node by what
+they are. `$blocksTouchedBy` gives blocks of text only, so
+`$selectedBlocksHaveType` and `$touchedBlocksLastFirst` see no holder.
+`$settleEndsIntoBlocksOfText` moves each end as rule B says. `toggleList`
+and `setBlockType` call it. The justification, with the ways not taken
+and the precedent, is in *Architecture Decisions*, "WYSIWYG: the ends of
+the selection are settled into blocks of text first".
+
+`setBlockType` still asks first, in a read, whether every block is of the
+type already, and then runs no update, so no undo step and no event. A
+selection with an end on a holder answers no there, and is asked again
+inside the update once its ends are settled. With every block of the type
+that update moves the selection and changes no block (the test "changes
+no block, and adds no undo step, when the caret settles into a block that
+is of the type already"). A range over an emptied column with
+`setBlockType("paragraph")` used to replace each paragraph by an equal
+one and add an undo step, because the column was counted as a block of
+another type; it adds none now.
+
+After `deleteTable()` under `- a ⏎ - b`, the numbered toggle gives
+`- a ⏎⏎ 1. b` (the parent numbered the whole list) and the bulleted toggle
+gives `- a ⏎⏎ b` (the parent changed nothing). In a column a deleted table
+left empty the toggle gives what the parent gave: an empty item in the
+column (`::: columns ⏎ - ⏎ ||| ⏎ Right ⏎ :::`), or `-` for the document,
+with the caret in it. Rows `H25` to `H65`.
+
+**D10. The list around a run counts only on the side where part of it
+stands.** `readListJoin` took the list of the toggle's kind around the
+run's first block for a list above the run: the new item took the number
+after its old item, and the blank line above went. That is wrong when the
+block is the first thing in that list, which happens when its item opens
+with a nested list of the other kind or with a quote (`1. - aa`, the shape
+the toggles themselves leave). `one ⏎⏎ 1. - aa ⏎ 2. bb`, numbered toggle
+on `aa`, gave `one ⏎⏎ 2. aa ⏎⏎ 2. bb`: numbered 2 and loose, where the
+parent and W give `one ⏎⏎ 1. aa ⏎ 2. bb`. The same reading missed two
+joins W makes: a run that starts outside a list of the kind and ends in
+one (`para ⏎⏎ * > qq ⏎ * bb`, range `para` to `qq`, gave `- para ⏎ - qq`
+above `* bb`), and an item that was its list's only one
+(`+ > qq ⏎⏎ - bb` kept `+`). Found in the first review.
+
+`readListJoin` now takes the list around the run's first block for a list
+above only when its first line is above the run, and the list around the
+run's last block for the list below when it goes on below the run. A new
+item that stays its list's first takes the number of the item it opened.
+Rows `X26` to `X33`.
+
+**D11. A tenth difference between the surfaces, pinned.** The plan's
+*Non-Goals* list nine differences that stay. The second review found one
+more, in documents written as the editor saves them. In a block that holds
+a backslash line break (`one\` / `two`), the S list toggles do nothing
+when the selection takes the line after the break, and the S heading types
+do nothing for any selection in the block. W converts the block as one
+(`- one\` / `  two`; a heading written with its underline). `E1` and `E2`
+pin the soft line break, where S acts line by line. The parent behaves the
+same, so nothing regressed. It is not removed here: making S take the two
+lines as one item, or W split them, is a change to one surface's reading
+of a line break. `DIFFERS` rows `E16` (three) and `E17` pin it, and the docs
+paragraph on the differences states it.
+
+**D17. `canSetBlockType` is `false` for a selection that stands on tables
+alone.** With D16 every end that is not on a table has a block of text.
+What is left with the field `true` and nothing to act on is a selection
+whose two ends stand on a table or a row with no block of text between
+them: a caret between two rows, or a range from the end of one table to
+the start of the next with nothing between. The field already was `false`
+for a caret at a table's first or last edge, where Lexical reads the
+selection as inside a cell. `$selectionStandsOnTablesAlone` adds the rest.
+A range with one end on a table's edge and text at the other keeps the
+field `true` and converts the text, as at the parent (rows `H61` to
+`H64`): `$holderPointOffTable` names that end on the node that holds the
+table, and it settles from there. See sign-off 3.
+
+**D19. A new item that cannot join stands apart** (rule D). Found by the
+measurement of state I, in the fifth reviewer's rows: 48 of 267,212, all
+a list toggle. `listOn` joined the new items to the list of their kind
+next to them and checked the result by lexing. A list that gains an item
+below it no longer ends where it did, and what its last line read as can
+change with that. The shapes found: that line ends in trailing
+whitespace, and it closes an indented code block, an HTML block or a
+fence left open. The check failed in both forms
+and the command declined, where the parent, which did not join, acted.
+`listOn` now tries the joined edit first and then the items written apart
+(`itemsApart`): `-`, or `1.` counting from one across the blocks, each
+block's lines replaced where they stand. Both go through the same check.
+After it the fifth reviewer's rows show no command that acted at the
+parent and declines (`review5/cmp_tag.py`). The test "writes a new item as
+a list of its own where joining the list above would change how that list
+reads" pins the join, the fallback, and the open fence.
+
+**D20. The ends of a range go inward.** The fifth review's second
+advisory point. `$settlePointIntoBlockOfText` looked for a block beside
+the point among the holder's own children, first on the side the end
+preferred and then on the other. For a range's start at the end of item
+`a`, after its nested list, the side it preferred was empty, so it went
+back into the nested item `n`, which lies before the range: the command
+then changed `n` and `b`, where the parent changed `b`. The reviewer
+counted 2,189 cases with an end on a holder where parent and branch both
+changed the document with different results.
+
+`$settleRangeEndsInward` now finds, for each end on a holder, the first
+block of text past it in document order, leaving the holder when it has
+none on that side (`$blockOfTextPast`). When the start's block comes
+after the end's there is no block of text in the range, and the range is
+settled as a caret where it starts. The caret keeps the rule it had:
+beside it, `$blockBeside` for each side. Of the reviewer's two other
+points on this code: `$blockBeside` now only reads, as do `$blockBelow`,
+`$blockOfTextPast`, `$blockOfTextIn` and `$takesCaret`, and the writes
+are in `$fillEmptyHolder` and `$newParagraphBeside`, whose JSDoc says
+what they are given; and the arrow function that told a point on a table
+is the function `$standsOnTableOrRow`, with its JSDoc.
+
+Rows `H33` (restated) and `H66` to `H72`, and the sweep's check that no
+block outside the range changes. On the code before D20 that check fails
+in eight of the sweep's sixteen documents, and `H33`, `H66`, `H67` and
+`H72` fail (`red/round6-a2-red.txt`). In the scratch sweep `setBlockType`
+now gives another result than the parent in 201 of the cases where both
+change the document: 93 are a range with one end standing on an emptied
+column, which gets its paragraph (rule C), and 108 are a code block made
+of a task item, which holds the marker as written (rule 5).
+
+**D21. Conventions in the code this branch added to
+`markdownSourceLines.ts`** (the sixth review's last advisory point). A
+blank line stands around each initialiser that spans lines: `sameMarker`
+in `readListJoin`, `itemFollows` in `replacedLines`, `lines` in
+`itemReplacement` and `found` in `neighbourList`. `nearestTextLine` had a
+`do … while` whose condition called `isBlank`; it is a `while` over a
+flag that the loop's body assigns. Nothing else in the file changed, and
+the source-mode result of every differential case is the same before and
+after (*Where the review stands*).
+
+**D22. Every difference between the surfaces, by clause** (the sixth
+review's blocking finding). The docs said their list of differences was
+complete, and it was not. To make it so, each case of the differential
+sets where the viewer reads the two results differently was put under one
+clause. The planner's probe gives 68,522 cases; in 33,332 the surfaces
+differ. Where S declines, the reason was not guessed from the document's
+shape: a private copy of the branch was instrumented so that every `null`
+a line command returns records why (`why/patch.py`; the line no block
+holds, the kind of block touched, the line that cannot be re-opened, or
+the first leaf of the result that is not the expected one), and each
+differing case was run through it (`why/out-b12.jsonl`). Where both
+surfaces act, a case goes by the lift branch's result for it and the
+shape of the touched lines. `why/categories.py` does the sorting.
+
+For Markdown written as the editor saves it, 11,078 of the differing
+cases:
+
+| Clause of the docs | Cases |
+|---|---|
+| to go: S acts and leaves what follows in the list | 3,901 |
+| to go: S does nothing, a task item with more of it after the block | 2,722 |
+| to go: S does nothing, a thematic break in the list's marker right after | 55 |
+| a code block, an HTML block or a thematic break touched or in the selection | 2,046 |
+| `setBlockType` on a block an item holds, or the heading it opens with | 1,007 |
+| a backslash line break | 560 |
+| a `:::` or `\|\|\|` line in the selection, a `:::` block of a list item | 353 |
+| looseness alone: a list left as one item that holds only a nested list | 265 |
+| a raw Markdown block that is a list or a quote: one block on W, lines in S | 134 |
+| an empty list item in the selection | 20 |
+| `setBlockType("code")` over several blocks | 10 |
+| single lines of a block made items, and a heading per line | 5 |
+
+None is left over. Four of the 1,007 were sorted by hand (an item that
+opens with a nested item that opens with a heading), and twenty of the
+134 by reading them: documents that hold a list W keeps as a raw block,
+where a new item beside it does not join it and where it leaves an item
+with the item's text. Those two things were not in the docs and are now.
+The setext heading under a toggle does not occur in these sets in a form
+the editor saves; a hand row showed that it can (`E31`).
+
+The other 22,254 differing cases are in documents the editor would not
+write as they stand, most of them random documents of the reviewers whose
+blank lines W re-spaces whatever the command does. Sorted the same way,
+they fall under the clauses above, and under four shapes that only such
+text has: a list toggle on a setext heading (54), a block indented below
+an empty list item (215), a list whose markers are indented (1), and an
+item whose marker stands on a line of its own, which S leaves behind
+empty. The sorting left 32 cases over, in nine documents, and those were
+read one by one: three are counted in the two shapes before, and the 29
+where both surfaces act are the marker on a line of its own, a heading an
+item opens with, and a list W keeps as a raw block. Tabs and text that
+opens with `[ ] ` are not in the sets; the sixth review found them by
+hand, and `why/hand.jsonl` holds the shapes probed for each (which block
+has to be indented by the tab, which character the break has to be
+written in, and so on), so that the docs' wording says no more than was
+run.
+
+The docs' third paragraph lists the hand-written shapes. Their list is
+what the sets and the hand probes show, not a proof: source mode declines
+wherever no form of its edit reads back, and text can be written in more
+ways than the sets hold. For Markdown the editor saves, the list is
+complete over the sets.
+
+A limit of the method: for a command over several blocks the copy records
+the first leaf that does not read as expected, in each form tried, and
+one such reason is enough to sort the case. A second reason behind the
+first would show only in the cases with a caret, where it is the only
+one; the sets hold many of those for every shape, and none of them has a
+reason outside the list.
+
+### Checks
+
+From `packages/lib`, on the final code:
+
+- `npm run typecheck`, `npm run typecheck:test`, `npm run lint`: clean.
+- `npm test`: 557 files, 16,866 tests pass, 2 todo. The parent has
+  16,468. The 398 new ones: 1 in `markdown-list-item-node.test.ts` (27 to
+  28), 90 in `markdown-editor-list-item-edits.test.ts` (330 to 420),
+  303 in `markdown-editor.test.ts` (604 to 907: 132 `SAME`, 142
+  `DIFFERS`, the 2 tests after their loops, 3 source-mode rows, 6
+  availability rows of 4 tests each) and 4 in
+  `markdown-source-edits.test.ts` (278 to 282). Before the sixth review
+  the count was 16,823; the 43 since are 40 `DIFFERS` rows, the 2 tests
+  and 1 source-mode row.
+- `npm run docs:api`: no warning. `npm run docs:llms:check`: coverage OK.
+  `npm run build:lib`: builds.
+- Of the plan's four greps the first gives zero matches, the second two
+  and the fourth zero, as it expects. The third looks for what the lift
+  rule removes from `liftLines` and finds the parent's four matches.
+
+No demo was added: the demo's MD Editor page already has both toggles in
+its **Insert** menu and `setBlockType` in its context menu, and no public
+signature changed.
+
+### The differential check
+
+Each scenario ran on a private copy of the parent and of the branch. A
+scenario is one document, one selection and one command. `diffall.sh`
+runs every set, `measure.py` counts per set, and the outputs are
+`diff/b12-*`, `review4/b12/` and `review5/*-n1*` in the scratch folder.
+The runs were made before the sixth review. The code has changed since
+only by D21, after which the source-mode half of the first two lines of
+the table was run again, with the same result for every case. The fuzz,
+the sweep and the manual checks were not run again: they exercise W,
+whose code is the one the sixth review read.
+
+| Sets | Probe | Cases | Acted at the parent, declines on the branch | A toggle that is available and changes nothing | Throws, failed reloads, second undo steps that the parent does not have |
+|---|---|---|---|---|---|
+| my nine: `final`, `differs`, `grid`, `rand`, `dxa` to `dxe` | the planner's, both surfaces | 23,013 | 0 | 0 | 0 |
+| reviews 1 to 3: `rv`, `min`, `f`, `g`, `s7001`, `s7002`, `hand`, `hand2`, `ws`, `rnd1` | the planner's, both surfaces | 45,509 | 0 | 0 | 0 |
+| review 4: `hand`, `rand-41`, `tab`, `tab2` | that reviewer's, both surfaces | 2,822 | 0 | 0 | 0 |
+| review 4: points on holders | that reviewer's, W | 5,928 | 0 | 0 | 0 |
+| review 5: `plain0`, `plainT`, four tab sets, `culprit`, `regstrip`, `inl`, eight hand sets | that reviewer's, S, twelve commands | 267,212 | 0 | not counted | 0 |
+| review 5: sets `a` and `b` | that reviewer's, W | 40,068 | 0 | 0 | 0 |
+
+1,481 cases of the planner's probe fail a check on the branch. All are in
+the reviewers' random documents, and in every one the parent fails the
+same check. In 115 cases, also all in the reviewers' random documents, S
+leaves a text that W shows otherwise than the viewer where the parent's S
+result did not; with the lift rule there were 317. None of either kind is
+in my nine sets.
+
+What changed from the parent in my nine sets, per surface
+(`diff/explain.py`): in W every changed row is one of the plan's four
+classes (a toggle that changed nothing now acts; an on toggle changes the
+touched blocks only, at the top level, joined by run; an on toggle that
+does not read as S does; a code block made of a task item holds the
+marker as written). In S every changed row is a task item that S declined
+and now converts, a task item elsewhere in a list that no longer makes
+the command decline, or the same lines joined otherwise.
+In `grid` that is 114, 5 and 576 rows, in `rand` 523, 197 and 240; no
+row of S is of another kind, and none declines where the parent acted.
+
+For points on nodes that hold blocks there is the scratch sweep
+(`adhoc/zz-r5w.test.ts`, run by `r5w.sh`, compared by `adhoc/r5w_cmp.py`):
+33 documents, 15 of them after one or two `deleteTable()` calls, every
+point on every holder as a caret and paired with every text, the caret as
+`deleteTable()` leaves it, and six commands; 25,620 cases, on the parent
+and on the final code.
+
+| | Both toggles | `setBlockType` (four types) |
+|---|---|---|
+| changed at the parent, changes on the branch | 3,458 | 6,191 |
+| changed nothing at the parent, changes on the branch | 820 | 1,849 |
+| threw at the parent, changes on the branch | 0 | 5 |
+| changed at the parent, changes nothing on the branch | 0 | 0 |
+| available, changes nothing | 0 | 511 |
+| unavailable, changes nothing | 4,262 | 8,524 |
+| unavailable, changes the document | 0 | 0 |
+| a block outside the range changed | 0 (1,007 at the parent, over both columns) | 0 |
+
+The available `setBlockType` cases that change nothing are blocks of the
+type already, or a block the focus only touches at its edge, which
+Lexical's `$setBlocksType` leaves out. No case throws on the branch, none
+leaves a list or a block where its parent does not take one, every save
+reloads and is read alike by the viewer, one undo step takes each change
+back, and after a change no end of the selection stands on a holder.
+
+### The fuzz
+
+The three harnesses of the list item node plan, run on a private archive
+of the branch (`runall.sh`), against the baselines in
+`…/scratch-keep/impl/paste-undo-merge/{fuzz-2,lif-2,r7-2}`.
+`cmpfuzz.py` compares record by record.
+
+| Fuzz | Seeds, size | Baseline | Branch |
+|---|---|---|---|
+| paste (`column-paste-fuzz`), and strict | the 11 seeds, 3,000 each | 0, 0 | 0, 0 |
+| table edge (`table-edge-fuzz-lbdeclined`), and strict | the 11 seeds, 3,000 each | 0, 0 | 0, 0 |
+| list edit (`lif`) | the 11 seeds, 1,500 each | 14 | 14, the same 14 records |
+| reviewer 7 (`r7`) | seeds 11, 23, 37, 41, 59, 3,000 each | 120 | 119 |
+
+The run is `fuzz-8/`, `lif-8/` and `r7-8/` in the scratch folder, made on
+the final source code. No other field of the paste, table edge and list edit
+results differs from the baseline either. All 60 result files are byte
+for byte those of the run made after the third review (`fuzz-5/`,
+`lif-5/`, `r7-5/`), as were those of every run in between.
+
+The reviewer-7 fuzz applies random steps, the two toggles among them. One
+baseline record is gone: seed 37, lines of a raw quote joined by typing
+after a bulleted toggle and an alignment; the toggle now leaves another
+document and the typing step no longer meets that defect. Three records are
+written differently and are the baseline's failures: each has a baseline
+record of the same seed, document, steps, failing step and check. Two
+(seeds 41 and 59, a throw in a paste) differ only in the node key the error
+message quotes. The third (seed 59, a paste that loses a table cell's text)
+follows a numbered toggle on a paragraph a list item holds, which changed
+nothing at the parent and now makes the paragraph an item; the paste after
+it fails as before.
+
+### The manual checks
+
+Run in Chrome on the demo's MD Editor page (`npx vite --port 8047` in
+`packages/lib`; the server is stopped), on the code of this branch. The
+clicks on the toolbar and the menus were real clicks, and Ctrl+Z,
+Shift+F10 and the typed letter were real keys. Two things were not: the
+source text was put in with `document.execCommand("insertText")` and the
+mode switched by a scripted click on the source toggle while loading a
+document, and the caret in source mode was set through the DOM selection.
+B7's menu was opened with Shift+F10 at the caret, since the browser tool
+has no right-click.
+
+| # | Result |
+|---|---|
+| B1 to B9 of the plan | as the plan expects |
+| B10 of the plan (source mode, `- one`, blank, `  second`, blank, `- two`; caret on `- one`; **Insert ▸ Bulleted list**) | `one`, blank, `- second`, blank, `- two`: the plan expects `second` at the margin, which is the deferred lift rule (sign-off 1) |
+| B12: a `:::` block of two columns, a table all the first one holds; click into the table; **Table ▸ Delete ▸ Table**; **Insert ▸ Bulleted list**; type `Q` | after the delete the browser's caret is on the empty column; the toggle makes an item in the column and `Q` lands in it; two Ctrl+Z give the empty column back |
+| B13: from there, Shift+F10; **Block style ▸ Heading 2**; type `Q` | a heading in the column, `Q` in it |
+
+The console showed one warning, at **Delete ▸ Table**: Lexical's
+"updateEditorSync: an editor update … ran while a read-only context was on
+the stack", from `deleteTable()`. A copy of the parent served on another
+port gave the same warning at the same click in the fifth round, so it is
+not from this branch; it is noted for the plan on the table commands
+below. The cases B11, B14 and B15 of the fifth round were about tabs in
+source mode and went with the lift rule.
+
+### For the plans that follow
+
+- **`toggleList(type)`** takes one argument. It is still one shared private
+  body for the two toggles, which is what
+  `markdown-editor-link-format-command-fixes` cites it for.
+  `$selectionLiesInListOfType` and `$convertListOfEmptyItem` are gone, and
+  `INSERT_UNORDERED_LIST_COMMAND` / `INSERT_ORDERED_LIST_COMMAND` are no
+  longer imported or dispatched by `MarkdownEditor.ts`.
+- **Seven module-private functions** stand before `$blocksTouchedBy` in
+  `MarkdownEditor.ts`: `$opensItemOfListType`, `$touchedBlocksLastFirst`,
+  `$liftBlockOutOfLists`, `$makeItemsOf`, `$makeItemsOfRun`, `$itemOfBlocks`
+  and `$toggleListOfTouchedBlocks`. `$moveBlockPointsIntoText` and
+  `$liftItemOut` are unchanged. `$blocksTouchedBy` now returns blocks of
+  text only, as `ElementNode[]` with no `null`; `$selectedBlocksHaveType`
+  answers `false` for a selection with an end on a holder; and
+  `setBlockType`'s update settles the selection's ends first (D16).
+- **`markdown-editor-table-command-fixes` and the block commands.** That
+  plan leaves the list toggles without its `$settleSelectionOffContainers`,
+  because at its base none of them throws on a point held on a container.
+  With the toggles' own route that stopped being true. D16 and D20 settle
+  such points for both toggles and `setBlockType` with
+  `$settleEndsIntoBlocksOfText` (after `$moveBlockPointsIntoText` in
+  `MarkdownEditor.ts`): `$settleRangeEndsInward` with `$blockOfRangeEnd`,
+  `$blockOfTextPast`, `$blockOfTextIn` and `$firstBlockOfTextIn` for a
+  range, `$settleCaretIntoBlockOfText` with `$blockBeside`, `$blockBelow`,
+  `$takesCaret`, `$blockOfTextAt` and `$newParagraphBeside` for a caret,
+  and `$holderPointOffTable` and `$fillEmptyHolder` for both.
+  `$holdsBlocks`, `$standsOnHolder` and `$isBlockOfText` stand after
+  `$isTextOnlyBlock`. They follow that plan's rule for where a caret goes,
+  with these differences: they also move a caret that stands on the root
+  or a column between two blocks, which that plan leaves alone for the
+  commands it covers; they pass over a table beside the point; they give a
+  column they find empty a paragraph; they make a new empty paragraph
+  where the caret has no place to go on either side; they name a point on
+  a table's edge on the node that holds the table; and they take a range's
+  ends inward, not beside. When that plan lands, its `$settlePoint` can
+  take the place of `$settleCaretIntoBlockOfText` only if it does the
+  first five.
+- **Caret settling is in five places now, and is worth a plan of its
+  own.** `MarkdownEditor.ts` has several routines that move a caret or a
+  selection end off a node that holds blocks, each with its own rule:
+  `$settleCaretIntoBlock` (`:2002`, after a removal; it takes a predicate
+  for what the caret stays out of), `$openBlockAtItemCaret` (`:2107`, a
+  caret on a list item gets a block to type in), `$refillEmptiedColumn`
+  (`:2190`, an emptied column gets its paragraph, called by the table-edge
+  removal and not by `deleteTable()`), `$moveBlockPointsIntoText`
+  (`:4414`, a point on a block of text goes into its text), and this
+  plan's `$settleEndsIntoBlocksOfText` (`:4440`) with the functions the
+  item above names. They differ in which side they prefer, in whether they
+  pass over a table, in whether they write (a paragraph for an empty
+  column or document), and in whether a range's ends go inward. The sixth
+  review asked that this be written down: a plan that gives them one rule
+  and one implementation would remove the corners the reviews kept finding
+  between them. `markdown-editor-table-command-fixes` adds a sixth
+  (`$settleSelectionOffContainers`) unless it is written against that
+  rule.
+- **`deleteTable()` and that plan.** `deleteTable()` leaves a `:::` column
+  empty when the table was all it held; `$refillEmptiedColumn`, which the
+  table-edge removal calls, is not called there. The block commands now
+  cope with the empty column, so nothing here depends on it, but a plan
+  that settles the caret after `deleteTable()` can give the column its
+  paragraph at that point. In the browser `deleteTable()` logs Lexical's
+  "updateEditorSync … read-only context" warning, at the parent too (*The
+  manual checks*).
+- **`canSetBlockType`** has a third clause, `$selectionStandsOnTablesAlone`
+  (D17). A plan that changes where the caret goes after a table command
+  should check the field at the caret it leaves.
+- **`$splitItemBefore(item, block)`** is exported from
+  `markdownListItemNode.ts`. It is not
+  `$splitItemBeforePasteEndingInTableOrFence`, which
+  `markdown-editor-raw-block-range-edits` names.
+- **`$serializeInlineNodes(nodes, inListItem = false)`** has a second
+  parameter. `markdown-editor-raw-block-edge-cases` changes other functions
+  of `markdownSerializer.ts`.
+- **Compare Lexical nodes with `.is()`**, never with `===`, when one of
+  them was read before a write in the same update (D1).
+- **Test files.** `markdown-editor.test.ts` grew by about 460 lines inside
+  three `describe`s, so the line numbers other plans cite for it have
+  moved. In `markdown-editor-list-item-edits.test.ts` rows `H4` to `H6` are
+  restated and `H9` to `H41` follow `H8`; a `describe` of its own after
+  that one holds `H42` to `H72` and the sweep, which takes about fifteen
+  seconds and has a timeout of its own; rows `Q11` to `Q13`, which
+  `markdown-editor-raw-block-edge-cases` moves, are untouched.
+- **Docs.** In `docs/components/MarkdownEditor.md` the two Command API rows
+  for the toggles and `setBlockType`, the `canSetBlockType` row, the
+  *Lists* bullet and the source-mode paragraph "The block commands —"
+  changed, and three paragraphs on where the surfaces differ follow the
+  latter. Several of the plans that follow edit the same file.
+- **Left open.** The nine differences between the surfaces that the plan
+  lists under *Non-Goals* stand, and the ones of sign-off 1 and 8, each
+  pinned by `DIFFERS` rows; D22 says how the list was checked. Row
+  `T10 OL` pins one more thing the plan's Non-Goal on the kept marker
+  covers: in a document that defines `[x]`, the item W makes of a task
+  item's text is written `1. \[x\] one`, where S writes `1. [x] one`. The
+  viewer shows both as the text `[x] one`. Raw blocks
+  and thematic breaks under the toggles are the subject of
+  `markdown-editor-raw-block-range-edits`.
+- **Seen in the reviews and left as they are.**
+  - Lifting both paragraphs of `> one ⏎ > ⏎ > two` in S leaves a line `>`
+    between them, an empty quote. The parent does the same.
+  - For `4) ⏎      * muro`, which is not a form the editor saves, S leaves
+    the empty `4)` item when `muro` is lifted and W removes it. The parent
+    does the same. Row `E35` pins the shape and the docs state it.
+  - A toggle of the other kind over a whole list of 1,000 items takes
+    about twice as long on W as at the parent. This stood here until the
+    sixth review; it is sign-off 10 now, with the cause and the numbers.
+    The transform that costs the time, `$keepLoosenessWritable` run per
+    dirty item and per dirty item text, is worth a small plan of its own.
+  - `$splitItemBefore` makes its item with `new MarkdownListItemNode()`
+    where `$splitItemAfterText` calls `$createListItemNode()`, and takes
+    no `restoreSelection`. The plan gives the reason for the first; nothing
+    calls it with a selection to restore.
+  - `setBlockType` and the toggles do not take the same blocks for a range
+    whose focus only touches the edge of a block: Lexical's
+    `$setBlocksType` leaves that block out, and `$blocksTouchedBy` takes
+    it. `$selectedBlocksHaveType` reads the second, so a range from a
+    heading to the start of a paragraph is not "already a heading", and
+    the heading is replaced by an equal one, which is an undo step that
+    changes nothing. The parent does the same.
+  - Every block command of S does nothing for a nested list that is
+    indented by a tab (`- one ⏎ ⇥- nested ⏎ - two`) and for a block of an
+    item that starts on a tab-indented line. The parent does the same.
+    The fifth review found both unpinned; rows `E24` to `E27` pin them
+    now and the docs state them. They belong to the follow-up plan's
+    tabs.
+
+### For the follow-up plan (source-mode lift rule)
+
+**Where the work is kept.** The branch `wip/markdown-source-list-lift` at
+`1fab9b22b` is this plan with the lift rule, as the fifth review read it:
+commits `4338afe6e` (code) and `f297d1508` (docs) hold the rule, on top of
+the state this branch was rebuilt from. Its notes (the same file on that
+branch) have the full account, D2, D3, D12 to D15 and D18 among them. In
+the scratch folder: `review1/` to `review5/` (each reviewer's probes,
+rows and outputs), `stateI-measure.md`, `diff/` (the differential
+outputs; `b11-*` is the lift branch, `b12-*` this one), `dx/`, `adhoc/`
+(`src-rows2.json` to `src-rows5.json` are the lists of shapes), and the
+scripts `srcprobe.sh`, `diffall.sh`, `r5all.sh` and `measure.py`.
+
+**The rule that was settled on.** What a list item holds after a lifted
+block, up to the next list item, leaves the list with the block; from the
+next list item on, what follows stays in the list, in one item the
+outermost list item's marker re-opens, so a nested item's own nested list
+stands one level up, as `$liftItemOut` leaves it on W. Every line after
+the lifted block is read container by container, outermost first: a
+quote gives its marker, a list item its indentation, counted in columns,
+a tab as the four columns `marked` reads in a line that continues a list
+item. What stands past the last prefix is the line's content and is
+written back byte for byte. Whitespace alone, on a blank line or past a
+quote's marker, gives an item what indentation it has. What leaves the
+list ends at the first list item after the block in a list that stands
+in one of the block's own containers, a quote included.
+
+**What it does to each command.** These are the rows the user was shown
+and had not confirmed.
+
+| Document | Caret | Command | S at the parent, and on this branch | S with the lift rule | W |
+|---|---|---|---|---|---|
+| `- one ⏎⏎   second ⏎⏎ - two` | `one` | `setBlockType("paragraph")`, bulleted toggle | `one ⏎⏎ - second ⏎⏎ - two` | `one ⏎⏎ second ⏎⏎ - two` | the same |
+| same | `one` | `setBlockType("h2")` | `## one ⏎⏎ - second ⏎⏎ - two` | `## one ⏎⏎ second ⏎⏎ - two` | the same |
+| same | `one` | `setBlockType("quote")` | `> one ⏎⏎ - second ⏎⏎ - two` | `> one ⏎⏎ second ⏎⏎ - two` | the same |
+| same | `one` | `setBlockType("code")` | a fence holding `one`, then `- second ⏎⏎ - two` | the fence, then `second ⏎⏎ - two` | the same |
+| same | `one` | numbered toggle | `1. one ⏎⏎ - second ⏎⏎ - two` | `1. one ⏎⏎    second ⏎⏎ - two` | the same (at the parent W numbered the whole list) |
+| `10. a ⏎⏎     b` | `a` | `setBlockType("h2")` | `## a ⏎⏎ 10. b` | `## a ⏎⏎ b` | the same |
+| same | `a` | `setBlockType("code")` | a fence holding `a`, then `10. b` | the fence, then `b` | the same |
+| same | `a` | bulleted toggle | `- a ⏎⏎ 10. b` | `- a ⏎⏎   b` | the same |
+| `- one ⏎⏎   second ⏎⏎   third ⏎⏎ - two` | `second` | bulleted toggle | `- one ⏎⏎ - second ⏎⏎ - third ⏎⏎ - two` | `- one ⏎⏎ - second ⏎⏎   third ⏎⏎ - two` | the same (at the parent W changed nothing) |
+| `- a ⏎   - b ⏎⏎   c ⏎⏎ - d` | `b` | bulleted toggle | `- a ⏎⏎ b ⏎⏎ - c ⏎⏎ - d` | `- a ⏎⏎ b ⏎⏎ c ⏎⏎ - d` | the same |
+| `- o ⏎   - x ⏎     - n ⏎   - y ⏎ - z` | `x` | bulleted toggle | `- o ⏎⏎ x ⏎⏎ - - - n ⏎   - y ⏎ - z` | `- o ⏎⏎ x ⏎⏎ - - n ⏎   - y ⏎ - z` | the same |
+
+
+**The seventy rows.** The `DIFFERS` rows listed under sign-off 1 are the
+plan's `SAME` rows. A plan that lands the lift rule moves them back, with
+the S text of `wip/markdown-source-list-lift`, and takes the difference
+out of the docs' list and the changelog entry.
+
+**The rows added after the sixth review.** Twenty-three more `DIFFERS`
+rows change with the lift rule (`adhoc/r7rows-lift.jsonl` holds what the
+wip branch gives for each):
+
+- `T19` to `T21`: a block or a nested item inside a task item with more of
+  the task item after it. S does nothing here and acts with the lift
+  rule. `T20 h2` stays a `DIFFERS` row, with another S text.
+- `M33` to `M35`: a block right before a thematic break written in the
+  list's marker character. The same; `M33 h2` stays a `DIFFERS` row.
+- `M36`, `M37`: the break in another character, or with a block between.
+  S acts here and leaves the break in the list.
+- `E24` (two): a tab-indented block after the item's text. `E25` to `E27`,
+  the tab-indented block itself and a nested list indented with a tab, do
+  nothing on the wip branch too.
+- `E30` (two): text that opens with `[ ] ` right after the block.
+- `E34`: an HTML block indented deeper than its item's content.
+
+With them go the first paragraph of the docs' three on the differences,
+from "and where what stays behind would not read" to its end, the same
+clauses of the third paragraph, and the last sentence of the changelog
+entry. The plan's six source-mode rows that are not in the test file
+(D6) come back as the plan wrote them.
+
+**What the lift rule does not remove.** The other 17 rows added after the
+sixth review, under sign-off 8, are S results that are the same on the
+wip branch.
+
+**What the five reviews found in it**, with where each stands on the wip
+branch.
+
+| Found | Defect | On the wip branch |
+|---|---|---|
+| differential, before review 1 (D2) | a new item did not join the list below the blocks it takes along | fixed: `lastLineOfNewItems` |
+| differential, before review 1 (D3) | a block that leaves the list came to stand above a numbered item not numbered 1, and the command declined | fixed: the "set apart" form puts a blank line below what left |
+| review 2 | that blank line, written without the quote's `>`, split a quote in two | fixed: none is written between two lines of one quote; the command declines there |
+| review 3 (D12) | a line of spaces alone in a code block that leaves the list kept its indentation, and every command declined | fixed, then replaced by counting in columns |
+| review 3 (D13) | the next item of a list inside a quote was taken along | fixed: `wrapperItemAfter` |
+| review 4, B1 (D14) | with a code block of an item that holds a tab every command on the item's text did nothing | fixed for the shape found: `peelIndent`, `blockKey`, the tab-aware search in `markdownSourceTokens.ts` |
+| review 4, A1 (D15) | another list later in the same quote was taken along | fixed: `wrapperItemAfter`, `wrapLineOf` |
+| own list of shapes (D18) | the next item of a nested list holds a tab, is not found, and the list is not re-opened | fixed by the tab-aware search |
+| review 5, B1 | `setBlockType("code")` does nothing on any text that holds a tab: `blockKey` writes a tab as four spaces in the leaves it reads, and the fence's expected key keeps the tab | **open** |
+| review 5, B2 | the tab-aware search is quadratic: an indented code block of a `- ` item written with two tabs takes 821 ms to analyse at 400 lines and 13 s at 1,600, on every source-mode command and every selection read | **open** |
+| review 5, B3 | six families where a command that acted at the parent declines: an item holding an unclosed fence; trailing whitespace on the last line of the list's last item when it ends an indented code block, an HTML block or an open fence; an item of a quote that holds a block right after its text, toggle of the other kind; a nested item holding a nested list then a paragraph, followed by a numbered item not numbered 1; a tab after a closing fence; indented code whose leading whitespace mixes spaces and a tab. 91 of 38,956 plain rows, 210 of 36,276 with trailing whitespace, 539 of 21,204 with tabs | **open** |
+| review 5, B4 | the docs, the changelog and the notes overstate the tab fix: a nested list indented by a tab and a block of an item that starts on a tab-indented line decline on parent and branch alike, unpinned | **open** |
+| review 5, A1 | the tab-aware search can locate a block on a later line that looks alike | **open** |
+| review 5, A4 | the tab matching has no precedent in the code, and its file is not in this plan | **open** |
+
+**Two shapes with a tab that declined at the end**, on the wip branch and
+at the parent, both on the line an item's marker stands on, where `marked`
+counts a tab as three spaces: a tab right after the marker of an item
+that holds further lines, and a tab inside the item's text on that line.
+Rows `E19` pin them on this branch too.
+
+**317 cases that were not examined.** In the reviewers' random sets, with
+the lift rule, S leaves a text that W shows otherwise than the viewer
+where the parent's S result did not. The examples read were a numbered
+list that the lift leaves starting at another number than 1, and a list
+that comes to stand in a quote, which W holds as a raw block. On this
+branch the count is 115.
+
+**What the five rounds say about how to build it.** Three things kept
+producing the next defect.
+
+- The lift writes lines and expects leaves from the same reading of the
+  document. What it gets wrong in one it gets wrong in both, and the
+  check by lexing passes. The quote that was split in two and the list
+  that was taken along were of this kind.
+- A block that changes its container is read by other rules: `marked`
+  writes tabs as spaces in a list item's lines, drops trailing whitespace
+  at a list's end, and closes an open fence where the item ends. "Reads
+  the same before and after" is then not a matter of indentation alone,
+  and each of those turned up as a family of declines.
+- When no form of the lifted edit reads as intended the command declines,
+  though the parent's form (the blocks left in the list) would have read.
+  Rule D of this branch is the answer that worked for the joining: try
+  the wanted form, then the form the parent wrote, and decline only when
+  neither reads. The lift rule should fall back the same way, so that
+  "no command that acted at the parent declines" holds by construction,
+  and the tab reading should be measured for speed before it is trusted.
