@@ -460,7 +460,7 @@ const RAW_BLOCK_POSITIONS: ReadonlyArray<readonly [string, string]> = [
 /** What an edit leaves of the raw block's text: HTML block starts first, then every other shape it can read as. */
 const RAW_BLOCK_TEXTS: readonly string[] = [
     '<div', '<div ', '<div>', '</div', '</div>', '<pre', '<script', '<style', '<textarea', '<DIV', '   <div', '<h1', '<p',
-    '<', '<a', '<a>', 'plain', '# h', '- item', '> q', '```', '[a]: /u', '---', '<!--', '<!-- x', '<?', '<!D', '',
+    '<', '<a', '<a>', 'plain', '# h', '- item', '> q', '```', '[a]: /u', '---', '***', '* * *', '___', '<!--', '<!-- x', '<?', '<!D', '',
     '<div\n</div', '<div>\nw\n</div', '<div>\nw\n</di', '<div>\nw\n<',
     // A first or last line holding nothing, and spaces before the block: none is part of what the block reads as.
     '\n<div>', '\n\n<div>', '\n<div', ' \n<div>', '<div>\n', '<div>\n\n', '\n<div>\n', '  <div>', ' <div', '   <div>\nw\n</div>',

@@ -10,6 +10,8 @@ import type { TableNode } from "@lexical/table";
 import { $dfs } from "@lexical/utils";
 import { COLUMN_SEPARATOR, lineEndAt } from "~/component/display/markdownAttributes.js";
 import { lexMarkdownLinkDefinitions } from "~/component/display/markdownExtensions.js";
+import { $isMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
+import type { MarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
 import { $isMarkdownRawBlockNode, $isMarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import type { MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 import { analyzeMarkdownSource, contentOffset, MARK_LETTERS } from "~/component/editor/markdownSourceTokens.js";
@@ -183,6 +185,36 @@ export function $placeOfSourceOffset(
     const place = $placeAmongUnits(walk.units, offset - start, source, walk.inlines, isBetweenBlocks ? betweenBlocks : undefined);
 
     return place === null ? null : $placeOutsideSourceNode(place);
+}
+
+/**
+ * The horizontal rule whose line holds an offset of a block's Markdown: from
+ * the rule's first character to the end of its line. A caret there is on the
+ * rule, which a click on it would select.
+ *
+ * @param text - The Markdown the block was built of, with the blocks beside it.
+ * @param offset - The offset in `text`.
+ * @param block - The block a load built of `text` from `start` to `end`.
+ * @param start - The block's first offset in `text`.
+ * @param end - The offset past its last.
+ * @returns The rule, or `null` when the offset is on no rule's line.
+ */
+export function $horizontalRuleAtSourceOffset(
+    text: string, offset: number, block: LexicalNode, start: number, end: number,
+): MarkdownHorizontalRuleNode | null {
+    const { walk } = $locatedWalk(text, block, start, end);
+    const source = text.slice(start);
+    const at = offset - start;
+
+    for (const unit of walk.units) {
+        const isOnLine = unit.start !== NOT_FOUND && unit.start <= at && at <= lineEndAt(source, unit.start);
+
+        if ($isMarkdownHorizontalRuleNode(unit.node) && isOnLine) {
+            return unit.node;
+        }
+    }
+
+    return null;
 }
 
 /**
@@ -853,7 +885,8 @@ function showsAsCellParagraphBreak(walk: UnitWalk, entries: readonly SourceEntry
 }
 
 /**
- * Finds the source of what a block entry shows by itself: a task item's
+ * Finds the source of what a block entry shows by itself: a horizontal
+ * rule, which stands for its line, a task item's
  * checkbox, which shows as its source, or the text of a code block or of a
  * raw block, which shows as it is written. A raw block stands for a block
  * the nodes cannot hold, with all that is in it, so the entries inside
@@ -868,6 +901,17 @@ function locateBlockEntry(walk: UnitWalk, block: SourceBlockNode | undefined): n
     const unit = walk.units[walk.at];
 
     if (block === undefined || unit === undefined) {
+        return 0;
+    }
+
+    if (block.type === "hr") {
+        // A horizontal rule shows nothing by itself, and is one unit whose source is its line.
+        if ($isMarkdownHorizontalRuleNode(unit.node) && block.start !== NOT_FOUND) {
+            unit.start = block.start;
+            unit.end = block.end;
+            walk.at += 1;
+        }
+
         return 0;
     }
 

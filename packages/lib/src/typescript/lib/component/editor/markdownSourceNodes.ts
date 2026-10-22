@@ -194,8 +194,8 @@ export function $isMarkdownSourceTextNode(node: LexicalNode | null | undefined):
 }
 
 /**
- * A block of raw Markdown the editor has no rich-text form for — a thematic
- * break, an HTML block, a link reference definition, a blockquote or list
+ * A block of raw Markdown the editor has no rich-text form for — an HTML
+ * block, a link reference definition, a blockquote or list
  * whose content its node cannot hold — held as plain text lines and saved
  * as that text, without a blank first or last line and without indentation
  * before it that means nothing to Markdown.

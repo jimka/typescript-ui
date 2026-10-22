@@ -20,6 +20,7 @@ import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import type { MarkdownBlockType } from '~/component/editor/MarkdownEditor';
 import { rawBlockInBlockList } from '~/component/editor/markdownSerializer';
 import { $createMarkdownRawBlockNode, $isMarkdownRawBlockNode } from '~/component/editor/markdownSourceNodes';
+import { $createMarkdownHorizontalRuleNode } from '~/component/editor/markdownHorizontalRuleNode';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -731,7 +732,7 @@ describe('a block never stays inside a block that holds text only', () => {
             source: 'p1\n\n- w0\n\n  ---\n- z',
             steps:  [{ key: 'Backspace', at: ['w0', 0] }],
             saved:  'p1w0\n\n---\n\n- z',
-            shape:  'paragraph("p1w0") | markdown-raw-block("---") | list(markdown-list-item(markdown-list-item-text("z")))',
+            shape:  'paragraph("p1w0") | markdown-horizontal-rule | list(markdown-list-item(markdown-list-item-text("z")))',
         },
         {
             name:   'K2: a paragraph, Delete at its end',
@@ -745,7 +746,7 @@ describe('a block never stays inside a block that holds text only', () => {
             source: 'p\n\n- w0\n\n  > q\n\n  ---\n- z',
             steps:  [{ key: 'Backspace', at: ['w0', 0] }],
             saved:  'pw0\n\n> q\n\n---\n\n- z',
-            shape:  'paragraph("pw0") | markdown-quote(paragraph("q")) | markdown-raw-block("---") | list(markdown-list-item(markdown-list-item-text("z")))',
+            shape:  'paragraph("pw0") | markdown-quote(paragraph("q")) | markdown-horizontal-rule | list(markdown-list-item(markdown-list-item-text("z")))',
         },
         {
             // A join joins text, here as outside a list: the item's text joins the quote, and its blocks follow into the item.
@@ -789,14 +790,14 @@ describe('a block never stays inside a block that holds text only', () => {
             source: '> q\n\n- w0\n\n  ---\n- z',
             steps:  [{ key: 'Backspace', at: ['w0', 0] }],
             saved:  '> qw0\n\n---\n\n- z',
-            shape:  'markdown-quote(paragraph("qw0")) | markdown-raw-block("---") | list(markdown-list-item(markdown-list-item-text("z")))',
+            shape:  'markdown-quote(paragraph("qw0")) | markdown-horizontal-rule | list(markdown-list-item(markdown-list-item-text("z")))',
         },
         {
             name:   'K8: a heading, Delete at its end',
             source: '# h\n\n- w0\n\n  ---\n- z',
             steps:  [{ key: 'Delete', at: ['h', 1] }],
             saved:  '# hw0\n\n---\n\n- z',
-            shape:  'heading("hw0") | markdown-raw-block("---") | list(markdown-list-item(markdown-list-item-text("z")))',
+            shape:  'heading("hw0") | markdown-horizontal-rule | list(markdown-list-item(markdown-list-item-text("z")))',
         },
         {
             name:   'K9: a code block, Delete at its end before an item holding a table',
@@ -817,21 +818,21 @@ describe('a block never stays inside a block that holds text only', () => {
             source: '```\ncode\n```\n\n- w0\n\n  ---\n- z',
             steps:  [{ key: 'Backspace', at: ['w0', 0] }],
             saved:  '```\ncodew0\n```\n\n---\n\n- z',
-            shape:  'code("codew0") | markdown-raw-block("---") | list(markdown-list-item(markdown-list-item-text("z")))',
+            shape:  'code("codew0") | markdown-horizontal-rule | list(markdown-list-item(markdown-list-item-text("z")))',
         },
         {
             name:   'K12: a range deleted from inside a code block into the text of an item',
             source: '```\ncode\n```\n\n- w0\n\n  ---\n- z',
             steps:  [{ key: 'Backspace', at: ['code', 2], to: ['w0', 1] }],
             saved:  '```\nco0\n```\n\n---\n\n- z',
-            shape:  'code("co0") | markdown-raw-block("---") | list(markdown-list-item(markdown-list-item-text("z")))',
+            shape:  'code("co0") | markdown-horizontal-rule | list(markdown-list-item(markdown-list-item-text("z")))',
         },
         {
             name:   'K13: a range deleted from inside a raw block into the text of an item',
             source: '<div>\n\n- w0\n\n  ---\n- z',
             steps:  [{ key: 'Backspace', at: ['<div>', 2], to: ['w0', 1] }],
             saved:  '\\<d0\n\n---\n\n- z',
-            shape:  'paragraph("<d0") | markdown-raw-block("---") | list(markdown-list-item(markdown-list-item-text("z")))',
+            shape:  'paragraph("<d0") | markdown-horizontal-rule | list(markdown-list-item(markdown-list-item-text("z")))',
         },
         {
             name:   'K14: a range deleted from inside a code block into the text of an item holding two more blocks and a nested list',
@@ -842,10 +843,10 @@ describe('a block never stays inside a block that holds text only', () => {
     ])('$name', runRow);
 
     it.each<[string, string, string]>([
-        ['K15: a paragraph', 'paragraph', 'paragraph("a") | markdown-raw-block("---") | paragraph("b") | markdown-quote(paragraph("q")) | paragraph("c")'],
-        ['K16: a heading', 'heading', 'heading("a") | markdown-raw-block("---") | paragraph("b") | markdown-quote(paragraph("q")) | paragraph("c")'],
-        ['K18: a code block', 'code', 'code("a") | markdown-raw-block("---") | paragraph("b") | markdown-quote(paragraph("q")) | paragraph("c")'],
-        ['K19: a raw block', 'markdown-raw-block', 'markdown-raw-block("<div>") | markdown-raw-block("---") | paragraph("b") | markdown-quote(paragraph("q")) | paragraph("c")'],
+        ['K15: a paragraph', 'paragraph', 'paragraph("a") | markdown-horizontal-rule | paragraph("b") | markdown-quote(paragraph("q")) | paragraph("c")'],
+        ['K16: a heading', 'heading', 'heading("a") | markdown-horizontal-rule | paragraph("b") | markdown-quote(paragraph("q")) | paragraph("c")'],
+        ['K18: a code block', 'code', 'code("a") | markdown-horizontal-rule | paragraph("b") | markdown-quote(paragraph("q")) | paragraph("c")'],
+        ['K19: a raw block', 'markdown-raw-block', 'markdown-raw-block("<div>") | markdown-horizontal-rule | paragraph("b") | markdown-quote(paragraph("q")) | paragraph("c")'],
     ])('%s given blocks between its text leaves its first text and has the rest follow it, text in paragraphs', (_name, type, shape) => {
         // No key leaves text after a block in such a container; the rule holds for it all the same.
         const editor = load({ 'paragraph': 'a', 'heading': '# a', 'code': '```\na\n```', 'markdown-raw-block': '<div>' }[type]!);
@@ -854,7 +855,7 @@ describe('a block never stays inside a block that holds text only', () => {
             const container = $getRoot().getFirstChildOrThrow<ElementNode>();
             const quote = $createQuoteNode().append($createTextNode('q'));
 
-            container.splice(container.getChildrenSize(), 0, [$createMarkdownRawBlockNode('---'), $createTextNode('b'), quote, $createTextNode('c')]);
+            container.splice(container.getChildrenSize(), 0, [$createMarkdownHorizontalRuleNode(), $createTextNode('b'), quote, $createTextNode('c')]);
         }, { discrete: true });
 
         expect(shapeOf(editor)).toBe(shape);
@@ -868,10 +869,10 @@ describe('a block never stays inside a block that holds text only', () => {
             const container = $getRoot().getFirstChildOrThrow<ElementNode>();
             const quote = $createQuoteNode().append($createTextNode('q'));
 
-            container.splice(container.getChildrenSize(), 0, [$createMarkdownRawBlockNode('---'), $createTextNode('b'), quote, $createTextNode('c')]);
+            container.splice(container.getChildrenSize(), 0, [$createMarkdownHorizontalRuleNode(), $createTextNode('b'), quote, $createTextNode('c')]);
         }, { discrete: true });
 
-        expect(shapeOf(editor)).toBe('markdown-quote(paragraph("a"), markdown-raw-block("---"), paragraph("b"), markdown-quote(paragraph("q")), paragraph("c"))');
+        expect(shapeOf(editor)).toBe('markdown-quote(paragraph("a"), markdown-horizontal-rule, paragraph("b"), markdown-quote(paragraph("q")), paragraph("c"))');
         expectSaveKeepsDocument(editor, 'the blocks put in');
     });
 
@@ -882,11 +883,11 @@ describe('a block never stays inside a block that holds text only', () => {
             const paragraph = $textNode('a').getParentOrThrow();
             const quote = $createQuoteNode().append($createTextNode('q'));
 
-            paragraph.splice(paragraph.getChildrenSize(), 0, [$createMarkdownRawBlockNode('---'), $createTextNode('b'), quote, $createTextNode('c')]);
+            paragraph.splice(paragraph.getChildrenSize(), 0, [$createMarkdownHorizontalRuleNode(), $createTextNode('b'), quote, $createTextNode('c')]);
         }, { discrete: true });
 
-        expect(shapeOf(editor)).toBe('table(tablerow(tablecell(paragraph("h"))), tablerow(tablecell(paragraph("a"), paragraph("---"), paragraph("b"), paragraph("q"), paragraph("c"))))');
-        expect(editor.getValue()).toBe('| h |\n| --- |\n| a\\n\\n---\\n\\nb\\n\\nq\\n\\nc |');
+        expect(shapeOf(editor)).toBe('table(tablerow(tablecell(paragraph("h"))), tablerow(tablecell(paragraph("a"), paragraph("b"), paragraph("q"), paragraph("c"))))');
+        expect(editor.getValue()).toBe('| h |\n| --- |\n| a\\n\\nb\\n\\nq\\n\\nc |');
         expectSaveKeepsDocument(editor, 'the blocks put in');
     });
 
@@ -897,10 +898,10 @@ describe('a block never stays inside a block that holds text only', () => {
             const text = $textNode('a').getParentOrThrow();
             const quote = $createQuoteNode().append($createTextNode('q'));
 
-            text.splice(text.getChildrenSize(), 0, [$createMarkdownRawBlockNode('---'), $createTextNode('b'), quote, $createTextNode('c')]);
+            text.splice(text.getChildrenSize(), 0, [$createMarkdownHorizontalRuleNode(), $createTextNode('b'), quote, $createTextNode('c')]);
         }, { discrete: true });
 
-        expect(shapeOf(editor)).toBe('list(markdown-list-item(markdown-list-item-text("a"), markdown-raw-block("---"), paragraph("b"), markdown-quote(paragraph("q")), paragraph("c")), markdown-list-item(markdown-list-item-text("z")))');
+        expect(shapeOf(editor)).toBe('list(markdown-list-item(markdown-list-item-text("a"), markdown-horizontal-rule, paragraph("b"), markdown-quote(paragraph("q")), paragraph("c")), markdown-list-item(markdown-list-item-text("z")))');
         expect(expectSaveKeepsDocument(editor, 'the blocks put in')).toBe('- a\n\n  ---\n\n  b\n\n  > q\n\n  c\n\n- z');
     });
 
@@ -917,7 +918,7 @@ describe('a block never stays inside a block that holds text only', () => {
         }, { discrete: true });
         lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
 
-        expect(shapeOf(editor)).toBe('code("co") | markdown-raw-block("---") | paragraph("p") | list(markdown-list-item(markdown-list-item-text("z")))');
+        expect(shapeOf(editor)).toBe('code("co") | markdown-horizontal-rule | paragraph("p") | list(markdown-list-item(markdown-list-item-text("z")))');
         expectSaveKeepsDocument(editor, 'the range deleted');
     });
 });
@@ -3063,9 +3064,9 @@ describe('a raw block outside a list item is written so that it reads where it s
         },
         {
             name:   'RL4: with a closing tag name, after a raw block',
-            source: '***\n\n  > q\n  </div\n\nw',
+            source: '<div></div>\n\n  > q\n  </div\n\nw',
             steps:  [],
-            shape:  'markdown-raw-block("***") | markdown-raw-block("> q", linebreak, "  </div") | paragraph("w")',
+            shape:  'markdown-raw-block("<div></div>") | markdown-raw-block("> q", linebreak, "  </div") | paragraph("w")',
             comparesWithViewer: false,
         },
         {

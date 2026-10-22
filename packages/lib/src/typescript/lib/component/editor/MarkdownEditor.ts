@@ -32,11 +32,12 @@ import {
     HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG, BEFORE_INPUT_COMMAND, INPUT_COMMAND, COMMAND_PRIORITY_EDITOR, COMPOSITION_END_TAG,
     COMPOSITION_START_COMMAND, $getEditor, $insertNodeToNearestRootAtCaret, SKIP_DOM_SELECTION_TAG, COLLABORATION_TAG, HISTORIC_TAG,
     $splitAtPointCaretNext, $getCaretInDirection, $isTextPointCaret, $getSiblingCaret, $isChildCaret,
+    $isNodeSelection, $createRangeSelection, CLICK_COMMAND,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
     CommandListener, LexicalCommand, CommandListenerPriority, UpdateListener, ParagraphNode, RangeSelection, EditorUpdateOptions,
-    NodeKey, PointType, CommandPayloadType, PointCaret, CaretDirection,
+    NodeKey, PointType, CommandPayloadType, PointCaret, CaretDirection, EditorState,
 } from "lexical";
 import { registerMarkdownShortcuts } from "@lexical/markdown";
 import type { ElementTransformer, MultilineElementTransformer } from "@lexical/markdown";
@@ -70,7 +71,7 @@ import {
 } from "~/component/editor/markdownSerializer.js";
 import {
     $breakRuleContainerOf, $contentFollows, $editWritably, $findEnclosingBlock, $formatWritably, $isBlock, $keepRowsOfCells, $lineBreakUnwritableAt,
-    $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $selectionHasFormat, $showRawBlockAsSaved, $takeBlocksOutOf, RUN_EDGE_TAG,
+    $moveBlocksOutAfter, $orderedPoints, $selectedSlices, $standsAsBlock, $selectionHasFormat, $showRawBlockAsSaved, $takeBlocksOutOf, RUN_EDGE_TAG,
     registerWritableStateRules,
 } from "~/component/editor/markdownWritable.js";
 import { registerMarkdownHistory } from "~/component/editor/markdownHistory.js";
@@ -96,10 +97,14 @@ import {
     MarkdownBlockNode, $createMarkdownBlockNode, $isMarkdownBlockNode, $createMarkdownColumnNode, $isMarkdownColumnNode,
 } from "~/component/editor/markdownBlockNode.js";
 import { $createMarkdownImageNode, $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
+import {
+    $createMarkdownHorizontalRuleNode, $horizontalRuleMarkdown, $isMarkdownHorizontalRuleNode, $selectNodeAlone,
+} from "~/component/editor/markdownHorizontalRuleNode.js";
+import type { MarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
 import { cssTextToAttributes, resolveImageSpec } from "~/component/display/markdownAttributes.js";
 import { readSourceSelectionState } from "~/component/editor/markdownSourceEdits.js";
 import type { MarkdownSourceEdit, MarkdownSourceTransform } from "~/component/editor/markdownSourceEdits.js";
-import { paragraphAroundBlockSource, tableSource } from "~/component/editor/markdownSourceLines.js";
+import { horizontalRuleSource, paragraphAroundBlockSource, tableSource } from "~/component/editor/markdownSourceLines.js";
 import {
     $selectSourceRange, $sourceRangeOfSelection, smallestEdit, sourceWindow, wholeDocumentWindow,
 } from "~/component/editor/markdownSourceModel.js";
@@ -240,8 +245,9 @@ export interface MarkdownEditorSelectionState {
      * it is `true` for one, whichever way the selection was made. Without a
      * text selection — none at all, or table cells selected — the table
      * goes in at the document's end, so it is `false` when the document
-     * ends in a raw Markdown block, a code block or a table. Always `true`
-     * in `"source"` mode, and before the editor is built.
+     * ends in a raw Markdown block, a code block or a table. `true` while a
+     * horizontal rule is selected: the table then goes in right after it.
+     * Always `true` in `"source"` mode, and before the editor is built.
      */
     canInsertTable: boolean;
     /**
@@ -249,9 +255,19 @@ export interface MarkdownEditorSelectionState {
      * a raw Markdown block or a code block. Without a text selection — none
      * at all, or table cells selected — the image goes in at the document's
      * end, so it is `false` when the document ends in one of those two.
+     * With a horizontal rule selected the image goes in a paragraph of its own
+     * after it, so it is `true`.
      * Always `true` in `"source"` mode, and before the editor is built.
      */
     canInsertImage: boolean;
+    /**
+     * Whether `insertHorizontalRule` would insert. `false` where `canInsertTable`
+     * is: when the selection touches a raw Markdown block or a code block, or
+     * lies inside a table; without a text selection, when the document ends
+     * in one of those. `true` while a horizontal rule is selected. Always
+     * `true` in `"source"` mode, and before the editor is built.
+     */
+    canInsertHorizontalRule: boolean;
     /**
      * Whether the commands acting on the table the caret is in would apply:
      * the row and column inserts and deletes, `deleteTable`,
@@ -1684,10 +1700,12 @@ function $holdsSomethingAfterCaret(selection: RangeSelection, block: ElementNode
 
 /**
  * `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` listener for a paste at a list
- * item's text that ends in a table or a `:::` block
- * ({@link $pasteEndsInTableOrFence}), with something of the text after the
- * caret. Splits the item at the caret first, as Enter does, and leaves the
- * caret at the end of the first half, where the insert then goes on. What
+ * item's text that ends in a block Lexical's insert mishandles there. For a
+ * table or a `:::` block ({@link $pasteEndsInTableOrFence}) with something of
+ * the text after the caret, it splits the item at the caret first, as Enter
+ * does, and leaves the caret at the end of the first half, where the insert
+ * then goes on. For a horizontal rule with nothing after the caret it makes the
+ * insert itself ({@link $insertPastedNodesAtItemEnd}). What
  * followed the caret is then the text of an item of its own after the
  * pasted blocks and keeps the blocks its item held, as it does around a
  * table inserted at that caret. A range is removed first, as Lexical's
@@ -1708,14 +1726,24 @@ function $holdsSomethingAfterCaret(selection: RangeSelection, block: ElementNode
  * the end of the last pasted cell or block, where the save writes nothing
  * for it.
  *
+ * A pasted rule at the end of an item's text is the other case: Lexical's
+ * insert splits the item with a decorator as the paste's last node, and
+ * leaves an empty item after it. The listener inserts the nodes itself,
+ * removes that item and handles the paste. A paste ending in a rule with text
+ * after the caret is left to Lexical, which keeps that text an item of its
+ * own, as after a pasted table.
+ *
  * @param payload - The pasted nodes and the selection they are inserted at.
- * @returns Always `false`, so the insertion still runs.
+ * @returns Whether the paste was a rule at the end of an item's text, now inserted; otherwise `false`, so the insertion still runs.
  */
-function $splitItemBeforePasteEndingInTableOrFence(payload: CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>): boolean {
+function $settleItemTextBeforePasteEndingInBlock(
+    payload: CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>,
+): boolean {
     const selection = payload.selection;
     const endsInTableOrFence = $pasteEndsInTableOrFence(payload.nodes);
+    const endsInRule = $isMarkdownHorizontalRuleNode(payload.nodes.at(-1));
 
-    if (!$isRangeSelection(selection) || !endsInTableOrFence) {
+    if (!$isRangeSelection(selection) || !(endsInTableOrFence || endsInRule)) {
         return false;
     }
 
@@ -1739,7 +1767,11 @@ function $splitItemBeforePasteEndingInTableOrFence(payload: CommandPayloadType<t
 
     const holdsRestAfterCaret = $holdsSomethingAfterCaret(selection, caretBlock);
 
-    if (holdsRestAfterCaret) {
+    if (endsInRule && !holdsRestAfterCaret) {
+        return $insertPastedNodesAtItemEnd(selection, caretBlock, payload.nodes);
+    }
+
+    if (holdsRestAfterCaret && endsInTableOrFence) {
         selection.insertParagraph();
 
         const endOfFirstHalf = $normalizeCaret($getChildCaret(caretBlock, "previous"));
@@ -1749,6 +1781,33 @@ function $splitItemBeforePasteEndingInTableOrFence(payload: CommandPayloadType<t
     }
 
     return false;
+}
+
+/**
+ * Inserts pasted nodes at the end of a list item's text, and removes the
+ * empty item Lexical's insert leaves right after it when the last pasted node
+ * is a decorator ({@link $settleItemTextBeforePasteEndingInBlock}).
+ *
+ * @param selection - The selection the nodes go in at.
+ * @param itemText - The text of the item the caret is at the end of.
+ * @param nodes - The pasted nodes.
+ * @returns Always `true`: the insertion is made.
+ */
+function $insertPastedNodesAtItemEnd(selection: RangeSelection, itemText: MarkdownListItemTextNode, nodes: LexicalNode[]): boolean {
+    const item = itemText.getParentOrThrow();
+
+    selection.insertNodes([...nodes]);
+
+    const left = item.getNextSibling();
+
+    const isLeftEmpty = $isMarkdownListItemNode(left) && left.getChildrenSize() === 1
+        && $isMarkdownListItemTextNode(left.getFirstChild()) && left.getTextContent() === "";
+
+    if (isLeftEmpty) {
+        left.remove();
+    }
+
+    return true;
 }
 
 /**
@@ -2835,16 +2894,18 @@ function $joinCoveredItemTexts(selection: RangeSelection): void {
  * {@link $removeGuardedRange} removes itself — a table-edge range
  * ({@link $isTableEdgeRange}), a text-only-edge range
  * ({@link $isTextOnlyEdgeRange}), a stale-focus range
- * ({@link $isStaleFocusRange}) or a cross-item range
- * ({@link $isCrossItemRange}). Every listener that asks whether a range is
- * guarded asks here, so none misses a shape.
+ * ({@link $isStaleFocusRange}), a cross-item range
+ * ({@link $isCrossItemRange}) or a range that starts right before a
+ * horizontal rule or ends right after one ({@link $standsBesideHorizontalRule}).
+ * Every listener that asks whether a range is guarded asks here, so none
+ * misses a shape.
  *
  * @param selection - The selection to test.
  * @returns Whether it is a guarded range.
  */
 function $isGuardedRange(selection: BaseSelection | null): selection is RangeSelection {
     return $isTableEdgeRange(selection) || $isTextOnlyEdgeRange(selection) || $isStaleFocusRange(selection)
-        || $isCrossItemRange(selection);
+        || $isCrossItemRange(selection) || $standsBesideHorizontalRule(selection);
 }
 
 /**
@@ -3484,6 +3545,23 @@ function $clearGuardedRangeBeforePaste(payload: CommandPayloadType<typeof SELECT
 }
 
 /**
+ * What a cut of a guarded range copies: a table-edge range with each table
+ * it reaches into whole, a range beside a horizontal rule as it stands, the
+ * rules with it, and any other as the clipboard module reads it.
+ *
+ * @param selection - The guarded range.
+ * @param isTableEdge - Whether it is a table-edge range.
+ * @returns The data to copy, or `undefined` to leave it to the clipboard module.
+ */
+function $clipboardDataOfGuardedRange(selection: RangeSelection, isTableEdge: boolean): ReturnType<typeof $getClipboardDataFromSelection> | undefined {
+    if (isTableEdge) {
+        return $getClipboardDataFromSelection($grownTableEdgeRange(selection));
+    }
+
+    return $standsBesideHorizontalRule(selection) ? $getClipboardDataFromSelection(selection) : undefined;
+}
+
+/**
  * `CUT_COMMAND` listener for a guarded range: mirrors
  * `@lexical/rich-text`'s own cut — copies the selection to the clipboard,
  * then removes it in one update tagged `CUT_TAG` (its own undo step) — but
@@ -3510,13 +3588,15 @@ function $cutGuardedRange(event: CommandPayloadType<typeof CUT_COMMAND>, editor:
     // CUT_COMMAND with a KeyboardEvent. `"clipboardData" in event` tells them
     // apart without naming a DOM global.
     const clipboardEvent = event !== null && "clipboardData" in event ? event : null;
-    const data = isTableEdge ? $getClipboardDataFromSelection($grownTableEdgeRange(selection)) : undefined;
+    const data = $clipboardDataOfGuardedRange(selection, isTableEdge);
 
     void copyToClipboard(editor, clipboardEvent, data).then(() => {
         editor.update(() => {
             const selection = $getSelection();
 
             if ($isRangeSelection(selection)) {
+                $removeHorizontalRulesAtRangeEnds(selection);
+                $settleSelectionOffContainers(selection);
                 $removeGuardedRange(selection);
                 selection.removeText();
             }
@@ -5075,7 +5155,7 @@ function registerMarkdownShortcutsOutsideRawBlocks(editor: LexicalEditor, isType
     return mergeRegister(registerMarkdownShortcuts(guarded, SHORTCUT_TRANSFORMERS), registerHeldBlockShortcuts(guarded));
 }
 
-/** The block shortcuts of {@link SHORTCUT_TRANSFORMERS} that fit one line: `# `, `> `, `- `, `1. `. */
+/** The block shortcuts of {@link SHORTCUT_TRANSFORMERS} that fit one line: `# `, `> `, `- `, `1. `, and `---`, `***` or `___`. */
 const ELEMENT_SHORTCUTS: readonly ElementTransformer[] = SHORTCUT_TRANSFORMERS.filter((shortcut): shortcut is ElementTransformer => shortcut.type === "element");
 
 /** The block shortcuts of {@link SHORTCUT_TRANSFORMERS} that span lines: the code fence. */
@@ -5397,6 +5477,494 @@ function $containerEndingBefore(block: ElementNode): ElementNode | null {
     return endsWithoutTextLine && $isElementNode(before) ? before : null;
 }
 
+// ---------------------------------------------------------------- horizontal rules
+
+/**
+ * The horizontal rule a node selection holds.
+ *
+ * @returns The rule, or `null` when the selection is no node selection of one rule alone.
+ */
+function $selectedHorizontalRule(): MarkdownHorizontalRuleNode | null {
+    const selection = $getSelection();
+
+    if (!$isNodeSelection(selection)) {
+        return null;
+    }
+
+    const nodes = selection.getNodes();
+    const rule = nodes.length === 1 ? nodes[0] : undefined;
+
+    return $isMarkdownHorizontalRuleNode(rule) ? rule : null;
+}
+
+/**
+ * `CLICK_COMMAND` listener: a click on a horizontal rule selects it.
+ *
+ * @remarks
+ * Lexical leaves this to its own rule extension, which the editor does not
+ * use. The listener mirrors the extension's, without its Shift-click toggle:
+ * nothing else in the editor makes a node selection of several nodes.
+ *
+ * @param event - The click.
+ * @returns Whether the click was on a rule, now selected.
+ */
+function $selectClickedHorizontalRule(event: CommandPayloadType<typeof CLICK_COMMAND>): boolean {
+    const target = event.target;
+    const node = isDOMNode(target) ? $getNearestNodeFromDOMNode(target) : null;
+
+    if (!$isMarkdownHorizontalRuleNode(node)) {
+        return false;
+    }
+
+    $selectNodeAlone(node);
+
+    return true;
+}
+
+/**
+ * Puts blocks where a selected horizontal rule stands and removes the rule: each
+ * block in order, in the rule's own parent — the document, a list item, a quote
+ * or a `:::` column — so no container is split and no empty item is left. The
+ * caret lands at the end of the last block.
+ *
+ * @param rule - The selected rule.
+ * @param blocks - The blocks, at least one.
+ */
+function $replaceHorizontalRuleWith(rule: MarkdownHorizontalRuleNode, blocks: readonly LexicalNode[]): void {
+    let last: LexicalNode = rule;
+
+    for (const block of blocks) {
+        last.insertAfter(block);
+        last = block;
+    }
+
+    rule.remove();
+
+    if ($isElementNode(last)) {
+        last.selectEnd();
+    } else {
+        last.selectNext();
+    }
+}
+
+/**
+ * `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` listener: a paste with a horizontal
+ * rule selected replaces the rule, where it stands, in the rule's own parent.
+ * Pasted blocks go in as they are; pasted inline content (a copied word) goes in
+ * as a paragraph. Lexical's own insert at a node selection splits the container
+ * the rule is in.
+ *
+ * @param payload - The pasted nodes and the selection they go in at.
+ * @returns Whether a selected rule was replaced; otherwise `false`, so the insertion runs as usual.
+ */
+function $pasteNodesOverSelectedHorizontalRule(payload: CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>): boolean {
+    const rule = $selectedHorizontalRule();
+
+    if (rule === null || payload.nodes.length === 0) {
+        return false;
+    }
+
+    const blocks: LexicalNode[] = [];
+    let run: ParagraphNode | null = null;
+
+    for (const node of payload.nodes) {
+        if ($standsAsBlock(node)) {
+            blocks.push(node);
+            run = null;
+        } else {
+            run = run ?? $createParagraphNode();
+
+            if (run.isEmpty()) {
+                blocks.push(run);
+            }
+
+            run.append(node);
+        }
+    }
+
+    $replaceHorizontalRuleWith(rule, blocks);
+
+    return true;
+}
+
+/**
+ * `PASTE_COMMAND` listener: a plain-text paste with a horizontal rule selected
+ * replaces the rule with a paragraph for each line of the text. A paste that
+ * carries nodes or HTML reaches {@link $pasteNodesOverSelectedHorizontalRule}
+ * instead.
+ *
+ * @param event - The paste event.
+ * @returns Whether a selected rule was replaced.
+ */
+function $pasteTextOverSelectedHorizontalRule(event: CommandPayloadType<typeof PASTE_COMMAND>): boolean {
+    const rule = $selectedHorizontalRule();
+    const clipboardData = "clipboardData" in event ? event.clipboardData : null;
+
+    if (rule === null || clipboardData === null || clipboardData.getData(LEXICAL_CLIPBOARD_TYPE) !== "" || clipboardData.types.includes("text/html")) {
+        return false;
+    }
+
+    const lines = clipboardData.getData("text/plain").split(/\r?\n/).filter((line) => line !== "");
+
+    if (lines.length === 0 || !pasteWillInsertText(event)) {
+        return false;
+    }
+
+    event.preventDefault();
+    $replaceHorizontalRuleWith(rule, lines.map((line) => $createParagraphNode().append($createTextNode(line))));
+
+    return true;
+}
+
+/**
+ * The keys of the horizontal rules a state's node selection holds.
+ *
+ * @param state - The editor state.
+ * @returns The keys; `null` for any other selection, which holds none.
+ */
+function selectedRuleKeys(state: EditorState): Set<NodeKey> | null {
+    return state.read(() => {
+        const selection = $getSelection();
+
+        return $isNodeSelection(selection)
+            ? new Set(selection.getNodes().filter($isMarkdownHorizontalRuleNode).map((rule) => rule.getKey()))
+            : null;
+    });
+}
+
+/**
+ * Registers what selects a horizontal rule and draws it selected: the click
+ * that selects one, and an update listener that marks dirty each rule whose
+ * selected state changed, so Lexical builds its element again with or
+ * without the selected class ({@link MarkdownHorizontalRuleNode.createDOM}).
+ *
+ * @remarks
+ * The mark is a discrete update tagged `HISTORY_MERGE_TAG`, like the editor's
+ * other merge-tagged updates. A discrete update commits at once, so an edit
+ * made in the same tick cannot be batched with it and swallowed into the merge
+ * the tag asks for; a plain update waits for the end of the tick and would take
+ * that edit with it, out of the undo history. It changes no content, so it is
+ * no undo step of its own. The listener returns early unless one of the two
+ * selections is a node selection.
+ *
+ * @param editor - The editor.
+ * @returns The unregister function.
+ */
+function registerHorizontalRuleSelection(editor: LexicalEditor): () => void {
+    return mergeRegister(
+        editor.registerCommand(CLICK_COMMAND, $selectClickedHorizontalRule, COMMAND_PRIORITY_LOW),
+        editor.registerCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, $pasteNodesOverSelectedHorizontalRule, COMMAND_PRIORITY_HIGH),
+        editor.registerCommand(PASTE_COMMAND, $pasteTextOverSelectedHorizontalRule, COMMAND_PRIORITY_HIGH),
+        editor.registerUpdateListener(({ editorState, prevEditorState }) => {
+            const before = selectedRuleKeys(prevEditorState);
+            const after = selectedRuleKeys(editorState);
+
+            if (before === null && after === null) {
+                return;
+            }
+
+            const was = before ?? new Set<NodeKey>();
+            const now = after ?? new Set<NodeKey>();
+            const changed = [...was].filter((key) => !now.has(key)).concat([...now].filter((key) => !was.has(key)));
+
+            if (changed.length === 0) {
+                return;
+            }
+
+            editor.update(() => {
+                for (const key of changed) {
+                    const rule = $getNodeByKey(key);
+
+                    if ($isMarkdownHorizontalRuleNode(rule)) {
+                        rule.markDirty();
+                    }
+                }
+            }, { discrete: true, tag: [HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG] });
+        }),
+    );
+}
+
+/**
+ * Puts a block directly after a horizontal rule, as the rule's next sibling in
+ * the rule's own parent — the document, a list item, a quote or a `:::` column,
+ * all of which hold blocks — never inside the block that follows the rule. This
+ * is where an insert goes while a rule is selected. A block that then ends its
+ * container gets an empty paragraph after it, which saves nothing and lets the
+ * caret go below it.
+ *
+ * @param rule - The selected rule.
+ * @param block - The block to put after it.
+ */
+function $insertBlockAfterRule(rule: MarkdownHorizontalRuleNode, block: LexicalNode): void {
+    rule.insertAfter(block);
+    $closeWithParagraph(block);
+}
+
+/**
+ * Adds an empty paragraph after a block that ends its container, which saves
+ * nothing and lets the caret go below the block. A block with a sibling after
+ * it is left as it is.
+ *
+ * @param block - The block just inserted.
+ */
+function $closeWithParagraph(block: LexicalNode): void {
+    if (block.getNextSibling() === null) {
+        block.insertAfter($createParagraphNode());
+    }
+}
+
+/**
+ * Where a range starts or ends in a leaf, as a point of a selection.
+ *
+ * @param point - The point to set.
+ * @param leaf - The leaf the range takes in.
+ * @param bound - The range's own point of that side, which decides inside the leaf it lies in.
+ * @param atStart - Whether the point is the start of the part taken (`true`) or its end.
+ */
+function $setPointAtLeaf(point: PointType, leaf: LexicalNode, bound: PointType, atStart: boolean): void {
+    if ($isTextNode(leaf)) {
+        const isBound = bound.type === "text" && leaf.is(bound.getNode());
+        const offset = isBound ? bound.offset : (atStart ? 0 : leaf.getTextContentSize());
+
+        point.set(leaf.getKey(), offset, "text");
+
+        return;
+    }
+
+    const parent = leaf.getParentOrThrow();
+
+    point.set(parent.getKey(), leaf.getIndexWithinParent() + (atStart ? 0 : 1), "element");
+}
+
+/**
+ * Wraps the selection in a link to `url`, leaving a horizontal rule it crosses
+ * as it is: a range that takes in a rule links the text of each block it
+ * touches, one block at a time, where Lexical's own wrapping would make a link
+ * of the rule and a paragraph around it that saves as a bracket pair holding a
+ * line end. A selection with no rule in it is wrapped as it always was.
+ *
+ * @param url - The link target.
+ */
+function $toggleLinkLeavingRules(url: string): void {
+    const selection = $getSelection();
+    const nodes = $isRangeSelection(selection) ? selection.getNodes() : [];
+
+    if (!$isRangeSelection(selection) || !nodes.some($isMarkdownHorizontalRuleNode)) {
+        $toggleLink(url);
+
+        return;
+    }
+
+    const [start, end] = $orderedPoints(selection);
+    const leavesByBlock = new Map<ElementNode, LexicalNode[]>();
+
+    for (const node of nodes) {
+        const block = $isElementNode(node) || $isMarkdownHorizontalRuleNode(node) ? null : $findEnclosingBlock(node);
+
+        if (block !== null) {
+            leavesByBlock.set(block, [...(leavesByBlock.get(block) ?? []), node]);
+        }
+    }
+
+    for (const leaves of leavesByBlock.values()) {
+        const part = $createRangeSelection();
+
+        $setPointAtLeaf(part.anchor, leaves[0]!, start, true);
+        $setPointAtLeaf(part.focus, leaves[leaves.length - 1]!, end, false);
+
+        if (!part.isCollapsed()) {
+            $setSelection(part);
+            $toggleLink(url);
+        }
+    }
+}
+
+/**
+ * Whether a block's edge, on one side, is where a caret stands.
+ *
+ * @param selection - A collapsed range selection.
+ * @param block - The block.
+ * @param isBackward - `true` for the block's start, `false` for its end.
+ * @returns `true` when the caret stands at that edge of the block.
+ */
+function $caretAtBlockEdge(selection: RangeSelection, block: ElementNode, isBackward: boolean): boolean {
+    const anchorNode = selection.anchor.getNode();
+    const offset = selection.anchor.offset;
+
+    if (isBackward) {
+        return offset === 0 && (anchorNode.is(block) || anchorNode.is(block.getFirstDescendant()));
+    }
+
+    return anchorNode.is(block)
+        ? offset === block.getChildrenSize()
+        : anchorNode.is(block.getLastDescendant()) && offset === anchorNode.getTextContentSize();
+}
+
+/**
+ * The horizontal rule that ends a list or quote standing right beside a
+ * block, or opens one: what a deletion at the block's edge meets. Walks as
+ * {@link $containerEndingBefore} walks — up past the containers the block
+ * opens or ends, then into lists, list items and quotes.
+ *
+ * @param block - The block the caret stands in.
+ * @param isBackward - `true` to look before the block, `false` after it.
+ * @returns The rule, or `null` when what stands beside the block is no list or quote ending or opening with one.
+ */
+function $horizontalRuleBesideContainer(block: ElementNode, isBackward: boolean): MarkdownHorizontalRuleNode | null {
+    let opened: ElementNode = block;
+    let beside = isBackward ? opened.getPreviousSibling() : opened.getNextSibling();
+
+    while (beside === null) {
+        const container = opened.getParent();
+
+        if (container === null || $isRootOrShadowRoot(container)) {
+            return null;
+        }
+
+        opened = container;
+        beside = isBackward ? opened.getPreviousSibling() : opened.getNextSibling();
+    }
+
+    let entersContainer = false;
+
+    while ($isListNode(beside) || $isMarkdownListItemNode(beside) || $isMarkdownQuoteNode(beside)) {
+        entersContainer = true;
+        beside = isBackward ? beside.getLastChild() : beside.getFirstChild();
+    }
+
+    return entersContainer && $isMarkdownHorizontalRuleNode(beside) ? beside : null;
+}
+
+/**
+ * `DELETE_CHARACTER_COMMAND` listener for a deletion at the edge of a block
+ * that stands beside a list or quote ending (Backspace) or opening (Delete)
+ * with a horizontal rule: it does what Lexical does beside a top-level rule.
+ * The rule goes; when the caret's block is empty, that block goes instead and
+ * the rule is selected.
+ *
+ * @remarks
+ * Lexical walks into a list or a quote to find what a deletion at a block's
+ * edge acts on, and stops at a rule there without deleting it: the document
+ * was left as it was and the caret moved into the item.
+ *
+ * @param isBackward - `true` for Backspace, `false` for Delete.
+ * @returns Whether the caret stood at such a place.
+ */
+function $deleteHorizontalRuleBesideContainer(isBackward: boolean): boolean {
+    const selection = $getSelection();
+    const isCaret = $isRangeSelection(selection) && selection.isCollapsed();
+    const block = isCaret ? $findEnclosingBlock(selection.anchor.getNode()) : null;
+
+    if (!isCaret || block === null || !$caretAtBlockEdge(selection, block, isBackward)) {
+        return false;
+    }
+
+    const rule = $horizontalRuleBesideContainer(block, isBackward);
+
+    if (rule === null) {
+        return false;
+    }
+
+    if (block.isEmpty()) {
+        block.remove();
+        $selectNodeAlone(rule);
+    } else {
+        rule.remove();
+    }
+
+    return true;
+}
+
+/**
+ * The horizontal rule an element point stands right before.
+ *
+ * @param point - The point.
+ * @returns The rule, or `null`.
+ */
+function $ruleAfterElementPoint(point: PointType): MarkdownHorizontalRuleNode | null {
+    const holder = point.getNode();
+    const next = point.type === "element" && $isElementNode(holder) ? holder.getChildAtIndex(point.offset) : null;
+
+    return $isMarkdownHorizontalRuleNode(next) ? next : null;
+}
+
+/**
+ * The horizontal rule an element point stands right after.
+ *
+ * @param point - The point.
+ * @returns The rule, or `null`.
+ */
+function $ruleBeforeElementPoint(point: PointType): MarkdownHorizontalRuleNode | null {
+    const holder = point.getNode();
+    const previous = point.type === "element" && $isElementNode(holder) ? holder.getChildAtIndex(point.offset - 1) : null;
+
+    return $isMarkdownHorizontalRuleNode(previous) ? previous : null;
+}
+
+/**
+ * Whether a range starts right before a horizontal rule or ends right after
+ * one, at an element point on the rule's parent: what Select All makes in a
+ * document that opens or ends with a rule.
+ *
+ * @param selection - The selection.
+ * @returns `true` for such a range.
+ */
+function $standsBesideHorizontalRule(selection: BaseSelection | null): selection is RangeSelection {
+    if (!$isRangeSelection(selection) || selection.isCollapsed()) {
+        return false;
+    }
+
+    const [start, end] = $orderedPoints(selection);
+
+    return $ruleAfterElementPoint(start) !== null || $ruleBeforeElementPoint(end) !== null;
+}
+
+/**
+ * Removes the horizontal rules a range's ends stand beside: each rule right
+ * after an element point that starts the range, and each right before one
+ * that ends it. The editor's settling moves such a point into the next block
+ * of text, and Lexical's removal then leaves the rule, so the rule goes first
+ * and the range is settled as if it had never been there. Lexical moves the
+ * points as each rule goes.
+ *
+ * @param selection - The selection; a collapsed range, or any other selection, is left alone.
+ * @returns Whether a rule was removed and that left the range collapsed, which is the deletion done.
+ */
+function $removeHorizontalRulesAtRangeEnds(selection: BaseSelection | null): boolean {
+    if (!$isRangeSelection(selection) || selection.isCollapsed()) {
+        return false;
+    }
+
+    const [start, end] = $orderedPoints(selection);
+    let removed = false;
+
+    // Only rules inside the range go: Lexical moves the points as each rule is removed, so the range is collapsed
+    // once the last rule between its two ends is gone, and a rule beside the range stays.
+    for (let rule = $ruleAfterElementPoint(start); rule !== null && !selection.isCollapsed(); rule = $ruleAfterElementPoint(start)) {
+        rule.remove();
+        removed = true;
+    }
+
+    for (let rule = $ruleBeforeElementPoint(end); rule !== null && !selection.isCollapsed(); rule = $ruleBeforeElementPoint(end)) {
+        const parent = rule.getParentOrThrow();
+
+        // A rule that is all a column holds is replaced by an empty paragraph the range ends in, as a paragraph the
+        // range ended in would stand: a column that ended in nothing is dropped by the removal that follows.
+        if ($isRootOrShadowRoot(parent) && !$isRootNode(parent) && parent.getChildrenSize() === 1) {
+            const emptied = $createParagraphNode();
+
+            rule.replace(emptied);
+            end.set(emptied.getKey(), 0, "element");
+        } else {
+            rule.remove();
+        }
+
+        removed = true;
+    }
+
+    return removed && selection.isCollapsed();
+}
+
 /**
  * `INSERT_PARAGRAPH_COMMAND` listener for Enter on an empty line of a list:
  * a list item's text that holds nothing, or blanks alone. The item leaves
@@ -5570,6 +6138,8 @@ function registerListItemRules(editor: LexicalEditor): () => void {
     return mergeRegister(
         ...[DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, DELETE_LINE_COMMAND]
             .map((command) => editor.registerCommand(command, $backspaceAfterContainer, COMMAND_PRIORITY_LOW)),
+        ...[DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, DELETE_LINE_COMMAND]
+            .map((command) => editor.registerCommand(command, $deleteHorizontalRuleBesideContainer, COMMAND_PRIORITY_LOW)),
         editor.registerCommand(INSERT_PARAGRAPH_COMMAND, $enterLeavesListAtBlankItemText, COMMAND_PRIORITY_HIGH),
         editor.registerCommand(INDENT_CONTENT_COMMAND, () => $moveSelectedItemsOnce(true), COMMAND_PRIORITY_HIGH),
         editor.registerCommand(OUTDENT_CONTENT_COMMAND, () => $moveSelectedItemsOnce(false), COMMAND_PRIORITY_HIGH),
@@ -5701,7 +6271,7 @@ function registerHeldBlockPaste(editor: LexicalEditor): () => void {
 /**
  * Registers the paste listener that keeps the text after the caret of a
  * list item's text out of a pasted table or `:::` block
- * ({@link $splitItemBeforePasteEndingInTableOrFence}).
+ * ({@link $settleItemTextBeforePasteEndingInBlock}).
  *
  * @remarks
  * A command's listeners of one priority run in the order they were
@@ -5718,7 +6288,7 @@ function registerHeldBlockPaste(editor: LexicalEditor): () => void {
  * @returns The unregister function.
  */
 function registerItemTextPaste(editor: LexicalEditor): () => void {
-    return editor.registerCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, $splitItemBeforePasteEndingInTableOrFence, COMMAND_PRIORITY_HIGH);
+    return editor.registerCommand(SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, $settleItemTextBeforePasteEndingInBlock, COMMAND_PRIORITY_HIGH);
 }
 
 /**
@@ -5761,10 +6331,78 @@ function registerTextOnlyBlockRules(editor: LexicalEditor): () => void {
  * @returns Always `false`, so Enter's own handlers run.
  */
 function $settleSelectionBeforeEnter(): boolean {
+    $removeHorizontalRulesAtRangeEnds($getSelection());
     $settleSelectionOffContainers($getSelection());
 
     return false;
 }
+
+/**
+ * Whether a guarded command will change anything over a range that has a
+ * horizontal rule at an end, told before the rule is removed: a paste with no
+ * text to insert (an empty clipboard, a file alone), a clipboard insert with no
+ * nodes, and Shift+Enter where the break would have no place once the rules at
+ * the ends are gone. Every other command acts.
+ *
+ * @param identity - The command.
+ * @param payload - Its payload.
+ * @param selection - The range, which has a rule at an end.
+ * @returns `"acts"`, `"nothing"` to run the command's listener on the range as it is, or `"declined"` to cancel the command.
+ */
+function $ruleEdgeRangeVerdict(identity: unknown, payload: unknown, selection: BaseSelection | null): "acts" | "nothing" | "declined" {
+    if (identity === PASTE_COMMAND) {
+        return pasteWillInsertText(payload as CommandPayloadType<typeof PASTE_COMMAND>) ? "acts" : "nothing";
+    }
+
+    if (identity === SELECTION_INSERT_CLIPBOARD_NODES_COMMAND) {
+        return (payload as CommandPayloadType<typeof SELECTION_INSERT_CLIPBOARD_NODES_COMMAND>).nodes.length > 0 ? "acts" : "nothing";
+    }
+
+    if (identity === INSERT_LINE_BREAK_COMMAND && $isRangeSelection(selection)) {
+        return $ruleEdgeRangeDeclinesLineBreak(selection) ? "declined" : "acts";
+    }
+
+    return "acts";
+}
+
+/**
+ * Whether Shift+Enter over a range with a horizontal rule at an end would have
+ * its line break declined once the rules at the ends are gone: the range is then
+ * nothing but those rules, or the caret the removal leaves is where a save cannot
+ * write a break ({@link $lineBreakUnwritableAt}).
+ *
+ * @param selection - A range with a rule at an end, left as it is.
+ * @returns Whether the break would be declined.
+ */
+function $ruleEdgeRangeDeclinesLineBreak(selection: RangeSelection): boolean {
+    const [start, end] = $orderedPoints(selection.clone());
+
+    // The same walk the removal makes, on a copy of the points: past the rules after the start, back over those before the end.
+    for (let rule = $ruleAfterElementPoint(start); rule !== null; rule = $ruleAfterElementPoint(start)) {
+        start.set(start.key, start.offset + 1, start.type);
+    }
+
+    for (let rule = $ruleBeforeElementPoint(end); rule !== null; rule = $ruleBeforeElementPoint(end)) {
+        end.set(end.key, end.offset - 1, end.type);
+    }
+
+    // Starting between blocks and ending in text, the removal leaves a caret before the rest of the end's block, which
+    // is where a break is told from. Ending between blocks, it leaves the caret at the end of the start's block, and
+    // a break at a block's end is never written.
+    const isEmptied = start.is(end);
+    const leavesRestOfEndBlock = start.type === "element" && end.type === "text";
+
+    return isEmptied || !leavesRestOfEndBlock || $lineBreakUnwritableAt(end);
+}
+
+/**
+ * The commands that delete: a range emptied by taking out the rules at its ends has nothing left for them to delete.
+ * Typed `unknown` because each command is branded with its own payload type, so a set of them, and a command of the
+ * guard's generic payload, share no type short of the objects themselves.
+ */
+const DELETING_COMMANDS: ReadonlySet<unknown> = new Set<unknown>([
+    KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND, DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, DELETE_LINE_COMMAND, REMOVE_TEXT_COMMAND,
+]);
 
 /**
  * Registers the guards for the four range shapes Lexical's own removal
@@ -5806,9 +6444,41 @@ function $settleSelectionBeforeEnter(): boolean {
 function registerRangeGuards(editor: LexicalEditor): () => void {
     const guard = <P>(command: LexicalCommand<P>, listener: CommandListener<P>): (() => void) =>
         editor.registerCommand(command, (payload, target) => {
+            // The branded command types cannot be compared with each other, so the command is compared as an object.
+            const identity: unknown = command;
+
+            // A cut copies before it removes, so it takes the rules at the range's ends later, with the range whole.
+            if (identity === CUT_COMMAND && $standsBesideHorizontalRule($getSelection())) {
+                return listener(payload, target);
+            }
+
+            // A command that will change nothing leaves the rules at the range's ends, and the selection, as they are.
+            if ($standsBesideHorizontalRule($getSelection())) {
+                const verdict = $ruleEdgeRangeVerdict(identity, payload, $getSelection());
+
+                if (verdict === "declined") {
+                    return true;
+                }
+
+                if (verdict === "nothing") {
+                    return listener(payload, target);
+                }
+            }
+
+            const isEmptied = $removeHorizontalRulesAtRangeEnds($getSelection());
+
             $settleSelectionOffContainers($getSelection());
 
-            return listener(payload, target);
+            if (!isEmptied || !DELETING_COMMANDS.has(identity)) {
+                return listener(payload, target);
+            }
+
+            // Taking the rules left nothing to delete. A key is cancelled, or the browser's own deletion follows.
+            if (identity === KEY_BACKSPACE_COMMAND || identity === KEY_DELETE_COMMAND) {
+                (payload as CommandPayloadType<typeof KEY_DELETE_COMMAND>).preventDefault();
+            }
+
+            return true;
         }, COMMAND_PRIORITY_CRITICAL);
 
     return mergeRegister(
@@ -6044,6 +6714,8 @@ export interface CommandAvailability {
     canInsertTable: boolean;
     /** `insertImage`. */
     canInsertImage: boolean;
+    /** `insertHorizontalRule`. */
+    canInsertHorizontalRule: boolean;
     /**
      * The commands acting on the table the caret is in: the row and column
      * inserts and deletes, `deleteTable`, `setTableColumnAlignment` and
@@ -6138,13 +6810,29 @@ function $insertTableAt(point: PointType, rows: number, columns: number): void {
 
     $insertBlockToNearestHolderAtCaret(table, $caretFromPoint(point, "next"));
 
-    const endsContainer = table.getNextSibling() === null;
-
-    if (endsContainer) {
-        table.insertAfter($createParagraphNode());
-    }
-
+    $closeWithParagraph(table);
     table.selectStart();
+}
+
+/**
+ * Inserts a horizontal rule at a selection point, as {@link $insertTableAt}
+ * inserts a table: the block holding the point is split only where the point
+ * is inside its content ({@link $makesNoEmptyHalf}), and a rule that ends its
+ * container gets an empty paragraph after it, which saves nothing and lets
+ * the caret go below the rule. The caret lands at the start of the block
+ * after the rule.
+ *
+ * @param point - Where the rule goes.
+ */
+function $insertHorizontalRuleAt(point: PointType): void {
+    const rule = $createMarkdownHorizontalRuleNode();
+
+    $insertBlockToNearestHolderAtCaret(rule, $caretFromPoint(point, "next"));
+
+    $closeWithParagraph(rule);
+
+    // The paragraph just added, or what already stood after the rule.
+    rule.getNextSibling()!.selectStart();
 }
 
 /**
@@ -6799,14 +7487,18 @@ function $readCommandAvailability(expansion: WordExpansion | null): CommandAvail
     const isRange = $isRangeSelection(selection);
     const touchesTextOnlyBlock = $selectionTouchesTextOnlyBlock();
     const inInsertableBlock = isRange && $findEnclosingInsertableBlock(selection.anchor.getNode()) !== null;
+    // A selected horizontal rule is no text selection, and the three inserts then put their block right after it, in
+    // the rule's own parent, which holds blocks: they never decline.
+    const ruleSelected = $selectedHorizontalRule() !== null;
 
     return {
         ...$readInlineAvailability(expansion, touchesTextOnlyBlock),
         canSetBlockType:               isRange && !$selectionTouchesTableCell() && !$selectionStandsOnTablesAlone(),
         canSetBlockLayout:             isRange,
         canInsertParagraphAroundBlock: inInsertableBlock,
-        canInsertTable:                $tableInsertApplies(touchesTextOnlyBlock),
-        canInsertImage:                $imageInsertApplies(touchesTextOnlyBlock),
+        canInsertTable:                ruleSelected || $tableInsertApplies(touchesTextOnlyBlock),
+        canInsertImage:                ruleSelected || $imageInsertApplies(touchesTextOnlyBlock),
+        canInsertHorizontalRule:       ruleSelected || $tableInsertApplies(touchesTextOnlyBlock),
         ...$readTableAvailability(),
     };
 }
@@ -6976,14 +7668,20 @@ export function $adoptDomSelection(fromDom: RangeSelection | null): void {
 
 /**
  * The text `copy()` writes to the clipboard: the selection's, the whole table
- * of a table-edge range, or, at a caret, the word the caret stands in or
- * beside.
+ * of a table-edge range, the line of a selected horizontal rule, or, at a
+ * caret, the word the caret stands in or beside.
  *
  * @returns The text, or `""` when there is nothing to copy.
  */
 function $copiedSelectionText(): string {
     const selection = $getSelection();
     const isRange = $isRangeSelection(selection);
+    const rule = $selectedHorizontalRule();
+
+    // A selected horizontal rule copies as the line it is saved with.
+    if (rule !== null) {
+        return $horizontalRuleMarkdown(rule);
+    }
 
     if (!isRange) {
         return "";
@@ -7087,7 +7785,8 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
     const formatState = $readFormatFlags(selection, expansion);
     const availability = $readCommandAvailability(expansion);
     const hasSelectedText = expansion !== null
-        || ($isRangeSelection(selection) && selection.getTextContent() !== "");
+        || ($isRangeSelection(selection) && selection.getTextContent() !== "")
+        || $selectedHorizontalRule() !== null;
     const linkUrl = $findEnclosingLinkNode(node)?.getURL() ?? null;
 
     const tableCell = $getTableCellNodeFromLexicalNode(node);
@@ -7139,6 +7838,7 @@ function reportedAvailability(availability: CommandAvailability): ReportedAvaila
         canSetBlockLayout: availability.canSetBlockLayout,
         canInsertTable:    availability.canInsertTable,
         canInsertImage:    availability.canInsertImage,
+        canInsertHorizontalRule: availability.canInsertHorizontalRule,
         canEditTable:      availability.canEditTable,
         canMergeCells:     availability.canMergeCells,
         canUnmergeCell:    availability.canUnmergeCell,
@@ -7163,7 +7863,8 @@ function $readSelectionState(): MarkdownEditorSelectionState {
     const expansion = $computeWordExpansion();
     const format = $readFormatFlags(selection, expansion);
     const hasSelectedText = expansion !== null
-        || ($isRangeSelection(selection) && selection.getTextContent() !== "");
+        || ($isRangeSelection(selection) && selection.getTextContent() !== "")
+        || $selectedHorizontalRule() !== null;
     const cell = $getEnclosingTableCellNode();
     const anchor = $isRangeSelection(selection) ? selection.anchor.getNode() : null;
     const block = anchor === null ? null : $findMatchingParent(anchor, $isMarkdownBlockNode);
@@ -7194,6 +7895,7 @@ const NEUTRAL_SELECTION_STATE: MarkdownEditorSelectionState = {
     hasSelectedText: false, linkUrl: null,
     canFormat: false, canStyle: false, canLink: false, canRemoveLink: false,
     canSetBlockType: false, canSetBlockLayout: false, canInsertTable: true, canInsertImage: true,
+    canInsertHorizontalRule: true,
     canEditTable: false, canMergeCells: false, canUnmergeCell: false,
     inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
 };
@@ -7208,6 +7910,7 @@ const NEUTRAL_SELECTION_STATE: MarkdownEditorSelectionState = {
 const NO_COMMAND_APPLIES: ReportedAvailability = {
     canFormat: false, canStyle: false, canLink: false, canRemoveLink: false,
     canSetBlockType: false, canSetBlockLayout: false, canInsertTable: false, canInsertImage: false,
+    canInsertHorizontalRule: false,
     canEditTable: false, canMergeCells: false, canUnmergeCell: false,
 };
 
@@ -8986,6 +9689,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 canSetBlockLayout:    false,
                 canInsertTable:       true,
                 canInsertImage:       true,
+                canInsertHorizontalRule: true,
                 canEditTable:         false,
                 canMergeCells:        false,
                 canUnmergeCell:       false,
@@ -9497,7 +10201,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         this.ensureEditor().update(() => {
             $editWritably(() => {
                 $selectEnclosingWordIfCollapsed();
-                $toggleLink(url);
+                $toggleLinkLeavingRules(url);
             });
         }, { discrete: true });
 
@@ -9730,8 +10434,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             const selection = $getSelection();
 
             if ($isRangeSelection(selection)) {
+                $removeHorizontalRulesAtRangeEnds(selection);
+                $settleSelectionOffContainers(selection);
                 $removeGuardedRange(selection);
                 selection.removeText();   // a no-op on a collapsed selection
+            } else if ($isNodeSelection(selection)) {
+                selection.deleteNodes();
             }
         }, { discrete: true });
 
@@ -10063,7 +10771,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * first row is the header row, so `insertTable(2, 3)` gives a header row
      * plus one body row. The caret lands in the first header cell. Without
      * a text selection — none at all, or table cells selected — the table
-     * goes in at the document's end.
+     * goes in at the document's end. With a horizontal rule selected it goes in
+     * directly after the rule, in the rule's own parent.
      *
      * No-op, leaving the selection as it is, when the selection touches a raw
      * Markdown block or a code block (or, without a text selection, the
@@ -10106,6 +10815,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         // another table. The table is placed by $insertTableAt, which splits the caret's block only where both
         // halves hold content. The removal and the new table are one update, so one undo step.
         editor.update(() => {
+            // A selected horizontal rule is no caret: the table goes right after it.
+            const selectedRule = $selectedHorizontalRule();
+
+            if (selectedRule !== null) {
+                const table = $createTableNodeWithDimensions(rows, columns, { rows: true, columns: false });
+
+                $insertBlockAfterRule(selectedRule, table);
+                table.selectStart();
+
+                return;
+            }
+
             const initial = $getSelection();
             const moved = $settleSelectionOffContainers(initial);
             const isTableEdge = $isTableEdgeRange(initial);
@@ -10135,9 +10856,86 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * Inserts a horizontal rule at the caret, as {@link MarkdownEditor.insertTable | insertTable}
+     * places a table: the block holding the caret is split only where the
+     * caret is inside its content, so no empty quote, heading or list item is
+     * left beside the rule; in a quote the rule goes into the quote, the block
+     * split around it; a rule that ends its container is followed by an empty
+     * paragraph, and the caret lands at the start of the block after the rule.
+     * A range is removed first, as a typed character would. With a rule
+     * selected, the new rule goes after it. Without a text selection — none at
+     * all, or table cells selected — the rule goes in at the document's end.
+     * The rule is saved as `---`.
+     *
+     * No-op, leaving the selection as it is, where `insertTable` is: when the
+     * selection touches a raw Markdown block or a code block (or, without a
+     * text selection, the document ends in one), and when it lies inside a
+     * table, whose cells hold no rule. `canInsertHorizontalRule` reports
+     * whether the rule would go in.
+     *
+     * In `"source"` mode, inserts a `---` line above the block holding the
+     * caret instead, and does nothing on a blank line inside a list or a
+     * quote, where the rule would split it.
+     *
+     * @returns This component, for method chaining.
+     */
+    insertHorizontalRule(): this {
+        const handledBySource = this.editSource(horizontalRuleSource());
+
+        if (handledBySource) { return this; }
+
+        const applies = this.commandApplies("canInsertHorizontalRule");
+
+        if (!applies) { return this; }
+
+        this.ensureEditor().update(() => {
+            // A selected rule is no caret: the new one goes right after it.
+            const selectedRule = $selectedHorizontalRule();
+
+            if (selectedRule !== null) {
+                const rule = $createMarkdownHorizontalRuleNode();
+
+                $insertBlockAfterRule(selectedRule, rule);
+                rule.getNextSibling()!.selectStart();
+
+                return;
+            }
+
+            // The rules at a range's ends go with the range.
+            $removeHorizontalRulesAtRangeEnds($getSelection());
+
+            const initial = $getSelection();
+            const moved = $settleSelectionOffContainers(initial);
+            const isTableEdge = $isTableEdgeRange(initial);
+
+            if (isTableEdge) {
+                $joinCoveredItemTexts(initial);
+                $removeTableEdgeRange(initial, $holdsNoTable);
+            } else if ($isRangeSelection(initial) && !initial.isCollapsed()) {
+                $removeRangeBeforeImage(initial);
+            } else if (!$isRangeSelection(initial)) {
+                $getRoot().selectEnd();
+            }
+
+            const selection = $getSelection();
+            // A point moved off a `:::` block, or between two blocks, may have settled where no rule goes (a code block).
+            const declinedOnceSettled = moved && !$tableInsertApplies($selectionTouchesTextOnlyBlock());
+
+            if (!$isRangeSelection(selection) || declinedOnceSettled) {
+                return;
+            }
+
+            $insertHorizontalRuleAt(selection.focus);
+        }, { discrete: true });
+
+        return this;
+    }
+
+    /**
      * Inserts a sized, validated image at the caret. Without a text
      * selection — none at all, or table cells selected — the image goes in
-     * at the document's end.
+     * at the document's end. With a horizontal rule selected it goes in a
+     * paragraph of its own directly after the rule, in the rule's own parent.
      *
      * No-op, leaving the selection as it is, when `src` fails the scheme
      * allow-list — never inserts a broken or unsafe image — when `alt` holds
@@ -10183,6 +10981,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 return;
             }
 
+            // A selected horizontal rule is no caret: the image goes in a paragraph of its own right after it.
+            const selectedRule = $selectedHorizontalRule();
+
+            if (selectedRule !== null) {
+                const image = $createMarkdownImageNode(spec);
+
+                selectedRule.insertAfter($createParagraphNode().append(image));
+                image.selectNext();
+
+                return;
+            }
+
             let selection = $getSelection();
 
             if (!$isRangeSelection(selection)) {
@@ -10199,6 +11009,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                     return;
                 }
 
+                $removeHorizontalRulesAtRangeEnds(selection);
                 $removeRangeBeforeImage(selection);
                 selection.insertNodes([$createMarkdownImageNode(spec)]);
             }
@@ -10750,6 +11561,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             registerTextOnlyBlockRules(editor),
             registerItemTextPaste(editor),
             registerRangeGuards(editor),
+            registerHorizontalRuleSelection(editor),
             registerWritableFormatCommand(editor),
             ...(onCommit === null ? [] : [editor.registerUpdateListener(onCommit)]),
             // Last: its listeners go in front of every other one for their commands.
@@ -11254,6 +12066,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                         { separator: true },
                         { text: "Table", enabled: availability.canInsertTable, action: () => this.insertTable(2, 3) },
                         { text: "Image…", enabled: availability.canInsertImage, action: () => void this.promptAndInsertImage() },
+                        { text: "Horizontal rule", enabled: availability.canInsertHorizontalRule, action: () => this.insertHorizontalRule() },
                     ],
                 },
             },

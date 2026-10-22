@@ -497,6 +497,17 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         ['5.19', '- one\n\ttwo', 8, 8, 'bulleted', 'one\ntwo', null],
         ['5.20', '- a\n\t- b c', 7, 7, 'bold', '- a\n  - **b** c', null],
         // A quote is a quote node in the model, so a command acts in it as it acts on the WYSIWYG surface.
+        // A range over a horizontal rule is acted on, the rule left where it stands.
+        ['5.25', 'one\n\n---\n\ntwo', 1, 11, 'bulleted', '- one\n\n---\n\n- two', null],
+        // A caret on a rule's line selects the rule, and an image then goes in after it.
+        ['a rule\'s line, an image goes in a paragraph of its own after the rule', 'one\n\n---\n\ntwo', 6, 6, 'image', 'one\n\n---\n\n![pic](/i.png)\n\ntwo', null],
+        // A link over a range that crosses a rule links the text of each block and leaves the rule.
+        ['a link over a range that crosses a rule', 'one\n\n---\n\ntwo', 0, 13, 'link', '[one](https://example.com/x)\n\n---\n\n[two](https://example.com/x)', null],
+        ['a link over a range that crosses a rule in a list item', '- a\n\n  ---\n\n  b', 2, 15, 'link', '- [a](https://example.com/x)\n\n  ---\n\n  [b](https://example.com/x)', null],
+        ['a range over one of two adjacent rule lines, the image replaces that rule alone', 'one\n\n---\n\n***\n\ntwo', 5, 8, 'image', 'one\n\n![pic](/i.png)\n\n***\n\ntwo', null],
+        ['a rule\'s line before a table, the image stays out of the table', 'one\n\n---\n\n| h |\n| - |\n| c |', 6, 6, 'image', 'one\n\n---\n\n![pic](/i.png)\n\n| h |\n| - |\n| c |', null],
+        ['a rule\'s line before a list, the image stays out of the item', 'one\n\n---\n\n- b', 6, 6, 'image', 'one\n\n---\n\n![pic](/i.png)\n\n- b', null],
+        ['a rule\'s line before a quote, the image stays out of the quote', 'one\n\n---\n\n> b', 6, 6, 'image', 'one\n\n---\n\n![pic](/i.png)\n\n> b', null],
         ['5.24', '> - one\n> - two', 5, 5, 'bulleted', '> one\n>\n> - two', null],
         ['5.24', '> - one\n> - two', 5, 5, 'numbered', '> 1. one\n>\n> - two', null],
         ['5.32', '> a\n>\n> b', 9, 9, 'quote', '> a\n\nb', null],
@@ -594,6 +605,7 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         const commands: Array<[string, (editor: MarkdownEditor) => unknown]> = [
             ...Object.entries(COMMANDS),
             ['insertTable', (editor) => editor.insertTable(2, 2)],
+            ['insertHorizontalRule', (editor) => editor.insertHorizontalRule()],
             ['insertParagraphBeforeBlock', (editor) => editor.insertParagraphBeforeBlock()],
             ['insertParagraphAfterBlock', (editor) => editor.insertParagraphAfterBlock()],
         ];
@@ -637,7 +649,9 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
     });
 
     const DECLINES: Array<[id: string, doc: string, from: number, to: number, commands: string[], why: string]> = [
-        ['5.25', 'one\n\n---\n\ntwo', 1, 11, ['bulleted'], 'the selection touches a raw block'],
+        // A caret on a horizontal rule's line selects the rule, so a format, block or link command finds no text to act on.
+        ['a rule\'s line selects the rule', 'one\n\n---\n\ntwo', 6, 6, ['bulleted', 'h2', 'bold'], 'a caret on a rule\'s line'],
+        ['a rule\'s line in an item selects the rule', '- a\n\n  ---\n\n  b', 8, 8, ['h2'], 'a caret on a rule\'s line'],
         ['5.26', '<div>x</div>\n\ntwo', 6, 6, ['bulleted'], 'the selection touches a raw block'],
         ['5.27', 'one\n\ntwo', 4, 4, ['bold'], 'a caret on a blank line has no place'],
         ['5.28', '```\ncode\n```', 6, 6, ['bold'], 'the WYSIWYG command declines in a code block'],

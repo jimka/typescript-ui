@@ -13,6 +13,11 @@ import {
     LINK,
 } from "@lexical/markdown";
 import type { ElementTransformer, Transformer } from "@lexical/markdown";
+import { $isParagraphNode } from "lexical";
+import { $isTableCellNode } from "@lexical/table";
+import { $findMatchingParent } from "@lexical/utils";
+import { $createMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
+import { $isMarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
 import { UNDERLINE } from "~/component/editor/markdownStyleTransformers.js";
 
 /**
@@ -23,6 +28,43 @@ import { UNDERLINE } from "~/component/editor/markdownStyleTransformers.js";
 export const ORDERED_LIST_SHORTCUT: ElementTransformer = {
     ...ORDERED_LIST,
     regExp: /^(\s*)(\d{1,9})\.\s/,
+};
+
+/**
+ * `---`, `***` or `___` (three or more of one), then a space or Enter, alone
+ * in a paragraph that holds nothing else: a horizontal rule. The rule is put
+ * before the paragraph and keeps the line as typed; the paragraph stays to hold
+ * the caret. Applied nowhere else: not in a heading, an
+ * item's text or a table cell, where Lexical would otherwise run it, since an
+ * element shortcut runs on any block whose parent is a root or a shadow root.
+ *
+ * The spaced forms (`- - -`, `* * *`) are not shortcuts: `- ` and `* ` start
+ * a list first.
+ */
+export const HORIZONTAL_RULE_SHORTCUT: ElementTransformer = {
+    dependencies: [],
+    // The editor saves through its own serializer; like every entry here, this one is only typed.
+    export:       () => null,
+    regExp:       /^(?:-{3,}|\*{3,}|_{3,})\s?$/,
+    replace:      (block, children, match): false | undefined => {
+        const isPlainParagraph = $isParagraphNode(block) && !$isMarkdownListItemTextNode(block);
+        const inTableCell = $findMatchingParent(block, $isTableCellNode) !== null;
+
+        // The marker must be all the paragraph holds: bold, a link, an image or a break after it is other content.
+        const holdsOtherContent = children.length > 0;
+
+        if (!isPlainParagraph || inTableCell || holdsOtherContent) {
+            return false;
+        }
+
+        block.insertBefore($createMarkdownHorizontalRuleNode(match[0]!.trim()));
+        block.clear();
+        block.selectStart();
+
+        return undefined;
+    },
+    triggerOnEnter: true,
+    type:           "element",
 };
 
 /**
@@ -45,11 +87,13 @@ export const ORDERED_LIST_SHORTCUT: ElementTransformer = {
  * - `STRIKETHROUGH` → `~~s~~` (del)
  * - `LINK` → `[t](url)` (link)
  * - `UNDERLINE` → `++u++` (underline)
+ * - `HORIZONTAL_RULE_SHORTCUT` → `---` (horizontal rule)
  */
 export const SHORTCUT_TRANSFORMERS: Transformer[] = [
     HEADING,
     QUOTE,
     CODE,
+    HORIZONTAL_RULE_SHORTCUT,
     UNORDERED_LIST,
     ORDERED_LIST_SHORTCUT,
     BOLD_STAR,

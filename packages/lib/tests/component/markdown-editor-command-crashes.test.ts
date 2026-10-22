@@ -1244,7 +1244,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
     type Route =
         | 'Delete' | 'Backspace' | 'word delete' | 'REMOVE_TEXT_COMMAND' | 'cut()' | 'CUT_COMMAND' | 'type' | 'IME start' | 'drop insert'
         | 'Enter' | 'INSERT_PARAGRAPH_COMMAND' | 'Shift+Enter' | 'Tab' | 'PASTE_COMMAND' | 'paste()' | 'paste nodes' | 'paste blocks'
-        | 'insertImage' | 'insertTable';
+        | 'insertImage' | 'insertTable' | 'insertHorizontalRule';
 
     /** A selection shape: a document, the range's two ends in document order, and what typing `x` over it and Delete give. */
     interface Shape {
@@ -1350,7 +1350,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
     ];
 
     /** The routes that are a method of the editor: they start their own update. */
-    const METHOD_ROUTES: readonly Route[] = ['cut()', 'paste()', 'paste nodes', 'paste blocks', 'insertImage', 'insertTable'];
+    const METHOD_ROUTES: readonly Route[] = ['cut()', 'paste()', 'paste nodes', 'paste blocks', 'insertImage', 'insertTable', 'insertHorizontalRule'];
 
     /** Every way a row is run: the range dragged forward and backward, the command dispatched outside an update and inside one. */
     const VARIANTS: ReadonlyArray<readonly [backward: boolean, inUpdate: boolean]> = [[false, false], [false, true], [true, false], [true, true]];
@@ -1465,6 +1465,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
                 break;
             case 'insertImage': editor.insertImage('/i.png', { alt: 'i' }); break;
             case 'insertTable': editor.insertTable(2, 2); break;
+            case 'insertHorizontalRule': editor.insertHorizontalRule(); break;
         }
     }
 
@@ -1548,6 +1549,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         ['TE1', 'IME start', '<div>\nra\u200bh **ij** kl [a](u) \\*x\\*\n\nafter'],
         ['TE1', 'insertImage', '<div>\nraw text\n</div>\n\nefgh **ij** kl [a](u) \\*x\\*\n\nafter'],
         ['TE1', 'insertTable', '<div>\nraw text\n</div>\n\nefgh **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE1', 'insertHorizontalRule', '<div>\nraw text\n</div>\n\nefgh **ij** kl [a](u) \\*x\\*\n\nafter'],
         ['TE2', 'Delete', '**ij** kl [a](u) \\*x\\*\n\nafter'],
         ['TE2', 'Backspace', '**ij** kl [a](u) \\*x\\*\n\nafter'],
         ['TE2', 'word delete', '**ij** kl [a](u) \\*x\\*\n\nafter'],
@@ -1566,6 +1568,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         ['TE2', 'IME start', '**\u200bij** kl [a](u) \\*x\\*\n\nafter'],
         ['TE2', 'insertImage', '<div>\nraw text\n</div>\n\nefgh **ij** kl [a](u) \\*x\\*\n\nafter'],
         ['TE2', 'insertTable', '<div>\nraw text\n</div>\n\nefgh **ij** kl [a](u) \\*x\\*\n\nafter'],
+        ['TE2', 'insertHorizontalRule', '<div>\nraw text\n</div>\n\nefgh **ij** kl [a](u) \\*x\\*\n\nafter'],
         ['TE7', 'Delete', '\\<fter'],
         ['TE7', 'Backspace', '\\<fter'],
         ['TE7', 'word delete', '\\<fter'],
@@ -1584,6 +1587,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         ['TE7', 'IME start', '<\u200bfter'],
         ['TE7', 'insertImage', '<div>\nraw text\n</div>\n\nafter'],
         ['TE7', 'insertTable', '<div>\nraw text\n</div>\n\nafter'],
+        ['TE7', 'insertHorizontalRule', '<div>\nraw text\n</div>\n\nafter'],
         ['TE11', 'Delete', 'efgw text\\\n\\</div>\n\nafter'],
         ['TE11', 'Backspace', 'efgw text\\\n\\</div>\n\nafter'],
         ['TE11', 'word delete', 'efgw text\\\n\\</div>\n\nafter'],
@@ -1602,6 +1606,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         ['TE11', 'IME start', 'efg\u200bw text\\\n\\</div>\n\nafter'],
         ['TE11', 'insertImage', 'efgh **ij** kl [a](u) \\*x\\*\n\n<div>\nraw text\n</div>\n\nafter'],
         ['TE11', 'insertTable', 'efgh **ij** kl [a](u) \\*x\\*\n\n<div>\nraw text\n</div>\n\nafter'],
+        ['TE11', 'insertHorizontalRule', 'efgh **ij** kl [a](u) \\*x\\*\n\n<div>\nraw text\n</div>\n\nafter'],
         ['TE42', 'Delete', '\\<!-- cfter\n\nmore'],
         ['TE42', 'Backspace', '\\<!-- cfter\n\nmore'],
         ['TE42', 'word delete', '\\<!-- cfter\n\nmore'],
@@ -1620,6 +1625,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         ['TE42', 'IME start', '\\<!-- c\u200bfter\n\nmore'],
         ['TE42', 'insertImage', '<!-- c1\nc2 -->\n\nafter\n\nmore'],
         ['TE42', 'insertTable', '<!-- c1\nc2 -->\n\nafter\n\nmore'],
+        ['TE42', 'insertHorizontalRule', '<!-- c1\nc2 -->\n\nafter\n\nmore'],
         ['TE43', 'Delete', '- one\n\n  \\<!-- cara\n\n  more\n\n- z\n\nafter'],
         ['TE43', 'Backspace', '- one\n\n  \\<!-- cara\n\n  more\n\n- z\n\nafter'],
         ['TE43', 'word delete', '- one\n\n  \\<!-- cara\n\n  more\n\n- z\n\nafter'],
@@ -1638,6 +1644,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         ['TE43', 'IME start', '- one\n\n  \\<!-- c\u200bara\n\n  more\n\n- z\n\nafter'],
         ['TE43', 'insertImage', '- one\n\n  <!-- c1\n  c2 -->\n\n  para\n\n  more\n- z\n\nafter'],
         ['TE43', 'insertTable', '- one\n\n  <!-- c1\n  c2 -->\n\n  para\n\n  more\n- z\n\nafter'],
+        ['TE43', 'insertHorizontalRule', '- one\n\n  <!-- c1\n  c2 -->\n\n  para\n\n  more\n- z\n\nafter'],
         ['TE44', 'Delete', '\\<!-- cwo\n\npq\n\n- z\n\nafter'],
         ['TE44', 'Backspace', '\\<!-- cwo\n\npq\n\n- z\n\nafter'],
         ['TE44', 'word delete', '\\<!-- cwo\n\npq\n\n- z\n\nafter'],
@@ -1656,6 +1663,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         ['TE44', 'IME start', '\\<!-- c\u200bwo\n\npq\n\n- z\n\nafter'],
         ['TE44', 'insertImage', '<!-- c1\nc2 -->\n\n- two\n\n  pq\n- z\n\nafter'],
         ['TE44', 'insertTable', '<!-- c1\nc2 -->\n\n- two\n\n  pq\n- z\n\nafter'],
+        ['TE44', 'insertHorizontalRule', '<!-- c1\nc2 -->\n\n- two\n\n  pq\n- z\n\nafter'],
         ['TE62', 'Delete', 'last'],
         ['TE62', 'Backspace', 'last'],
         ['TE62', 'word delete', 'last'],
@@ -1673,7 +1681,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
         ['TE62', 'IME start', '\u200b\n\nlast'],
     ])('%s, %s', async (id, route, expected) => {
         const shape = shapeOfId(id);
-        const declines = route === 'insertImage' || route === 'insertTable';
+        const declines = route === 'insertImage' || route === 'insertTable' || route === 'insertHorizontalRule';
 
         for (const [backward, inUpdate] of VARIANTS) {
             const isRepeat = METHOD_ROUTES.includes(route) && inUpdate;
@@ -2102,6 +2110,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
     const ALL_ROUTES: readonly Route[] = [
         'Delete', 'Backspace', 'word delete', 'REMOVE_TEXT_COMMAND', 'cut()', 'CUT_COMMAND', 'type', 'IME start', 'drop insert', 'Enter',
         'INSERT_PARAGRAPH_COMMAND', 'Shift+Enter', 'Tab', 'PASTE_COMMAND', 'paste()', 'paste nodes', 'paste blocks', 'insertImage', 'insertTable',
+        'insertHorizontalRule',
     ];
 
     // The read-only editor refuses each route before any guard of a range sees it: the document and the selection stay
@@ -2191,10 +2200,10 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
     });
 
     it('TU1: a typed character that completes a typing shortcut in the block the removal leaves applies it as a step of its own', async () => {
-        const source = '---\n\nafter word';
+        const source = '- a\n  > q\n\nafter word';
         const editor = load(source);
 
-        selectText(editor, ['---', 1], ['after word', 2]);
+        selectText(editor, ['- a', 1], ['after word', 2]);
         // The removal shows the raw block as the paragraph `-ter word`; the space then makes it a list item's marker.
         lexicalOf(editor).update(() => { lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, ' '); }, { discrete: true });
 
@@ -2222,7 +2231,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
     const POINT_ROUTES: readonly Route[] = [
         'Delete', 'Backspace', 'word delete', 'REMOVE_TEXT_COMMAND', 'cut()', 'type', 'IME start', 'drop insert', 'Enter',
         'INSERT_PARAGRAPH_COMMAND', 'Shift+Enter', 'Tab', 'PASTE_COMMAND', 'paste()', 'paste nodes', 'paste blocks', 'insertImage',
-        'insertTable',
+        'insertTable', 'insertHorizontalRule',
     ];
 
     /**
@@ -2269,7 +2278,7 @@ describe('a range that leaves a raw Markdown block or a code block is removed th
     function outcomeOf(editor: MarkdownEditor, route: Route): string {
         const value = editor.getValue();
         const nodes = JSON.stringify(lexicalOf(editor).getEditorState().toJSON());
-        const declines = route === 'insertImage' || route === 'insertTable';
+        const declines = route === 'insertImage' || route === 'insertTable' || route === 'insertHorizontalRule';
 
         return [value, nodes, declines ? '' : rangeOf(editor)].join('\n');
     }
@@ -2678,7 +2687,7 @@ describe('a join into a code block or raw block writes what the joined block hel
         // the same), and is a known issue of its own. The rows pin what is shown.
         // Regression row (passes on the base): whitespace the rest opens a raw block's line with is indentation, not text the first
         // character follows.
-        ['K5', '***\n\nx # y', ['***', 0], ['x # y', 1], '\\# y', ['paragraph: # y']],
+        ['K5', '<div></div>\n\nx # y', ['<div></div>', 0], ['x # y', 1], '\\# y', ['paragraph: # y']],
         // Regression rows (pass on the base): a rest joined right after a raw quote's or list's container markers or a
         // continuation line's indentation opens a line there, so its line-start escape stays.
         ['K14', '- a\n  > q\n\n\\> x', ['- a', 2], ['> x', 0], '- \\> x'],
@@ -2700,23 +2709,23 @@ describe('a join into a code block or raw block writes what the joined block hel
         ['an emptied top-level item keeps its dash', '- a\n- b\n  > q\n\nafter', ['- b', 2], ['after', 5], '- a\n-'],
         ['an emptied item in a quote keeps its dash', '> a\n> - b\n>   > q\n\nafter', ['- b', 2], ['after', 5], '> a\n>\n> -'],
         // The whitespace a rest opens a raw block's line with is kept only as far as the line still reads as the rest's own text.
-        ['a tab a rest opens a line with', '***\n\nx\t# y', ['***', 0], ['x\t# y', 1], '\\# y', ['paragraph: # y']],
-        ['four spaces a rest opens a line with', '***\n\nx    # y', ['***', 0], ['x    # y', 1], '\\# y', ['paragraph: # y']],
-        ['two tabs a rest opens a line with', '***\n\nx\t\tyy', ['***', 0], ['x\t\tyy', 1], 'yy', ['paragraph: yy']],
+        ['a tab a rest opens a line with', '<div></div>\n\nx\t# y', ['<div></div>', 0], ['x\t# y', 1], '\\# y', ['paragraph: # y']],
+        ['four spaces a rest opens a line with', '<div></div>\n\nx    # y', ['<div></div>', 0], ['x    # y', 1], '\\# y', ['paragraph: # y']],
+        ['two tabs a rest opens a line with', '<div></div>\n\nx\t\tyy', ['<div></div>', 0], ['x\t\tyy', 1], 'yy', ['paragraph: yy']],
         ['spaces after a list marker', '- a\n  > q\n\nx    y', ['- a', 2], ['x    y', 1], '- y'],
-        ['a space completing a bare star', '***\n\nx\t# y', ['***', 1], ['x\t# y', 1], '* \\# y'],
+        ['a space completing a bare star', '* a\n  > q\n\nx\t# y', ['* a', 1], ['x\t# y', 1], '* \\# y'],
         ['spaces completing a bare dash', '- a\n  > q\n  > r\n\nx    # y', ['- a', 1], ['x    # y', 1], '- \\# y'],
         ['a tab completing a bare dash', '- a\n  - b\n    > q\n  - c\n\nx  \t- y', ['  - b', 3], ['x  \t- y', 1], '- a\n  - \\- y'],
-        ['four spaces a later HTML block\'s line opens with', '***\n\n<div>\n    y\n</div>', ['***', 0], ['    y', 0], 'y\n\n</div>'],
-        ['a heading marker a later HTML block\'s line opens with', '***\n\n<div>\n# y\n</div>', ['***', 0], ['# y', 0], '\\# y\n\n</div>'],
-        ['a later line of an HTML block that reads as a heading is left as it was', '***\n\n<div>\ny\n# z\n</div>', ['***', 0], ['y', 0], 'y\n\n# z\n\n</div>', ['paragraph:y', 'heading:z', 'markdown-raw-block:</div>']],
-        ['a later line of an HTML block that underlines the first line is left as it was', '***\n\n<div>\nx\n---\n</div>', ['***', 0], ['x', 0], '## x\n\n</div>', ['heading:x', 'markdown-raw-block:</div>']],
-        ['a later line of a code block that reads as a heading is left as it was', '***\n\n```\nx\n# y\n```', ['***', 0], ['x\n# y', 0], 'x\n\n# y', ['paragraph:x', 'heading:y']],
-        ['emphasis on the first line of an HTML block keeps its asterisks', '***\n\n<div>\n*y*\n# z\n</div>', ['***', 0], ['*y*', 0], '*y*\n\n# z\n\n</div>', ['paragraph:y', 'heading:z', 'markdown-raw-block:</div>']],
+        ['four spaces a later HTML block\'s line opens with', '<div></div>\n\n<div>\n    y\n</div>', ['<div></div>', 0], ['    y', 0], 'y\n\n</div>'],
+        ['a heading marker a later HTML block\'s line opens with', '<div></div>\n\n<div>\n# y\n</div>', ['<div></div>', 0], ['# y', 0], '\\# y\n\n</div>'],
+        ['a later line of an HTML block that reads as a heading is left as it was', '<div></div>\n\n<div>\ny\n# z\n</div>', ['<div></div>', 0], ['y', 0], 'y\n\n# z\n\n</div>', ['paragraph:y', 'heading:z', 'markdown-raw-block:</div>']],
+        ['a later line of an HTML block that underlines the first line is left as it was', '<div></div>\n\n<div>\nx\n---\n</div>', ['<div></div>', 0], ['x', 0], '## x\n\n</div>', ['heading:x', 'markdown-raw-block:</div>']],
+        ['a later line of a code block that reads as a heading is left as it was', '<div></div>\n\n```\nx\n# y\n```', ['<div></div>', 0], ['x\n# y', 0], 'x\n\n# y', ['paragraph:x', 'heading:y']],
+        ['emphasis on the first line of an HTML block keeps its asterisks', '<div></div>\n\n<div>\n*y*\n# z\n</div>', ['<div></div>', 0], ['*y*', 0], '*y*\n\n# z\n\n</div>', ['paragraph:y', 'heading:z', 'markdown-raw-block:</div>']],
         ['an emptied nested item before a later HTML block\'s line end', '- a\n  - b\n    > q\n  - c\n\n<div>\n    y\n</div>', ['  - b', 4], ['    y', 5], '- a\n  *\n\n</div>'],
         ['a heading marker joined after a bare list marker is escaped', '- a\n  - b\n    > q\n  - c\n\n<div>\n# y\n</div>', ['  - b', 4], ['# y', 0], '- a\n  - \\# y\n\n</div>'],
-        ['a fence an HTML block line opens with is escaped', '***\n\n<div>\n```\nq\n</div>', ['***', 0], ['```', 0], '\\```\nq\n\n</div>', ['paragraph:``` q', 'markdown-raw-block:</div>']],
-        ['a list number an HTML block line opens with is left as it was', '***\n\n<div>\n1. y\n</div>', ['***', 0], ['1. y', 0], '1. y\n\n</div>', ['list:y', 'markdown-raw-block:</div>']],
+        ['a fence an HTML block line opens with is escaped', '<div></div>\n\n<div>\n```\nq\n</div>', ['<div></div>', 0], ['```', 0], '\\```\nq\n\n</div>', ['paragraph:``` q', 'markdown-raw-block:</div>']],
+        ['a list number an HTML block line opens with is left as it was', '<div></div>\n\n<div>\n1. y\n</div>', ['<div></div>', 0], ['1. y', 0], '1. y\n\n</div>', ['list:y', 'markdown-raw-block:</div>']],
         ['a tab at an HTML block\'s line start', '<div>\nraw\n</div>\n\nx\t# y', ['raw', 0], ['x\t# y', 1], '<div>\n \\# y'],
     ];
 
@@ -2756,12 +2765,12 @@ describe('a join into a code block or raw block writes what the joined block hel
         ['J28', 'typing', CODE + '### alpha \\#', ['code', 4], ['alpha #', 0], '```\ncodeZalpha \\#\n```'],
         ['J29', 'typing', RAW + 'a * b', ['</div>', 6], ['a * b', 0], '<div>\nraw\n</div>Za \\* b'],
         ['typing over an emptied nested item', 'typing', '- a\n  - b\n    > q\n  - c\n\nafter', ['  - b', 4], ['after', 5], '- a\n  * Z'],
-        ['typing over four spaces a later HTML block\'s line opens with', 'typing', '***\n\n<div>\n    y\n</div>', ['***', 0], ['    y', 0], 'Z y\n\n</div>'],
-        ['typing over a heading marker a later HTML block\'s line opens with', 'typing', '***\n\n<div>\n# y\n</div>', ['***', 0], ['# y', 0], 'Z# y\n\n</div>'],
-        ['typing over four spaces a later code block\'s line opens with', 'typing', '***\n\n```\n    y\n```', ['***', 0], ['    y', 0], 'Z y'],
-        ['typing over a heading marker a later code block\'s line opens with', 'typing', '***\n\n```\n# y\n```', ['***', 0], ['# y', 0], 'Z# y'],
-        ['typing over a tab a rest opens a line with', 'typing', '***\n\nx\t# y', ['***', 0], ['x\t# y', 1], 'Z # y'],
-        ['typing from a thematic break into a list item', 'typing', '***\n\n- x # y', ['***', 0], ['x # y', 1], 'Z # y'],
+        ['typing over four spaces a later HTML block\'s line opens with', 'typing', '<div></div>\n\n<div>\n    y\n</div>', ['<div></div>', 0], ['    y', 0], 'Z y\n\n</div>'],
+        ['typing over a heading marker a later HTML block\'s line opens with', 'typing', '<div></div>\n\n<div>\n# y\n</div>', ['<div></div>', 0], ['# y', 0], 'Z# y\n\n</div>'],
+        ['typing over four spaces a later code block\'s line opens with', 'typing', '<div></div>\n\n```\n    y\n```', ['<div></div>', 0], ['    y', 0], 'Z y'],
+        ['typing over a heading marker a later code block\'s line opens with', 'typing', '<div></div>\n\n```\n# y\n```', ['<div></div>', 0], ['# y', 0], 'Z# y'],
+        ['typing over a tab a rest opens a line with', 'typing', '<div></div>\n\nx\t# y', ['<div></div>', 0], ['x\t# y', 1], 'Z # y'],
+        ['typing from a raw block into a list item', 'typing', '<div></div>\n\n- x # y', ['<div></div>', 0], ['x # y', 1], 'Z # y'],
     ];
 
     it.each(ROUTE_ROWS)('%s: %s over the range writes what Delete writes, either way round', (_row, routeName, source, start, end, saved) => {
@@ -2859,9 +2868,9 @@ describe('a join into a code block or raw block writes what the joined block hel
 });
 
 describe('a removal out of a raw block makes no heading or code block of what is left', () => {
-    /** Raw blocks a removal can start in: lists holding a quote, a thematic break, an HTML block, a quote holding a list. */
+    /** Raw blocks a removal can start in: lists holding a quote, an HTML block, a quote holding a list. */
     const RAW_BLOCKS = [
-        '- a\n  - b\n    > q\n  - c', '- a\n  b\n  - c\n    > q', '1. a\n   - b\n     > q', '- a\n  > q\n  > r', '***', '<div>\nw\n</div>', '> a\n> - b\n>   > q',
+        '- a\n  - b\n    > q\n  - c', '- a\n  b\n  - c\n    > q', '1. a\n   - b\n     > q', '- a\n  > q\n  > r', '* a\n  > q', '<div>\nw\n</div>', '> a\n> - b\n>   > q',
     ];
 
     /**

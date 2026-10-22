@@ -82,6 +82,9 @@ const NESTED_SOURCES: readonly string[] = [
     '::: columns\n> l\n>\n> m\n|||\nn\n:::',
     '> ~~~\n> code\n> ~~~\n>\n> | a  | b |\n> |----|---|\n> | 1  | 2 |',
     '>  1. one\n>  2. two\n>\n>  text',
+    '- a\n\n  ***\n- b',
+    '> a\n>\n> ---\n>\n> b',
+    '::: columns\n---\n|||\nb\n:::',
 ];
 
 /** The documents the fuzz runs over: the corpus, then the nested documents. */

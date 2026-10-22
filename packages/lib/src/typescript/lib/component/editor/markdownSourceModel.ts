@@ -10,7 +10,8 @@ import { locateTopLevelBlocks } from "~/component/editor/markdownImporter.js";
 import type { TopLevelBlock } from "~/component/editor/markdownImporter.js";
 import type { WrittenBlockPlace } from "~/component/editor/markdownSerializer.js";
 import type { MarkdownSourceMap } from "~/component/editor/markdownSourceMap.js";
-import { $blockBesideLine, $placeOfSourceOffset, $sourceOffsetOfPoint, $standsBetweenBlocksIn } from "~/component/editor/markdownSourcePlaces.js";
+import { $selectNodeAlone } from "~/component/editor/markdownHorizontalRuleNode.js";
+import { $blockBesideLine, $horizontalRuleAtSourceOffset, $placeOfSourceOffset, $sourceOffsetOfPoint, $standsBetweenBlocksIn } from "~/component/editor/markdownSourcePlaces.js";
 import type { BetweenBlocksPlace, SourcePlace } from "~/component/editor/markdownSourcePlaces.js";
 
 /**
@@ -344,6 +345,28 @@ function movedAcrossEdge(text: string, spans: readonly LoadedBlockSpan[], offset
 }
 
 /**
+ * Selects the horizontal rule whose line a collapsed source caret is on, if
+ * there is one: a node selection of that rule alone.
+ *
+ * @param text - The imported text.
+ * @param spans - Where each top-level block of the import stands in `text`.
+ * @param offset - The caret's offset in `text`.
+ * @returns Whether a rule was selected.
+ */
+function $selectRuleAtCaret(text: string, spans: readonly LoadedBlockSpan[], offset: number): boolean {
+    const span = spanHolding(spans, offset);
+    const rule = span === undefined ? null : $horizontalRuleAtSourceOffset(text, offset, span.block, span.start, span.end);
+
+    if (rule === null) {
+        return false;
+    }
+
+    $selectNodeAlone(rule);
+
+    return true;
+}
+
+/**
  * Selects, in the tree an import of `text` just built, the range a source
  * selection `from`–`to` covers, and may add one block to the tree to do it.
  *
@@ -354,6 +377,11 @@ function movedAcrossEdge(text: string, spans: readonly LoadedBlockSpan[], offset
  *   item, quote or `:::` column has no place either; a range end there moves
  *   inward, as between top-level blocks, and across the container's edge to
  *   the block beside it where the container has no block on that side.
+ * - A collapsed caret on a horizontal rule's line selects the rule, as a
+ *   click on it does on the WYSIWYG surface, so a command then does what it
+ *   does with the rule selected: every format, link and block command
+ *   declines, and an image goes in after the rule. A range whose ends lie on
+ *   rule lines is placed as any other.
  * - A caret in a block that shows nothing (an empty heading, item, quote or
  *   code block; a text of blank lines alone) stands in the empty element of
  *   that block, when it has just one; a block with several (three empty
@@ -374,6 +402,11 @@ function movedAcrossEdge(text: string, spans: readonly LoadedBlockSpan[], offset
  */
 export function $selectSourceRange(text: string, sourceMap: MarkdownSourceMap, from: number, to: number): boolean {
     const spans = $loadedBlockSpans(sourceMap, text.length);
+
+    if (spans !== null && from === to && $selectRuleAtCaret(text, spans, from)) {
+        return true;
+    }
+
     const range = spans === null || from === to ? { from, to } : movedInward(spans, from, to);
     const isUnpaired = spans === null && sourceMap.latest.blockCount === 1;
 

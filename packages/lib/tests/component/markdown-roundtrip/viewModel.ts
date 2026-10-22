@@ -19,6 +19,7 @@ import {
 import type { MarkdownSpanStyle } from '~/component/display/markdownAttributes';
 import { $isMarkdownBlockNode, $isMarkdownColumnNode } from '~/component/editor/markdownBlockNode';
 import { $isMarkdownImageNode } from '~/component/editor/markdownImageNode';
+import { $isMarkdownHorizontalRuleNode } from '~/component/editor/markdownHorizontalRuleNode';
 import { listLooseState } from '~/component/editor/markdownNodeState';
 import { $isMarkdownRawBlockNode } from '~/component/editor/markdownSourceNodes';
 import type { MarkdownEditor } from '~/component/editor/MarkdownEditor';
@@ -47,6 +48,7 @@ export type Block =
     | { kind: 'code'; lang: string | null; text: string }
     | { kind: 'table'; widths: (number | null)[]; header: Cell[]; rows: Cell[][] }
     | { kind: 'fence'; textAlign: string | null; columnGap: string | null; columns: Block[][] }
+    | { kind: 'rule' }
     | { kind: 'raw'; text: string };
 
 /** What the viewer shows for a document: its blocks and the ids its headings get. */
@@ -329,6 +331,8 @@ function viewerBlock(token: Token): Block[] {
             return [viewerTable(token as unknown as MdTableToken)];
         case 'mdblock':
             return [viewerFence(token as unknown as MdBlockToken)];
+        case 'hr':
+            return [{ kind: 'rule' }];
         default:
             return [rawBlock(token.raw ?? '')];
     }
@@ -655,6 +659,10 @@ function editorBlock(node: LexicalNode): Block {
         return { kind: 'fence', textAlign: node.getAlign(), columnGap: node.getColumnGap(), columns: columns.map((column) => editorBlocks(column.getChildren())) };
     }
 
+    if ($isMarkdownHorizontalRuleNode(node)) {
+        return { kind: 'rule' };
+    }
+
     return rawBlock(node.getTextContent());
 }
 
@@ -877,6 +885,7 @@ export function blockOutline(blocks: Block[]): string {
             case 'heading':   return `h${block.depth}"${outlineRuns(block.runs)}"`;
             case 'code':      return `code"${outlineText(block.text)}"`;
             case 'raw':       return `raw"${outlineText(block.text)}"`;
+            case 'rule':      return 'rule';
             case 'quote':     return `quote[${blockOutline(block.blocks)}]`;
             case 'list':      return `${block.ordered ? 'ol' : 'ul'}${block.loose ? '!' : ''}[${block.items.map((item) => `li[${blockOutline(item)}]`).join(' ')}]`;
             default:          return block.kind;

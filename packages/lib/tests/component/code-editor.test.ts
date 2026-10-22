@@ -3947,6 +3947,10 @@ describe('built-in markdown language typing', () => {
         expect(await languageOutline('  >\t- a\n  >\t  b')).toBe('quote[ul[li[p]]]');
     });
 
+    it('HR1: a thematic break is a HorizontalRule node, which the editor theme mutes', async () => {
+        expect(await syntaxNodes('a\n\n---\n\nb')).toContain('HorizontalRule[3,6]');
+    });
+
     it('TAB22: a heading after a tab has the nodes of a heading after a space', async () => {
         expect(await syntaxNodes('#\tFoo *b* #')).toBe(await syntaxNodes('# Foo *b* #'));
     });

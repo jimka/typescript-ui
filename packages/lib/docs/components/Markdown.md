@@ -57,6 +57,7 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | `-`/`*` and `1.` lists | `<ul>`/`<ol>` with `<li>` items |
 | `- [ ] task`, `- [x] done` | an `<li>` whose text — in a loose list, whose first paragraph — starts with the literal `[ ]` / `[x]` marker — no checkbox |
 | `> quote` | `<blockquote>` |
+| `---`, `***` or `___` | `<hr>` — a horizontal rule, also in a list item, a quote and a `:::` column |
 | `[text](url)` | `<a href target="_blank" rel="noopener noreferrer">`; a link written around a link (`[[a](/in)](/out)`) is no link, and its brackets and destination show as text around the inner link |
 | `[text][label]`, `[label][]`, `[label]` | `<a>` whose href is the matching reference definition's URL; labels match by Unicode case folding with outer spaces ignored, and an undefined label renders as literal text |
 | `[label]: url "title"` | nothing — the definition only supplies a URL, wherever it sits (top level, blockquote, list item, `:::` fence) |
@@ -163,7 +164,7 @@ Every attribute value is validated against a per-key allow-list before it is app
 
 ### Fallback for unsupported tokens
 
-Any token type not in the v1 set — raw HTML, a thematic break (`---`, `***`, `___`), and the remaining GFM extensions (task lists) — falls through to a **defined fallback** that renders the token's plain text, so a thematic break shows as its literal `---` rather than a rule. It never crashes and never emits the corresponding element. Support for a new token type is added by extending the internal token switch, with no structural rewrite.
+Any token type not in the v1 set — raw HTML and the remaining GFM extensions (task lists) — falls through to a **defined fallback** that renders the token's plain text. It never crashes and never emits the corresponding element. Support for a new token type is added by extending the internal token switch, with no structural rewrite.
 
 ### Sizing
 

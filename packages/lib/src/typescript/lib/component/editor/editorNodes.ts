@@ -10,6 +10,7 @@ import { MarkdownListItemNode, MarkdownListItemTextNode } from "~/component/edit
 import { MarkdownQuoteNode } from "~/component/editor/markdownQuoteNode.js";
 import { MarkdownBlockNode, MarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
+import { MarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
 import { ReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor/markdownSourceNodes.js";
 
@@ -30,7 +31,8 @@ import { MarkdownRawBlockNode, MarkdownSourceTextNode } from "~/component/editor
  * fenced code (`CodeNode` + its `CodeHighlightNode` children), GFM tables
  * (`TableNode` + `TableRowNode` + `TableCellNode`), `:::` alignment /
  * column-region fences (`MarkdownBlockNode` + its `MarkdownColumnNode` column
- * children), sized images (`MarkdownImageNode`), and the Markdown kept as
+ * children), sized images (`MarkdownImageNode`), horizontal rules
+ * (`MarkdownHorizontalRuleNode`), and the Markdown kept as
  * source (`MarkdownSourceTextNode` inline, `MarkdownRawBlockNode` for a
  * block). The remaining dialect
  * constructs — bold, italic, inline code, paragraphs — are plain text formats
@@ -55,6 +57,7 @@ export const EDITOR_NODES: ReadonlyArray<Klass<LexicalNode> | LexicalNodeReplace
     MarkdownBlockNode,
     MarkdownColumnNode,
     MarkdownImageNode,
+    MarkdownHorizontalRuleNode,
     MarkdownSourceTextNode,
     MarkdownRawBlockNode,
 ];

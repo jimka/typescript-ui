@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readSourceSelectionState } from '~/component/editor/markdownSourceEdits';
-import { paragraphAroundBlockSource, tableSource } from '~/component/editor/markdownSourceLines';
+import { STANDARD_HORIZONTAL_RULE } from '~/component/editor/markdownHorizontalRuleNode';
+import { horizontalRuleSource, paragraphAroundBlockSource, tableSource } from '~/component/editor/markdownSourceLines';
 import type { MarkdownSourceEdit } from '~/component/editor/markdownSourceEdits';
 import { lexMarkdown } from '~/component/display/markdownExtensions';
 import { formatDelimiterRow } from '~/component/editor/markdownSerializer';
@@ -329,5 +330,48 @@ describe('a tab in a container prefix', () => {
         ['TB23: a quote in the second column of a fence', '::: {gap=2}\nx\n|||\n>\t**q** r\n:::'],
     ])('%s', (_title, bold) => {
         expect(readSourceSelectionState(bold, bold.indexOf('**') + 2, bold.indexOf('**') + 3).bold).toBe(true);
+    });
+});
+
+describe('horizontalRuleSource', () => {
+    it('puts a rule above the block holding the caret, a blank line apart, and keeps the caret on its character', () => {
+        const text = 'one\n\ntwo';
+        const edit = horizontalRuleSource()(text, 6, 6)!;
+
+        expect(apply(text, edit)).toBe('one\n\n---\n\ntwo');
+        expect(edit.selection).toEqual({ from: 11, to: 11 });
+    });
+
+    it('writes the line a rule made in the editor is saved as', () => {
+        expect(horizontalRuleSource()('', 0, 0)!.insert).toBe(STANDARD_HORIZONTAL_RULE + '\n\n');
+    });
+
+    it('needs no blank line above at the document\'s start', () => {
+        const text = 'abc';
+        const edit = horizontalRuleSource()(text, 1, 1)!;
+
+        expect(apply(text, edit)).toBe('---\n\nabc');
+        expect(edit.selection).toEqual({ from: 6, to: 6 });
+    });
+
+    it('separates the rule from a non-blank line above with one blank line', () => {
+        const text = '# T\nhello';
+
+        expect(apply(text, horizontalRuleSource()(text, 7, 7)!)).toBe('# T\n\n---\n\nhello');
+    });
+
+    it('declines on a blank line inside a list, and past a quote\'s first block', () => {
+        expect(horizontalRuleSource()('- a\n\n- b', 4, 4)).toBeNull();
+        expect(horizontalRuleSource()('> a\n>\n> b', 6, 6)).toBeNull();
+    });
+
+    it('goes into a column, between its blocks', () => {
+        const column = '::: columns\na\n\nb\n|||\nc\n:::';
+
+        expect(apply(column, horizontalRuleSource()(column, 15, 15)!)).toBe('::: columns\na\n\n---\n\nb\n|||\nc\n:::');
+    });
+
+    it('goes above the whole paragraph holding the caret, never into it', () => {
+        expect(apply('para\nhello', horizontalRuleSource()('para\nhello', 7, 7)!)).toBe('---\n\npara\nhello');
     });
 });

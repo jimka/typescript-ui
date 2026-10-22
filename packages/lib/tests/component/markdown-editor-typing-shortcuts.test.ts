@@ -70,6 +70,9 @@ const KINDS: readonly Kind[] = [
     ['a level 3 heading', '\\### ;cd', '\\### cd', '### cd'],
     ['a quote', '\\> ;cd', '\\> cd', '> cd'],
     ['a code fence', '\\`\\`\\` ;cd', '\\``` cd', '```\ncd\n```'],
+    ['a horizontal rule of dashes', '\\-\\-\\- ;', '\\---', '---'],
+    ['a horizontal rule of stars', '\\*\\*\\* ;', '\\***', '***'],
+    ['a horizontal rule of underscores', '\\_\\_\\_ ;', '\\___', '___'],
 ];
 
 /**
@@ -96,6 +99,8 @@ const HELD_KINDS: readonly HeldKind[] = [
     ['a code fence in a list item\'s further paragraph', '- a\n\n  \\`\\`\\` ;cd', '- a\n\n  ```\n  cd\n  ```', '- a\n\n  \\``` cd'],
     ['a bullet in a nested list item\'s further paragraph', '- a\n  - b\n\n    \\- ;cd', '- a\n  - b\n\n    - cd', '- a\n  - b\n\n    \\- cd'],
     ['a list number in a quote in a list item', '- a\n\n  > 1\\. ;cd', '- a\n\n  > 1. cd', '- a\n\n  > 1\\. cd'],
+    ['a horizontal rule in a quote', '> a\n>\n> \\-\\-\\- ;', '> a\n>\n> ---', '> a\n>\n> \\---'],
+    ['a horizontal rule in a list item\'s further paragraph', '- a\n\n  \\*\\*\\* ;', '- a\n\n  ***', '- a\n\n  \\***'],
 ];
 
 /** One way of removing a selection. */

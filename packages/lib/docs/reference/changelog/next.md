@@ -58,9 +58,9 @@ page resets to empty.
   thematic break, a blockquote, a list, an HTML block, a link reference
   definition and a `:::` fence. A line over `---` is now a setext heading,
   and a `---` that starts no other block is a thematic break, which
-  `Markdown` renders as its literal text, as it renders every thematic
-  break — so a `---` that used to render as a table with an empty header
-  now shows as `---`. `MarkdownEditor` loads these documents the same way.
+  `Markdown` renders as a horizontal rule — so a `---` that used to render
+  as a table with an empty header now shows as a rule. `MarkdownEditor`
+  loads these documents the same way.
   A one-column table whose delimiter row holds only dashes (`a` over `---`)
   must add a `|` or a `:` to it (`| a |` over `| --- |`, or `a` over
   `:--`). See [Migration](/reference/migration/next) for the full note.
@@ -121,6 +121,19 @@ page resets to empty.
   The quote command over a raw Markdown block wraps it and keeps it raw
   (`> <div>x</div>`), where it escaped the block's text. See
   [Migration](/reference/migration/next).
+
+- **`Markdown` renders thematic breaks, and `MarkdownEditor` edits them as
+  horizontal rules.** `---`, `***` and `___` rendered as their literal text
+  in the viewer, and the editor kept them as raw Markdown blocks of
+  monospace text. The viewer now renders an `<hr>`, in a list item, a quote
+  and a `:::` column too. The editor has a node of its own for a rule: it is
+  selected with a click or the arrow keys and deleted as one unit, a loaded
+  rule is saved as it was written (`***`, `* * *`) and a new one as `---`,
+  typing `---`, `***` or `___` and then a space or Enter makes one, an `<hr>`
+  pasted from a web page is one, and a raw block edited into a thematic
+  break shows as one. `MarkdownEditorSelectionState` gains
+  `canInsertHorizontalRule`. See [Migration](/reference/migration/next) for
+  the full note.
 
 ### Core
 
@@ -442,9 +455,9 @@ page resets to empty.
   line breaks. Hard line breaks keep the form they were written in, and
   Shift+Enter saves as `\` at the line end. A list keeps its bullet (`-`,
   `*` or `+`) or its `.` / `)` number delimiter, and a list item the blocks
-  it holds. Thematic breaks and HTML are kept as editable raw Markdown
-  blocks instead of being flattened, so
-  saving no longer corrupts them, and so is a table whose rows hold more
+  it holds. HTML is kept as an editable raw Markdown
+  block instead of being flattened, so
+  saving no longer corrupts it, and so is a table whose rows hold more
   cells than its header; a link
   with empty text, or whose whole text is another link, is kept as source
   too, showing the inner link's text as the viewer does; an image the viewer
@@ -661,6 +674,15 @@ page resets to empty.
 ## Added
 
 ### Components
+
+- **`MarkdownEditor.insertHorizontalRule()` and
+  `canInsertHorizontalRule`.** `insertHorizontalRule()` inserts a rule at the
+  caret as `insertTable` places a table, and is available wherever
+  `insertTable` is; `canInsertHorizontalRule` in the selection state reports
+  whether it would insert. The empty-line context menu's Insert submenu and
+  `MarkdownDocumentPanel`'s Insert dropdown gain a **Horizontal rule** entry
+  after **Image…**. In `"source"` mode the command writes a `---` line above
+  the block holding the caret.
 
 - **A column resize now reports when it ends.** `TableHeaderEvent` gained
   `"columnresizeend"` and `HeaderCellEvent` gained `"resizeend"`, the header
@@ -1620,7 +1642,7 @@ page resets to empty.
   these documents the same way. No consumer action is needed.
 
 - **`MarkdownEditor` saves a thematic break that opens a list item as an
-  item.** A raw `---` block opening an item of a `-` list was saved as
+  item.** A `---` rule opening an item of a `-` list was saved as
   `- ---`, which Markdown reads as one thematic break that ends the list.
   The marker is now written on a line of its own, with the break under it.
   No consumer action is needed.
@@ -1945,8 +1967,8 @@ page resets to empty.
   `a`, where it reads as a heading's underline, and saved `- ## a`; the
   item now stays, empty, saved `- a` and `  *`. The spaces or tab that the
   rest of the later block started with stayed in front of it where it
-  opened a line of the raw block, so `x`, a tab and `# y` joined at a
-  thematic break's start became a code block holding `\# y`, and four
+  opened a line of the raw block, so `x`, a tab and `# y` joined at an
+  HTML block's start became a code block holding `\# y`, and four
   spaces after a list marker made the item's text code; they are now kept
   only as far as the line still reads as that text. Typing, a paste and the
   other edits over such a selection give the same, as they remove it as

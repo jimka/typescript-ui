@@ -1308,11 +1308,12 @@ describe('Markdown block precedence over tables', () => {
         expect(childTagsOf('ul')).toEqual(['LI', 'LI', 'LI']);
     });
 
-    it('BF4. renders three thematic breaks as their text, not a table', () => {
+    it('BF4. renders three thematic breaks as three horizontal rules, not a table', () => {
         new Markdown('***\n---\n___').getElement(true);
 
         expect(createdTags()).not.toContain('table');
-        expect(trimmedTextWrites()).toEqual(expect.arrayContaining(['***', '---', '___']));
+        expect(createdTags().filter((t) => t === 'hr')).toHaveLength(3);
+        expect(trimmedTextWrites()).not.toEqual(expect.arrayContaining(['***']));
     });
 
     it('BF5. renders --- after a blockquote as a thematic break', () => {
@@ -1320,14 +1321,14 @@ describe('Markdown block precedence over tables', () => {
 
         expect(createdTags()).toContain('blockquote');
         expect(createdTags()).not.toContain('table');
-        expect(trimmedTextWrites()).toContain('---');
+        expect(createdTags()).toContain('hr');
     });
 
     it('BF6. renders --- after a blank line as a thematic break', () => {
         new Markdown('> - a\nb\n\n---').getElement(true);
 
         expect(createdTags()).not.toContain('table');
-        expect(trimmedTextWrites()).toContain('---');
+        expect(createdTags()).toContain('hr');
     });
 
     it('BF7. still renders a one-column table written with its pipes', () => {
@@ -2872,5 +2873,35 @@ describe('Markdown selectable text', () => {
     it('opts the root into user-select: text so rendered prose can be selected', () => {
         expect(new Markdown('# Hi').getUserSelect()).toBe('text');
         expect(new Markdown('# Hi').getCursor()).toBe('text');
+    });
+});
+
+
+describe('Markdown horizontal rules', () => {
+    it('renders a thematic break as a horizontal rule with the viewer class and no text', () => {
+        new Markdown('***').getElement(true);
+
+        expect(createdTags().filter((t) => t === 'hr')).toHaveLength(1);
+        expect(classWrites()).toContainEqual(['ts-ui-md-horizontal-rule']);
+        expect(trimmedTextWrites()).not.toContain('***');
+    });
+
+    it('renders a rule inside a list item', () => {
+        new Markdown('- a\n\n  ___').getElement(true);
+
+        expect(childTagsOf('li')).toContain('HR');
+    });
+
+    it('renders a rule inside a quote', () => {
+        new Markdown('> ---').getElement(true);
+
+        expect(childTagsOf('blockquote')).toEqual(['HR']);
+    });
+
+    it('renders a rule inside a column', () => {
+        new Markdown('::: columns\n---\n|||\nx\n:::').getElement(true);
+
+        expect(createdTags()).toContain('hr');
+        expect(trimmedTextWrites()).not.toContain('---');
     });
 });

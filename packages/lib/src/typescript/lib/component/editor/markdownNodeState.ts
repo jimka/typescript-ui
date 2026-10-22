@@ -191,3 +191,21 @@ export const listLooseState: StateConfig<"mdLoose", boolean> = createState("mdLo
 export const listMarkerState: StateConfig<"mdItemMarker", string> = createState("mdItemMarker", {
     parse: (value) => (typeof value === "string" && /^[-*+.)]$/.test(value) ? value : ""),
 });
+
+/**
+ * The thematic break line of CommonMark section 4.1 without its indentation
+ * and the blanks that end it: three or more of one of `-`, `*` and `_`, each
+ * followed by any spaces and tabs. The shape {@link horizontalRuleMarkerState}
+ * accepts.
+ */
+const THEMATIC_BREAK_LINE = /^([-*_])(?:[ \t]*\1){2,}$/;
+
+/**
+ * The line a horizontal rule was loaded or typed with, without indentation and
+ * without the blanks that end it (`* * *`, `___`, `-` tab `-` tab `-`), kept on
+ * its `MarkdownHorizontalRuleNode` so a save writes it back as it was. `""` —
+ * the default — is a rule made in the editor, which saves as `---`.
+ */
+export const horizontalRuleMarkerState: StateConfig<"mdHorizontalRule", string> = createState("mdHorizontalRule", {
+    parse: (value) => (typeof value === "string" && THEMATIC_BREAK_LINE.test(value) ? value : ""),
+});
