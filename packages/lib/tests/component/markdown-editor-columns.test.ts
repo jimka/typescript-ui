@@ -311,12 +311,24 @@ describe('wrapping a block in a fence saves the fence the viewer reads', () => {
     });
 
     it('W7: a list kept as source holding an indented ::: line becomes a paragraph of its text', () => {
+        const editor = load('- a\n  > b\n  :::');
+
+        caretAtStart(editor);
+        editor.setColumnCount(2);
+
+        expect(editor.getValue()).toBe('::: columns\n\\- a\\\n\\> b\\\n\\:::\n|||\n\n:::');
+        expect(columnChildTypes(editor)).toEqual(['paragraph', 'paragraph']);
+        expectParity(editor);
+    });
+
+    it('W7b: a list whose item holds a paragraph with a ::: line stays a list, the line escaped', () => {
         const editor = load('- a\n\n  b\n  :::');
 
         caretAtStart(editor);
         editor.setColumnCount(2);
 
-        expect(editor.getValue()).toBe('::: columns\n\\- a\\\n\\\nb\\\n\\:::\n|||\n\n:::');
+        expect(editor.getValue()).toBe('::: columns\n- a\n\n  b\n  \\:::\n|||\n\n:::');
+        expect(columnChildTypes(editor)).toEqual(['list', 'paragraph']);
         expectParity(editor);
     });
 
@@ -332,26 +344,50 @@ describe('wrapping a block in a fence saves the fence the viewer reads', () => {
 });
 
 describe('wrapping a list whose item opens a block on its marker line', () => {
-    it('W9: a list item starting with a code block stays raw, and the fence reads past it', () => {
+    it('W9: a raw list whose item starts with a code block stays raw, and the fence reads past it', () => {
+        const editor = load('- ```\n  :::\n  ```\n  > q');
+
+        caretAtStart(editor);
+        editor.setBlockAlignment('center');
+
+        expect(editor.getValue()).toBe('::: {align=center}\n- ```\n  :::\n  ```\n  > q\n:::');
+        expect(columnChildTypes(editor)).toEqual(['markdown-raw-block']);
+        expect(viewerBlockKinds(editor)).toEqual(['fence(list)']);
+    });
+
+    it('W9b: a list whose item starts with a code block is a list, and the fence reads past the code', () => {
         const editor = load('- ```\n  :::\n  ```');
 
         caretAtStart(editor);
         editor.setBlockAlignment('center');
 
         expect(editor.getValue()).toBe('::: {align=center}\n- ```\n  :::\n  ```\n:::');
-        expect(columnChildTypes(editor)).toEqual(['markdown-raw-block']);
+        expect(columnChildTypes(editor)).toEqual(['list']);
         expect(viewerBlockKinds(editor)).toEqual(['fence(list)']);
+        expectParity(editor);
     });
 
-    it('W10: a list item starting with a fence stays raw, and the outer fence reads past its closer', () => {
-        const editor = load('- ::: {align=right}\n  x\n  :::\n\nafter');
+    it('W10: a raw list whose item starts with a fence stays raw, and the outer fence reads past its closer', () => {
+        const editor = load('- ::: {align=right}\n  x\n  :::\n  > q\n\nafter');
 
         caretAtStart(editor);
         editor.setBlockAlignment('center');
 
-        expect(editor.getValue()).toBe('::: {align=center}\n- ::: {align=right}\n  x\n  :::\n:::\n\nafter');
+        expect(editor.getValue()).toBe('::: {align=center}\n- ::: {align=right}\n  x\n  :::\n  > q\n:::\n\nafter');
         expect(columnChildTypes(editor)).toEqual(['markdown-raw-block']);
         expect(viewerBlockKinds(editor)).toEqual(['fence(list)', 'paragraph']);
+    });
+
+    it('W10b: a list whose item starts with a fence is a list, and aligning at its start aligns that fence', () => {
+        const editor = load('- ::: {align=right}\n  x\n  :::\n\nafter');
+
+        expectParity(editor);
+        caretAtStart(editor);
+        editor.setBlockAlignment('center');
+
+        expect(editor.getValue()).toBe('- ::: {align=center}\n  x\n  :::\n\nafter');
+        expect(viewerBlockKinds(editor)).toEqual(['list', 'paragraph']);
+        expectParity(editor);
     });
 });
 

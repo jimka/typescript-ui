@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import {
-    $addUpdateTag, $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $getSelection, $setState,
+    $addUpdateTag, $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $getSelection, $isElementNode, $setState,
     TEXT_TYPE_TO_FORMAT,
 } from "lexical";
 import type { ElementNode, LexicalNode, NodeKey, TextFormatType, TextNode } from "lexical";
@@ -9,7 +9,7 @@ import { Lexer } from "marked";
 import type { Links, Token, Tokens } from "marked";
 import { $createHeadingNode, $createQuoteNode } from "@lexical/rich-text";
 import type { HeadingTagType, QuoteNode } from "@lexical/rich-text";
-import { $createListItemNode, $createListNode } from "@lexical/list";
+import { $createListItemNode, $createListNode, $isListNode } from "@lexical/list";
 import type { ListItemNode, ListNode } from "@lexical/list";
 import { $createLinkNode } from "@lexical/link";
 import type { LinkNode } from "@lexical/link";
@@ -39,7 +39,8 @@ import {
 import { $createReferenceLinkNode, $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import type { ReferenceLinkReference } from "~/component/editor/markdownReferenceLinkNode.js";
 import {
-    $definitionsSource, $readDefinitions, $serializeLinkContent, $serializeTopLevelBlocks, runsOn,
+    $definitionsSource, $listReadsLoose, $readDefinitions, $serializeLinkContent, $serializeTopLevelBlocks, rawBlockAtMargin, rawBlockInItem,
+    rawBlockStandsInItem, runsOn, withoutBlankEdges,
 } from "~/component/editor/markdownSerializer.js";
 import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode, $isMarkdownRawBlockNode } from "~/component/editor/markdownSourceNodes.js";
 import { $readStandardForm, keptImageShown } from "~/component/editor/markdownSerializer.js";
@@ -97,9 +98,6 @@ const REBUILT_RAW_TYPES: ReadonlySet<string> = new Set(["blockquote", "list"]);
 
 /** A line holding only whitespace between two newlines: a blank line, which ends a run of definitions. */
 const BLANK_LINE = /\n[ \t]*\n/;
-
-/** The indentation CommonMark ignores before a block: up to three spaces (four make indented code). */
-const MAX_IGNORED_INDENT = 3;
 
 /**
  * How many times one block is built and its standard form read while
@@ -287,8 +285,9 @@ const HELD_BLOCK_TYPES: ReadonlySet<string> = new Set(["heading", "paragraph", "
  * before the next block. The last block of a document or `:::` column may
  * have none after it and reads the same: the lexer takes the end of its input
  * as the line end an HTML block start needs. Builds the blocks it reads as,
- * the way a load builds them, when that is more than one block and not link
- * reference definitions alone (which show nothing, one block or several),
+ * the way a load builds them, when that is more than one block (runs of
+ * link reference definitions a blank line apart are a raw block each, as a
+ * load builds them; one run alone stays the raw block it is),
  * or one block a load builds a node of its own for (a paragraph, a heading,
  * a code block, …), which the editor shows as that node, not as Markdown
  * text. The editor then shows the raw block as those blocks, as the save
@@ -301,7 +300,8 @@ export function $readRawBlockAsBlocks(text: string): RawBlockReading | null {
     const source = text + "\n";
     const located = joinDefinitionRuns(source, locateTokens(source, lexMarkdown(source)));
 
-    if (located.every(holdsOnlyDefinitions)) {
+    // Text holding nothing reads as no block at all, and stays the raw block it is.
+    if (located.length === 0) {
         return null;
     }
 
@@ -473,7 +473,10 @@ function $buildLocatedBlock(entry: LocatedBlock): LexicalNode {
  * Joins each run of link reference definitions on consecutive lines — `def`
  * tokens, and the gaps holding a definition `marked` dropped — into one gap
  * of their source, so the run is one raw block and saves with its lines as
- * written, not with a blank line between every two.
+ * written, not with a blank line between every two. A blank line between
+ * two definitions ends a run: a gap of dropped definitions is split there
+ * ({@link definitionRuns}), so repeated definitions are the same raw blocks
+ * as first ones.
  *
  * Each entry is tested once, as it is met, and a joined run counts as
  * definitions without being lexed again: two definition-only entries on
@@ -491,21 +494,68 @@ function joinDefinitionRuns(text: string, located: LocatedBlock[]): LocatedBlock
     let lastHoldsOnlyDefinitions = false;
 
     for (const entry of located) {
-        const last = joined[joined.length - 1];
         const entryHoldsOnlyDefinitions = holdsOnlyDefinitions(entry);
-        const continuesRun = last !== undefined && lastHoldsOnlyDefinitions && entryHoldsOnlyDefinitions
-            && !BLANK_LINE.test(text.slice(last.end, entry.start));
 
-        if (continuesRun) {
-            joined[joined.length - 1] = { gap: text.slice(last.start, entry.end), start: last.start, end: entry.end };
-        } else {
-            joined.push(entry);
+        for (const run of entryHoldsOnlyDefinitions ? definitionRuns(entry) : [entry]) {
+            const last = joined[joined.length - 1];
+            const continuesRun = last !== undefined && lastHoldsOnlyDefinitions && entryHoldsOnlyDefinitions
+                && !BLANK_LINE.test(text.slice(last.end, run.start));
+
+            if (continuesRun) {
+                joined[joined.length - 1] = { gap: text.slice(last.start, run.end), start: last.start, end: run.end };
+            } else {
+                joined.push(run);
+            }
+
+            lastHoldsOnlyDefinitions = entryHoldsOnlyDefinitions;
         }
-
-        lastHoldsOnlyDefinitions = entryHoldsOnlyDefinitions;
     }
 
     return joined;
+}
+
+/**
+ * Splits a definition-only entry into its runs of definitions: a blank line
+ * between two definitions ends a run. Only a gap can hold several runs —
+ * `marked` gives no token for a repeated definition, so repeated ones a
+ * blank line apart are one stretch of text no token covers. A blank line
+ * inside a definition (in its title) belongs to it: each definition's
+ * extent is read with `marked`'s own pattern ({@link candidateStarts}).
+ *
+ * @param entry - A located entry holding only definitions.
+ * @returns One gap per run; the entry itself when it holds no blank line.
+ */
+function definitionRuns(entry: LocatedBlock): LocatedBlock[] {
+    const gap = "gap" in entry ? entry.gap : null;
+    const holdsBlankLine = gap !== null && BLANK_LINE.test(gap);
+
+    if (gap === null || !holdsBlankLine) {
+        return [entry];
+    }
+
+    const run = (from: number, to: number): LocatedBlock => {
+        const text = gap.slice(from, to).trimEnd();
+
+        return { gap: text, start: entry.start + from, end: entry.start + from + text.length };
+    };
+
+    const runs: LocatedBlock[] = [];
+    let runStart = 0;
+    let afterPrevious = 0;
+
+    for (const start of candidateStarts(gap, 0, true)) {
+        // The definition before this one ended lines above: blank lines stand between the two.
+        if (start > afterPrevious) {
+            runs.push(run(runStart, afterPrevious));
+            runStart = start;
+        }
+
+        afterPrevious = nextLineAfterDefinition(gap, start);
+    }
+
+    runs.push(run(runStart, gap.length));
+
+    return runs;
 }
 
 /**
@@ -748,17 +798,6 @@ function endIgnoringWhitespace(text: string, start: number, body: string): numbe
 }
 
 /**
- * Drops the blank lines before a text and the whitespace after it, keeping
- * the indentation of its first line.
- *
- * @param text - A stretch of source, or a token's `raw`.
- * @returns The text without its blank edges.
- */
-function withoutBlankEdges(text: string): string {
-    return text.replace(/^(?:[ \t]*\n)+/, "").trimEnd();
-}
-
-/**
  * Removes every trailing newline.
  *
  * @param text - A token's `raw`.
@@ -791,67 +830,15 @@ function $buildBlock(token: Token, source: string): LexicalNode {
 }
 
 /**
- * Builds a raw block of `source` without its leading indentation (up to
- * three spaces, the indentation CommonMark ignores at a block's start).
- * Each block is written at column 0, so a list indented in the source is
- * not: a raw block after it keeping its indent would fall into the list's
- * content column and join the list.
- *
- * A raw list loses only the indentation all its lines share, which keeps
- * every continuation line's position relative to its marker. Any other raw
- * block also loses what is left of its first line's indent: only a block's
- * first line places it (an HTML block's or a quote's later lines are not
- * measured against it).
- *
- * `marked` does measure some lines against the margin, though (a quote's
- * lazy line, a list's next marker), so a dedent is kept only when the text
- * still lexes to the same blocks; else the block loses less of its indent,
- * or none.
+ * Builds a raw block of `source` without the leading indentation that
+ * means nothing to Markdown ({@link rawBlockAtMargin}).
  *
  * @param source - The block's Markdown.
  * @param isList - Whether the block is a list.
  * @returns The raw block.
  */
 function $buildRawBlock(source: string, isList: boolean = false): LexicalNode {
-    const lines = source.split("\n");
-    const indentOf = (line: string): number => /^ */.exec(line)![0].length;
-    const shared = Math.min(MAX_IGNORED_INDENT, ...lines.filter((line) => line.trim() !== "").map(indentOf));
-    const dedented = lines.map((line) => line.slice(Math.min(shared, indentOf(line))));
-    const firstDedented = [...dedented];
-
-    if (!isList && firstDedented.length > 0) {
-        firstDedented[0] = firstDedented[0]!.slice(Math.min(MAX_IGNORED_INDENT, indentOf(firstDedented[0]!)));
-    }
-
-    const candidates = [firstDedented.join("\n"), dedented.join("\n")];
-
-    if (candidates[0] === source) {
-        return $createMarkdownRawBlockNode(source);
-    }
-
-    const reading = blockShape(lexMarkdown(source));
-    const text = candidates.find((candidate) => candidate === source || blockShape(lexMarkdown(candidate)) === reading) ?? source;
-
-    return $createMarkdownRawBlockNode(text);
-}
-
-/**
- * The block structure tokens lex to: each block's type, a quote's and a
- * `:::` fence's blocks, and a list's items' blocks — what an indentation
- * change can alter.
- *
- * @param tokens - Block tokens.
- * @returns A string naming the structure.
- */
-function blockShape(tokens: Token[]): string {
-    return tokens.filter((token) => token.type !== "space").map((token) => {
-        switch (token.type) {
-            case "list":       return `list[${(token as Tokens.List).items.map((item) => blockShape(item.tokens)).join("|")}]`;
-            case "blockquote": return `quote(${blockShape((token as Tokens.Blockquote).tokens)})`;
-            case "mdblock":    return `fence(${(token as unknown as MdBlockToken).columns.map(blockShape).join("|")})`;
-            default:           return token.type;
-        }
-    }).join(",");
+    return $createMarkdownRawBlockNode(rawBlockAtMargin(source, isList));
 }
 
 /**
@@ -906,12 +893,12 @@ function withoutSpace(tokens: Token[]): Token[] {
 }
 
 /**
- * Tells whether a container's tokens cover all of its text: `marked` emits
- * no token for a repeated link reference definition, so a quote or list item
- * holding one looks emptier than it is, and building it from its tokens
- * would drop that line on the next save.
+ * Tells whether a quote's tokens cover all of its text: `marked` emits no
+ * token for a repeated link reference definition, so a quote holding one
+ * looks emptier than it is, and building it from its tokens would drop that
+ * line on the next save. (A list item builds such text as a raw block.)
  *
- * @param text - The container's content text (`marked`'s `text`).
+ * @param text - The quote's content text (`marked`'s `text`).
  * @param tokens - The block tokens lexed from it.
  * @returns `true` when no text lies outside every token.
  */
@@ -945,11 +932,15 @@ function $buildQuote(token: Tokens.Blockquote): QuoteNode | null {
 }
 
 /**
- * Builds a list with its looseness and authored marker, when every item has
- * a shape a `ListItemNode` can hold.
+ * Builds a list with its looseness and authored marker, when every item can
+ * be built. A list one of whose items holds a block other than a nested list
+ * is built only when its save keeps the looseness the viewer reads: the save
+ * writes a blank line before such a block, which makes a list loose.
  *
  * @param token - The list token.
- * @returns The list, or `null` when any item (at any depth) holds more.
+ * @returns The list, or `null` when one of its own items cannot be built
+ *   (a checkbox with no text after it, a raw block no list item can hold),
+ *   or when the save would change the list's looseness.
  */
 function $buildList(token: Tokens.List): ListNode | null {
     const list = $createListNode(token.ordered ? "number" : "bullet", token.ordered ? Number(token.start) : 1);
@@ -967,7 +958,25 @@ function $buildList(token: Tokens.List): ListNode | null {
         list.append(...items);
     }
 
+    const keepsLooseness = !$holdsItemBlocks(list) || $listReadsLoose(list) === token.loose;
+
+    if (!keepsLooseness) {
+        return null;
+    }
+
     return list;
+}
+
+/**
+ * Tells whether an item of a list holds a block other than a nested list:
+ * a list the save writes with a blank line before that block.
+ *
+ * @param list - The list.
+ * @returns `true` when one of its items holds such a block.
+ */
+function $holdsItemBlocks(list: ListNode): boolean {
+    return list.getChildren().some((item) => $isElementNode(item)
+        && item.getChildren().some((child) => $isElementNode(child) && !child.isInline() && !$isListNode(child)));
 }
 
 /**
@@ -984,41 +993,66 @@ function authoredMarker(token: Tokens.List): string {
 }
 
 /**
+ * A task item's tokens with its checkbox as a token of its own before the
+ * item's text. `marked` puts it there in a list it made loose while lexing
+ * its items; in a list loose from the start it puts the checkbox first in
+ * the first paragraph's own tokens, and the marker at the start of that
+ * paragraph's `raw` and `text`, which the item's text does not hold. (Every
+ * item's text is a paragraph by then: `marked` turns a loose list's `text`
+ * tokens into paragraphs before it returns the list.)
+ *
+ * @param tokens - The item's tokens, `space` tokens dropped.
+ * @returns The tokens, the checkbox taken out of the first paragraph.
+ */
+function withOwnCheckbox(tokens: Token[]): Token[] {
+    const first = tokens[0];
+    const inner = first?.type === "paragraph" ? (first as Tokens.Paragraph).tokens[0] : undefined;
+
+    if (first === undefined || inner?.type !== "checkbox") {
+        return tokens;
+    }
+
+    const paragraph = first as Tokens.Paragraph;
+
+    const own = {
+        ...paragraph,
+        raw:    paragraph.raw.slice(inner.raw.length),
+        text:   paragraph.text.slice(inner.raw.length),
+        tokens: paragraph.tokens.slice(1),
+    };
+
+    return [inner, own, ...tokens.slice(1)];
+}
+
+/**
  * Builds one list item's nodes: an item holding an optional checkbox and the
- * item's text, then one item per nested list (Lexical's shape for nesting).
+ * item's text, then the item's blocks ({@link $buildItemBlocks}), located
+ * as any container's are ({@link locateBlocks}): each run of link reference
+ * definitions is one block, and text of the item no token covers (a repeated
+ * definition, which `marked` drops) is a block too, a raw block.
  *
  * @param item - The list-item token.
- * @returns The item nodes, or `null` when the item holds anything but an
- *   optional checkbox, one text or paragraph, and nested lists, or a
- *   checkbox before anything but text or a paragraph.
+ * @returns The item nodes, or `null` when a checkbox has no text after it,
+ *   or when a block is one no list item can hold.
  */
 function $buildListItem(item: Tokens.ListItem): ListItemNode[] | null {
-    const content = withoutSpace(item.tokens);
-
-    if (!coversText(item.text, item.tokens)) {
-        return null;
-    }
-
+    const content = withOwnCheckbox(withoutSpace(item.tokens));
     const checkbox = content[0]?.type === "checkbox" ? content.shift()! : null;
-    const first = content[0];
-    const text = first !== undefined && (first.type === "text" || first.type === "paragraph") ? first : null;
-    const nestedTokens = text === null ? content : content.slice(1);
+    const located = locateBlocks(item.text, content);
+    const first = located[0];
+    const opensWithText = first !== undefined && !("gap" in first) && (first.token.type === "text" || first.token.type === "paragraph");
+    const text = opensWithText ? first.token : null;
+    const blocks = text === null ? located : located.slice(1);
+    const tokens = text === null ? [] : text.type === "paragraph" ? (text as Tokens.Paragraph).tokens : [text];
 
     // The viewer prints a task marker inline at the start of the item's text
-    // or first paragraph (an item `marked` made loose); before anything else
-    // it stands on a line of its own, which an item's one line of text cannot show.
-    if (!nestedTokens.every((token) => token.type === "list") || (checkbox !== null && text === null)) {
-        return null;
-    }
-
-    const nested = nestedTokens.map((token) => $buildList(token as Tokens.List));
-
-    if (nested.some((list) => list === null)) {
+    // or first paragraph; before anything else it stands on a line of its
+    // own, which an item's line of text cannot show.
+    if (checkbox !== null && tokens.length === 0) {
         return null;
     }
 
     const listItem = $createListItemNode();
-    const tokens = text === null ? [] : text.type === "paragraph" ? (text as Tokens.Paragraph).tokens : [text];
 
     $buildKeepingConstructs(listItem, [...(checkbox === null ? [] : [checkbox]), ...tokens], null, (keep) => {
         listItem.clear();
@@ -1030,7 +1064,71 @@ function $buildListItem(item: Tokens.ListItem): ListItemNode[] | null {
         appendInlineTokens({ block: listItem, openLink: null, nextCellParagraph: null, keep, edges: edgeLinks(tokens) }, tokens, PLAIN);
     });
 
-    return [listItem, ...nested.map((list) => $createListItemNode().append(list!))];
+    return $buildItemBlocks(listItem, blocks);
+}
+
+/**
+ * Builds the blocks after a list item's text. A block goes into the item's
+ * own node until the item's first nested list; each nested list opens a new
+ * item node whose first child is the list (Lexical's shape for nesting),
+ * which then takes the blocks up to the next nested list. A nested list that
+ * cannot be built is a block like any other: a raw block of the item.
+ *
+ * @param listItem - The item's own node, its inline content already built.
+ * @param blocks - The item's located blocks after its text.
+ * @returns The item's nodes, or `null` when a block is one no list item can
+ *   hold ({@link $buildItemBlock}).
+ */
+function $buildItemBlocks(listItem: ListItemNode, blocks: LocatedBlock[]): ListItemNode[] | null {
+    const items: ListItemNode[] = [listItem];
+    let holder: ListItemNode = listItem;
+
+    for (const entry of blocks) {
+        const nested = !("gap" in entry) && entry.token.type === "list" ? $buildList(entry.token as Tokens.List) : null;
+
+        if (nested !== null) {
+            holder = $createListItemNode().append(nested);
+            items.push(holder);
+
+            continue;
+        }
+
+        const block = $buildItemBlock(entry);
+
+        if (block === null) {
+            return null;
+        }
+
+        // `ListItemNode.append` would merge a paragraph's children into the item.
+        holder.splice(holder.getChildrenSize(), 0, [block]);
+    }
+
+    return items;
+}
+
+/**
+ * Builds one block of a list item that is not a nested list node: a located
+ * block as it is built anywhere ({@link $buildLocatedBlock}), and a nested
+ * list that could not be built as a raw block of its source, as a list
+ * anywhere is. A raw block is built in the form the save writes it in
+ * (`rawBlockInItem`), and only when a list item can hold it
+ * (`rawBlockStandsInItem`, the one rule for a raw block in a list item).
+ *
+ * @param entry - The located token or gap.
+ * @returns The block's node, or `null` for a raw block no list item can hold.
+ */
+function $buildItemBlock(entry: LocatedBlock): LexicalNode | null {
+    const isUnbuiltList = !("gap" in entry) && entry.token.type === "list";
+    // `$buildLocatedBlock` would build the list a second time before it gave up on it.
+    const block = isUnbuiltList ? $buildRawBlock(entry.source, true) : $buildLocatedBlock(entry);
+
+    if (!$isMarkdownRawBlockNode(block)) {
+        return block;
+    }
+
+    const text = block.getTextContent();
+
+    return rawBlockStandsInItem(text) ? $createMarkdownRawBlockNode(rawBlockInItem(text)) : null;
 }
 
 /**

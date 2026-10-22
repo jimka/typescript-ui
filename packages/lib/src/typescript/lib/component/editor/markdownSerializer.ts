@@ -23,6 +23,7 @@ import {
 import {
     lexMarkdown, lexMarkdownInline, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions,
 } from "~/component/display/markdownExtensions.js";
+import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
 import type { MdTableToken } from "~/component/display/markdownTableExtension.js";
 import { $isMarkdownBlockNode, $isMarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import type { MarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
@@ -87,6 +88,18 @@ const PARAGRAPH_PROBE_LINE = "probe";
 
 /** A block whose first line is indented: a list item before it may take it as its own content. */
 const INDENTED_LINE = /^[ \t]/;
+
+/** The indentation CommonMark ignores before a block: up to three spaces (four make indented code). */
+const MAX_IGNORED_INDENT = 3;
+
+/** The lines holding nothing but whitespace that open a text, each with its line end. */
+const BLANK_FIRST_LINES = /^(?:[ \t]*\n)+/;
+
+/** The bullet the probes of {@link rawBlockStandsInItem} are written with: the one a list made in the editor writes. */
+const PROBE_MARKER = "-";
+
+/** What {@link rawBlockStandsInItem} found, by item form; cleared when it holds {@link RUNS_ON_CACHE_SIZE} entries. */
+const STANDS_IN_ITEM = new Map<string, boolean>();
 
 /**
  * Source that ends inside a link reference definition's label a line of it
@@ -322,6 +335,13 @@ interface InlineContext {
     readonly looseTildes?: boolean;
     /** The content is a list item's: a continuation line opening an HTML block there ends the item. */
     readonly inListItem?: boolean;
+    /**
+     * The content is a paragraph after a list item's text. `marked` reads all
+     * of an item line by line, so a continuation line opening an HTML block
+     * ends that paragraph too; its first line, unlike the item's own, holds
+     * no task marker.
+     */
+    readonly inItemParagraph?: boolean;
     /**
      * Escape every `<`. `marked` hides a `<…>` stretch from emphasis pairing,
      * so a `<` that opens no tag still keeps delimiters between it and a
@@ -1075,7 +1095,7 @@ export function $listReadsLoose(list: ListNode): boolean {
     const items: Array<Array<"list" | "text" | "block">> = [];
 
     for (const item of list.getChildren().filter($isListItemNode)) {
-        const continues = $isListNode(item.getFirstChild()) && items.length > 0;
+        const continues = $continuesItemBefore(item) && items.length > 0;
         const blocks = continues ? items[items.length - 1]! : [];
 
         blocks.push(...itemBlockKinds(item));
@@ -1591,19 +1611,228 @@ function serializeRawBlock(node: MarkdownRawBlockNode, definitions: Links | null
         return serializeInline(node, MULTI_LINE);
     }
 
-    const text = node.getTextContent();
+    const text = $rawBlockSource(node);
 
     // A block only a second blank line ends writes that line itself, so the block after it stays its own.
     return rawBlockEnd(text) === "wide" && $writesBlockAfter(node, definitions) ? `${text}\n` : text;
 }
 
 /**
+ * A raw block's text as a save writes it: as it is — except in a list item,
+ * where it is written in its item form ({@link rawBlockInItem}). Must run
+ * inside an `editor.read` or `editor.update`.
+ *
+ * @param node - The raw block.
+ * @returns The text a save writes for it.
+ */
+export function $rawBlockSource(node: MarkdownRawBlockNode): string {
+    const text = node.getTextContent();
+    const parent = node.getParent();
+
+    return $isListItemNode(parent) ? rawBlockInItem(text) : text;
+}
+
+/**
+ * The form a raw block's text is written in as a block of a list item: from
+ * the first line that holds something to the last, and without the
+ * indentation before it that means nothing to Markdown
+ * ({@link rawBlockAtMargin}). In an item each would place the block
+ * elsewhere: an empty first line leaves the item's marker bare (an empty
+ * item, or a setext underline under a line of text), an empty last line
+ * reads as a blank line between items, which makes a list loose, and spaces
+ * before the block put it under the nested list above it. Text holding
+ * whitespace alone writes nothing.
+ *
+ * @param text - The raw block's text.
+ * @returns Its item form.
+ */
+export function rawBlockInItem(text: string): string {
+    return text.trim() === "" ? "" : rawBlockAtMargin(withoutBlankEdges(text), false);
+}
+
+/**
+ * Tells whether a raw block can stand in a list item: whether its item form
+ * ({@link rawBlockInItem}), written as a block of an item by this
+ * serializer, is read by `marked` as the same blocks the text reads as on
+ * its own — opening the item or under its text, as the item's last block or
+ * before another item, in a tight list or after a blank line. This is the
+ * one rule for a raw block in a list item. A load builds a list item holding
+ * a raw block only when it holds; an edit that leaves a raw block for which
+ * it does not hold has the editor read the whole list again as its save
+ * reads; so the save, which writes the item form, always reads back as the
+ * editor shows it.
+ *
+ * It fails for text that reads by where it stands: a quote ending on a line
+ * without `>` that starts an HTML block (part of the quote where the item's
+ * text ends, a block after it before a blank line), text that keeps spaces
+ * before its first line because it reads otherwise without them (on the
+ * item's marker line they shift the item's content, which the first probe
+ * shows), and text `marked` reads otherwise line by line, as it reads an
+ * item, than as a paragraph.
+ *
+ * @param text - The raw block's text.
+ * @returns `true` when a list item can hold a raw block of that text.
+ */
+export function rawBlockStandsInItem(text: string): boolean {
+    const source = rawBlockInItem(text);
+    const known = STANDS_IN_ITEM.get(source);
+
+    if (known !== undefined) {
+        return known;
+    }
+
+    const stands = source === "" || itemProbes(source).every((probe) => probe === itemShape(lexMarkdown(source)));
+
+    if (STANDS_IN_ITEM.size >= RUNS_ON_CACHE_SIZE) {
+        STANDS_IN_ITEM.clear();
+    }
+
+    STANDS_IN_ITEM.set(source, stands);
+
+    return stands;
+}
+
+/**
+ * Writes a raw block as a block of a list item at each place one is written,
+ * and reads each back: the shape ({@link itemShape}) of the blocks `marked`
+ * gives the item for it, or `""` when the text does not stay one item's
+ * (it ends the list, or takes the next item in).
+ *
+ * @param source - The raw block's item form.
+ * @returns One shape per place: opening the item, and under the item's
+ *   text, each as the list's last line and before another item.
+ */
+function itemProbes(source: string): string[] {
+    const block: ItemBlock = { markdown: source, isList: false, isText: false, isRaw: true };
+    const text: ItemBlock = { markdown: PARAGRAPH_PROBE_LINE, isList: false, isText: true };
+    const opening = listItemLines(PROBE_MARKER, [block], false).join("\n");
+    const under = listItemLines(PROBE_MARKER, [text, block], false).join("\n");
+    const next = `${PROBE_MARKER} ${PARAGRAPH_PROBE_LINE}`;
+
+    return [
+        probedItemShape(opening, 1, 0),
+        probedItemShape(`${opening}\n${next}`, 2, 0),
+        probedItemShape(`${opening}${LOOSE_ITEM_SEPARATOR}${next}`, 2, 0),
+        probedItemShape(under, 1, 1),
+        probedItemShape(`${under}${LOOSE_ITEM_SEPARATOR}${next}`, 2, 1),
+    ];
+}
+
+/**
+ * Lexes a probe list and gives the shape of its first item's blocks after
+ * the item's own text.
+ *
+ * @param probe - The list's Markdown.
+ * @param items - How many items the list must read as.
+ * @param textBlocks - How many blocks of text open the first item.
+ * @returns The shape, or `""` when the probe does not read as one list of
+ *   that many items whose later items hold their line of text alone.
+ */
+function probedItemShape(probe: string, items: number, textBlocks: number): string {
+    const tokens = lexMarkdown(probe).filter((token) => token.type !== "space");
+    const list = tokens.length === 1 && tokens[0]!.type === "list" ? tokens[0] as Tokens.List : null;
+    const readsAsProbed = list !== null && list.items.length === items
+        && list.items.slice(1).every((item) => itemShape(item.tokens) === "paragraph");
+
+    return readsAsProbed ? itemShape(list.items[0]!.tokens.filter((token) => token.type !== "space").slice(textBlocks)) : "";
+}
+
+/**
+ * The block structure of tokens ({@link blockShape}), a list item's line of
+ * text counted as the paragraph it is: `marked` gives a tight item's text a
+ * token type of its own.
+ *
+ * @param tokens - Block tokens.
+ * @returns A string naming the structure.
+ */
+function itemShape(tokens: Token[]): string {
+    return blockShape(tokens).replace(/\btext\b/g, "paragraph");
+}
+
+/**
+ * Drops the blank lines before a text and the whitespace after it, keeping
+ * the indentation of its first line.
+ *
+ * @param text - A stretch of source, or a token's `raw`.
+ * @returns The text without its blank edges.
+ */
+export function withoutBlankEdges(text: string): string {
+    return text.replace(BLANK_FIRST_LINES, "").trimEnd();
+}
+
+/**
+ * A raw block's Markdown without its leading indentation (up to three
+ * spaces, the indentation CommonMark ignores at a block's start). Each block
+ * is written at column 0, so a list indented in the source is not: a raw
+ * block after it keeping its indent would fall into the list's content
+ * column and join the list.
+ *
+ * A raw list loses only the indentation all its lines share, which keeps
+ * every continuation line's position relative to its marker. Any other raw
+ * block also loses what is left of its first line's indent: only a block's
+ * first line places it (an HTML block's or a quote's later lines are not
+ * measured against it).
+ *
+ * `marked` does measure some lines against the margin, though (a quote's
+ * lazy line, a list's next marker), so a dedent is kept only when the text
+ * still lexes to the same blocks; else the block loses less of its indent,
+ * or none.
+ *
+ * @param source - The block's Markdown.
+ * @param isList - Whether the block is a list. `false` also tries a list's
+ *   first line at the margin, which is kept when the list reads the same.
+ * @returns The Markdown at the margin.
+ */
+export function rawBlockAtMargin(source: string, isList: boolean): string {
+    const lines = source.split("\n");
+    const indentOf = (line: string): number => /^ */.exec(line)![0].length;
+    const shared = Math.min(MAX_IGNORED_INDENT, ...lines.filter((line) => line.trim() !== "").map(indentOf));
+    const dedented = lines.map((line) => line.slice(Math.min(shared, indentOf(line))));
+    const firstDedented = [...dedented];
+
+    if (!isList && firstDedented.length > 0) {
+        firstDedented[0] = firstDedented[0]!.slice(Math.min(MAX_IGNORED_INDENT, indentOf(firstDedented[0]!)));
+    }
+
+    const candidates = [firstDedented.join("\n"), dedented.join("\n")];
+
+    if (candidates[0] === source) {
+        return source;
+    }
+
+    const reading = blockShape(lexMarkdown(source));
+
+    return candidates.find((candidate) => candidate === source || blockShape(lexMarkdown(candidate)) === reading) ?? source;
+}
+
+/**
+ * The block structure tokens lex to: each block's type, a quote's and a
+ * `:::` fence's blocks, and a list's items' blocks — what an indentation
+ * change can alter.
+ *
+ * @param tokens - Block tokens.
+ * @returns A string naming the structure.
+ */
+function blockShape(tokens: Token[]): string {
+    return tokens.filter((token) => token.type !== "space").map((token) => {
+        switch (token.type) {
+            case "list":       return `list[${(token as Tokens.List).items.map((item) => blockShape(item.tokens)).join("|")}]`;
+            case "blockquote": return `quote(${blockShape((token as Tokens.Blockquote).tokens)})`;
+            case "mdblock":    return `fence(${(token as unknown as MdBlockToken).columns.map(blockShape).join("|")})`;
+            default:           return token.type;
+        }
+    }).join(",");
+}
+
+/**
  * Tells whether a save writes a raw block as a paragraph holding its text
  * ({@link serializeRawBlock}): its text runs on and a block after it writes
- * something, or it stands in a `:::` column and its text would break the
- * column (`breaksColumn`): end the fence, swallow its closing line, or lose
- * a backslash to the separator unescape. The editor then shows it as that
- * paragraph. Must run inside an `editor.read` or `editor.update`.
+ * something, or it stands in a `:::` column — as a block of the column, or
+ * of a list item in it, whose lines the fence reads all the same — and its
+ * text would break the column (`breaksColumn`): end the fence, swallow its
+ * closing line, or lose a backslash to the separator unescape. The editor
+ * then shows it as that paragraph. Must run inside an `editor.read` or
+ * `editor.update`.
  *
  * @param node - The raw block.
  * @param definitions - The saved document's link reference definitions, or
@@ -1611,21 +1840,78 @@ function serializeRawBlock(node: MarkdownRawBlockNode, definitions: Links | null
  * @returns `true` when it is written as a paragraph.
  */
 export function $rawBlockWritesAsParagraph(node: MarkdownRawBlockNode, definitions: Links | null = $collectDefinitions()): boolean {
-    const breaksItsColumn = $isMarkdownColumnNode(node.getParent()) && breaksColumn(node.getTextContent());
+    const breaksItsColumn = $standsInColumn(node) && breaksColumn(node.getTextContent());
 
-    return breaksItsColumn || (rawBlockEnd(node.getTextContent()) === "runsOn" && $writesBlockAfter(node, definitions));
+    return breaksItsColumn || (rawBlockEnd($rawBlockSource(node)) === "runsOn" && $writesBlockAfter(node, definitions));
 }
 
 /**
- * Tells whether a block after a node, among its siblings, writes something.
- * Must run inside an `editor.read` or `editor.update`.
+ * Tells whether a block stands in a `:::` column: as one of its blocks, or
+ * as a block of a list item of a list there, at any depth. Must run inside
+ * an `editor.read` or `editor.update`.
+ *
+ * @param node - The block.
+ * @returns `true` when a column holds it with nothing but lists between.
+ */
+function $standsInColumn(node: LexicalNode): boolean {
+    let container = node.getParent();
+
+    while ($isListItemNode(container) || $isListNode(container)) {
+        container = container.getParent();
+    }
+
+    return $isMarkdownColumnNode(container);
+}
+
+/**
+ * Tells whether a block after a node, in the container the save writes it
+ * in, writes something. Must run inside an `editor.read` or `editor.update`.
  *
  * @param node - The node.
  * @param definitions - The saved document's link reference definitions, or `null`.
- * @returns `true` when a later sibling writes Markdown.
+ * @returns `true` when a later block of its container writes Markdown.
  */
 function $writesBlockAfter(node: LexicalNode, definitions: Links | null): boolean {
-    return node.getNextSiblings().some((sibling) => serializeBlock(sibling, definitions) !== "");
+    return $blocksAfter(node).some((block) => serializeBlock(block, definitions) !== "");
+}
+
+/**
+ * The blocks a save writes after a node in the same container: its later
+ * siblings and, for a block of a list item, the blocks of the item nodes
+ * that continue that item — each an item node whose first child is a nested
+ * list, which {@link serializeList} writes as part of the item before it.
+ *
+ * @param node - The node.
+ * @returns The later blocks, in document order.
+ */
+function $blocksAfter(node: LexicalNode): LexicalNode[] {
+    const parent = node.getParent();
+    const blocks = node.getNextSiblings();
+    const items = $isListItemNode(parent) ? parent.getNextSiblings() : [];
+
+    for (const item of items) {
+        if (!$continuesItemBefore(item)) {
+            break;
+        }
+
+        blocks.push(...item.getChildren());
+    }
+
+    return blocks;
+}
+
+/**
+ * Tells whether a node of a list is an item node whose first child is a
+ * list: Lexical's shape for a nested list. Such a node is no item of its
+ * own. It takes no marker and no number, and its blocks — the nested list
+ * and whatever follows it — belong to the item before it, when there is
+ * one. Must run inside an `editor.read` or `editor.update`.
+ *
+ * @param item - A child of a list, or `null` for none.
+ * @returns `true` for an item node opening with a nested list.
+ */
+export function $continuesItemBefore(item: LexicalNode | null): item is ListItemNode {
+    return $isListItemNode(item) && $isListNode(item.getFirstChild());
 }
 
 /**
@@ -1782,6 +2068,8 @@ function indentLines(markdown: string, indent: string): string[] {
  * @param underText - Whether the list's first line follows a line of text in
  *   the same container: a bare `-` marker there would be a setext underline,
  *   so a `-` bullet list whose first line is a bare marker is written with `*`.
+ *   That switch also applies when the first item opens with a raw thematic
+ *   break of the bullet's own character, which would stand under a bare marker.
  * @param marker - The bullet or delimiter to write instead of the authored one.
  * @returns One line or more per item, joined by newlines.
  */
@@ -1789,7 +2077,7 @@ function serializeList(list: ListNode, definitions: Links | null, underText = fa
     const items: ItemBlock[][] = [];
 
     for (const item of list.getChildren().filter($isListItemNode)) {
-        const continues = $isListNode(item.getFirstChild()) && items.length > 0;
+        const continues = $continuesItemBefore(item) && items.length > 0;
         const blocks = continues ? items[items.length - 1]! : [];
 
         appendItemBlocks(item, blocks, definitions);
@@ -1800,7 +2088,15 @@ function serializeList(list: ListNode, definitions: Links | null, underText = fa
     }
 
     const loose = $getState(list, listLooseState);
-    const markerOf = listMarkerWriter(list, underText && items[0]?.length === 0, marker);
+    const opening = items[0]?.[0];
+    const plainMarker = listMarkerWriter(list, false, marker)(0);
+
+    // A raw thematic break of the bullet's own character opening the first item puts the marker on a line of
+    // its own (see `listItemLines`), which under a line of text is a setext underline, as an empty item's is.
+    const opensWithBreak = opening !== undefined && opening.withMarker === undefined
+        && THEMATIC_BREAK.test(`${plainMarker} ${opening.markdown.split("\n")[0]!}`);
+
+    const markerOf = listMarkerWriter(list, underText && (items[0]?.length === 0 || opensWithBreak), marker);
 
     // A single-item list is loose only through a blank line inside its item:
     // between its text and its nested list.
@@ -1854,8 +2150,10 @@ function appendItemBlocks(item: ListItemNode, blocks: ItemBlock[], definitions: 
                 withMarker:    (marker) => serializeList(child, definitions, underText, marker),
                 continuesText: underText && markdown.split("\n").every((line) => BARE_LIST_MARKER_LINE.test(line)),
             });
+        } else if ($isParagraphNode(child)) {
+            push(serializeInline(child, { ...MULTI_LINE, definitions, inItemParagraph: true }), false, true);
         } else {
-            push(serializeBlock(child, definitions), false, $isParagraphNode(child), { isRaw: $isMarkdownRawBlockNode(child) });
+            push(serializeBlock(child, definitions), false, false, { isRaw: $isMarkdownRawBlockNode(child) });
         }
     }
 
@@ -1892,8 +2190,9 @@ function itemBlockKinds(item: ListItemNode): Array<"list" | "text" | "block"> {
 
         flushInline();
 
-        // Definitions only choose how a reference link is written, never whether a block writes anything.
-        if ($isListNode(child) ? child.getChildrenSize() > 0 : serializeBlock(child, null) !== "") {
+        const writes = $isListNode(child) ? child.getChildrenSize() > 0 : $writesSomething(child);
+
+        if (writes) {
             kinds.push($isListNode(child) ? "list" : $isParagraphNode(child) ? "text" : "block");
         }
     }
@@ -1901,6 +2200,29 @@ function itemBlockKinds(item: ListItemNode): Array<"list" | "text" | "block"> {
     flushInline();
 
     return kinds;
+}
+
+/**
+ * Tells whether a block of a list item writes anything, without writing it
+ * where its kind tells: a paragraph by its inline content, a raw block by its
+ * text, and a table or code block always. A list's looseness is read on
+ * every keystroke in such a block, and writing every block of every item
+ * for it made a keystroke cost grow with the list.
+ *
+ * @param block - A block child of a list item, other than a nested list.
+ * @returns `true` when a save writes Markdown for it.
+ */
+function $writesSomething(block: ElementNode): boolean {
+    if ($isParagraphNode(block)) {
+        return holdsInlineContent(block.getChildren());
+    }
+
+    if ($isMarkdownRawBlockNode(block)) {
+        return block.getTextContent().trim() !== "";
+    }
+
+    // Definitions only choose how a reference link is written, never whether a block writes anything.
+    return $isTableNode(block) || $isCodeNode(block) || serializeBlock(block, null) !== "";
 }
 
 /**
@@ -1952,7 +2274,10 @@ function listMarkerWriter(list: ListNode, bareUnderText: boolean, marker?: strin
  * would read a nested list's lines as rows, and a paragraph after the item's
  * text would take in an ordered list that does not start at 1. An item whose
  * first block is a nested list starts it on the marker's line, as `- - n` is
- * written (CommonMark example 298's own form).
+ * written (CommonMark example 298's own form). An item whose first block is
+ * not a nested list and whose marker line would read as a thematic break
+ * (`- ---`) is written with its marker on a line of its own and the block
+ * under it.
  *
  * @param marker - The item's marker (`-`, `3.`, …).
  * @param blocks - The item's blocks.
@@ -1989,6 +2314,15 @@ function listItemLines(marker: string, itemBlocks: readonly ItemBlock[], nestedS
         return listItemLines(marker, [{ ...nested, markdown: nested.withMarker(bullet), marker: bullet }, ...blocks.slice(1)], nestedSeparated);
     }
 
+    // An item opening with a raw thematic break of its bullet's own character would read as one break
+    // (`- ---`): the marker stands on a line of its own and the block under it, which `marked` reads as the
+    // item's block.
+    const opensWithOwnBreak = nested.withMarker === undefined && THEMATIC_BREAK.test(first);
+
+    if (opensWithOwnBreak) {
+        return [marker, ...lines];
+    }
+
     return [first, ...lines.slice(1)];
 }
 
@@ -1999,10 +2333,12 @@ function listItemLines(marker: string, itemBlocks: readonly ItemBlock[], nestedS
  * a bare `-` under text is written `*`), or a raw block next to it that
  * ends or starts with a list `marked` would join it to ({@link listsJoin}).
  * `marked` reads two such lists, with or without a blank line between them,
- * as one. With no marker that keeps it apart, the list keeps its own.
+ * as one. With no marker that keeps it apart, the list keeps its own. Two
+ * raw blocks whose lists would join are written as they are, so
+ * {@link LIST_SEPARATOR} goes between them, as between two at the top level.
  *
  * @param blocks - An item's blocks.
- * @returns The blocks, those lists rewritten.
+ * @returns The blocks, those lists rewritten or set apart.
  */
 function keepNestedListsApart(blocks: readonly ItemBlock[]): ItemBlock[] {
     const kept: ItemBlock[] = [];
@@ -2010,6 +2346,12 @@ function keepNestedListsApart(blocks: readonly ItemBlock[]): ItemBlock[] {
     blocks.forEach((block, index) => {
         const previous = kept[kept.length - 1];
         const next = blocks[index + 1];
+        const joinsRawBefore = block.isRaw === true && previous?.isRaw === true && listsJoin(previous.markdown, block.markdown);
+
+        if (joinsRawBefore) {
+            kept.push({ markdown: LIST_SEPARATOR, isList: false, isText: false, isRaw: true });
+        }
+
         // Markers compare as written: an empty first item under the item's text writes `-` as `*`.
         const joins = (markdown: string): boolean =>
             (previous?.isList === true && previous.marker === writtenListMarker(markdown))
@@ -4955,8 +5297,8 @@ function escapeHtmlBlockStart(line: string, pieces: readonly LinePiece[], firstL
     const probe = (firstLine ? "" : PARAGRAPH_PROBE_LINE + "\n") + line;
     const tokens = lexMarkdown(probe).filter((token) => token.type !== "space");
     // A list item's content ends at an HTML block start that a paragraph at the top level takes in.
-    const itemProbe = `- ${PARAGRAPH_PROBE_LINE}\n  ${line}`;
-    const endsItem = context.inListItem === true && !firstLine && JSON.stringify(lexMarkdown(itemProbe)).includes('"type":"html"');
+    const readsByLine = context.inListItem === true || context.inItemParagraph === true;
+    const endsItem = readsByLine && !firstLine && opensHtmlBlockInItem(line);
 
     if (tokens.length === 1 && tokens[0]!.type === "paragraph" && !endsItem) {
         return line;
@@ -4964,6 +5306,20 @@ function escapeHtmlBlockStart(line: string, pieces: readonly LinePiece[], firstL
 
     // Escaped, the run is text, whose indent the next load drops; dropping it here keeps the save stable.
     return firstLine ? line.replace("<", "\\<") : "\\" + line.trimStart();
+}
+
+/**
+ * Tells whether a line under a list item's first line starts an HTML block
+ * there: one of the item's own blocks is HTML. Inline HTML opening the line
+ * is not — it stays in the item's text.
+ *
+ * @param line - The rendered line.
+ * @returns `true` when the line ends the item's text as an HTML block.
+ */
+function opensHtmlBlockInItem(line: string): boolean {
+    const list = lexMarkdown(`- ${PARAGRAPH_PROBE_LINE}\n  ${line}`).find((token) => token.type === "list") as Tokens.List | undefined;
+
+    return list?.items[0]?.tokens.some((token) => token.type === "html") === true;
 }
 
 /**

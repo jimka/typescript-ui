@@ -334,6 +334,41 @@ describe('the fence extension reads code fences inside a fence', () => {
 });
 
 /**
+ * The token types of each column of the first `:::` fence in the first list
+ * item of `source`'s first block, `space` tokens dropped.
+ */
+function fenceColumnTypes(source: string): string[][] {
+    const fence = childOfType<MdBlockToken>(listItemsAt(source, 0)[0]!, 'mdblock');
+
+    return fence.columns.map((column) => column.filter((token) => token.type !== 'space').map((token) => token.type));
+}
+
+/** Fences standing in a list item: opening it, under its text, and after its nested list. */
+const LIST_ITEM_FENCE_SOURCES: readonly string[] = [
+    '- ::: columns\n  **left**\n  |||\n  right\n  :::',
+    '- a\n\n  ::: {align=center}\n  x\n  :::',
+    '- a\n  - b\n\n  ::: x\n  w\n  :::',
+];
+
+describe('the fence extension lexes a fence in a list item as blocks', () => {
+    it('LI1: every column of a fence opening a list item holds a paragraph', () => {
+        expect(fenceColumnTypes(LIST_ITEM_FENCE_SOURCES[0]!)).toEqual([['paragraph'], ['paragraph']]);
+    });
+
+    it('LI2: a fence under a list item\'s text holds a paragraph', () => {
+        expect(fenceColumnTypes(LIST_ITEM_FENCE_SOURCES[1]!)).toEqual([['paragraph']]);
+    });
+
+    it('LI3: a fence after a list item\'s nested list holds a paragraph', () => {
+        expect(fenceColumnTypes(LIST_ITEM_FENCE_SOURCES[2]!)).toEqual([['paragraph']]);
+    });
+
+    it.each(LIST_ITEM_FENCE_SOURCES)('LI4: the bounded lexer reads %j as the unbounded twin does', (source) => {
+        expect(lexMarkdown(source)).toEqual(lexMarkdownUnbounded(source));
+    });
+});
+
+/**
  * Sources whose constructs span blank lines, hold column-0 lines, or continue
  * onto a following block — the shapes a window that cut the source too early
  * would lex differently. Reused with CRLF line endings below.

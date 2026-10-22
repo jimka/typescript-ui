@@ -423,6 +423,21 @@ const RAW_BLOCK_POSITIONS: ReadonlyArray<readonly [string, string]> = [
     ['the last block of the last column', '::: columns\na\n|||\nb\n\n<div>\nw\n</div>\n:::'],
     ['the last block of a one-column fence', '::: {align=center}\na\n\n<div>\nw\n</div>\n:::'],
     ['a block mid-column', '::: columns\n<div>\nw\n</div>\n\na\n|||\nb\n:::'],
+    ['the last block of a list item', '- a\n\n  <div>\n  w\n  </div>\n\n- b'],
+    ['the block opening a list item', '- a\n\n- <div>\n  w\n  </div>\n\n- b'],
+    ['a block of a list item before a paragraph', '- a\n\n  <div>\n  w\n  </div>\n\n  c\n\n- b'],
+    ['a block of a list item before a nested list', '- a\n\n  <div>\n  w\n  </div>\n\n  - n\n\n- b'],
+    ['a block of a list item between two nested lists', '- a\n  - n\n\n  <div>\n  w\n  </div>\n\n  * d\n\n- b'],
+    ['the last block of a list item after its nested list', '- a\n  - n\n\n  <div>\n  w\n  </div>\n\n- b'],
+    ['the block opening an item of a tight list', '- a\n- <div>\n  w\n  </div>\n- b'],
+    ['the block opening the only item of a list', '- <div>\n  w\n  </div>'],
+    ['the block opening an item of a tight nested list', '- a\n  - <div>\n    w\n    </div>\n  - m\n- b'],
+    ['the block opening the first item of a list nested under text', '- a\n  - <div>\n    w\n    </div>'],
+    ['the block opening an ordered item', '1. a\n2. <div>\n   w\n   </div>\n3. b'],
+    ['the block opening a task-list neighbour', '- [ ] a\n- <div>\n  w\n  </div>\n- [x] b'],
+    ['the block opening an item of a list in a column', '::: columns\n- a\n- <div>\n  w\n  </div>\n|||\nb\n:::'],
+    ['the last block of a list item in a column', '::: columns\n- a\n\n  <div>\n  w\n  </div>\n|||\nb\n:::'],
+    ['the block under the text of a list\'s only item', '- a\n\n  <div>\n  w\n  </div>'],
 ];
 
 /** What an edit leaves of the raw block's text: HTML block starts first, then every other shape it can read as. */
@@ -430,6 +445,14 @@ const RAW_BLOCK_TEXTS: readonly string[] = [
     '<div', '<div ', '<div>', '</div', '</div>', '<pre', '<script', '<style', '<textarea', '<DIV', '   <div', '<h1', '<p',
     '<', '<a', '<a>', 'plain', '# h', '- item', '> q', '```', '[a]: /u', '---', '<!--', '<!-- x', '<?', '<!D', '',
     '<div\n</div', '<div>\nw\n</div', '<div>\nw\n</di', '<div>\nw\n<',
+    // A first or last line holding nothing, and spaces before the block: none is part of what the block reads as.
+    '\n<div>', '\n\n<div>', '\n<div', ' \n<div>', '<div>\n', '<div>\n\n', '\n<div>\n', '  <div>', ' <div', '   <div>\nw\n</div>',
+    // Runs of definitions, and a quote before a line without `>` that starts an HTML block.
+    '[a]: /u\n[b]: /v', '[a]: /u\n\n[b]: /v', '> q\n<div', '> q\n</div',
+    // Whitespace alone, which writes nothing.
+    ' ', ' \n ', '\n',
+    // Lines a `:::` fence around the block would read: a closer, an opener, a column separator.
+    '<div>\n:::\n</div>', '<div>\n::: x\n</div>', '<div>\n|||\n</div>',
 ];
 
 /**

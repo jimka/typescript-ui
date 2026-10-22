@@ -25,8 +25,8 @@ import { $isLinkNode, LinkNode } from "@lexical/link";
 import { $dfs, $unwrapAndFilterDescendants, $unwrapNode, mergeRegister } from "@lexical/utils";
 import { lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions } from "~/component/display/markdownExtensions.js";
 import {
-    $definitionsSource, $headingWritesOneLine, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown, $runsReadingOtherwise,
-    $serializeBlock, $writtenListMarker, keptImageShown,
+    $continuesItemBefore, $definitionsSource, $headingWritesOneLine, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown, $runsReadingOtherwise,
+    $serializeBlock, $writtenListMarker, keptImageShown, rawBlockStandsInItem,
 } from "~/component/editor/markdownSerializer.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { keptSourceState, listLooseState, nestedLinkState, spanAttributesState } from "~/component/editor/markdownNodeState.js";
@@ -65,7 +65,8 @@ const MAX_ORDERED_LIST_NUMBER = 999_999_999;
  * takes apart shows as the ordinary text it saves as
  * ({@link registerRunEdgeRules}), and a bracket in styled text or a `+` in
  * underlined text shows without them ({@link $keepUnwritableCharactersPlain}),
- * and a `:::` column stands only in its fence ({@link $keepColumnInFence}).
+ * a `:::` column stands only in its fence ({@link $keepColumnInFence}), and
+ * no block stays inside a block that holds text only ({@link $keepBlocksOutOfText}).
  * Call right after creating the editor, before any document is loaded.
  *
  * @param editor - The editor.
@@ -76,10 +77,190 @@ export function registerWritableStateRules(editor: LexicalEditor): () => void {
         registerMarkdownListTransforms(editor), registerLineBreakRules(editor), registerTableRules(editor), registerRawBlockRules(editor),
         registerDefinitionRules(editor), registerRunEdgeRules(editor), editor.registerNodeTransform(TextNode, $keepUnwritableCharactersPlain),
         editor.registerNodeTransform(MarkdownColumnNode, $keepColumnInFence),
+        ...[ParagraphNode, HeadingNode, QuoteNode].map((klass) => editor.registerNodeTransform(klass, $keepBlocksOutOfText)),
     );
 }
 
+/**
+ * Keeps the one rule for a block inside a block that holds text only: it
+ * never stays there. A paragraph, heading or quote that has come to hold
+ * blocks keeps the text before the first of them, and what follows it — each
+ * block, and the text between blocks in paragraphs — is moved out to follow
+ * it, in order ({@link $moveBlocksOutAfter}). A code block and a raw block
+ * do the same before they flatten what is left to text. In a table cell,
+ * which holds paragraphs of text only, every block becomes paragraphs of
+ * the cell ({@link $keepCellParagraphs}).
+ *
+ * A block gets there when a list item holding blocks is joined to the block
+ * before it (Backspace at the item's start, Delete at that block's end, a
+ * range deleted from that block into the item): Lexical moves all of the
+ * item's children over. A save would write such a block's text into the
+ * line around it.
+ *
+ * @param container - The paragraph, heading or quote that changed.
+ */
+function $keepBlocksOutOfText(container: ElementNode): void {
+    const cell = container.getParent();
+
+    if ($isTableCellNode(cell)) {
+        $keepCellParagraphs(cell);
+    } else {
+        $moveBlocksOutAfter(container);
+    }
+}
+
+/**
+ * Moves the blocks standing in a block that holds text only out of it, to
+ * follow it as blocks of their own, in order; text after such a block
+ * follows it in a paragraph. The block keeps the text before its first
+ * block.
+ *
+ * @param container - The block holding text only.
+ */
+export function $moveBlocksOutAfter(container: ElementNode): void {
+    const moved = $takeBlocksOutOf(container);
+
+    moved.reduce<LexicalNode>((previous, block) => previous.insertAfter(block), container);
+}
+
+/**
+ * Takes out of an element its first block child and everything after it,
+ * as blocks: each block as it is, each run of text between or after them in
+ * a paragraph.
+ *
+ * @param container - The element.
+ * @returns The blocks, detached, in order; none when it holds no block.
+ */
+export function $takeBlocksOutOf(container: ElementNode): LexicalNode[] {
+    const children = container.getChildren();
+    const firstBlock = children.findIndex($isBlock);
+    const blocks: LexicalNode[] = [];
+    let textAfterBlock: ElementNode | null = null;
+
+    for (const child of firstBlock === -1 ? [] : children.slice(firstBlock)) {
+        const isBlock = $isBlock(child);
+
+        if (!isBlock && textAfterBlock === null) {
+            textAfterBlock = $createParagraphNode();
+            blocks.push(textAfterBlock);
+        }
+
+        if (isBlock) {
+            child.remove();
+            blocks.push(child);
+            textAfterBlock = null;
+        } else {
+            textAfterBlock!.append(child);
+        }
+    }
+
+    return blocks;
+}
+
+/**
+ * Tells whether a node is a block: an element that is not inline.
+ *
+ * @param node - The node.
+ * @returns `true` for a block.
+ */
+export function $isBlock(node: LexicalNode): node is ElementNode {
+    return $isElementNode(node) && !node.isInline();
+}
+
+/**
+ * Builds a node from its serialized form as Lexical's `$parseSerializedNode`
+ * does, except that a list item keeps the paragraphs it holds. Lexical
+ * appends each child with its parent's own `append`, and a list item's
+ * merges a paragraph's children into the item: an item's text and the
+ * paragraphs after it would come back as one line of text. Here only a
+ * paragraph that opens an item is merged, as its text, which is what a list
+ * copied from inside an item's first paragraph holds. Must run inside an
+ * `editor.update`.
+ *
+ * @param serialized - The serialized node.
+ * @returns The node, detached.
+ */
+export function $parseKeepingItemParagraphs(serialized: SerializedLexicalNode): LexicalNode {
+    const children = (serialized as Partial<SerializedElementNode>).children;
+
+    if (children === undefined) {
+        return $parseSerializedNode(serialized);
+    }
+
+    // Built without its children, which Lexical would append to it one by one.
+    const node = $parseSerializedNode({ ...serialized, children: [] } as SerializedLexicalNode);
+
+    if (!$isElementNode(node)) {
+        return node;
+    }
+
+    for (const child of children.map($parseKeepingItemParagraphs)) {
+        const isKeptParagraph = $isListItemNode(node) && $isParagraphNode(child) && !node.isEmpty();
+
+        if (isKeptParagraph) {
+            // `splice` puts the paragraph in as it is.
+            node.splice(node.getChildrenSize(), 0, [child]);
+        } else {
+            node.append(child);
+        }
+    }
+
+    return node;
+}
+
 // ---------------------------------------------------------------- lists
+
+/**
+ * Keeps a list item that opens with a paragraph as its save reads: the
+ * paragraph's content is the item's text. Markdown has no item whose first
+ * line is empty over a paragraph, so an item left that way — its own text
+ * deleted, or a new item an Enter at the end of the text put the item's
+ * paragraphs in — is saved, and reloads, as an item of that text.
+ *
+ * @param item - The list item that changed.
+ */
+function $keepOpeningParagraphAsText(item: ListItemNode): void {
+    const first = item.getFirstChild();
+
+    if ($isParagraphNode(first)) {
+        item.splice(0, 1, first.getChildren());
+    }
+}
+
+/**
+ * Moves a nested list item one level out, as Lexical's outdent does, keeping
+ * the blocks the outer item holds after the nested list. Those blocks stand
+ * in the item node that holds the nested list, which Lexical removes with
+ * all it holds once the list is empty, or replaces by the item when it
+ * splits the list around it. So they are moved first: into `item` when it is
+ * the list's last, which they then follow out as its blocks, and otherwise
+ * to the end of the item node that holds the list's last item afterwards.
+ * Either way they stay where they were read: after everything the nested
+ * list held.
+ *
+ * @param item - A list item nested in another.
+ */
+export function $outdentItemKeepingBlocks(item: ListItemNode): void {
+    const list = item.getParentOrThrow();
+    const last = list.getLastChild();
+    const isHeldByItem = $isListItemNode(list.getParent());
+    const blocks = isHeldByItem ? list.getNextSiblings() : [];
+    const followItem = item.is(last);
+
+    if (followItem) {
+        item.splice(item.getChildrenSize(), 0, blocks);
+    } else {
+        blocks.forEach((block) => block.remove());
+    }
+
+    item.setIndent(item.getIndent() - 1);
+
+    const holder = followItem || last === null ? null : last.getParentOrThrow().getParent();
+
+    if ($isListItemNode(holder)) {
+        holder.splice(holder.getChildrenSize(), 0, blocks);
+    }
+}
 
 /**
  * Replaces `@lexical/list`'s own `ListNode` transform, which joins a list
@@ -106,12 +287,33 @@ function registerMarkdownListTransforms(editor: LexicalEditor): () => void {
         editor.registerNodeTransform(ListItemNode, (item) => {
             const list = item.getParent();
 
+            $keepOpeningParagraphAsText(item);
+
             if ($isListNode(list)) {
                 $keepLoosenessWritable(list);
             }
         }),
         editor.registerNodeTransform(TextNode, $keepLoosenessAfterTyping),
+        // A deletion that empties a block removes its text node, so no text transform runs for it.
+        editor.registerNodeTransform(ParagraphNode, $keepLoosenessOfItemHolding),
+        editor.registerNodeTransform(MarkdownRawBlockNode, $keepLoosenessOfItemHolding),
     );
+}
+
+/**
+ * Keeps a list's looseness writable as a block of one of its items changes:
+ * a paragraph or raw block a deletion empties writes nothing, so its item
+ * holds one block less.
+ *
+ * @param block - The paragraph or raw block that changed.
+ */
+function $keepLoosenessOfItemHolding(block: ElementNode): void {
+    const item = block.getParent();
+    const list = $isListItemNode(item) ? item.getParent() : null;
+
+    if ($isListNode(list)) {
+        $keepLoosenessWritable(list);
+    }
 }
 
 /**
@@ -139,11 +341,20 @@ function $keepLoosenessAfterTyping(text: TextNode): void {
  * items — except that two lists whose saves write different markers
  * ({@link $writtenListMarker}) stay apart, as Markdown reads them, and so do
  * the lists a load builds; it also keeps the list's looseness writable
- * ({@link $keepLoosenessWritable}).
+ * ({@link $keepLoosenessWritable}), and leaves no list without an item
+ * ({@link $keepNoListWithoutItem}).
  *
  * @param list - The list that changed.
  */
 function $normalizeList(list: ListNode): void {
+    const isEmptied = list.isEmpty() && !$hasUpdateTag(MARKDOWN_IMPORT_TAG);
+
+    if (isEmptied) {
+        $keepNoListWithoutItem(list);
+
+        return;
+    }
+
     const next = list.getNextSibling();
     const joins = $isListNode(next) && next.getListType() === list.getListType() && $writtenListMarker(next) === $writtenListMarker(list);
 
@@ -155,6 +366,31 @@ function $normalizeList(list: ListNode): void {
     $keepNumbersWritable(list);
     $numberListItems(list);
     $keepLoosenessWritable(list);
+}
+
+/**
+ * Deals with a list an edit left with no item, which no save can write. A
+ * range from a list item's text to the end of a block the item holds takes
+ * the item with it when it is removed, where a range over two items leaves
+ * the first, empty. So where the caret was left on the list, the list gets
+ * an empty item holding the caret, as it has after that other range;
+ * otherwise (typing, Enter or a paste went on from the removal and put the
+ * caret elsewhere) the list is removed.
+ *
+ * @param list - A list with no item.
+ */
+function $keepNoListWithoutItem(list: ListNode): void {
+    const selection = $getSelection();
+    const holdsCaret = $isRangeSelection(selection) && selection.isCollapsed() && selection.anchor.getNode().is(list);
+
+    if (holdsCaret) {
+        const item = $createListItemNode();
+
+        list.append(item);
+        item.select();
+    } else {
+        list.remove();
+    }
 }
 
 /**
@@ -170,7 +406,7 @@ function $keepNumbersWritable(list: ListNode): void {
         return;
     }
 
-    const numbered = list.getChildren().filter((item) => $isListItemNode(item) && !$isListNode(item.getFirstChild())).length;
+    const numbered = list.getChildren().filter((item) => $isListItemNode(item) && !$continuesItemBefore(item)).length;
     const highestStart = Math.max(0, MAX_ORDERED_LIST_NUMBER - Math.max(0, numbered - 1));
 
     if (list.getStart() > highestStart) {
@@ -189,8 +425,9 @@ function $keepNumbersWritable(list: ListNode): void {
 function $joinLists(list: ListNode, next: ListNode): void {
     const last = list.getLastChild();
     const first = next.getFirstChild();
+    const bothNested = $continuesItemBefore(last) && $continuesItemBefore(first);
 
-    if ($isListItemNode(last) && $isListItemNode(first) && $isListNode(last.getFirstChild()) && $isListNode(first.getFirstChild())) {
+    if (bothNested) {
         $joinLists(last.getFirstChild() as ListNode, first.getFirstChild() as ListNode);
         first.remove();
     }
@@ -217,7 +454,7 @@ function $numberListItems(list: ListNode): void {
             item.setValue(value);
         }
 
-        if (!$isListNode(item.getFirstChild())) {
+        if (!$continuesItemBefore(item)) {
             value += 1;
         }
     }
@@ -284,48 +521,65 @@ function registerTableRules(editor: LexicalEditor): () => void {
 }
 
 /**
- * Turns every block in a table cell other than a paragraph into the
+ * Turns every block in a table cell other than a paragraph of text into the
  * paragraphs the save writes it as: a pipe table's cell holds lines of
  * inline content only, so a heading, quote or code block pasted there is
- * written as its inline content, and a list as each item's content on a
- * line of its own — never as the block it shows.
+ * written as its inline content, a list as each item's text and each of its
+ * blocks on a line of its own, and a block that has come to stand inside a
+ * paragraph of the cell likewise — never as the block it shows.
  *
  * @param cell - The table cell.
  */
 function $keepCellParagraphs(cell: TableCellNode): void {
     for (const child of cell.getChildren()) {
-        if ($isParagraphNode(child) || !$isElementNode(child)) {
+        const isTextParagraph = $isParagraphNode(child) && !child.getChildren().some($isBlock);
+        const isBlockToWrite = !isTextParagraph && $isElementNode(child);
+
+        if (!isBlockToWrite) {
             continue;
         }
 
-        if (!$isListNode(child)) {
-            child.replace($createParagraphNode(), true);
+        const lines = $cellLines(child);
+        // A block holding nothing leaves the empty paragraph it is written as; a list of empty items leaves none.
+        const written = lines.length > 0 || $isListNode(child) ? lines : [$createParagraphNode()];
 
-            continue;
-        }
-
-        const lines = $listItemLines(child);
-
-        lines.reduce<LexicalNode>((previous, line) => previous.insertAfter(line), child);
+        written.reduce<LexicalNode>((previous, line) => previous.insertAfter(line), child);
         child.remove();
     }
 }
 
 /**
- * The paragraphs a list in a table cell is written as: one per item holding
- * the item's inline content, then its nested lists' lines, in order.
+ * The paragraphs a block in a table cell is written as: one per run of
+ * inline content it holds at any depth, in order — a list's item text, each
+ * block of an item, each nested list's items, a quote's or heading's text.
  *
- * @param list - The list.
- * @returns The paragraphs, holding the items' own inline nodes.
+ * @param block - The block.
+ * @returns The paragraphs, holding the block's own inline nodes.
  */
-function $listItemLines(list: ListNode): ParagraphNode[] {
-    return list.getChildren().filter($isListItemNode).flatMap((item) => {
-        const children = item.getChildren();
-        const inline = children.filter((node) => !$isListNode(node));
-        const lines = inline.length > 0 ? [$createParagraphNode().append(...inline)] : [];
+function $cellLines(block: ElementNode): ParagraphNode[] {
+    const lines: ParagraphNode[] = [];
+    let run: LexicalNode[] = [];
 
-        return [...lines, ...children.filter($isListNode).flatMap($listItemLines)];
-    });
+    const flush = (): void => {
+        if (run.length > 0) {
+            lines.push($createParagraphNode().append(...run));
+        }
+
+        run = [];
+    };
+
+    for (const child of block.getChildren()) {
+        if ($isBlock(child)) {
+            flush();
+            lines.push(...$cellLines(child));
+        } else {
+            run.push(child);
+        }
+    }
+
+    flush();
+
+    return lines;
 }
 
 /**
@@ -524,7 +778,10 @@ function $keepColumnInFence(column: MarkdownColumnNode): void {
  * writes something, and so does a raw block in a `:::` column whose text
  * would break the column. The editor shows it as that paragraph
  * ({@link $showRawBlocksAsWritten}), checked whenever the raw block's text
- * or the blocks around it change. A raw block whose text is edited until it
+ * or the blocks around it change — for a raw block of a list item, those are
+ * also the blocks of the item nodes that continue its item
+ * ({@link $showItemRawBlocksAsWritten}), and the column its list comes to
+ * stand in ({@link $showColumnRawBlocksAsWritten}). A raw block whose text is edited until it
  * reads as several blocks shows as those blocks ({@link $showRawBlockAsItsBlocks}).
  *
  * @param editor - The editor.
@@ -534,28 +791,79 @@ function registerRawBlockRules(editor: LexicalEditor): () => void {
     const checkSiblings = (node: LexicalNode): void => {
         const parent = node.getParent();
 
-        if (parent !== null) {
+        if ($isListItemNode(parent)) {
+            $showItemRawBlocksAsWritten(parent);
+        } else if (parent !== null) {
             $showRawBlocksAsWritten(parent);
+        }
+    };
+
+    /**
+     * Shows a raw block whose text or place changed as its save reads:
+     * without the blocks a join left inside it, which follow it
+     * ({@link $moveBlocksOutAfter}: its text is read next, and theirs is
+     * none of it); as the paragraph it is written as, else as the blocks its
+     * own text reads as; and where it stays a raw block in a list item that
+     * no raw block of its text can stand in, the whole list read again. Each
+     * step runs only while the one before it left the raw block in place.
+     *
+     * @param node - The raw block.
+     */
+    const $showRawBlockAsSaved = (node: MarkdownRawBlockNode): void => {
+        const steps = [$moveBlocksOutAfter, checkSiblings, $showRawBlockAsItsBlocks, $readListAgainAroundRawBlock];
+
+        for (const step of steps) {
+            const inPlace = node.isAttached();
+
+            if (inPlace) {
+                step(node);
+            }
         }
     };
 
     return mergeRegister(
         editor.registerNodeTransform(RootNode, $showRawBlocksAsWritten),
-        editor.registerNodeTransform(MarkdownColumnNode, $showRawBlocksAsWritten),
-        editor.registerNodeTransform(MarkdownRawBlockNode, (node) => {
-            checkSiblings(node);
-            $showRawBlockAsItsBlocks(node);
-        }),
+        editor.registerNodeTransform(MarkdownColumnNode, $showColumnRawBlocksAsWritten),
+        editor.registerNodeTransform(ListItemNode, $showItemRawBlocksAsWritten),
+        editor.registerNodeTransform(MarkdownRawBlockNode, $showRawBlockAsSaved),
         editor.registerNodeTransform(ParagraphNode, checkSiblings),
         editor.registerNodeTransform(TextNode, (text) => {
             const parent = text.getParent();
 
             if ($isMarkdownRawBlockNode(parent)) {
-                checkSiblings(parent);
-                $showRawBlockAsItsBlocks(parent);
+                $showRawBlockAsSaved(parent);
             }
         }),
     );
+}
+
+/**
+ * Keeps the one rule for a raw block in a list item through an edit: when
+ * the raw block's text is one no list item can hold
+ * (`rawBlockStandsInItem`) — spaces typed before a raw list that reads
+ * otherwise without them, a quote edited to end on a line that reads by what
+ * follows it — the outermost list around it is shown anew as its save reads,
+ * built as a load builds it. The load decides what is a list, an item's raw
+ * block or a raw block of the whole list, so the editor then shows what a
+ * reload of the save shows.
+ *
+ * @param node - The raw block whose text or place changed.
+ */
+function $readListAgainAroundRawBlock(node: MarkdownRawBlockNode): void {
+    const item = node.getParent();
+    const stands = !$isListItemNode(item) || $hasUpdateTag(MARKDOWN_IMPORT_TAG) || rawBlockStandsInItem(node.getTextContent());
+
+    if (stands) {
+        return;
+    }
+
+    let list: LexicalNode = item!;
+
+    for (let parent = list.getParent(); $isListNode(parent) || $isListItemNode(parent); parent = parent.getParent()) {
+        list = parent;
+    }
+
+    $showBlockAnew(list, $readBlocksWithDefinitions($serializeBlock(list), lexMarkdownLinkDefinitions($definitionsSource())));
 }
 
 /**
@@ -663,11 +971,53 @@ function $caretOffsetIn(node: MarkdownRawBlockNode): number | null {
 }
 
 /**
+ * Shows the raw blocks of a list item as the save writes them
+ * ({@link $showRawBlocksAsWritten}), and those of the item nodes before it
+ * that it continues: an item node opening with a nested list is part of the
+ * item before it, so its blocks stand after that item's own, and a raw
+ * block there that runs on would take them in.
+ *
+ * @param item - The list item that changed.
+ */
+function $showItemRawBlocksAsWritten(item: ListItemNode): void {
+    let current: LexicalNode | null = item;
+
+    $showRawBlocksAsWritten(item);
+
+    while ($continuesItemBefore(current)) {
+        current = current.getPreviousSibling();
+
+        if ($isListItemNode(current)) {
+            $showRawBlocksAsWritten(current);
+        }
+    }
+}
+
+/**
+ * Shows the raw blocks of a `:::` column as the save writes them
+ * ({@link $showRawBlocksAsWritten}), those of its lists' items included, at
+ * any depth: a column that takes in a list (an alignment or a column count
+ * set on it) changes how each raw block of the list's items is written, and
+ * marks none of those items as changed.
+ *
+ * @param column - The column that changed.
+ */
+function $showColumnRawBlocksAsWritten(column: ElementNode): void {
+    $showRawBlocksAsWritten(column);
+
+    for (const child of column.getChildren()) {
+        if ($isListNode(child)) {
+            child.getChildren().filter($isListItemNode).forEach($showColumnRawBlocksAsWritten);
+        }
+    }
+}
+
+/**
  * Turns each raw block among an element's children that the save writes as
  * a paragraph ({@link $rawBlockWritesAsParagraph}) into that paragraph,
  * keeping its text and line breaks.
  *
- * @param parent - The root or a `:::` column.
+ * @param parent - The root, a `:::` column or a list item.
  */
 function $showRawBlocksAsWritten(parent: ElementNode): void {
     for (const child of parent.getChildren()) {
@@ -1456,6 +1806,14 @@ function registerRunEdgeRules(editor: LexicalEditor): () => void {
             return;
         }
 
+        const holdsTextOnly = $isParagraphNode(container) || $isHeadingNode(container) || $isQuoteNode(container);
+
+        // A text node's rule runs before its block's own: a block a join left in it is moved out before its content
+        // is read as runs of text, which would take that block's text in.
+        if (holdsTextOnly) {
+            $keepBlocksOutOfText(container);
+        }
+
         $removeEmptyLinks(container);
 
         const dissolved = $dissolveBrokenKeptConstructs(container);
@@ -2014,14 +2372,14 @@ function $editOrRestore(edit: () => void, applies: () => boolean): boolean {
     touched.forEach(({ node }) => $keepMarksOffEdgeWhitespace(node));
 
     const unwritable = touched.filter(({ node, inTableCell, json }) => !$readsBackAsShown(node, inTableCell)
-        && $readsBackAsShown($parseSerializedNode(json), inTableCell));
+        && $readsBackAsShown($parseKeepingItemParagraphs(json), inTableCell));
 
     if (unwritable.length === 0) {
         return true;
     }
 
     for (const { node, json } of touched) {
-        node.splice(0, node.getChildrenSize(), json.children.map((child) => $parseSerializedNode(child)));
+        node.splice(0, node.getChildrenSize(), json.children.map($parseKeepingItemParagraphs));
     }
 
     $restoreSelection(points[0], points[1]);

@@ -123,7 +123,9 @@ function extractFenceAttributeText(remainder: string): string {
  * section per `|||` line (`splitColumnSections`, which itself tracks fence
  * depth and code-fence state so a separator inside a nested fence or a code
  * block is ordinary content), and each section is re-lexed on its own with
- * `this.lexer.blockTokens` into its own column's token list.
+ * `this.lexer.blockTokens` into its own column's token list. Each section is
+ * lexed with `marked`'s `top` state on, so a fence in a list item holds
+ * paragraphs like a fence anywhere else.
  */
 const BLOCK_EXTENSION: TokenizerExtension = {
     name:  "mdblock",
@@ -177,7 +179,13 @@ const BLOCK_EXTENSION: TokenizerExtension = {
             type:       "mdblock",
             raw,
             attributes: parseAttributes(extractFenceAttributeText(openingRemainder)),
-            columns:    splitColumnSections(inner).map((section) => this.lexer.blockTokens(section)),
+            columns:    splitColumnSections(inner).map((section) => {
+                // A fence holds blocks wherever it stands. In a list item `marked` lexes with `top` off, where a
+                // paragraph is a bare `text` token; `blockTokens` turns `top` back on when it returns.
+                this.lexer.state.top = true;
+
+                return this.lexer.blockTokens(section);
+            }),
         } satisfies MdBlockToken;
     },
 };
