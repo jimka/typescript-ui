@@ -1070,6 +1070,32 @@ page resets to empty.
   number so every item still has nine digits at most. No consumer action is
   needed.
 
+- **`Markdown` reads code blocks inside a `:::` fence as code.** A `:::`
+  line inside a fenced code block in a fence closed the fence early, and a
+  `::: …` line there left it unclosed. A `|||` after a ```` ```` ```` code
+  block holding a ```` ``` ```` line, or after a `~~~` block holding one,
+  did not start a new column. Code fences now open and close as CommonMark
+  reads them, also on a list item's marker line, and a `:::` or `|||` line
+  inside code is code; a `:::` fence opened on a list item's marker line
+  nests. `MarkdownEditor`
+  loads these documents the same way. A code block left open inside a fence
+  now hides the fence's closing line, so that fence renders as ordinary
+  paragraphs; close the code block to keep the fence.
+
+- **`MarkdownEditor` saves `:::` columns as it shows them.** Wrapping a
+  block in a fence with `setBlockAlignment` or `setColumnCount`, or pasting
+  or typing into a column, could save a fence the viewer ended early or
+  never closed: an HTML or other raw Markdown block holding a `:::` line, a
+  `::: …` line or an unclosed code fence, and a code block holding an
+  indented fence-like line. Such a raw block now saves, and shows, as a
+  paragraph of the same text, and such a code block is written with a
+  longer fence. Pasting a selection that spanned two columns left bare
+  columns in the document, shown as raw blocks and saved as their contents;
+  they now become the blocks they hold. An unedited paragraph starting with
+  an unclosed `::: …` line was saved as loaded even after a block added
+  after it held a `:::` line, which turned the two into a fence; that line
+  is now saved escaped. No consumer action is needed.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation

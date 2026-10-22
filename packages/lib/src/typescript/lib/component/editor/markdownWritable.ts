@@ -22,7 +22,7 @@ import {
 } from "@lexical/table";
 import type { TableSelection } from "@lexical/table";
 import { $isLinkNode, LinkNode } from "@lexical/link";
-import { $dfs, $unwrapAndFilterDescendants, mergeRegister } from "@lexical/utils";
+import { $dfs, $unwrapAndFilterDescendants, $unwrapNode, mergeRegister } from "@lexical/utils";
 import { lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions } from "~/component/display/markdownExtensions.js";
 import {
     $definitionsSource, $headingWritesOneLine, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown, $runsReadingOtherwise,
@@ -30,7 +30,7 @@ import {
 } from "~/component/editor/markdownSerializer.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { keptSourceState, listLooseState, nestedLinkState, spanAttributesState } from "~/component/editor/markdownNodeState.js";
-import { MarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
+import { $isMarkdownBlockNode, MarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import { $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import {
     $buildInlineContent, $readBlocksWithDefinitions, $readRawBlockAsBlocks, MARKDOWN_IMPORT_TAG,
@@ -64,7 +64,8 @@ const MAX_ORDERED_LIST_NUMBER = 999_999_999;
  * paste, a split or typing, and a construct kept as written that an edit
  * takes apart shows as the ordinary text it saves as
  * ({@link registerRunEdgeRules}), and a bracket in styled text or a `+` in
- * underlined text shows without them ({@link $keepUnwritableCharactersPlain}).
+ * underlined text shows without them ({@link $keepUnwritableCharactersPlain}),
+ * and a `:::` column stands only in its fence ({@link $keepColumnInFence}).
  * Call right after creating the editor, before any document is loaded.
  *
  * @param editor - The editor.
@@ -74,6 +75,7 @@ export function registerWritableStateRules(editor: LexicalEditor): () => void {
     return mergeRegister(
         registerMarkdownListTransforms(editor), registerLineBreakRules(editor), registerTableRules(editor), registerRawBlockRules(editor),
         registerDefinitionRules(editor), registerRunEdgeRules(editor), editor.registerNodeTransform(TextNode, $keepUnwritableCharactersPlain),
+        editor.registerNodeTransform(MarkdownColumnNode, $keepColumnInFence),
     );
 }
 
@@ -493,6 +495,23 @@ function $unmergeHeaderCells(table: TableNode, rows: readonly TableRowNode[]): v
     }
 }
 
+// ---------------------------------------------------------------- columns
+
+/**
+ * Replaces a `:::` column that stands outside a fence — pasted from a
+ * selection that spanned columns — with the blocks it holds, which is what
+ * the save writes for it.
+ *
+ * @param column - The column.
+ */
+function $keepColumnInFence(column: MarkdownColumnNode): void {
+    const inFence = $isMarkdownBlockNode(column.getParent());
+
+    if (!inFence) {
+        $unwrapNode(column);
+    }
+}
+
 // ---------------------------------------------------------------- raw blocks
 
 /**
@@ -500,7 +519,8 @@ function $unmergeHeaderCells(table: TableNode, rows: readonly TableRowNode[]): v
  * block its own text does not close, such as `<!--` without `-->` — would
  * take in the blocks after it, so the save writes it as a paragraph holding
  * its text (escaped, its lines kept by hard breaks) once a block after it
- * writes something. The editor shows it as that paragraph
+ * writes something, and so does a raw block in a `:::` column whose text
+ * would break the column. The editor shows it as that paragraph
  * ({@link $showRawBlocksAsWritten}), checked whenever the raw block's text
  * or the blocks around it change. A raw block whose text is edited until it
  * reads as several blocks shows as those blocks ({@link $showRawBlockAsItsBlocks}).

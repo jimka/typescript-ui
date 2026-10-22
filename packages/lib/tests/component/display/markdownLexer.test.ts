@@ -238,6 +238,101 @@ describe('the fence extension emits the same tokens as the line-splitting origin
     });
 });
 
+/** One top-level token summarised as its type and text, or, for a fence, its columns summarised alike. */
+type TokenSummary = string | { mdblock: TokenSummary[][] };
+
+/**
+ * Summarises tokens as `type "text"` strings, a fence as its columns of such
+ * summaries, so a case can state a fence's whole shape in one literal.
+ *
+ * @param tokens - The tokens, `space` tokens dropped.
+ * @returns The summaries, in order.
+ */
+function summarise(tokens: readonly Token[]): TokenSummary[] {
+    return tokens.filter((token) => token.type !== 'space').map((token) => (token.type === 'mdblock'
+        ? { mdblock: (token as MdBlockToken).columns.map(summarise) }
+        : `${token.type} ${JSON.stringify((token as { text?: string }).text)}`));
+}
+
+describe('the fence extension reads code fences inside a fence', () => {
+    it('CF1: a ::: line inside a code block is code, not the closer', () => {
+        const source = '::: columns\n```\n:::\n```\n|||\nB\n:::';
+
+        expect(tokenAt<MdBlockToken>(source, 0).raw).toBe(source);
+        expect(summarise(lexMarkdown(source))).toEqual([{ mdblock: [['code ":::"'], ['paragraph "B"']] }]);
+    });
+
+    it('CF2: a ::: x line inside a code block is code, not a nested opener', () => {
+        expect(summarise(lexMarkdown('::: columns\n```\n::: x\n```\n|||\nB\n:::'))).toEqual([
+            { mdblock: [['code "::: x"'], ['paragraph "B"']] },
+        ]);
+    });
+
+    it('CF3: a shorter backtick run does not close a longer code fence', () => {
+        expect(summarise(lexMarkdown('::: columns\n````\n```\n````\n|||\nB\n:::'))).toEqual([
+            { mdblock: [['code "```"'], ['paragraph "B"']] },
+        ]);
+    });
+
+    it('CF4: a backtick run does not close a tilde code fence', () => {
+        expect(summarise(lexMarkdown('::: columns\n~~~\n```\n~~~\n|||\nB\n:::'))).toEqual([
+            { mdblock: [['code "```"'], ['paragraph "B"']] },
+        ]);
+    });
+
+    it('CF5: a closing run followed by more fence characters closes the code', () => {
+        expect(summarise(lexMarkdown('::: columns\n```\na\n```~\n|||\nB\n:::'))).toEqual([
+            { mdblock: [['code "a"'], ['paragraph "B"']] },
+        ]);
+    });
+
+    it('CF6: a run followed by text does not close the code, which then hides the closer', () => {
+        expect(summarise(lexMarkdown('::: columns\n```\na\n``` x\n|||\nB\n:::'))).toEqual([
+            'paragraph "::: columns"',
+            'code "a\\n``` x\\n|||\\nB\\n:::"',
+        ]);
+    });
+
+    it('CF7: a code block left open hides the closing line, so the fence declines', () => {
+        expect(summarise(lexMarkdown('::: columns\nA\n|||\n```\nB\n:::'))).toEqual([
+            'paragraph "::: columns\\nA\\n|||"',
+            'code "B\\n:::"',
+        ]);
+    });
+
+    it('CF8: a backtick run whose info string holds a backtick opens no code', () => {
+        expect(summarise(lexMarkdown('::: {align=center}\n``` a`b\n:::'))).toEqual([
+            { mdblock: [['paragraph "``` a`b"']] },
+        ]);
+    });
+
+    it('CF9: a code block inside a nested fence keeps its ||| as code', () => {
+        expect(summarise(lexMarkdown('::: columns\n::: {align=right}\n```\n|||\n```\n:::\n|||\nB\n:::'))).toEqual([
+            { mdblock: [[{ mdblock: [['code "|||"']] }], ['paragraph "B"']] },
+        ]);
+    });
+
+    it('CF10: an indented code fence inside a fence is tracked too', () => {
+        expect(summarise(lexMarkdown('::: columns\n  ```\n  :::\n  ```\n|||\nB\n:::'))).toEqual([
+            { mdblock: [['code ":::"'], ['paragraph "B"']] },
+        ]);
+    });
+
+    it('CF11: a code fence opened on a list item\'s marker line is tracked, so its closing line opens nothing', () => {
+        expect(summarise(lexMarkdown('::: {align=center}\n- ```\n  x\n  ```\n:::\n\nafter'))).toEqual([
+            { mdblock: [['list undefined']] },
+            'paragraph "after"',
+        ]);
+    });
+
+    it('CF12: a fence opened on a list item\'s marker line nests, so its indented closer does not close the outer fence', () => {
+        const source = '::: {align=center}\n- ::: {align=right}\n  x\n  :::\n:::';
+
+        expect(tokenAt<MdBlockToken>(source + '\n\nafter', 0).raw.trimEnd()).toBe(source);
+        expect(summarise(lexMarkdown(source))).toEqual([{ mdblock: [['list undefined']] }]);
+    });
+});
+
 /**
  * Sources whose constructs span blank lines, hold column-0 lines, or continue
  * onto a following block — the shapes a window that cut the source too early

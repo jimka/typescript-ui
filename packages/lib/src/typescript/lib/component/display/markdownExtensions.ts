@@ -2,7 +2,9 @@
 
 import { Marked, Tokenizer } from "marked";
 import type { Lexer, Links, Token, TokenizerExtension, TokenizerObject, Tokens } from "marked";
-import { lineEndAt, parseAttributes, splitColumnSections } from "~/component/display/markdownAttributes.js";
+import {
+    lineEndAt, parseAttributes, readFenceLine, splitColumnSections, startFenceLineScan,
+} from "~/component/display/markdownAttributes.js";
 import { tokenizeTable } from "~/component/display/markdownTableExtension.js";
 
 /** The `mdblock` token the fence extension emits — one token list per column. */
@@ -115,7 +117,9 @@ function extractFenceAttributeText(remainder: string): string {
  * `::: {align=… gap=…}` … `:::` — a block alignment / column-region fence. A
  * line whose trimmed form starts with `:::` and has a non-empty remainder
  * opens a block; a line whose trimmed form is exactly `:::` closes one. The
- * scan tracks depth so fences nest. The inner content is split into one
+ * scan (`readFenceLine`) tracks depth so fences nest, and code fences so a
+ * `:::` line inside code is code; a code block left open hides the closing
+ * line, and the fence then declines. The inner content is split into one
  * section per `|||` line (`splitColumnSections`, which itself tracks fence
  * depth and code-fence state so a separator inside a nested fence or a code
  * block is ordinary content), and each section is re-lexed on its own with
@@ -139,7 +143,7 @@ const BLOCK_EXTENSION: TokenizerExtension = {
             return undefined;
         }
 
-        let depth = 1;
+        const scan = startFenceLineScan();
         let closingStart = -1;
         let lineEnd = openingEnd;
 
@@ -148,18 +152,12 @@ const BLOCK_EXTENSION: TokenizerExtension = {
 
             lineEnd = lineEndAt(src, lineStart);
 
-            const trimmed = src.slice(lineStart, lineEnd).trim();
+            const role = readFenceLine(scan, src.slice(lineStart, lineEnd));
 
-            if (trimmed === ":::") {
-                depth -= 1;
+            if (role === "closer") {
+                closingStart = lineStart;
 
-                if (depth === 0) {
-                    closingStart = lineStart;
-
-                    break;
-                }
-            } else if (trimmed.startsWith(":::") && trimmed.slice(3).trim() !== "") {
-                depth += 1;
+                break;
             }
         }
 

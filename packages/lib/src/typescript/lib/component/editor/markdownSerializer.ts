@@ -17,8 +17,8 @@ import type { TableCellNode, TableNode, TableRowNode } from "@lexical/table";
 import { $dfs } from "@lexical/utils";
 import type { Links, Token, Tokens } from "marked";
 import {
-    blockStyleToAttributes, cssTextToAttributes, formatAttributes, joinColumnSections, parseAttributes, resolveBlockStyle, resolveImageSpec,
-    resolveSpanStyle, spanStyleToAttributes,
+    blockStyleToAttributes, breaksColumn, cssTextToAttributes, formatAttributes, joinColumnSections, parseAttributes, resolveBlockStyle,
+    resolveImageSpec, resolveSpanStyle, spanStyleToAttributes,
 } from "~/component/display/markdownAttributes.js";
 import {
     lexMarkdown, lexMarkdownInline, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions,
@@ -103,6 +103,14 @@ const OPEN_LABEL = /(?:^|\n) {0,3}\[(?:\\[\s\S]|[^[\]\\])*$/;
  * definition.
  */
 const OPEN_TITLE = /(?:^|\n) {0,3}\[(?:\\[\s\S]|[^[\]\\])+\]:[ \t]*\n?[ \t]*(?:<[^<>\n]*>|[^\s<]\S*)[ \t]*\n?[ \t]*(?:"[^"]*|'[^']*|\([^()]*)$/;
+
+/**
+ * Source that starts with a line opening a `:::` fence (`:::` and more on
+ * the line, as the fence tokenizer reads it): loaded as a paragraph, the
+ * fence had no closing line, but text written after the block can hold one
+ * (a raw block's `:::` line), and the two then read as one fence.
+ */
+const FENCE_OPENING_START = /^[ \t]*:::[^\n]*\S/;
 
 /**
  * The character every use of a link reference definition opens with (a
@@ -190,10 +198,11 @@ const MERGE_MARKERS: ReadonlySet<string> = new Set(["<<", "^^"]);
 const MIN_CODE_FENCE_LENGTH = 3;
 
 /**
- * A code line's leading backtick and tilde runs, after the up-to-three spaces
- * of indentation CommonMark still reads as a closing fence.
+ * A code line's leading backtick and tilde runs, at any indentation: the
+ * `:::` fence scan reads a closing fence at any indentation, so the written
+ * fence must outrun every one.
  */
-const CODE_LINE_FENCE_RUN = /^ {0,3}(`+|~+)/;
+const CODE_LINE_FENCE_RUN = /^[ \t]*(`+|~+)/;
 
 /**
  * A URL CommonMark accepts inside an angle-bracket autolink: a scheme of two
@@ -1190,7 +1199,7 @@ function writtenBlocks(
     for (let index = written.length - 1; index >= 0; index--) {
         const block = written[index]!;
 
-        if (block.source !== undefined && labelClosedAfter(written, index)) {
+        if (block.source !== undefined && (labelClosedAfter(written, index) || fenceClosedAfter(written, index))) {
             written.splice(index, 1, ...(block.standard === "" ? [] : [{ ...block, source: undefined, text: block.standard }]));
         }
     }
@@ -1214,16 +1223,45 @@ function writtenBlocks(
 function labelClosedAfter(blocks: readonly WrittenBlock[], index: number): boolean {
     const text = blocks[index]!.text;
 
-    if (!(OPEN_LABEL.test(text) || OPEN_TITLE.test(text)) || index === blocks.length - 1) {
+    return (OPEN_LABEL.test(text) || OPEN_TITLE.test(text)) && readsOtherwiseAfter(blocks, index, (alone) => alone.length - 1);
+}
+
+/**
+ * Tells whether a block written as its source opens a `:::` fence
+ * ({@link FENCE_OPENING_START}) that what is written after it closes, so the
+ * fence takes in the blocks after it: its source no longer reads as loaded,
+ * and it must be written in the standard form, which escapes its `:`.
+ *
+ * @param blocks - The blocks being written.
+ * @param index - The block's position among them.
+ * @returns `true` when the block's first block-level token reads otherwise
+ *   with what follows it.
+ */
+function fenceClosedAfter(blocks: readonly WrittenBlock[], index: number): boolean {
+    return FENCE_OPENING_START.test(blocks[index]!.text) && readsOtherwiseAfter(blocks, index, () => 0);
+}
+
+/**
+ * Tells whether one of a block's block-level tokens reads otherwise once the
+ * blocks written after it follow it.
+ *
+ * @param blocks - The blocks being written.
+ * @param index - The block's position among them.
+ * @param tokenAt - Picks the token compared, from the block's tokens alone.
+ * @returns `true` when that token's source differs with what follows it.
+ */
+function readsOtherwiseAfter(blocks: readonly WrittenBlock[], index: number, tokenAt: (alone: readonly Token[]) => number): boolean {
+    if (index === blocks.length - 1) {
         return false;
     }
 
+    const text = blocks[index]!.text;
     const following = blocks.slice(index + 1).map((block, offset) => separatorBefore(blocks, index + 1 + offset) + block.text).join("");
     const lexBlocks = (markdown: string): Token[] => lexMarkdown(markdown).filter((token) => token.type !== "space");
     const alone = lexBlocks(text);
-    const last = alone.length - 1;
+    const at = tokenAt(alone);
 
-    return last >= 0 && (lexBlocks(text + following)[last]?.raw ?? "").trim() !== (alone[last]!.raw ?? "").trim();
+    return at >= 0 && at < alone.length && (lexBlocks(text + following)[at]?.raw ?? "").trim() !== (alone[at]!.raw ?? "").trim();
 }
 
 /**
@@ -1537,9 +1575,12 @@ function serializeBlock(node: LexicalNode, definitions: Links | null): string {
  * Serializes a raw block: its text as written — unless that text runs on
  * (an HTML block its own text does not close, `<!--` without `-->`, `<pre>`
  * without `</pre>`) and a block that writes something follows it, which the
- * text would take in. It is then written as a paragraph holding its text,
- * escaped, its lines kept by hard breaks, so it shows the same text and the
- * blocks after it stay their own, as the editor shows them.
+ * text would take in, or it stands in a `:::` column and its text would
+ * break the column (`breaksColumn`): end the fence, swallow its closing
+ * line, or lose a backslash to the separator unescape. It is then written as
+ * a paragraph holding its text, escaped, its lines kept by hard breaks, so
+ * it shows the same text and the blocks after it stay their own, as the
+ * editor shows them.
  *
  * @param node - The raw block.
  * @param definitions - The saved document's link reference definitions, or `null`.
@@ -1559,8 +1600,10 @@ function serializeRawBlock(node: MarkdownRawBlockNode, definitions: Links | null
 /**
  * Tells whether a save writes a raw block as a paragraph holding its text
  * ({@link serializeRawBlock}): its text runs on and a block after it writes
- * something. The editor then shows it as that paragraph. Must run inside an
- * `editor.read` or `editor.update`.
+ * something, or it stands in a `:::` column and its text would break the
+ * column (`breaksColumn`): end the fence, swallow its closing line, or lose
+ * a backslash to the separator unescape. The editor then shows it as that
+ * paragraph. Must run inside an `editor.read` or `editor.update`.
  *
  * @param node - The raw block.
  * @param definitions - The saved document's link reference definitions, or
@@ -1568,7 +1611,9 @@ function serializeRawBlock(node: MarkdownRawBlockNode, definitions: Links | null
  * @returns `true` when it is written as a paragraph.
  */
 export function $rawBlockWritesAsParagraph(node: MarkdownRawBlockNode, definitions: Links | null = $collectDefinitions()): boolean {
-    return rawBlockEnd(node.getTextContent()) === "runsOn" && $writesBlockAfter(node, definitions);
+    const breaksItsColumn = $isMarkdownColumnNode(node.getParent()) && breaksColumn(node.getTextContent());
+
+    return breaksItsColumn || (rawBlockEnd(node.getTextContent()) === "runsOn" && $writesBlockAfter(node, definitions));
 }
 
 /**

@@ -120,4 +120,11 @@ export const DIALECT_CASES: readonly CorpusCase[] = [
     { name: 'html line right after a quote list with lazy lines', source: '> - a\n> - a\nc\n> - a\nc\n<div>', known: { surface: 'quoteBlocks' } },
     { name: 'ordered item right after a quote list with lazy lines', source: '> - a\n> - a\nc\n> - a\nc\n1. g', known: { surface: 'quoteBlocks' } },
     { name: 'checked and unchecked task items', source: '- [x] done\n- [ ] todo' },
+    { name: 'code fence holding a fence closer in a column', source: '::: columns\n```\n:::\n```\n|||\nB\n:::' },
+    { name: 'code fence holding a fence opener in a column', source: '::: columns\n```\n::: x\n```\n|||\nB\n:::' },
+    { name: 'long code fence holding a shorter one in a column', source: '::: columns\n````\n```\n````\n|||\nB\n:::' },
+    { name: 'tilde code fence holding a backtick fence in a column', source: '::: columns\n~~~\n```\n~~~\n|||\nB\n:::' },
+    { name: 'code fence left open in a column', source: '::: columns\nA\n|||\n```\nB\n:::' },
+    { name: 'html block holding a fence closer in a column', source: '::: columns\n<div>\n:::\n</div>\n|||\nB\n:::' },
+    { name: 'html block holding an escaped separator in a column', source: '::: columns\n<div>\n\\|||\n</div>\n|||\nB\n:::' },
 ];
