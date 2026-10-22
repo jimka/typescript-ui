@@ -30,7 +30,7 @@ import {
     $getChildCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection, COMMAND_PRIORITY_LOW,
     INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND, $getNodeByKey, $addUpdateTag, $setState,
     HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG, BEFORE_INPUT_COMMAND, INPUT_COMMAND, COMMAND_PRIORITY_EDITOR, COMPOSITION_END_TAG,
-    COMPOSITION_START_COMMAND, $getEditor,
+    COMPOSITION_START_COMMAND, $getEditor, $insertNodeToNearestRootAtCaret, SKIP_DOM_SELECTION_TAG,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
@@ -56,7 +56,7 @@ import {
     $insertTableColumnAtSelection, $deleteTableColumnAtSelection,
     $getTableColumnIndexFromTableCellNode, $isTableCellNode, $isTableRowNode,
     $isTableSelection, $mergeCells, $unmergeCell, $isTableNode,
-    INSERT_TABLE_COMMAND, $computeTableMapSkipCellCheck, $createTableCellNode, $createTableNode, $createTableRowNode,
+    $createTableNodeWithDimensions, $computeTableMapSkipCellCheck, $createTableCellNode, $createTableNode, $createTableRowNode,
 } from "@lexical/table";
 import type { TableRowNode, TableSelection } from "@lexical/table";
 import { mergeRegister, $getNearestNodeOfType, $handleIndentAndOutdent } from "@lexical/utils";
@@ -477,6 +477,31 @@ function $getTableColumnCount(table: TableNode): number {
     return headerRow.getChildren()
         .filter($isTableCellNode)
         .reduce((sum, cell) => sum + cell.getColSpan(), 0);
+}
+
+/**
+ * Whether a cell holds one empty paragraph and nothing else, the state of a
+ * cell that has no content.
+ *
+ * @param cell - The cell.
+ * @returns `true` for such a cell.
+ */
+function $holdsOneEmptyParagraph(cell: TableCellNode): boolean {
+    const only = cell.getFirstChild();
+
+    return cell.getChildrenSize() === 1 && $isParagraphNode(only) && only.isEmpty();
+}
+
+/**
+ * Whether a cell is in the table's header row, its first row.
+ *
+ * @param cell - The cell.
+ * @returns `true` for a header cell.
+ */
+function $isHeaderCell(cell: TableCellNode): boolean {
+    const row = cell.getParent();
+
+    return row !== null && row.getPreviousSibling() === null;
 }
 
 /**
@@ -2126,6 +2151,195 @@ function $settleCaretIntoBlock(selection: RangeSelection, staysOutOf: ((node: Le
 }
 
 /**
+ * Whether a node is a container no caret can stand in: a `:::` block, which
+ * holds columns. A point on one lies between its columns.
+ *
+ * @remarks
+ * Lists and list items are not settled here: a caret between the items of a
+ * list, or between the blocks of an item, has a meaning of its own there
+ * ({@link $openBlockAtItemCaret}), and a range with an end on one is removed
+ * by {@link $removeGuardedRangeForInsert} and the list item rules.
+ *
+ * @param node - The node a point is on.
+ * @returns `true` for such a container.
+ */
+function $holdsNoCaret(node: LexicalNode): boolean {
+    return $isMarkdownBlockNode(node);
+}
+
+/**
+ * Whether a point stands between two blocks of the root or a `:::` column,
+ * just before a list.
+ *
+ * @param point - The point.
+ * @returns `true` for an element point on the root or a column, at a list.
+ */
+function $standsBeforeList(point: PointType): boolean {
+    const node = point.getNode();
+    const isElement = $isElementNode(node);
+    const holdsBlocks = isElement && point.type === "element" && $isRootOrShadowRoot(node) && !$isTableCellNode(node);
+
+    return holdsBlocks && $isListNode(node.getChildAtIndex(point.offset));
+}
+
+/**
+ * Whether a range's point stands between two blocks of the root or a `:::`
+ * column, where a caret can be only while nothing is selected with it. Not
+ * so for a range's start just before a list: the list item rules remove a
+ * range from there with the items it covers (Backspace, paste and typing),
+ * and the paragraph break removes it itself
+ * ({@link $clearGuardedRangeBeforeParagraph}). An end just after a list is
+ * moved into it.
+ *
+ * @param point - An element point of a range.
+ * @param isStart - Whether it is the range's start rather than its end.
+ * @returns `true` for the root and a column, `false` for a table cell and
+ *   for a start just before a list.
+ */
+function $liesBetweenBlocks(point: PointType, isStart: boolean): boolean {
+    const node = point.getNode();
+    const isElement = $isElementNode(node);
+    const holdsBlocks = isElement && $isRootOrShadowRoot(node) && !$isTableCellNode(node);
+
+    return holdsBlocks && !(isStart && $standsBeforeList(point));
+}
+
+/**
+ * Whether a selection is a range that starts just before a list, on the
+ * root or in a `:::` column, whichever end the anchor is at.
+ *
+ * @param selection - The selection.
+ * @returns `true` for such a range.
+ */
+function $isRangeStartingBeforeList(selection: BaseSelection | null): selection is RangeSelection {
+    const isRange = $isRangeSelection(selection);
+    const isOpen = isRange && !selection.isCollapsed();
+
+    return isOpen && $standsBeforeList($orderedPoints(selection)[0]);
+}
+
+/**
+ * Whether a range's end is a point on a list that stands in a `:::` column.
+ * Lexical's removal of a range ending there takes the list and leaves its
+ * column with nothing in it, which a column cannot be; the end is moved into
+ * the list's text instead. On the root the list item rules take such a range.
+ *
+ * @param point - An element point of a range.
+ * @returns `true` for a point on a list whose parent is a column.
+ */
+function $endsListOfColumn(point: PointType): boolean {
+    const node = point.getNode();
+
+    return $isListNode(node) && $isMarkdownColumnNode(node.getParent());
+}
+
+/**
+ * Whether a selection point is one {@link $settleSelectionOffContainers}
+ * moves: an element point on a container no caret can stand in, or, for a
+ * range, one between two blocks of the root or a column.
+ *
+ * @param point - The point.
+ * @param isCollapsed - Whether the selection is a caret.
+ * @param isStart - Whether it is the selection's start rather than its end.
+ * @returns `true` when the point is moved.
+ */
+function $pointNeedsSettling(point: PointType, isCollapsed: boolean, isStart: boolean): boolean {
+    if (point.type !== "element") {
+        return false;
+    }
+
+    const betweenBlocks = !isCollapsed && $liesBetweenBlocks(point, isStart);
+    const endsColumnList = !isCollapsed && !isStart && $endsListOfColumn(point);
+
+    return $holdsNoCaret(point.getNode()) || betweenBlocks || endsColumnList;
+}
+
+/**
+ * Moves an element point to the caret position it names. It goes into the
+ * neighbour block on the side `prefers`, and into the one on the other side
+ * when the container has none there: down to the deepest position of that
+ * block, as {@link $settleCaretIntoBlock} enters a block. A container with
+ * no child at all is left as it is.
+ *
+ * @param point - The point, on an element.
+ * @param prefers - The side of the point to go to first.
+ */
+function $settlePoint(point: PointType, prefers: CaretDirection): void {
+    const container = point.getNode();
+    const isContainer = $isElementNode(container);
+
+    if (!isContainer) {
+        return;
+    }
+
+    const next = container.getChildAtIndex(point.offset);
+    const previous = container.getChildAtIndex(point.offset - 1);
+    const preferred = prefers === "next" ? next : previous;
+    const other: CaretDirection = prefers === "next" ? "previous" : "next";
+    const direction: CaretDirection = preferred !== null ? prefers : other;
+    const neighbour = direction === "next" ? next : previous;
+    const isText = $isTextNode(neighbour);
+
+    if (isText) {
+        point.set(neighbour.getKey(), direction === "next" ? 0 : neighbour.getTextContentSize(), "text");
+
+        return;
+    }
+
+    const isElement = $isElementNode(neighbour);
+
+    if (isElement) {
+        $setPointFromCaret(point, $normalizeCaret($getChildCaret(neighbour, direction)));
+    }
+}
+
+/**
+ * Moves the points of a selection that lie where no caret can be to the
+ * caret positions they name, so a command acts as it does for the same
+ * selection made with the mouse. Such a point can only be set in code: on a
+ * `:::` block, or, for a range, on the root or a column between two blocks.
+ * A caret goes to the start of the block after it (the end of the block
+ * before it at the container's end); a range's start likewise, and its end to
+ * the end of the block before it (the start of the block after it at the
+ * container's start). Lists and list items are not settled, and neither is a
+ * range's start just before a list ({@link $liesBetweenBlocks}).
+ *
+ * @remarks
+ * Lexical's insert needs a block holding inline content around the caret,
+ * and its removal of a range that starts between blocks removes every block
+ * but the root's last child, which it leaves empty. A point on a table, a
+ * table row or a cell is left to `@lexical/table`, and a caret between two
+ * blocks to Lexical, which make and handle them themselves.
+ *
+ * @param selection - The selection, moved in place.
+ * @returns Whether a point moved.
+ */
+function $settleSelectionOffContainers(selection: BaseSelection | null): boolean {
+    const isRange = $isRangeSelection(selection);
+
+    if (!isRange) {
+        return false;
+    }
+
+    const isCollapsed = selection.isCollapsed();
+    const [start, end] = $orderedPoints(selection);
+    const startMoves = $pointNeedsSettling(start, isCollapsed, true);
+    const endMoves = !isCollapsed && $pointNeedsSettling(end, isCollapsed, false);
+
+    if (startMoves) {
+        $settlePoint(start, "next");
+    }
+
+    if (isCollapsed && startMoves) {
+        end.set(start.key, start.offset, start.type);
+    } else if (endMoves) {
+        $settlePoint(end, "previous");
+    }
+
+    return startMoves || endMoves;
+}
+
+/**
  * The list item or list a collapsed caret stands on: an element point
  * between the blocks of an item, or between the items of a list.
  *
@@ -2410,8 +2624,9 @@ function $deleteKeyOverTableEdgeRange(event: CommandPayloadType<typeof KEY_DELET
  * ({@link $removeTableEdgeRange}), else a stale-focus range
  * ({@link $removeStaleFocusRange}). In that order: a table-edge range ending
  * inside a later block's word is a stale-focus range too, and must lose the
- * whole table. Leaves any other selection alone, for the caller's own
- * Lexical call to handle.
+ * whole table. A point where no caret can be is settled first
+ * ({@link $settleSelectionOffContainers}). Leaves any other selection alone,
+ * for the caller's own Lexical call to handle.
  *
  * @param selection - The selection about to be removed or replaced.
  * @param caretStaysOutOf - Passed to {@link $removeTableEdgeRange}, for a
@@ -2419,6 +2634,8 @@ function $deleteKeyOverTableEdgeRange(event: CommandPayloadType<typeof KEY_DELET
  * @returns Whether it was such a range, now removed and collapsed at the removal point.
  */
 function $removeGuardedRange(selection: BaseSelection | null, caretStaysOutOf: ((node: LexicalNode) => boolean) | null = null): boolean {
+    $settleSelectionOffContainers(selection);
+
     const isTableEdge = $isTableEdgeRange(selection);
 
     if (isTableEdge) {
@@ -2445,17 +2662,8 @@ function $removeGuardedRange(selection: BaseSelection | null, caretStaysOutOf: (
  * otherwise run first itself.
  *
  * @remarks
- * Lexical's removal (0.49.0) of a range that starts between two blocks — a
- * point on the root itself, which a programmatic selection can hold — and
- * runs to the end of a document ending in a list or a `:::` block removes
- * every block but the root's last child: it leaves the list, with no item,
- * or the `:::` block, with no column, and the caret on it. Neither holds
- * inline content: Lexical's `insertNodes` throws for a caret on the list,
- * and puts the image where no save writes it on the `:::` block. The
- * emptied one is replaced by an empty paragraph first
- * ({@link $replaceEmptiedContainerAtCaret}). A range that starts at such a
- * point further down and ends on the list or `:::` block itself empties it
- * too, with the caret left just before it: it is replaced the same way.
+ * The range's points are settled first ({@link $removeGuardedRange}), so the
+ * removal runs between two caret positions and empties no container.
  *
  * @param selection - The selection the image goes in at; collapsed afterwards.
  */
@@ -2465,40 +2673,10 @@ function $removeRangeBeforeImage(selection: RangeSelection): void {
 
     if (isLeft) {
         selection.removeText();
-        $replaceEmptiedContainerAtCaret(selection);
     }
 
     // The caret as the removal left it: on a list item or a list it gets a block of its own.
     $openBlockAtItemCaret(selection);
-}
-
-/**
- * Replaces the element a collapsed caret is on — or, for a caret between two
- * blocks, the block right after it — with an empty paragraph holding the
- * caret, when it is a container a removal emptied: a list with no item, or a
- * `:::` block with no column. Leaves any other caret alone: one left on a
- * list between its items is given an item by {@link $openBlockAtItemCaret}.
- *
- * @param selection - The selection, collapsed after a removal.
- */
-function $replaceEmptiedContainerAtCaret(selection: RangeSelection): void {
-    const anchorNode = selection.anchor.getNode();
-    // Between two blocks, the removal of a range ending on the container itself leaves the caret before it.
-    const container = $isRootOrShadowRoot(anchorNode) ? anchorNode.getChildAtIndex(selection.anchor.offset) : anchorNode;
-    const isEmptied = ($isListNode(container) || $isMarkdownBlockNode(container)) && container.isEmpty();
-
-    if (!isEmptied) {
-        return;
-    }
-
-    const paragraph = $createParagraphNode();
-    const caret = $getChildCaret(paragraph, "next");
-
-    // The caret moves before the container goes: `replace()` would move a copy of the selection, not this one.
-    container.insertBefore(paragraph);
-    $setPointFromCaret(selection.anchor, caret);
-    $setPointFromCaret(selection.focus, caret);
-    container.remove();
 }
 
 /**
@@ -2530,15 +2708,38 @@ function $clearGuardedRangeBeforeInsert(): boolean {
 /**
  * `INSERT_PARAGRAPH_COMMAND` listener: makes the selection ready for the
  * paragraph ({@link $removeGuardedRangeForInsert}), then lets Lexical insert
- * it at the now-collapsed caret. A caret left between the blocks of a list
- * item gets its paragraph here, as Lexical gives one to a caret between two
- * blocks of the root: its own insert finds no block around a point on a
- * list item to split.
+ * it at the now-collapsed caret. A range that starts just before a list is
+ * removed here first ({@link $isRangeStartingBeforeList}), the way a range
+ * ending on a list is: Lexical's own insert over a range whose anchor is the
+ * point before the list inserts the paragraph and removes nothing, and over
+ * the same range made backward removes it but leaves the caret at the
+ * document's end, so the paragraph would not come where the range was. A
+ * list the removal emptied is refilled with one blank item
+ * ({@link $openBlockAtItemCaret}) and Lexical's insert runs there, where
+ * Enter leaves the list for a paragraph, as after Delete. A
+ * caret left between the blocks of a list item gets its paragraph here, as
+ * Lexical gives one to a caret between two blocks of the root: its own
+ * insert finds no block around a point on a list item to split.
  *
  * @returns Whether the paragraph was put in here; otherwise `false`, so the command's own handler still runs.
  */
 function $clearGuardedRangeBeforeParagraph(): boolean {
-    return $removeGuardedRangeForInsert($getSelection());
+    const selection = $getSelection();
+    const isGuarded = $isTableEdgeRange(selection) || $isStaleFocusRange(selection);
+    const removesFirst = !isGuarded && $isRangeStartingBeforeList(selection);
+
+    if (removesFirst) {
+        selection.removeText();
+
+        // A list the range emptied is refilled with one empty item; Lexical's
+        // insert then runs there, and Enter on that blank item leaves the
+        // list for a paragraph, as it does after Delete.
+        $openBlockAtItemCaret(selection);
+
+        return false;
+    }
+
+    return $removeGuardedRangeForInsert(selection);
 }
 
 /**
@@ -2654,8 +2855,8 @@ function $guardedRemovalDeclinesLineBreak(selection: BaseSelection | null): bool
 function $clearGuardedRangeBeforeLineBreak(): boolean {
     const selection = $getSelection();
     // Between the blocks of a list item, or the items of a list, there is no line to break, and Lexical's insert
-    // throws there: for a caret, and for a range that starts there, before anything of it is removed.
-    const declined = $guardedRemovalDeclinesLineBreak(selection) || $startsOnListContainer(selection);
+    // throws there: for a caret, and for a range that starts or ends there, before anything of it is removed.
+    const declined = $guardedRemovalDeclinesLineBreak(selection) || $startsOnListContainer(selection) || $isListContainerRange(selection);
 
     if (!declined) {
         $removeGuardedRange(selection);
@@ -3261,8 +3462,7 @@ function $selectionTouchesTextOnlyBlock(): boolean {
  * only: a heading, quote, code block or list made there would be saved into
  * the cell as its literal syntax, so the block conversions decline. A table
  * selection is of whole cells, so it lies in them by what it is — its own
- * nodes are not read, since the cell its focus names can be gone (one merged
- * away, until the next selection change).
+ * nodes are not read.
  *
  * @returns `true` for a table selection, and for a range selection whose
  *   anchor, focus or any selected node is inside a `TableCellNode`.
@@ -4236,6 +4436,10 @@ function registerTextOnlyBlockRules(editor: LexicalEditor): () => void {
  * stale-focus one ({@link $removeGuardedRange}). All are at
  * {@link COMMAND_PRIORITY_CRITICAL}, ahead of every handler that removes
  * the range and of `@lexical/table`'s own Backspace and Delete handlers.
+ * Each guard first settles a point where no caret can be
+ * ({@link $settleSelectionOffContainers}). The paragraph-break guard also
+ * removes a range that starts just before a list ahead of Lexical's insert,
+ * so the break comes where the range was ({@link $clearGuardedRangeBeforeParagraph}).
  * `DELETE_CHARACTER_COMMAND` alone has its two guards apart, either side of
  * {@link $joinIntoTextOnlyBlock} at {@link COMMAND_PRIORITY_HIGH}. The
  * table-edge guard runs ahead of it, at CRITICAL: that handler would join a
@@ -4252,7 +4456,11 @@ function registerTextOnlyBlockRules(editor: LexicalEditor): () => void {
  */
 function registerRangeGuards(editor: LexicalEditor): () => void {
     const guard = <P>(command: LexicalCommand<P>, listener: CommandListener<P>): (() => void) =>
-        editor.registerCommand(command, listener, COMMAND_PRIORITY_CRITICAL);
+        editor.registerCommand(command, (payload, target) => {
+            $settleSelectionOffContainers($getSelection());
+
+            return listener(payload, target);
+        }, COMMAND_PRIORITY_CRITICAL);
 
     return mergeRegister(
         guard(KEY_BACKSPACE_COMMAND, $backspaceOverTableEdgeRange),
@@ -4497,6 +4705,43 @@ export interface CommandAvailability {
     canMergeCells: boolean;
     /** `unmergeTableCell`. */
     canUnmergeCell: boolean;
+}
+
+/**
+ * `$insertNodeToNearestRootAtCaret`'s test for splitting the block at the
+ * caret: never. Its split then still happens where both halves would hold
+ * content, and is skipped where one half would be empty, so no empty quote,
+ * heading or list item is left beside the inserted node.
+ *
+ * @returns Always `false`.
+ */
+function $makesNoEmptyHalf(): boolean {
+    return false;
+}
+
+/**
+ * Inserts a table at a selection point, after splitting the block holding
+ * it only where the point is inside its content ({@link $makesNoEmptyHalf}).
+ * A table that ends its container gets an empty paragraph after it, which
+ * saves nothing and lets the caret go below the table. The caret lands in
+ * the table's first cell.
+ *
+ * @param point - Where the table goes.
+ * @param rows - The number of rows, including the header row.
+ * @param columns - The number of columns.
+ */
+function $insertTableAt(point: PointType, rows: number, columns: number): void {
+    const table = $createTableNodeWithDimensions(rows, columns, { rows: true, columns: false });
+
+    $insertNodeToNearestRootAtCaret(table, $caretFromPoint(point, "next"), { $shouldSplit: $makesNoEmptyHalf });
+
+    const endsContainer = table.getNextSibling() === null;
+
+    if (endsContainer) {
+        table.insertAfter($createParagraphNode());
+    }
+
+    table.selectStart();
 }
 
 /**
@@ -5108,18 +5353,20 @@ function $readInlineAvailability(
  * Reads which of the table commands would apply. Those acting on the table
  * the caret is in need a range selection anchored in one of its cells;
  * unmerging needs that cell to span more than one row or column; merging
- * needs a table selection of more than one cell.
+ * needs a table selection of more than one cell, none of them a header
+ * cell.
  *
  * @returns The table fields of the {@link CommandAvailability}.
  */
 function $readTableAvailability(): Pick<CommandAvailability, "canEditTable" | "canMergeCells" | "canUnmergeCell"> {
     const selection = $getSelection();
     const cell = $getEnclosingTableCellNode();
-    const selectedCells = $isTableSelection(selection) ? selection.getNodes().filter($isTableCellNode).length : 0;
+    const selectedCells = $isTableSelection(selection) ? selection.getNodes().filter($isTableCellNode) : [];
+    const holdsHeaderCell = selectedCells.some($isHeaderCell);
 
     return {
         canEditTable:   cell !== null,
-        canMergeCells:  selectedCells > 1,
+        canMergeCells:  selectedCells.length > 1 && !holdsHeaderCell,
         canUnmergeCell: cell !== null && (cell.getColSpan() > 1 || cell.getRowSpan() > 1),
     };
 }
@@ -5322,6 +5569,58 @@ export function $adoptDomSelection(fromDom: RangeSelection | null): void {
 
     $carryFormatOfLanding(fromDom);
     $setSelection(fromDom);
+}
+
+/**
+ * The text `copy()` writes to the clipboard: the selection's, the whole table
+ * of a table-edge range, or, at a caret, the word the caret stands in or
+ * beside.
+ *
+ * @returns The text, or `""` when there is nothing to copy.
+ */
+function $copiedSelectionText(): string {
+    const selection = $getSelection();
+    const isRange = $isRangeSelection(selection);
+
+    if (!isRange) {
+        return "";
+    }
+
+    // Non-null only for a caret still collapsed, which is the read-only case.
+    const expansion = $computeWordExpansion();
+
+    if (expansion !== null) {
+        return expansion.node.getTextContent().slice(expansion.start, expansion.end);
+    }
+
+    const isTableEdge = $isTableEdgeRange(selection);
+    const copied = isTableEdge ? $grownTableEdgeRange(selection) : selection;
+
+    return copied.getTextContent();
+}
+
+/**
+ * Whether focusing the WYSIWYG surface's element keeps the editor's
+ * selection: when the selection is a table selection, which no browser
+ * selection stands for and which Lexical never replaces, or when the
+ * browser's own selection already lies inside the editor, which a browser
+ * keeps on focusing an element that holds it. Otherwise the browser would
+ * put a caret at the element's start, and Lexical would adopt that.
+ *
+ * @param editor - The Lexical editor.
+ * @returns `true` where the element can be focused without moving the selection.
+ */
+function $surfaceFocusKeepsSelection(editor: LexicalEditor): boolean {
+    const isTableSelection = $isTableSelection($getSelection());
+
+    if (isTableSelection) {
+        return true;
+    }
+
+    // Lexical's own reading of the browser's selection: null when it lies outside the editor.
+    const browserSelection = DOM.source.readDocumentSelection((selection) => $createRangeSelectionFromDom(selection, editor));
+
+    return browserSelection !== null;
 }
 
 /**
@@ -6456,6 +6755,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * before the Lexical editor is so much as built, and reported
      * ({@link refuseIfReadOnly}).
      *
+     * A command that applies takes the keyboard here, ahead of its update
+     * ({@link refocusSurface}); one that declines changes nothing, the focus
+     * included.
+     *
      * @param field - The field covering the command.
      * @returns `false` where the command would do nothing, and always while
      *   the editor is read-only.
@@ -6467,7 +6770,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             return false;
         }
 
-        return this.ensureEditor().read(() => $readCommandAvailability($computeWordExpansion())[field]);
+        const applies = this.ensureEditor().read(() => $readCommandAvailability($computeWordExpansion())[field]);
+
+        // The keyboard goes to the surface before the command's update: a toolbar or menu click took it off.
+        if (applies) {
+            this.refocusSurface();
+        }
+
+        return applies;
     }
 
     /**
@@ -6785,23 +7095,27 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Hands keyboard focus back to the WYSIWYG surface after a command that
-     * applies but found nothing to change. A toolbar button or a menu row
-     * takes focus off the surface before its command runs. A command that
-     * changes the document gets it back when Lexical writes the selection
-     * to the browser; one that asks for what is already there runs no such
-     * update, and would leave the keyboard on the control that was clicked.
-     * The document, the selection and the undo history stay as they are, as
-     * after {@link MarkdownEditor.copy}, which hands focus back the same way.
+     * Hands keyboard focus to the WYSIWYG surface. A toolbar button or a menu
+     * row takes it off the surface before its command runs, and every command
+     * that applies calls this before its update ({@link commandApplies}), so
+     * the focus event Lexical's commit would raise is not raised inside that
+     * commit. A command that finds nothing to change runs no update at all,
+     * and would leave the keyboard on the control that was clicked. The
+     * document, the selection and the undo history stay as they are.
      *
-     * An editable editor is focused through Lexical, which writes its
-     * selection to the browser with the focus. A read-only one is focused
-     * through its surface: Lexical writes no selection while it is not
-     * editable, so the browser's selection is the only one, and the browser
-     * keeps a caret it already holds in the surface.
+     * An editable editor's surface element is focused first where that keeps
+     * the selection ({@link $surfaceFocusKeepsSelection}) — with table cells
+     * selected Lexical focuses nothing — then Lexical's own `focus()` is
+     * called, which writes its selection to the browser with the focus. A
+     * read-only one is focused through its surface alone: Lexical writes no
+     * selection while it is not editable, so the browser's selection is the
+     * only one, and the browser keeps a caret it already holds in the
+     * surface.
      *
      * @param preventScroll - Whether to keep the browser from scrolling a
-     *   read-only surface into view; Lexical manages its own focus scroll.
+     *   read-only surface into view. An editable surface's element is always
+     *   focused with `preventScroll: true`, and Lexical manages its own focus
+     *   scroll.
      * @returns This component, for method chaining.
      */
     private refocusSurface(preventScroll: boolean = false): this {
@@ -6809,11 +7123,57 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (readOnly) {
             this._wysiwyg.focus(preventScroll);
-        } else {
-            this.ensureEditor().focus();
+
+            return this;
         }
 
+        const editor = this.ensureEditor();
+        const mounted = editor.getRootElement() !== null;
+        const keepsSelection = mounted && editor.read(() => $surfaceFocusKeepsSelection(editor));
+
+        if (keepsSelection) {
+            this._wysiwyg.focus(true);
+        }
+
+        editor.focus();
+
         return this;
+    }
+
+    /**
+     * Whether the WYSIWYG surface holds keyboard focus.
+     *
+     * @returns `true` when the focused element is the surface's element or inside it.
+     */
+    private surfaceHoldsKeyboard(): boolean {
+        const element = this._wysiwyg.getElement();
+
+        if (!element) {
+            return false;
+        }
+
+        return DOM.source.contains(element, DOM.source.getActiveElement());
+    }
+
+    /**
+     * Replaces the WYSIWYG document with `markdown`, in one discrete update.
+     * Keyboard focus stays where it is: when the surface does not hold it,
+     * the load is tagged to leave the browser's selection and focus alone,
+     * since writing Lexical's selection to the browser is what pulls the
+     * keyboard into the editor. When the surface holds it, the caret goes to
+     * the document's start as before.
+     *
+     * @param editor - The Lexical editor.
+     * @param markdown - The Markdown to load.
+     */
+    private loadWysiwygDocument(editor: LexicalEditor, markdown: string): void {
+        const holdsKeyboard = this.surfaceHoldsKeyboard();
+        const options: EditorUpdateOptions = holdsKeyboard ? { discrete: true } : { discrete: true, tag: SKIP_DOM_SELECTION_TAG };
+
+        // Discrete forces a synchronous commit, so the resulting `"change"` fires before the caller returns.
+        editor.update(() => {
+            this.adoptSourceMap($importMarkdown(markdown));
+        }, options);
     }
 
     /**
@@ -6862,7 +7222,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * toolbar's pressed/enabled state never keeps what the outgoing surface
      * last reported. It is emitted once the surface is the one shown, in
      * either direction, also when the switch is what first builds the
-     * Lexical editor.
+     * Lexical editor. Loading into the WYSIWYG surface leaves keyboard focus
+     * where it is.
      *
      * @param mode - The surface to show.
      * @returns This component, for method chaining.
@@ -6891,9 +7252,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             // right here, so that document's selection state is not reported, only the loaded one's.
             const editor = this._editor ?? this.buildEditor();
 
-            editor.update(() => {
-                this.adoptSourceMap($importMarkdown(markdown));
-            }, { discrete: true });
+            this.loadWysiwygDocument(editor, markdown);
         }
 
         this.updateSelectionState();
@@ -7014,7 +7373,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * surface: the source `CodeEditor` in `"source"` mode, else the Lexical
      * editor (building it if needed). A resulting content change fires
      * `"change"`, and `"selectionstate"` fires when the loaded document's
-     * state differs from the last one reported.
+     * state differs from the last one reported. Keyboard focus stays where it
+     * is: a host that wants the caret in the editor after a load calls
+     * {@link MarkdownEditor.focus}.
      *
      * @param value - The new Markdown source.
      * @returns This component, for method chaining.
@@ -7032,11 +7393,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         // right here: its selection state is not reported, only the loaded one's is, by the update.
         const editor = this._editor ?? this.buildEditor();
 
-        // Discrete forces a synchronous commit, so the resulting `"change"`
-        // fires before this returns rather than on a later flush.
-        editor.update(() => {
-            this.adoptSourceMap($importMarkdown(value));
-        }, { discrete: true });
+        this.loadWysiwygDocument(editor, value);
 
         return this;
     }
@@ -7547,6 +7904,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (declinedInTextOnlyBlock) { return; }
 
+        // No field covers this path, so it takes the keyboard itself, as `commandApplies` does for the others.
+        this.refocusSurface();
+
         this.ensureEditor().update(() => {
             const selection = $getSelection();
 
@@ -7693,48 +8053,26 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         const editor = this.ensureEditor();
         const readOnly = this.getReadOnly();
+        const copiesNothing = editor.read($copiedSelectionText) === "";
+
+        // Nothing to copy: the clipboard, the selection and the focus are left as they are.
+        if (copiesNothing) {
+            return this;
+        }
+
+        // The keyboard goes back to the surface first, after a menu row's click took it: ahead of the update.
+        this.refocusSurface();
 
         // A read-only editor leaves the selection to the browser: the word is copied without being selected.
         if (!readOnly) {
             editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
         }
 
-        const text = editor.read(() => {
-            const selection = $getSelection();
-
-            if (!$isRangeSelection(selection)) {
-                return "";
-            }
-
-            // Non-null only for a caret still collapsed, which is the read-only case.
-            const expansion = $computeWordExpansion();
-
-            if (expansion !== null) {
-                return expansion.node.getTextContent().slice(expansion.start, expansion.end);
-            }
-
-            const isTableEdge = $isTableEdgeRange(selection);
-            const copied = isTableEdge ? $grownTableEdgeRange(selection) : selection;
-
-            return copied.getTextContent();
-        });
+        const text = editor.read($copiedSelectionText);
 
         // Guarded: writing "" would clobber the clipboard with nothing.
         if (text !== "") {
             DOM.sink.writeClipboardText(text);
-
-            // $selectEnclosingWordIfCollapsed() above is a true no-op on an
-            // already non-collapsed selection — it never marks the selection
-            // dirty, so Lexical's reconciler skips its selection-sync step
-            // entirely, which is the only place that would otherwise
-            // incidentally restore focus (as it does for the collapsed-caret
-            // expansion case, which does mark it dirty). Focusing through
-            // Lexical explicitly forces that resync unconditionally: its own
-            // documented behaviour marks an already-clean selection dirty via
-            // $setSelection(selection.clone()) — the same selection, not a
-            // different one — so nothing about what's selected changes. A
-            // read-only editor's surface is focused directly instead.
-            this.refocusSurface();
         }
 
         return this;
@@ -7812,11 +8150,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         const text = await DOM.source.readClipboardText();
 
-        if (text === null) {
-            // See copy()'s comment: restores focus after the context-menu
-            // row's click blurred the editor, even on a denied read.
-            this.ensureEditor().focus();
+        // See copy(): the keyboard goes back to the surface after the context-menu row's click, even on a denied read.
+        this.refocusSurface();
 
+        if (text === null) {
             return false;
         }
 
@@ -7838,10 +8175,6 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 selection?.insertRawText(text);
             }, { discrete: true, tag: PASTE_TAG });
         }
-
-        // See copy()'s comment: restores focus after the context-menu row's
-        // click blurred the editor.
-        this.ensureEditor().focus();
 
         return true;
     }
@@ -7881,7 +8214,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const editor = this.ensureEditor();
         const alreadySet = editor.read(() => $selectedBlocksHaveType(type));
 
-        if (alreadySet) { return this.refocusSurface(); }
+        if (alreadySet) { return this; }
 
         editor.update(() => {
             const selection = $getSelection();
@@ -7960,8 +8293,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
         }, { discrete: true });
 
-        // The update commits nothing where the alignment asked for is the one in place.
-        return this.refocusSurface();
+        return this;
     }
 
     /**
@@ -8027,8 +8359,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
         }, { discrete: true });
 
-        // The update commits nothing where the count and the gap asked for are the ones in place.
-        return this.refocusSurface();
+        return this;
     }
 
     /**
@@ -8104,7 +8435,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * where it started; where the removal leaves the caret at a raw block, a
      * code block or another table next to it, the new table goes into a new
      * paragraph where the removed one was. `canInsertTable` reports whether
-     * the table would go in.
+     * the table would go in. The block holding the caret is split only where
+     * the caret is inside its content, so no empty quote, heading or list
+     * item is left beside the table; a table that ends its container is
+     * followed by an empty paragraph.
      *
      * In `"source"` mode, inserts the raw-Markdown GFM table skeleton above
      * the block holding the caret instead.
@@ -8124,26 +8458,33 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         const editor = this.ensureEditor();
 
-        // INSERT_TABLE_COMMAND inserts at the selection's focus and removes nothing. A freshly built editor
-        // may have no selection, so seed one first; a table-edge range is removed first, as insertImage()
-        // removes it, or the table would go into the cell the range ends in. The caret that leaves stays out
-        // of a block next to the removed table that takes no table: a raw block, a code block, another table.
-        // The command is dispatched in the same update, so the removal and the new table are one undo step.
+        // A freshly built editor may have no selection, so seed one first; a table-edge range is removed first,
+        // as insertImage() removes it, or the table would go into the cell the range ends in. The caret that
+        // leaves stays out of a block next to the removed table that takes no table: a raw block, a code block,
+        // another table. The table is placed by $insertTableAt, which splits the caret's block only where both
+        // halves hold content. The removal and the new table are one update, so one undo step.
         editor.update(() => {
-            const selection = $getSelection();
-            const isTableEdge = $isTableEdgeRange(selection);
+            const initial = $getSelection();
+            const moved = $settleSelectionOffContainers(initial);
+            const isTableEdge = $isTableEdgeRange(initial);
+            const hadRange = $isRangeSelection(initial);
 
             if (isTableEdge) {
-                $removeTableEdgeRange(selection, $holdsNoTable);
-            } else if (!$isRangeSelection(selection)) {
+                $removeTableEdgeRange(initial, $holdsNoTable);
+            } else if (!hadRange) {
                 $getRoot().selectEnd();
             }
 
-            editor.dispatchCommand(INSERT_TABLE_COMMAND, {
-                columns:        String(columns),
-                rows:           String(rows),
-                includeHeaders: { rows: true, columns: false },
-            });
+            const selection = $getSelection();
+            const hasRange = $isRangeSelection(selection);
+            // A point moved off a `:::` block, or between two blocks, may have settled where no table goes (a code block).
+            const declinedOnceSettled = moved && !$tableInsertApplies($selectionTouchesTextOnlyBlock());
+
+            if (!hasRange || declinedOnceSettled) {
+                return;
+            }
+
+            $insertTableAt(selection.focus, rows, columns);
         }, { discrete: true });
 
         return this;
@@ -8209,6 +8550,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             if ($isRangeSelection(selection)) {
+                // A point moved off a `:::` block, or between two blocks, may have settled where no image goes (a code block).
+                const moved = $settleSelectionOffContainers(selection);
+                const declinedOnceSettled = moved && !$imageInsertApplies($selectionTouchesTextOnlyBlock());
+
+                if (declinedOnceSettled) {
+                    return;
+                }
+
                 $removeRangeBeforeImage(selection);
                 selection.insertNodes([$createMarkdownImageNode(spec)]);
             }
@@ -8348,7 +8697,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const editor = this.ensureEditor();
         const alreadySet = editor.read(() => $enclosingColumnHasAlignment(alignment));
 
-        if (alreadySet) { return this.refocusSurface(); }
+        if (alreadySet) { return this; }
 
         editor.update(() => {
             $setEnclosingColumnAlignment(alignment);
@@ -8385,9 +8734,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Merges the cells of the current drag-selected `TableSelection` into
-     * one, carrying `<<`/`^^` continuations on export. No-op without throwing
-     * when the current selection is not a `TableSelection` spanning more than
-     * one cell.
+     * one, carrying `<<`/`^^` continuations on export. The merged cell holds
+     * the content of each merged cell as a paragraph of its own, saved with
+     * the cell break (`\n\n`, a backslash and an `n` twice); an empty first
+     * cell adds no blank line. The caret lands at the end of the merged cell.
+     * No-op without throwing when the current selection is not a
+     * `TableSelection` spanning more than one cell, and when a header cell is
+     * among them: Markdown merges body cells only.
      *
      * No-op in `"source"` mode, where the raw-Markdown surface is shown.
      *
@@ -8411,7 +8764,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 return;
             }
 
-            $mergeCells(selection.getNodes().filter($isTableCellNode));
+            const cells = selection.getNodes().filter($isTableCellNode);
+            const emptyBefore = new Set(cells.filter($holdsOneEmptyParagraph).map((cell) => cell.getKey()));
+            const merged = $mergeCells(cells);
+
+            if (merged === null) {
+                return;
+            }
+
+            // `$mergeCells` skips a merged-in empty cell but keeps the first cell's own empty paragraph.
+            const leadsWithBlank = emptyBefore.has(merged.getKey()) && merged.getChildrenSize() > 1;
+
+            if (leadsWithBlank) {
+                merged.getFirstChildOrThrow().remove();
+            }
+
+            merged.selectEnd();
         }, { discrete: true });
 
         return this;
@@ -8466,7 +8834,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const editor = this.ensureEditor();
         const alreadySet = editor.read(() => $enclosingColumnWidth() === (width ?? 0));
 
-        if (alreadySet) { return this.refocusSurface(); }
+        if (alreadySet) { return this; }
 
         editor.update(() => {
             const cell = $getEnclosingTableCellNode();

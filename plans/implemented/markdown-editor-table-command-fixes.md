@@ -1376,3 +1376,135 @@ keyboard is elsewhere. W6 is the canary.
     caret with the browser's `Selection.modify`, which the modelled DOM does
     not have. Without `destroy()` on each editor the test worker runs out of
     memory.
+
+---
+
+## Implementation Notes
+
+Written by the implementer; the plan above is unchanged. The branch starts on
+`feature/markdown-editor-typing-at-link-start-swallowed`, whose list item
+rules, read-only branches and typing shortcuts landed after the plan was
+written. Line numbers were not used; every site was found by symbol.
+
+### Deviations from the plan
+
+1. **Part D leaves lists and list items alone (D1, D2, D4, P1, P2, P5, P8,
+   three R43 rows).** The list item rules below this branch give a point on a
+   list, or on an item, a meaning of their own: a caret between items opens an
+   item (`$openBlockAtItemCaret`, Z31, Z36, Z37), a caret between an item's
+   blocks opens a paragraph (Z21, Z23, T6, E4), and Backspace over a range from
+   just before a list that reaches its end takes the whole list (X11).
+   Settling those points as D1 says broke 23 tests in
+   `markdown-editor-list-item-edits.test.ts` and
+   `markdown-editor-list-item-paste.test.ts`. So `$holdsNoCaret` is the `:::`
+   block alone, and `$liesBetweenBlocks` (the root or a column, for a range)
+   does not move a range's start when the block after it is a list. A range's
+   end after a list is moved, as the plan says. Expected values changed for
+   that reason: P1 `Above\n\n- one\n- IMG\n- two`, P2
+   `Above\n\n- one\n- two\n- IMG`, P5 `Above\n\n- one`, P8 `Above`. Of the six
+   changed R43 rows only "a list alone", "a table then a list" and the fence
+   row take the plan's new values; the list and between-items rows keep the old
+   ones.
+
+   The exemption was first thought to be covered by the list item rules for
+   every command; only Backspace, paste and typing are. A paragraph break (Enter,
+   `INSERT_PARAGRAPH_COMMAND`) over a range from just before a list depended on
+   the selection's direction: with the anchor at the start Lexical inserted the
+   paragraph and removed nothing, backward it removed the list but left the
+   caret at the document's end. P10c-P10h and a matrix pairing container points
+   with text ends in both directions pin it, asserting where the break and the
+   caret land. The design is remove-first, the precedent of
+   `$removeGuardedRangeForInsert` for a range ending on a list: the
+   paragraph-break guard removes a range that starts before a list
+   (`$isRangeStartingBeforeList`) with `removeText()`, then lets Lexical insert
+   at the caret. Weighed and dropped: turning a forward range around
+   (the break landed at the document's end), and settling the start into the
+   list's first item (the removal then keeps an empty item, unlike Delete).
+   P10h pins the case of a list that is the root's only child: the removal
+   empties the list, `$openBlockAtItemCaret` refills it with one blank item and
+   the guard returns `false`, so Lexical's insert runs there and Enter turns
+   the blank item into a paragraph (`x`), as Delete then Enter does. An earlier
+   version returned the refill's result and lost the break (`- x`).
+   P10i pins the table-edge exclusion (Enter into a table's cell removes the
+   table too). The matrix compares the save, the caret and the root's block
+   types with Delete-then-Enter for every range that starts on the root or a
+   column, a list-only column included.
+   Separately, Shift+Enter over `root@1` to the end of `two` (a text end) changes
+   nothing while Enter removes the range; that predates the branch. Tab
+   (`INSERT_TAB_COMMAND`) over `root@0` to the end of `two` in `- one\n- two`
+   throws "Expected node ListNode … to have a block ElementNode ancestor"; it
+   also predates the branch and is a follow-up. The matrix's emptied-column
+   finding (a range ending at the end of a list in a column) is fixed by
+   `$endsListOfColumn`, which moves such an end into the list's text.
+2. **`$handleRawBlockEnter` does not call the rule.** The plan allows this when
+   no row needs the call. Removing it changes no row of this plan or of the
+   suites below it, even with a row added for a range from the root's start
+   into an HTML raw block and Enter (P10b, kept as a control). The other four
+   call sites are in.
+3. **The settle call sites in `insertTable()` and `insertImage()` did not fail
+   P13 as written.** The `canInsert…` field already declines for a caret on a
+   `:::` block at offset 0. P13 gained a second source, a caret between a
+   `:::` block's columns where the second column opens with a code block, which
+   reads as touching no code block until it settles. Removing either call now
+   fails P13, and the insert writes into the code block.
+4. **Other mutation outcomes.** The `guard` helper removed fails P6, P9 and the
+   matrix; `$removeGuardedRange` removed fails the matrix `cut` runs;
+   `$makesNoEmptyHalf` returning `true` fails T1, T2, T4-T10, T12-T16; no
+   trailing paragraph fails T1, T4, T6, T11, T16; no `selectEnd()` fails
+   M1-M11; no blank-line drop fails M2, M7; no header rule fails M12 and the
+   A9 case; no `_wysiwyg.focus(true)` fails F1, F3, F5, W1-W3, W5 (F2 and F4
+   pass either way: jsdom's undo and merge need no focus); an always-true
+   `$surfaceFocusKeepsSelection` fails F8; no `SKIP_DOM_SELECTION_TAG` fails F6
+   and W4.
+5. **`copy()` focuses the surface only when something is copied.** The plan's
+   first-statement call broke F7 in `markdown-editor.test.ts` (a copy at a caret
+   with no word touches nothing, focus included). The text read became
+   `$copiedSelectionText`, read before the focus and again after the word
+   expansion. `paste()` and the rest are as the plan says.
+6. **`refocusSurface(preventScroll)` keeps the read-only branch** the read-only
+   branches added (the surface is focused alone); the editable path is the
+   plan's. `toggleLink(null)` takes the keyboard in `unlinkSelection()`, where
+   the newer code moved that path. `focus()` already called `refocusSurface()`.
+7. **A matrix finding fixed outside the plan's list:** Shift+Enter over a range
+   that ends on a list or list item (not only one that starts there) threw
+   "Expected node ListNode … to have a block ElementNode ancestor".
+   `$clearGuardedRangeBeforeLineBreak` now declines it too
+   (`$isListContainerRange`), as it declines a range that starts there.
+8. **Test constants.** The matrix timeout and the range partner stride are
+    named (`MATRIX_TIMEOUT_MS`, `RANGE_PARTNER_STRIDE`); P4 and P10 assert the
+    one undo step; P11b pins that Shift+Enter over a range ending on a list is
+    declined with the document unchanged.
+9. **The edit fuzz test needed one change.** The corpus rows for the cell break
+   failed `markdown-edit-fuzz.test.ts` (its `wordsOf` read the backslash `n`
+   as the letter `n` glued to the next word); `wordsOf` now treats that pair
+   as a break between words.
+10. **Test details.** The matrix skips a run that throws "window object not
+   found" (a range that settles into a caret, stepped by `Selection.modify`,
+   which the modelled DOM lacks), samples every fourth partner for ranges, and
+   reports all failures of a document at once. `clickAway` restores the
+   browser's selection after the button takes focus, since jsdom drops it and
+   a click in Chromium does not. M9's saved value is `| 1\n\n **2** | << |`,
+   with the space the plan shows. The docs link to the viewer page uses
+   `#supported-syntax-v1` (`#markdown-syntax` does not exist). The changelog's `insertImage`
+   entry names `:::` blocks and ranges between blocks, not lists.
+
+### Overlap with `markdown-editor-raw-block-range-edits`
+
+That branch is held above this one. Its container-point rule overlaps D1; the
+plan was implemented for points on containers as written except for the list
+cases in item 1, so a rebase will meet `$settleSelectionOffContainers`,
+`$pointNeedsSettling` and `$liesBetweenBlocks`.
+
+### Checks run
+
+`typecheck`, `typecheck:test`, `eslint src`, the full suite with
+`--maxWorkers=2` (566 files, 19 131 tests), `docs:api`, the llms coverage check
+and `build:lib`, all clean. The mutation checks listed above.
+
+### Not run
+
+- Manual rows X1-X8 (they need a Chromium session on the demo; no browser or
+  dev server was started).
+- Firefox and WebKitGTK.
+- The "Potential Challenges" X3 check for a highlight that stays after a merge,
+  so `SELECTION_CHANGE_COMMAND` after the merge was not needed or added.

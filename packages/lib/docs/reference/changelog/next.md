@@ -210,6 +210,11 @@ page resets to empty.
 
 ### Components
 
+- **`MarkdownEditor.setValue()` and `setMode("wysiwyg")` no longer move
+  keyboard focus into the editor.** Loading a document used to pull the
+  keyboard to the editor, away from a file tree or a button that called
+  it. Call `focus()` to put the caret there after a load.
+
 - **`MarkdownDocumentPanel`'s toolbar starts with its format buttons and
   its Text style, Alignment and Columns dropdowns disabled.** They act on a
   selection, and until someone clicks into the editor there is none, so
@@ -961,6 +966,45 @@ page resets to empty.
   but the list itself could take that `Tab` when nothing focusable followed
   the field, and focus was then lost as the list closed. No consumer action
   is needed.
+
+- **`MarkdownEditor.insertTable()` leaves no empty quote, heading or list
+  item beside the table.** A table inserted at the end of a quote, a
+  heading or a list item left an empty `>`, `#` or `-` after it, and one
+  inserted at the start left it before. The block holding the caret is now
+  split only where the caret is inside its content, and a table that ends
+  its container is followed by an empty paragraph. No consumer action is
+  needed.
+
+- **`mergeTableCells()` leaves a usable table.** An empty first cell no
+  longer gives the merged cell a blank first line, the caret lands in the
+  merged cell so Unmerge cell is available at once (the table controls
+  used to be disabled until the next click), and header cells are declined
+  (`canMergeCells` is `false`) where the merge used to move their text into
+  one cell without merging anything.
+
+- **A toolbar or menu command with table cells selected gives the keyboard
+  back to the editor.** The keyboard used to stay on the button, so Ctrl+Z
+  did nothing until the next click. Every `MarkdownEditor` command that
+  applies now focuses the editor before it acts, which also stops the
+  editor's own commands from raising Lexical's "ran while a read-only
+  context was on the stack" console warning.
+
+- **`insertImage()` no longer throws, and Delete, Enter, typing and
+  `insertTable()` no longer leave an emptied `:::` block,** for a selection
+  made in code with a point on a `:::` block, or a range with a point
+  between two blocks. Such a point is moved to the caret position it names
+  before the command acts.
+
+- **Enter over a range that starts just before a list removes the range
+  whichever way it was made, and Shift+Enter over a range that ends on a
+  list no longer throws.** A paragraph break over a range from a point on
+  the root or a column before a list to the end of its text, with the anchor
+  at the start, inserted the paragraph and removed nothing; with the anchor
+  at the end it left the caret at the document's end. The range is now
+  removed first and the break comes where it was, as after Delete.
+  Shift+Enter over a range ending between a list's items is declined, and
+  changes nothing. A range that ends at the end of a list in a `:::` column
+  no longer leaves the column empty when it is deleted or replaced.
 
 - **`MarkdownEditor` keeps a `:::` fence's opening line.** Editing anything
   inside a fence whose opening line carried more than its attributes —

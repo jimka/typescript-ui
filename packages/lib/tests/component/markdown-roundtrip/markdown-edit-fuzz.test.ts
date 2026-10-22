@@ -94,13 +94,14 @@ function seedOf(name: string): number {
 }
 
 /**
- * The words of a text.
+ * The words of a text. A table's cell break (a backslash and an `n`, written between a cell's paragraphs) is
+ * a break between words, not a letter `n` glued to the next word.
  *
  * @param text - The text.
  * @returns Its words.
  */
 function wordsOf(text: string): Set<string> {
-    return new Set(text.match(WORD) ?? []);
+    return new Set(text.replaceAll('\\n', ' ').match(WORD) ?? []);
 }
 
 /**
