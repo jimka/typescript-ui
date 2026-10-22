@@ -798,3 +798,145 @@ from `component/display/index.ts`).
     paragraph and keeps the whole list as a raw block. The viewer is right
     here before and after this plan; the fix is in the importer, which is
     editor work outside this viewer plan.
+
+---
+
+## Implementation Notes
+
+- **No per-step audit (user decision).** The worker's audit/fix loop was not
+  run for this plan; the user replaced per-step audits with one fresh
+  whole-stack review plus a fuzz pass after the last step of the stack.
+- **Reconciled with reference-links and source-preservation.** The display
+  files, `viewModel.ts`'s viewer side and every anchor in *Internal
+  Structure* held. Drifted lines: `task-list marker` is at `dialect.ts:34`
+  (plan: 30), `taskListMarker` at `divergences.ts:21` (plan: 22), and the
+  lexer's generated-documents `describe` ends at 315 (plan: 311).
+  `plans/in-progress/` did not exist on this base and was created. None of
+  the source-preservation plan's tests loaded a `---`-shaped document, so no
+  expectation there needed updating (*Potential Challenges*, third bullet).
+- **Harness baseline.** Before: 31 known entries (`quoteBlocks` 16 surface,
+  `listItemBlocks` 7 surface, `listMarkers` 4 — parity, verbatim, canonical,
+  surface — `taskListMarker` 3 — surface 2, canonical 1 — and `plainImage`
+  1). After the projection fix exactly the three `taskListMarker` checks
+  failed with "now holds"; their `known` properties and the reason were
+  deleted. C1–C5 were appended: C1 and C5 hold every check, including the
+  `verbatim`, `canonical` and `canonicalIdempotence` checks the
+  source-preservation plan added; C2–C4 fail only `surface`, as `quoteBlocks`.
+  After: 31 entries (`quoteBlocks` 19, `listItemBlocks` 7, `listMarkers` 4,
+  `plainImage` 1). Every other entry is unchanged, and CommonMark 43, 59, 92,
+  234 and 281 pass every check.
+- **Test-first record.** With the tests of steps 1–3 written, exactly the
+  rows marked "fails" failed (LX1–LX6, LX10–LX13, BF1–BF6, BF10–BF13,
+  VB1–VB5) and everything else passed. After step 5 only BF12, BF13 and VB5
+  failed; after step 6 only VB5; V16 and V18 failed before the projection
+  change and passed after it.
+- **Two code commits and two documentation commits.** The task-marker fix
+  is independent of the two lexer fixes (it touches no lexer code), so it
+  has its own code and docs commits; the table and blockquote fixes share
+  `DIALECT_BLOCK_TOKENIZERS` and are one commit.
+- **Comments the change made stale, beyond the plan's list.** In
+  `markdownExtensions.ts`: `SPACES_ONLY_LINE`'s JSDoc no longer lists a
+  `table` body row among the windowed constructs (and its tab-only sentence
+  now gives the reason that still holds); `blockWindow`'s "five windowed"
+  became "four"; `lexMarkdown`'s "Six of `marked`'s own block rules run
+  behind a guard and a window" became "Six block rules run behind a guard
+  and, where they need one, a window". In `markdownTableExtension.ts`,
+  `MdTableToken`'s JSDoc names `tokenizeTable` instead of "this extension",
+  and `tokenizeTable`'s JSDoc says that `marked`'s delimiter regex rejects
+  `{width=…}` cells while `<<` / `^^` merges are resolved (the plan's
+  wording put both under "rejects"). The lexer test file's existing
+  `describe` titles ("the table extension emits …") were left as written.
+- **Test helpers.** `typesOf` and `joinedRaws` are module-level helpers in
+  `markdownLexer.test.ts`; `Markdown.test.ts` gained `trimmedTextWrites` and
+  `textWriteTags` (the "no text write lands on an `LI`" filter) next to the
+  new `describe`s.
+- **Changelog placement.** The table entry sits under *Fixed* as the plan
+  says, although a document that relied on a pipe-less one-column table now
+  needs its pipes; the user may prefer it under *Breaking changes*.
+- **Verification.** `npm run test` (543 files, 11,518 tests), `npm run
+  typecheck`, `npm run lint`, `npm run docs:api` (zero warnings),
+  `npm run docs:llms:check` and `npm run build:lib` all pass; the plan's
+  grep for `TABLE_EXTENSION`, `pipeless` and `replacesItemContent` finds
+  nothing.
+- **Manual M1** in the MD Editor demo (`vite`, Chrome), source mode: the
+  viewer showed an `h2` "Title" (no table), a list item reading `[ ] task`
+  and a last line `<div>` with its `<`. In WYSIWYG mode "Title" is a
+  heading, the task item shows `[ ] task`, and the quote and `<div>` are two
+  raw blocks. No console errors.
+
+### Whole-stack review fixes
+
+- **Restacked onto the A2 task-marker fix** (plan
+  `markdown-viewer-link-reference-definitions`, branch
+  `feature/markdown-viewer-link-reference-definitions`): `marked`'s list
+  tokenizer now takes a task item's marker off the item's own first text only.
+  The rebase conflicted in `markdownExtensions.ts`, resolved as the union:
+  `DIALECT_BLOCK_TOKENIZERS` holds `blockquote`, `list` and `table`, and the
+  `BOUNDED_BLOCK_TOKENIZERS` and `lexMarkdownUnbounded` docs name all three.
+- **Harness projection of a checkbox before a paragraph.** `viewerListItem`
+  only gave the checkbox to a following `text` token. When `marked` makes an
+  item loose after lexing it (`- [ ] foo\n\n  [x] bar`), the checkbox stays a
+  separate item token followed by a `paragraph`; the viewer prints the marker
+  as a span of its own before the `<p>`s, and the projection dropped it. It now
+  projects that checkbox as the raw fallback block it renders as. Pinned by
+  `markdown-view-model.test.ts` V20 (failed before the fix) and V21 (a later
+  table cell keeps `[x] `), and by `Markdown.test.ts` BF16 for the viewer
+  output the projection follows. No corpus entry changes: no entry holds a
+  multi-block task item.
+- **Review A: docs and comments made exact.**
+  - The changelog entry for the table rule moved from *Fixed* to *Breaking
+    changes* (user decision) and states the rule as it is: a delimiter row
+    must hold a `|` or a `:`, so `a` over `:-:` is still a one-column table
+    and only an all-dash delimiter row (`a` over `---`) needs one added. The
+    component page said a one-column table "is written with its pipes"; it
+    now says the same rule.
+  - Thematic breaks: a `---` that starts no other block lexes as `hr`, which
+    the viewer has always rendered through its plain-text fallback — so the
+    `---` lines that used to come out as empty-header tables now show as
+    literal `---`. The changelog no longer suggests a rendered rule, and the
+    fallback lists in `Markdown.md` and `Markdown`'s class doc name the
+    thematic break. Rendering it as `<hr>` is a one-case change in the
+    viewer, but not a safe one alone: the editor keeps a thematic break as a
+    raw `---` block, so the viewer/editor parity rule needs a
+    horizontal-rule node in the editor first. Left for its own plan.
+  - The blocks that win over a table now include link reference definitions
+    and `:::` fences, which `marked` and the dialect try before the table
+    slot.
+  - `BOUNDED_BLOCK_TOKENIZERS`' doc no longer says all six slots run
+    anchored `marked` regexes: five do (`blockquote` and `list` through the
+    dialect's wrappers); `table` is the dialect's own tokenizer.
+  - Two `markdownLexer.test.ts` describe titles said "the table extension";
+    they say "the table tokenizer". `trimmedTextWrites` and `textWriteTags`
+    moved up beside the other sink helpers in `Markdown.test.ts`.
+  - `quotedSourceEnd`'s doc now gives [^quote-snap]'s bound: the snap can
+    be a candidate late only after four or more lazy list re-reads before a
+    code block. No document showing it has been found — the planning probe,
+    the review's fuzz and a further 185,000-document probe of quote, list,
+    lazy and fence lines all rejoined the source — so it is stated as a
+    bound, not a known case.
+- **A loose task item's marker starts its first paragraph (user decision:
+  "Inline, viewer changes").** In an item `marked` makes loose after lexing
+  it (a blank line before its nested list or second paragraph), the
+  checkbox stays an item token of its own before the first `paragraph`,
+  and the viewer printed its `[ ]` / `[x]` as a span on its own line above
+  the item's text. `appendListItem` now prints it at the start of that
+  paragraph — the paragraph rendered with the checkbox as its first inline
+  token, which is exactly how `marked` lexes an item loose from the start,
+  and how GFM shows it. The harness projection (`viewerListItem`) follows
+  (V20 now expects `[ ] foo` in one paragraph; new V22 pins the nested-list
+  case against a list loose from the start), and BF16/BF17 pin the viewer
+  output. With the marker inline, the importer's reason to keep such a list
+  as source is gone: `$buildListItem` now takes a checkbox before a
+  paragraph as it takes one before text, so `- [x] a` over a blank line and
+  `  - b` loads as a list (surface parity holds, the save is unchanged), and
+  the corpus entry "task item whose nested list follows a blank line" drops
+  its `listItemBlocks` known divergence. An item with a second paragraph
+  still loads as source, as any item holding more than one paragraph does.
+  The `Markdown.md` syntax row and the task-marker changelog entry say so.
+- **Migration note for the table rule.** The *Breaking changes* entry for
+  the table rule had no migration note, unlike the other breaking entries;
+  `docs/reference/migration/next.md` gains "`Markdown` reads a table only
+  where no other block starts" (what changed and why, a before/after table,
+  who needs to act, with a before/after example), and the changelog entry
+  links it with "See [Migration](/reference/migration/next) for the full
+  note.", as the others do.

@@ -1906,8 +1906,8 @@ function listMarkerWriter(list: ListNode, bareUnderText: boolean, marker?: strin
  * line, so it is not read as a continuation of the block before it: a table
  * would read a nested list's lines as rows, and a paragraph after the item's
  * text would take in an ordered list that does not start at 1. An item whose
- * first block is a nested list starts it on the marker's line (`- - n`), as
- * a bare marker line can read as a table delimiter row in this dialect.
+ * first block is a nested list starts it on the marker's line, as `- - n` is
+ * written (CommonMark example 298's own form).
  *
  * @param marker - The item's marker (`-`, `3.`, …).
  * @param blocks - The item's blocks.

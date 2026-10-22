@@ -3,7 +3,7 @@
 import { Marked, Tokenizer } from "marked";
 import type { Lexer, Links, Token, TokenizerExtension, TokenizerObject, Tokens } from "marked";
 import { lineEndAt, parseAttributes, splitColumnSections } from "~/component/display/markdownAttributes.js";
-import { TABLE_EXTENSION } from "~/component/display/markdownTableExtension.js";
+import { tokenizeTable } from "~/component/display/markdownTableExtension.js";
 
 /** The `mdblock` token the fence extension emits — one token list per column. */
 export interface MdBlockToken {
@@ -186,10 +186,10 @@ const BLOCK_EXTENSION: TokenizerExtension = {
 
 /**
  * An empty line, or a line of spaces only. None of the windowed constructs
- * continues past one: a blockquote's lazy continuation, a `table` body row and
- * an `lheading`'s content all stop there, and a list item continues only onto
- * the marker line {@link LIST_MARKER_LINE} allows. A tab-only line is
- * deliberately not blank here — `marked`'s `table` body runs through one.
+ * continues past one: a blockquote's lazy continuation and an `lheading`'s
+ * content stop there, and a list item continues only onto the marker line
+ * {@link LIST_MARKER_LINE} allows. A tab-only line is deliberately not blank
+ * here: reading it as content can only lengthen a window, never cut one short.
  */
 const SPACES_ONLY_LINE = /^ *$/;
 
@@ -204,7 +204,7 @@ const LIST_MARKER_LINE = /^(?:[*+-]|\d{1,9}[.)])(?:[ \t]|$)/;
  * Cuts `src` at its first *restart line* — a line that (1) follows an empty or
  * spaces-only line, (2) is not itself empty or spaces-only, (3) starts at
  * column 0, its first character neither a space nor a tab, and (4) is not a
- * list-item marker line. None of the five windowed block constructs can
+ * list-item marker line. None of the four windowed block constructs can
  * continue onto such a line, so `marked`'s own tokenizer returns the same
  * token for the window as for the whole remaining document — while a rule
  * whose anchored regex JavaScriptCore scans from every start position pays for
@@ -253,9 +253,9 @@ const SETEXT_UNDERLINE_LINE = /^ {0,3}(?:=+|-+) *$/;
 const WHITESPACE_ONLY_LINE = /^\s*$/;
 
 /**
- * Whether the second line holds a `-`. `marked`'s `table` rule requires its
- * delimiter row's segments to be `:?-+:?`, so a second line without one can
- * never start a table.
+ * Whether the second line holds a `-`. The dialect's table tokenizer requires
+ * its delimiter row's segments to be `:?-+:?`, so a second line without one
+ * can never start a table.
  *
  * @param src - The remaining source at the current block position.
  * @returns `true` when a second line exists and contains `-`.
@@ -385,29 +385,125 @@ function listWithOwnTaskMarker(this: Tokenizer, src: string): Tokens.List | unde
     return list;
 }
 
+/** The newlines `marked` trims off the end of a blockquote rule's match before reading its lines. */
+const TRAILING_NEWLINES = /\n+$/;
+
 /**
- * The block tokenizer the dialect owns, installed in `marked`'s `list` slot:
- * the unbounded test twin installs it as it is, and
- * {@link BOUNDED_BLOCK_TOKENIZERS} calls the same one behind its guard and
- * window, so the twin differs from the bounded instance in nothing else.
+ * Runs the dialect's table tokenizer in `marked`'s `table` slot. The cast
+ * exists because `marked` types the slot's result as its own `Tokens.Table`,
+ * while the lexer reads only `raw` from it and every consumer switches on the
+ * `mdtable` type the dialect's token carries.
+ *
+ * @param src - The remaining source at the current block position.
+ * @returns The `mdtable` token, or `undefined` when no table starts here.
+ */
+function dialectTable(this: Tokenizer, src: string): Tokens.Table | undefined {
+    return tokenizeTable.call(this, src) as unknown as Tokens.Table | undefined;
+}
+
+/**
+ * Finds where the source a blockquote used ends: the latest *candidate end*
+ * not past the length of `marked`'s own `raw`. The candidate ends are the end
+ * of the rule's match, and the end of every `>` line a lazy line (one without
+ * `>`) follows — the only places `marked`'s line loop can stop.
+ *
+ * The snap is exact whenever the loop runs out of lines (the source used is
+ * then the whole match). It can be inexact only when the loop stops early at
+ * a code block after four or more lazy list re-reads in one quote: candidate
+ * ends there lie at least four characters apart, and the rebuilt `raw` could
+ * then outgrow the source past the next one, so the snap would land a
+ * candidate late. That is a bound, not an observed case — a 200,000-document
+ * probe while planning, the stack review's fuzz and a 185,000-document probe
+ * of quote, list, lazy and fence lines found none: every top-level `raw`
+ * joined back into the source.
+ *
+ * @param quoted - The blockquote rule's match, its trailing newlines dropped.
+ * @param rebuiltLength - The length of the `raw` `marked` built.
+ * @returns The length of the source the quote used, or `rebuiltLength` when
+ *   no candidate end qualifies.
+ */
+function quotedSourceEnd(quoted: string, rebuiltLength: number): number {
+    let end = -1;
+    let lineStart = 0;
+
+    while (lineStart <= quoted.length) {
+        const lineEnd = lineEndAt(quoted, lineStart);
+        const last = lineEnd >= quoted.length;
+        const quotedLine = BLOCKQUOTE_START.test(quoted.slice(lineStart, lineEnd));
+        const nextLazy = !last && !BLOCKQUOTE_START.test(quoted.slice(lineEnd + 1, lineEndAt(quoted, lineEnd + 1)));
+        const candidate = last || (quotedLine && nextLazy);
+
+        if (candidate && lineEnd <= rebuiltLength) {
+            end = lineEnd;
+        }
+
+        if (last) {
+            break;
+        }
+
+        lineStart = lineEnd + 1;
+    }
+
+    return end === -1 ? rebuiltLength : end;
+}
+
+/**
+ * Runs `marked`'s blockquote tokenizer and replaces the token's `raw` with
+ * the slice of the source the quote used. `marked` rebuilds a blockquote's
+ * `raw` when a list inside it takes a lazy line, and the rebuilt text can be
+ * longer than that source; the lexer advances by `raw.length`, so the block
+ * after the quote would lose its first characters. Only `raw` changes: the
+ * token's `text` and child tokens stay as `marked` built them.
+ *
+ * @param src - The remaining source at the current block position.
+ * @returns The blockquote token, or `undefined` when no blockquote starts here.
+ */
+function blockquoteWithSourceRaw(this: Tokenizer, src: string): Tokens.Blockquote | undefined {
+    const token = Tokenizer.prototype.blockquote.call(this, src);
+
+    if (token === undefined) {
+        return undefined;
+    }
+
+    // `marked`'s tokenizer returned a token, so its own rule matched this `src`.
+    const quoted = this.rules.block.blockquote.exec(src)![0].replace(TRAILING_NEWLINES, "");
+
+    token.raw = src.slice(0, quotedSourceEnd(quoted, token.raw.length));
+
+    return token;
+}
+
+/**
+ * The three block tokenizers the dialect owns, installed in `marked`'s
+ * `blockquote`, `list` and `table` slots: the unbounded test twin installs
+ * them as they are, and {@link BOUNDED_BLOCK_TOKENIZERS} calls the same three
+ * behind its guards, so the twin differs from the bounded instance in nothing
+ * else.
  */
 const DIALECT_BLOCK_TOKENIZERS: TokenizerObject = {
-    list: listWithOwnTaskMarker,
+    blockquote: blockquoteWithSourceRaw,
+    list:       listWithOwnTaskMarker,
+    table:      dialectTable,
 };
 
 /**
- * The six block rules whose anchored regexes JavaScriptCore — the engine
- * WebKitGTK runs — scans from every start position of whatever it is handed,
- * so each failed match costs time in proportion to the rest of the document
- * and lexing a long document is quadratic. Each override returns `undefined`,
+ * The six block slots the bounded instance overrides. Five run `marked` rules
+ * whose anchored regexes JavaScriptCore — the engine WebKitGTK runs — scans
+ * from every start position of whatever it is handed, so each failed match
+ * costs time in proportion to the rest of the document and lexing a long
+ * document is quadratic (`blockquote` and `list` reach theirs through the
+ * dialect's wrappers); the sixth, `table`, is the dialect's own tokenizer,
+ * which has no such regex. Each override returns `undefined`,
  * declining the position outright, when a condition its rule's own regex
  * requires does not hold; otherwise it calls `marked`'s original method on
- * {@link blockWindow}'s cut of the source. `list` calls the dialect's
- * task-marker wrapper on the window instead of the original. `html` takes the
- * guard only and returns `false` — `marked` then runs the original on the
- * whole source — because its `<script>`, comment, processing-instruction,
- * declaration and CDATA forms all run to a closing marker no restart line
- * bounds.
+ * {@link blockWindow}'s cut of the source. `blockquote` and `list` call the
+ * dialect's source-`raw` and task-marker wrappers on the window instead of the
+ * originals. `table` runs the dialect's table tokenizer behind the guard with
+ * no window: that tokenizer reads only up to its first blank line, so it never
+ * scans the rest of the document. `html` takes the guard only and returns
+ * `false` — `marked` then runs the original on the whole source — because its
+ * `<script>`, comment, processing-instruction, declaration and CDATA forms all
+ * run to a closing marker no restart line bounds.
  *
  * The originals are reached through `Tokenizer.prototype`: `marked` installs
  * these overrides as own properties on the instance's tokenizer object, so the
@@ -420,13 +516,13 @@ const BOUNDED_BLOCK_TOKENIZERS: TokenizerObject = {
         return HR_START.test(src) ? Tokenizer.prototype.hr.call(this, blockWindow(src)) : undefined;
     },
     blockquote(src) {
-        return BLOCKQUOTE_START.test(src) ? Tokenizer.prototype.blockquote.call(this, blockWindow(src)) : undefined;
+        return BLOCKQUOTE_START.test(src) ? blockquoteWithSourceRaw.call(this, blockWindow(src)) : undefined;
     },
     list(src) {
         return LIST_START.test(src) ? listWithOwnTaskMarker.call(this, blockWindow(src)) : undefined;
     },
     table(src) {
-        return secondLineHasDash(src) ? Tokenizer.prototype.table.call(this, blockWindow(src)) : undefined;
+        return secondLineHasDash(src) ? dialectTable.call(this, src) : undefined;
     },
     lheading(src) {
         return hasSetextUnderline(src) ? Tokenizer.prototype.lheading.call(this, blockWindow(src)) : undefined;
@@ -442,7 +538,7 @@ const BOUNDED_BLOCK_TOKENIZERS: TokenizerObject = {
  * block-rule guards and windows if everything else about it is identical.
  */
 const MARKDOWN_EXTENSIONS: TokenizerExtension[] = [
-    UNDERLINE_EXTENSION, STYLED_SPAN_EXTENSION, TABLE_EXTENSION, BLOCK_EXTENSION, IMAGE_EXTENSION,
+    UNDERLINE_EXTENSION, STYLED_SPAN_EXTENSION, BLOCK_EXTENSION, IMAGE_EXTENSION,
 ];
 
 /**
@@ -462,8 +558,8 @@ let _unboundedMarked: Marked | null = null;
 /**
  * Lexes Markdown source through the same dialect with no block-rule guards or
  * windows, so a test can assert that bounding them changed no token. It shares
- * the dialect's own `list` tokenizer, so the guards and windows are the only
- * difference.
+ * the dialect's own `table`, `blockquote` and `list` tokenizers, so the guards
+ * and windows are the only difference.
  *
  * @internal Test-only reference lexer, not part of the public API surface.
  *
@@ -484,7 +580,7 @@ export function lexMarkdownUnbounded(source: string): Token[] {
  * `lexer`, or it certifies documents against an unextended grammar the viewer
  * cannot actually render.
  *
- * Six of `marked`'s own block rules run behind a guard and a window
+ * Six block rules run behind a guard and, where they need one, a window
  * ({@link BOUNDED_BLOCK_TOKENIZERS}), which is what keeps one lex linear in
  * the document's length; the tokens are exactly the ones
  * {@link lexMarkdownUnbounded} produces without them.

@@ -55,6 +55,7 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | `` `inline code` `` | `<code>` |
 | fenced ```` ``` ```` block | `<pre>` › `<code>` (literal text, newlines preserved), or a syntax-highlighted `CodeEditor` for a supported language — see [Syntax highlighting](#syntax-highlighting-in-fenced-code-blocks) |
 | `-`/`*` and `1.` lists | `<ul>`/`<ol>` with `<li>` items |
+| `- [ ] task`, `- [x] done` | an `<li>` whose text — in a loose list, whose first paragraph — starts with the literal `[ ]` / `[x]` marker — no checkbox |
 | `> quote` | `<blockquote>` |
 | `[text](url)` | `<a href target="_blank" rel="noopener noreferrer">` |
 | `[text][label]`, `[label][]`, `[label]` | `<a>` whose href is the matching reference definition's URL; labels match case-insensitively, and an undefined label renders as literal text |
@@ -64,6 +65,8 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | body cell `<<` / `^^` | merges into the preceding cell as `colspan`/`rowspan` — see [Extension syntax](#extension-syntax) |
 | `::: {align=... gap=...}` … `:::`, columns split by `\|\|\|` | one `<div>` region holding one `<div>` per column, laid out with flexbox — see [Extension syntax](#extension-syntax) |
 | `![alt](src){width=... height=...}` | `<img>`, or nothing at all when `src` fails the scheme allow-list — see [Extension syntax](#extension-syntax) |
+
+A table is a header row followed directly by a delimiter row with the same number of cells, and the delimiter row must hold at least one `|` or `:` — so a line over `---` is a setext heading, as GFM specifies, and a one-column table needs a pipe or an alignment colon in its delimiter row (`| a |` over `| --- |`, or `a` over `:--`). Indented or fenced code, an ATX heading, a thematic break, a blockquote, a list, an HTML block, a link reference definition or a `:::` fence that starts on the header line wins over a table. The body runs to the first blank line.
 
 A delimiter row's alignment markers (`:---`, `:---:`, `---:`) apply as a CSS class to every cell in that column, header and body alike. A delimiter cell's trailing `{width=240}` renders a `<colgroup>`/`<col style="width:240px">` for that column — the `<colgroup>` appears only when at least one column carries a width. A body cell's `<<` (covered from the left) or `^^` (covered from above) merges it into the preceding cell as a `colspan`/`rowspan`, rather than rendering its own `<td>`. A merged cell is always a whole rectangle: a `<<` extends only a cell begun in its own row, and a `^^` extends the cell above only from that cell's first column, and only when each further column the cell spans holds `^^` or `<<` in the same row. A `<<`/`^^` that cannot extend a cell that way (column 0, the table's first body row, or a cell it would cover only in part) renders as ordinary literal text instead, and a cell whose own text is literally `<<` or `^^` escapes to `\<<` / `\^^` to render as that literal text rather than being read as a marker.
 
@@ -140,7 +143,7 @@ Every attribute value is validated against a per-key allow-list before it is app
 
 ### Fallback for unsupported tokens
 
-Any token type not in the v1 set — raw HTML and the remaining GFM extensions (task lists) — falls through to a **defined fallback** that renders the token's plain text. It never crashes and never emits the corresponding element. Support for a new token type is added by extending the internal token switch, with no structural rewrite.
+Any token type not in the v1 set — raw HTML, a thematic break (`---`, `***`, `___`), and the remaining GFM extensions (task lists) — falls through to a **defined fallback** that renders the token's plain text, so a thematic break shows as its literal `---` rather than a rule. It never crashes and never emits the corresponding element. Support for a new token type is added by extending the internal token switch, with no structural rewrite.
 
 ### Sizing
 

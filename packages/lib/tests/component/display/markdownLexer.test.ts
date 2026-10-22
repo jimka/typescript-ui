@@ -22,7 +22,8 @@
 // quadratic cost was measured — actually pays for.
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Lexer, type Token, type Tokens } from 'marked';
+import { Lexer } from 'marked';
+import type { Token, Tokens } from 'marked';
 import { lexMarkdown, lexMarkdownUnbounded, type MdBlockToken } from '~/component/display/markdownExtensions';
 import type { MdTableToken } from '~/component/display/markdownTableExtension';
 import { Markdown } from '~/component/display/Markdown';
@@ -43,7 +44,7 @@ function tokenAt<T>(source: string, index: number): T {
     return lexMarkdown(source)[index] as T;
 }
 
-describe('the table extension emits the same tokens as the line-splitting original', () => {
+describe('the table tokenizer emits the same tokens as the line-splitting original', () => {
     it('takes header, delimiter and body, and leaves the rest of the document alone', () => {
         const tokens = lexMarkdown('| a | b |\n| --- | --- |\n| 1 | 2 |\n\nafter');
         const table = tokens[0] as MdTableToken;
@@ -89,7 +90,7 @@ describe('the table extension emits the same tokens as the line-splitting origin
     });
 });
 
-describe('the table extension lexes cells after the definitions are known', () => {
+describe('the table tokenizer lexes cells after the definitions are known', () => {
     it('resolves a cell reference whose definition follows the table (L1)', () => {
         const table = tokenAt<MdTableToken>('| a |\n| --- |\n| [ref] |\n\n[ref]: https://e.com', 0);
 
@@ -263,6 +264,10 @@ const WINDOW_SOURCES: readonly string[] = [
     '    a\n\n    b\n\nnext',
     // A reference definition that only resolves a use above it.
     'see [ref]\n\n[ref]: https://example.com',
+    // A setext heading the table tokenizer must not take as a one-column table.
+    'Foo\n---\nbar',
+    // A quote list whose lazy lines make `marked` rebuild the quote's `raw`.
+    '> - a\n> - a\nc\n> - a\nc\n<div>',
 ];
 
 describe('the bounded block tokenizers lex identically to the unbounded twin', () => {
@@ -336,16 +341,26 @@ const LINE_POOL: readonly string[] = [
 ];
 
 /**
- * Builds documents from `LINE_POOL` with a seeded linear-congruential
+ * `LINE_POOL` without its definition line — a repeated definition emits no
+ * token, so its text would be in no `raw` — plus quoted list lines, whose
+ * lazy continuations are what make `marked` rebuild a blockquote's `raw`.
+ */
+const RAW_SOURCE_POOL: readonly string[] = [
+    ...LINE_POOL.filter((line) => !line.startsWith('[ref]:')), '> - a', '> -', '> 1. a',
+];
+
+/**
+ * Builds documents from a pool of lines with a seeded linear-congruential
  * generator, so the suite draws the same documents on every run and a failure
  * names a reproducible one. The indent probability and the trailing-newline
  * coin are what put a drawn line inside a list item or a code block rather
  * than at column 0.
  *
  * @param count - How many documents to build.
+ * @param pool - The lines to draw from.
  * @returns The generated documents, in draw order.
  */
-function randomDocuments(count: number): string[] {
+function randomDocuments(count: number, pool: readonly string[] = LINE_POOL): string[] {
     // The numeric-recipes LCG constants, and a seed chosen once so the draw is
     // reproducible; any full-period pair would do.
     let state = 12345;
@@ -365,7 +380,7 @@ function randomDocuments(count: number): string[] {
         const lines: string[] = [];
 
         for (let line = 0; line < lineCount; line += 1) {
-            const pooled = LINE_POOL[Math.floor(next() * LINE_POOL.length)]!;
+            const pooled = pool[Math.floor(next() * pool.length)]!;
 
             // 0.15: indented lines are the continuation case, so they have to
             // be common enough to land inside a construct but not so common
@@ -396,6 +411,109 @@ describe('the bounded block tokenizers lex generated documents identically', () 
             try {
                 expect(lexMarkdown(source)).toEqual(lexMarkdownUnbounded(source));
             } catch {
+                differing.push(`#${index}: ${JSON.stringify(source)}`);
+            }
+        });
+
+        expect(differing).toEqual([]);
+    });
+});
+
+/** The top-level token types `lexMarkdown` emits for `source`, in order. */
+function typesOf(source: string): string[] {
+    return lexMarkdown(source).map((token) => token.type);
+}
+
+/** The tokens' `raw`s joined in order — the source they consumed. */
+function joinedRaws(tokens: readonly Token[]): string {
+    return tokens.map((token) => token.raw).join('');
+}
+
+describe('the table tokenizer runs where marked tries its own table rule', () => {
+    it('LX1. reads a line over --- as a setext heading, not a one-column table', () => {
+        const tokens = lexMarkdown('Foo\n---\nbar');
+
+        expect(tokens.map((token) => token.type)).toEqual(['heading', 'paragraph']);
+        expect(tokens[0]).toMatchObject({ depth: 2 });
+    });
+
+    it('LX2. reads a fenced code block whose first line is --- as code', () => {
+        const tokens = lexMarkdown('```\n---\n```');
+
+        expect(tokens.map((token) => token.type)).toEqual(['code']);
+        expect(tokens[0]).toMatchObject({ text: '---' });
+    });
+
+    it('LX3. reads a list with a bare - item as one list of three items', () => {
+        const tokens = lexMarkdown('- foo\n-\n- bar');
+
+        expect(tokens.map((token) => token.type)).toEqual(['list']);
+        expect((tokens[0] as Tokens.List).items).toHaveLength(3);
+    });
+
+    it('LX4. reads three thematic breaks as three hr tokens', () => {
+        expect(typesOf('***\n---\n___')).toEqual(['hr', 'hr', 'hr']);
+    });
+
+    it('LX5. reads --- after a blockquote as a thematic break', () => {
+        expect(typesOf('> Foo\n---')).toEqual(['blockquote', 'hr']);
+    });
+
+    it('LX6. reads --- after a blank line as a thematic break', () => {
+        expect(typesOf('> - a\nb\n\n---')).toEqual(['blockquote', 'space', 'hr']);
+    });
+
+    it('LX7. still reads a one-column table written with its pipes', () => {
+        expect(typesOf('| a |\n| - |\n| 1 |')).toEqual(['mdtable']);
+    });
+
+    it('LX8. still reads a delimiter row holding only a colon as a table', () => {
+        expect(typesOf('a\n:-:')).toEqual(['mdtable']);
+    });
+
+    it('LX9. still reads a {width=…} delimiter cell', () => {
+        const tokens = lexMarkdown('| a |\n| :--- {width=240} |\n| 1 |');
+
+        expect(tokens.map((token) => token.type)).toEqual(['mdtable']);
+        expect((tokens[0] as unknown as MdTableToken).widths).toEqual([240]);
+    });
+});
+
+describe('a blockquote\'s raw is the source it used', () => {
+    it('LX10. leaves the html line after a quote list with lazy lines whole', () => {
+        const source = '> - a\n> - a\nc\n> - a\nc\n<div>';
+        const tokens = lexMarkdown(source);
+
+        expect(joinedRaws(tokens)).toBe(source);
+        expect(tokens.at(-1)).toMatchObject({ type: 'html', raw: '<div>' });
+    });
+
+    it('LX11. leaves the ordered item after a quote list with lazy lines whole', () => {
+        const source = '> - a\n> - a\nc\n> - a\nc\n1. g';
+        const tokens = lexMarkdown(source);
+
+        expect(joinedRaws(tokens)).toBe(source);
+        expect(tokens.at(-1)).toMatchObject({ type: 'list', raw: '1. g' });
+    });
+
+    it('LX12. leaves the paragraph after a quote that ends at a code fence whole', () => {
+        const source = '> - a\nb\n> ```\nc';
+        const tokens = lexMarkdown(source);
+
+        expect(joinedRaws(tokens)).toBe(source);
+        expect(tokens.at(-1)).toMatchObject({ type: 'paragraph', raw: 'c' });
+    });
+
+    // 5,000 draws: on the unfixed lexer, 981 of 20,000 documents from this
+    // pool did not join back into their source, so 5,000 catch the defect
+    // about 245 times, in under half a second.
+    it('LX13. joins the top-level raws of 5,000 seeded random documents back into each document', () => {
+        const differing: string[] = [];
+
+        randomDocuments(5_000, RAW_SOURCE_POOL).forEach((source, index) => {
+            const joined = joinedRaws(lexMarkdown(source));
+
+            if (joined !== source) {
                 differing.push(`#${index}: ${JSON.stringify(source)}`);
             }
         });

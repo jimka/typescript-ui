@@ -356,44 +356,47 @@ function viewerList(token: Tokens.List): Block {
 }
 
 /**
- * Projects one list item: a `text` token becomes a paragraph, any other token a block. When a `text` token's only
- * child is plain text, the viewer writes it as the item's whole text content, which replaces everything rendered into
- * the item before it (for example the raw-text fallback of a task-list checkbox), so the projection drops those
- * blocks too.
+ * Projects one list item, following `Markdown.appendListItem`: a `text` token becomes a paragraph and any other token
+ * a block; a task item's checkbox token becomes the first text of the next paragraph when that is a `text` token or —
+ * in an item `marked` made loose after lexing it — a `paragraph` token, as the viewer prints its marker inline. Before
+ * any other token the viewer prints the marker as a text node of its own, so it projects as the raw fallback block.
  *
  * @param item - The list-item token.
  * @returns The item's visible blocks.
  */
 function viewerListItem(item: Tokens.ListItem): Block[] {
-    let blocks: Block[] = [];
+    const blocks: Block[] = [];
+    let checkbox: Token | null = null;
 
     for (const token of item.tokens) {
+        if (token.type === 'checkbox') {
+            checkbox = token;
+            continue;
+        }
+
+        if (token.type === 'paragraph' && checkbox !== null) {
+            const paragraph = token as Tokens.Paragraph;
+
+            blocks.push(...viewerBlock({ ...paragraph, tokens: [checkbox, ...paragraph.tokens] }));
+            checkbox = null;
+            continue;
+        }
+
         if (token.type !== 'text') {
-            blocks.push(...viewerBlock(token));
+            blocks.push(...(checkbox === null ? [] : viewerBlock(checkbox)), ...viewerBlock(token));
+            checkbox = null;
             continue;
         }
 
         const text = token as Tokens.Text;
         const inline = text.tokens && text.tokens.length > 0 ? text.tokens : [text];
-        const paragraph: Block = { kind: 'paragraph', runs: viewerRuns(inline, PLAIN) };
+        const marker = checkbox === null ? [] : [{ type: 'text', raw: checkbox.raw, text: checkbox.raw } as Tokens.Text];
 
-        blocks = replacesItemContent(text) ? [paragraph] : [...blocks, paragraph];
+        blocks.push({ kind: 'paragraph', runs: viewerRuns([...marker, ...inline], PLAIN) });
+        checkbox = null;
     }
 
     return visibleBlocks(blocks);
-}
-
-/**
- * Tells whether a list item's `text` token takes the viewer's sole-text path, which sets the item's text content
- * instead of appending to it (`Markdown.appendInlineToken`'s `sole` branch).
- *
- * @param text - A `text` token of a list item.
- * @returns `true` when the token's only child is a plain `text` token with no children of its own.
- */
-function replacesItemContent(text: Tokens.Text): boolean {
-    const only = text.tokens?.length === 1 ? text.tokens[0]! : null;
-
-    return only !== null && only.type === 'text' && !((only as Tokens.Text).tokens?.length);
 }
 
 /**
