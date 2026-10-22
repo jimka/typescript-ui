@@ -2039,8 +2039,11 @@ class CodeEditor extends Component<CodeEditorOptions> {
      */
     protected destructor(): void {
         // Before `super.destructor()` releases the overlay's element handle,
-        // which the flash's fallback timer would otherwise write to.
-        this._flash.cancel();
+        // which the flash's fallback timer would otherwise write to, and which
+        // a refused command after this teardown (a `format()` that resumes, or
+        // a direct `replaceRange`, `cut`, `paste` or `format`) would otherwise
+        // flash on.
+        this._flash.dispose();
 
         this._unsubscribeTheme();
 
@@ -2988,9 +2991,10 @@ class CodeEditor extends Component<CodeEditorOptions> {
     /**
      * Flashes a brief error-coloured wash over the editor as feedback for a
      * rejected edit: fades the overlay from a subtle tint back to transparent.
-     * No-op before the overlay is mounted (offline / pre-mount), and — via
-     * {@link Animation.play} — honours `prefers-reduced-motion`: under reduced
-     * motion the `"readonlyedit"` event still fires but nothing animates.
+     * No-op before the overlay is mounted (offline / pre-mount) or after
+     * dispose, and — via {@link Animation.play} — honours
+     * `prefers-reduced-motion`: under reduced motion the `"readonlyedit"` event
+     * still fires but nothing animates.
      *
      * A full-box wash is used rather than a border/ring cue because the editor
      * is often large and mostly empty, so an edge flash sits far from where the

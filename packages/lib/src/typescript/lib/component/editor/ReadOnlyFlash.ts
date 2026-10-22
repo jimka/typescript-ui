@@ -28,11 +28,14 @@ const READONLY_FLASH_COLOR = "var(--ts-ui-validation-error-border, #dc2626)";
  * looking at while staying faint enough to keep the text legible.
  *
  * The owning component tracks the overlay's handle, so its teardown releases
- * the element, and calls {@link ReadOnlyFlash.cancel} before that.
+ * the element, and calls {@link ReadOnlyFlash.dispose} before that.
  */
 export class ReadOnlyFlash {
 
-    /** The overlay that is pulsed; `null` until mounted (or forever, offline). */
+    /**
+     * The overlay that is pulsed; `null` until mounted (or forever, offline),
+     * and again after {@link ReadOnlyFlash.dispose}.
+     */
     private _overlay: Handle | null = null;
 
     /**
@@ -71,9 +74,9 @@ export class ReadOnlyFlash {
 
     /**
      * Pulses the wash once, restarting a pulse still in flight. No-op before
-     * the overlay is mounted (offline, or before the host's first mount), and
-     * — via {@link Animation.play} — honours `prefers-reduced-motion`: under
-     * reduced motion nothing animates.
+     * the overlay is mounted (offline, or before the host's first mount) and
+     * after {@link ReadOnlyFlash.dispose}, and — via {@link Animation.play} —
+     * honours `prefers-reduced-motion`: under reduced motion nothing animates.
      */
     play(): void {
         if (!this._overlay) {
@@ -89,9 +92,17 @@ export class ReadOnlyFlash {
         });
     }
 
-    /** Stops a pulse still in flight. Call before the overlay's handle is released. */
-    cancel(): void {
+    /**
+     * Ends the wash for good: stops a pulse still in flight and forgets the
+     * overlay, so a later {@link ReadOnlyFlash.play} does nothing. Call from
+     * the owner's teardown, before the overlay's handle is released. A
+     * refused command after the teardown (a `format()` that resumes, a command
+     * run from a dialog's answer, or a direct call) still asks for the flash,
+     * and would otherwise play it on the released handle.
+     */
+    dispose(): void {
         this._animation?.cancel();
         this._animation = null;
+        this._overlay   = null;
     }
 }

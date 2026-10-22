@@ -8508,8 +8508,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      */
     protected destructor(): void {
         // Before `super.destructor()` releases the wash's element handle,
-        // which a pulse's fallback timer would otherwise write to.
-        this._flash.cancel();
+        // which a pulse's fallback timer would otherwise write to, and which a
+        // refused command called after this teardown would otherwise flash on.
+        this._flash.dispose();
 
         // And before the Lexical editor's view is taken out, which a waiting restore would write to.
         this.cancelViewRestore();

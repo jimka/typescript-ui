@@ -30,6 +30,8 @@ import type { MarkdownEditorSelectionState } from '~/component/editor/MarkdownEd
 import { READ_ONLY_ALLOWED_COMMANDS, READ_ONLY_REFUSED_COMMANDS } from '~/component/editor/markdownReadOnly';
 import { ReadOnlyFlash } from '~/component/editor/ReadOnlyFlash';
 import { Component } from '~/core/Component';
+import { _Dialog as Dialog } from '~/overlay/Dialog';
+import type { TextField } from '~/component/input/TextField';
 import { DOM, ProductionDOMSink, ProductionDOMSource } from '~/core/DOM';
 
 /** The editors a test built, disposed after it. */
@@ -2410,5 +2412,63 @@ describe('MarkdownEditor read-only, mounted: following a link', () => {
         clickOn(m, 'the docs');
 
         expect(opened).toEqual([OPENED]);
+    });
+});
+
+// The context menu's Insert link, Edit link, Image… and Column width… handlers await
+// a dialog and then run an editing command. If the editor became read-only and was
+// disposed while the dialog was open, the command is refused and asks for the
+// rejection wash, whose element handle the teardown has released.
+describe('MarkdownEditor read-only, mounted: a dialog answered after dispose', () => {
+    type Prompting = {
+        promptAndApplyLink(title: string, defaultUrl: string): Promise<void>;
+        promptAndInsertImage(): Promise<void>;
+        promptAndSetColumnWidth(): Promise<void>;
+    };
+
+    afterEach(() => vi.restoreAllMocks());
+
+    /**
+     * Opens a context-menu dialog, makes the editor read-only, disposes it, then
+     * confirms the dialog with `answer` and expects the continuation to finish.
+     *
+     * @param answer - The text the user confirms the dialog's field with.
+     * @param run - Starts the continuation under test and returns its promise.
+     */
+    async function answerAfterDispose(answer: string, run: (editor: Prompting) => Promise<void>): Promise<void> {
+        const m = mounted(SOURCE, false);
+        let confirmDialog!: () => void;
+
+        vi.spyOn(Dialog, 'show').mockImplementation((config) => new Promise<'confirm'>((resolve) => {
+            confirmDialog = () => {
+                (config.contentComponent as TextField).setValue(answer);
+                resolve('confirm');
+            };
+        }));
+
+        const pending = run(m.editor as unknown as Prompting);
+
+        m.editor.setReadOnly(true);
+        built.splice(built.indexOf(m.editor), 1);
+        m.editor.dispose();
+        confirmDialog();
+
+        await expect(pending).resolves.toBeUndefined();
+    }
+
+    it('Insert link does not fail', async () => {
+        await answerAfterDispose('https://example.com', (editor) => editor.promptAndApplyLink('Insert link', ''));
+    });
+
+    it('Edit link does not fail', async () => {
+        await answerAfterDispose('https://new.example.com', (editor) => editor.promptAndApplyLink('Edit link', 'https://old.example.com'));
+    });
+
+    it('Image… does not fail', async () => {
+        await answerAfterDispose('https://example.com/a.png', (editor) => editor.promptAndInsertImage());
+    });
+
+    it('Column width… does not fail', async () => {
+        await answerAfterDispose('240', (editor) => editor.promptAndSetColumnWidth());
     });
 });
