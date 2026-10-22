@@ -333,6 +333,12 @@ function alignAt(text: string, at: number, limit: number, needle: string): numbe
             return null;
         }
 
+        const skipped = blanksOfContainerPrefix(text, source, needle, index, lineHead);
+
+        if (text[source + skipped] === char) {
+            source += skipped;
+        }
+
         map[index] = source;
         source += 1;
         lineHead = char === "\n" || (lineHead && CONTAINER_PREFIX_CHARACTERS.has(char));
@@ -341,6 +347,46 @@ function alignAt(text: string, at: number, limit: number, needle: string): numbe
     map[needle.length] = source;
 
     return map;
+}
+
+/**
+ * How many source blanks to pass over before matching the first blank of a
+ * run the needle opens a line with: the blanks the source's run holds
+ * beyond the needle's own run. Those open the run, and are the container's:
+ * a quote marker's space or a list item's indentation, which the needle
+ * leaves out. The needle's blanks are matched with the last blanks of the
+ * source's run, the ones that belong to the text. A run that ends at a
+ * further `>` (a quote in a list item) is counted whole, so every blank of it
+ * is taken for the container's when the needle's run is shorter; that is the
+ * known issue of the offsets right before such a `>`.
+ *
+ * @param text - The source.
+ * @param source - The source offset of a blank that matches the needle's.
+ * @param needle - The text being matched.
+ * @param index - The needle index of the character being matched.
+ * @param lineHead - Whether the match is still in the line's prefix.
+ * @returns The number of source blanks to pass over: `0` when the needle character is no first blank of a run that opens a line, and when the source's run holds no more blanks than the needle's.
+ */
+function blanksOfContainerPrefix(text: string, source: number, needle: string, index: number, lineHead: boolean): number {
+    const isBlank = (char: string | undefined): boolean => char === " " || char === "\t";
+    const opensRun = lineHead && index > 0 && needle[index - 1] === "\n" && isBlank(needle[index]);
+
+    if (!opensRun) {
+        return 0;
+    }
+
+    let needleRun = 0;
+    let sourceRun = 0;
+
+    while (isBlank(needle[index + needleRun])) {
+        needleRun += 1;
+    }
+
+    while (isBlank(text[source + sourceRun])) {
+        sourceRun += 1;
+    }
+
+    return Math.max(0, sourceRun - needleRun);
 }
 
 /**
@@ -862,7 +908,7 @@ function childTokens(token: Token): Token[] {
  * @param children - Its child tokens.
  * @returns The offset, or `-1` when the token has no content or it is not where expected.
  */
-function contentOffset(token: Token, children: readonly Token[]): number {
+export function contentOffset(token: Token, children: readonly Token[]): number {
     const raw = token.raw;
 
     if (token.type === "codespan") {

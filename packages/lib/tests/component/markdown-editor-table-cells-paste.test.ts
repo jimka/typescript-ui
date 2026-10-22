@@ -1146,17 +1146,16 @@ describe('the text after the caret of an item\'s text stays out of a pasted tabl
         expectSoundDocument(editor);
     });
 
-    it('X14: a range selected backwards from the start of a code block stays the code block handler\'s, which pastes text', () => {
+    it('X14: a range selected backwards from the start of a code block into an item\'s text is removed first as well', () => {
         const source = load(T);
         const editor = load('- abcd\n\n```\nkode\n```');
 
         pasteAt(editor, copyCells(source, 'h1', 'c2'), ['kode', 0], ['abcd', 2]);
 
-        // A paste that starts in a code block goes in as lines of text, and the handler reads "starts in" by the
-        // selection's anchor, though the caret then stands in the item's text. What is pinned here is that the listener
-        // leaves that paste to the handler; a fix of the anchor rule will rewrite this literal.
-        expect(editor.getValue()).toBe('- abh1\\\n  \\\n  h2\\\n  \\\n  c1\\\n  \\\n  c2kode');
-        expect(rootChildTypes(editor)).toEqual(['list']);
+        // The range guard removes the range first, whichever way it was dragged, so the caret stands in the item's text
+        // and the table is pasted as for a forward range.
+        expect(editor.getValue()).toBe('- ab\n\n' + T + '\n\n- kode');
+        expect(rootChildTypes(editor)).toEqual(['list', 'table', 'list']);
         expectSoundDocument(editor);
     });
 
