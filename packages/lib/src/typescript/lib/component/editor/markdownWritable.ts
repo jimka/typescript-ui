@@ -2318,7 +2318,7 @@ export function $orderedPoints(selection: RangeSelection): [PointType, PointType
  * @param selection - The selection.
  * @returns Each covered text node's `[from, to)` offsets, by node key.
  */
-function $selectedSlices(selection: RangeSelection): Map<string, readonly [number, number]> {
+export function $selectedSlices(selection: RangeSelection): Map<string, readonly [number, number]> {
     const [start, end] = $orderedPoints(selection);
     const slices = new Map<string, readonly [number, number]>();
 

@@ -26,7 +26,7 @@ import {
     INSERT_PARAGRAPH_COMMAND, INSERT_LINE_BREAK_COMMAND, INSERT_TAB_COMMAND, COPY_COMMAND, CUT_COMMAND, CUT_TAG,
     COMMAND_PRIORITY_CRITICAL,
     $caretFromPoint, $normalizeCaret, $setPointFromCaret, KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND, $isRootOrShadowRoot,
-    $getChildCaret, INTERNAL_$isBlock,
+    $getChildCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
@@ -34,11 +34,12 @@ import type {
     NodeKey, PointType, CommandPayloadType, PointCaret, CaretDirection,
 } from "lexical";
 import { registerMarkdownShortcuts } from "@lexical/markdown";
-import { registerRichText, $createHeadingNode, $createQuoteNode, QuoteNode, $isQuoteNode } from "@lexical/rich-text";
+import { registerRichText, $createHeadingNode, $createQuoteNode, QuoteNode, $isQuoteNode, $isHeadingNode } from "@lexical/rich-text";
 import type { HeadingTagType } from "@lexical/rich-text";
 import {
-    registerList, INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, ListNode, $isListNode,
+    registerList, INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, ListNode, $isListNode, $isListItemNode,
 } from "@lexical/list";
+import type { ListType } from "@lexical/list";
 import { $toggleLink, $isLinkNode } from "@lexical/link";
 import type { LinkNode } from "@lexical/link";
 import { $insertGeneratedNodes, copyToClipboard, $getClipboardDataFromSelection } from "@lexical/clipboard";
@@ -53,14 +54,15 @@ import {
     $isTableSelection, $mergeCells, $unmergeCell, $isTableNode,
     INSERT_TABLE_COMMAND,
 } from "@lexical/table";
+import type { TableSelection } from "@lexical/table";
 import { mergeRegister, $getNearestNodeOfType } from "@lexical/utils";
 import { $setBlocksType, $patchStyleText, $copyBlockFormatIndent } from "@lexical/selection";
 import { SHORTCUT_TRANSFORMERS } from "~/component/editor/markdownTransformers.js";
 import { $importMarkdown } from "~/component/editor/markdownImporter.js";
 import { $serializeBlock, $serializeInlineNodes, $serializeMarkdown } from "~/component/editor/markdownSerializer.js";
 import {
-    $breakRuleContainerOf, $editWritably, $findEnclosingBlock, $formatWritably, $lineBreakUnwritableAt, $orderedPoints, $selectionHasFormat,
-    RUN_EDGE_TAG, registerWritableStateRules,
+    $breakRuleContainerOf, $editWritably, $findEnclosingBlock, $formatWritably, $lineBreakUnwritableAt, $orderedPoints, $selectedSlices,
+    $selectionHasFormat, RUN_EDGE_TAG, registerWritableStateRules,
 } from "~/component/editor/markdownWritable.js";
 import { EMPTY_SOURCE_MAP } from "~/component/editor/markdownSourceMap.js";
 import type { MarkdownSourceBlock, MarkdownSourceMap } from "~/component/editor/markdownSourceMap.js";
@@ -73,7 +75,7 @@ import { EDITOR_THEME, ensureMarkdownEditorClassRules } from "~/component/editor
 import {
     MarkdownBlockNode, $createMarkdownBlockNode, $isMarkdownBlockNode, $createMarkdownColumnNode, $isMarkdownColumnNode,
 } from "~/component/editor/markdownBlockNode.js";
-import { $createMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
+import { $createMarkdownImageNode, $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { cssTextToAttributes, resolveImageSpec } from "~/component/display/markdownAttributes.js";
 import {
     BOLD_SOURCE, ITALIC_SOURCE, UNDERLINE_SOURCE, STRIKETHROUGH_SOURCE, INLINE_CODE_SOURCE,
@@ -121,8 +123,11 @@ export interface MarkdownEditorChange {
  * Payload of {@link MarkdownEditor}'s `"selectionstate"` event, and what
  * {@link MarkdownEditor.getSelectionState} returns: the five inline-format
  * flags, whether there's a selection to act on, the enclosing link's URL (if
- * any), table/column-alignment context, and block alignment/column count at
- * the current selection.
+ * any), which of the format, style, link, block, insert and table commands
+ * would apply, table/column-alignment context, and block alignment/column
+ * count at the current selection. Every `can…` field is `false` while the
+ * editor is read-only, on either surface: each editing command is then
+ * refused.
  *
  * @category Components
  */
@@ -136,7 +141,106 @@ export interface MarkdownEditorSelectionState {
     hasSelectedText: boolean;
     /** The enclosing link's URL, or `null` outside one. */
     linkUrl: string | null;
-    /** Whether the selection is anchored inside a table cell. */
+    /**
+     * Whether the inline-format toggles would apply at the selection. `false`
+     * where they decline: with no selection, when the selection touches a
+     * raw Markdown block or a code block, when it holds (or a collapsed
+     * caret would expand into) a run kept as Markdown source, and for a
+     * selection that is not collapsed and holds no text — from the end of
+     * one block to the start of the next, or over an image alone. A caret
+     * takes the format as pending. While table cells are selected, the
+     * cells take the format one by one, so it is `true` when at least one
+     * of them holds text and no such run. Always `true` in `"source"` mode.
+     */
+    canFormat: boolean;
+    /**
+     * Whether text colour, font and size would apply at the selection.
+     * `false` where {@link canFormat} is, and also inside a link and while
+     * table cells are selected. Always `true` in `"source"` mode.
+     */
+    canStyle: boolean;
+    /**
+     * Whether `toggleLink` with a URL would apply at the selection: link
+     * its text or its image, or re-point the link it is in. `false` with no
+     * selection, while table cells are selected, when the selection touches
+     * a raw Markdown block or a code block or holds (or a collapsed caret
+     * would expand into) a run kept as Markdown source, when either end is
+     * in a link nested in another link, and when there is nothing a link
+     * could hold: a caret in an empty block, or a selection holding neither
+     * text nor an image. A caret in text links the run it is in, so the
+     * field does not say whether a word is selected: a toolbar's Link
+     * control pairs it with {@link hasSelectedText} and {@link linkUrl}.
+     * Always `true` in `"source"` mode.
+     */
+    canLink: boolean;
+    /**
+     * Whether `removeLink` would apply at the selection: `true` only inside
+     * a link, and `false` there when the link is nested in another link.
+     * `false` with no selection and while table cells are selected. In
+     * `"source"` mode, `true` whenever the selection is inside a link.
+     */
+    canRemoveLink: boolean;
+    /**
+     * Whether the block conversions (`setBlockType` and the two list
+     * toggles) would apply at the selection. `false` with no selection,
+     * while table cells are selected, and when the selection reaches into a
+     * table cell, which holds text only. Always `true` in `"source"` mode.
+     */
+    canSetBlockType: boolean;
+    /**
+     * Whether `setBlockAlignment` and `setColumnCount` would apply at the
+     * selection. `false` with no selection and while table cells are
+     * selected. Always `false` in `"source"` mode, where both are no-ops.
+     */
+    canSetBlockLayout: boolean;
+    /**
+     * Whether `insertTable` would insert. `false` when the selection touches
+     * a raw Markdown block or a code block, and when it lies inside one
+     * table, whose cells hold no table. A selection that runs from outside a
+     * table into one of its cells is removed first, that table included, so
+     * it is `true` for one, whichever way the selection was made. Without a
+     * text selection — none at all, or table cells selected — the table
+     * goes in at the document's end, so it is `false` when the document
+     * ends in a raw Markdown block, a code block or a table. Always `true`
+     * in `"source"` mode, and before the editor is built.
+     */
+    canInsertTable: boolean;
+    /**
+     * Whether `insertImage` would insert. `false` when the selection touches
+     * a raw Markdown block or a code block. Without a text selection — none
+     * at all, or table cells selected — the image goes in at the document's
+     * end, so it is `false` when the document ends in one of those two.
+     * Always `true` in `"source"` mode, and before the editor is built.
+     */
+    canInsertImage: boolean;
+    /**
+     * Whether the commands acting on the table the caret is in would apply:
+     * the row and column inserts and deletes, `deleteTable`,
+     * `setTableColumnAlignment` and `setTableColumnWidth`. `true` for a
+     * caret or a text selection inside one table; `false` while table cells
+     * are selected, and for a selection that runs out of the table it starts
+     * in. Always `false` in `"source"` mode, where they are no-ops.
+     */
+    canEditTable: boolean;
+    /**
+     * Whether `mergeTableCells` would apply: `true` only while more than one
+     * table cell is selected. Always `false` in `"source"` mode.
+     */
+    canMergeCells: boolean;
+    /**
+     * Whether `unmergeTableCell` would apply: `true` only where
+     * {@link canEditTable} is and the caret's cell spans more than one row
+     * or column. Always `false` in `"source"` mode.
+     */
+    canUnmergeCell: boolean;
+    /**
+     * Whether a caret or a text selection is anchored inside a table cell
+     * and lies within that cell's table: `false` while whole table cells are
+     * selected, and for a selection that runs out of its table. It says
+     * where a caret or a text selection is, not what applies there: a
+     * control that runs a table command reads {@link canEditTable},
+     * {@link canMergeCells} or {@link canUnmergeCell}.
+     */
     inTable: boolean;
     /** The caret's table column's alignment; `null` when {@link inTable} is `false`. */
     tableColumnAlignment: MarkdownTableAlignment | null;
@@ -301,40 +405,33 @@ function imageAttributes(options?: { width?: number; height?: number }): Record<
 }
 
 /**
- * Finds the table cell containing the caret, if any.
+ * Finds the table cell containing the caret, if any. A selection that runs
+ * out of the table it is anchored in ({@link $isTableEdgeRange}) has none:
+ * the table commands act on one table, and Lexical's row and column helpers
+ * throw when the selection's other end is in no cell.
  *
  * @returns The enclosing {@link TableCellNode}, or `null` when the selection
- *   is not a range selection anchored inside a table cell.
+ *   is not a range selection anchored inside a table cell and lying within
+ *   that cell's table.
  */
 function $getEnclosingTableCellNode(): TableCellNode | null {
     const selection = $getSelection();
+    const anchorNode = $isRangeSelection(selection) ? selection.anchor.getNode() : null;
+    const runsOutOfTable = $isTableEdgeRange(selection);
 
-    return $isRangeSelection(selection)
-        ? $getTableCellNodeFromLexicalNode(selection.anchor.getNode())
-        : null;
+    return anchorNode === null || runsOutOfTable ? null : $getTableCellNodeFromLexicalNode(anchorNode);
 }
 
 /**
  * Finds the table containing the current selection, if any.
  *
- * @returns The enclosing {@link TableNode}, or `null` when the selection is
- *   not a range selection anchored inside a table cell.
+ * @returns The enclosing {@link TableNode}, or `null` when
+ *   {@link $getEnclosingTableCellNode} finds no cell.
  */
 function $getEnclosingTableNode(): TableNode | null {
     const cell = $getEnclosingTableCellNode();
 
     return cell === null ? null : $getTableNodeFromLexicalNodeOrThrow(cell);
-}
-
-/**
- * Whether the caret currently sits inside a table cell — the precondition for
- * the row/column helpers, which throw rather than no-op when it does not.
- *
- * @returns Whether the current selection is a range selection anchored inside
- *   a table cell.
- */
-function $selectionIsInTableCell(): boolean {
-    return $getEnclosingTableNode() !== null;
 }
 
 /**
@@ -373,6 +470,49 @@ function $tableCellAlignment(cell: TableCellNode): MarkdownTableAlignment {
 }
 
 /**
+ * The cells of the column holding the caret, one per row of its table.
+ *
+ * @returns The column's cells, top to bottom; none when the caret is not
+ *   inside a table cell.
+ */
+function $enclosingColumnCells(): TableCellNode[] {
+    const cell = $getEnclosingTableCellNode();
+
+    if (cell === null) {
+        return [];
+    }
+
+    const table = $getTableNodeFromLexicalNodeOrThrow(cell);
+    const [tableMap, cellValue] = $computeTableMap(table, cell, cell);
+
+    return tableMap.flatMap((row) => row[cellValue.startColumn]?.cell ?? []);
+}
+
+/**
+ * The element format a column alignment is held as on a table cell.
+ *
+ * @param alignment - The alignment.
+ * @returns The cell format; `""` for `"none"`.
+ */
+function cellFormatOf(alignment: MarkdownTableAlignment): ElementFormatType {
+    return alignment === "none" ? "" : alignment;
+}
+
+/**
+ * Whether every cell of the column holding the caret already has
+ * `alignment`, so that setting it would change nothing.
+ *
+ * @param alignment - The alignment asked for.
+ * @returns `true` when no cell of the column would change; `false` when
+ *   the caret is in no column.
+ */
+function $enclosingColumnHasAlignment(alignment: MarkdownTableAlignment): boolean {
+    const cells = $enclosingColumnCells();
+
+    return cells.length > 0 && cells.every((cell) => cell.getFormatType() === cellFormatOf(alignment));
+}
+
+/**
  * Sets `alignment` on every cell of the column holding the caret — the whole
  * column, because a GFM delimiter row carries one marker per column, not per
  * cell. No-op when the caret is not inside a table cell.
@@ -380,19 +520,27 @@ function $tableCellAlignment(cell: TableCellNode): MarkdownTableAlignment {
  * @param alignment - The alignment to apply to the column.
  */
 function $setEnclosingColumnAlignment(alignment: MarkdownTableAlignment): void {
+    for (const cell of $enclosingColumnCells()) {
+        cell.setFormat(cellFormatOf(alignment));
+    }
+}
+
+/**
+ * The width set on the column holding the caret.
+ *
+ * @returns The width in pixels; `0` when the column has none, and when the
+ *   caret is not inside a table cell.
+ */
+function $enclosingColumnWidth(): number {
     const cell = $getEnclosingTableCellNode();
 
     if (cell === null) {
-        return;
+        return 0;
     }
 
     const table = $getTableNodeFromLexicalNodeOrThrow(cell);
-    const [tableMap, cellValue] = $computeTableMap(table, cell, cell);
-    const format: ElementFormatType = alignment === "none" ? "" : alignment;
 
-    for (const row of tableMap) {
-        row[cellValue.startColumn]?.cell.setFormat(format);
-    }
+    return table.getColWidths()?.[$getTableColumnIndexFromTableCellNode(cell)] ?? 0;
 }
 
 /**
@@ -2296,6 +2444,68 @@ function $selectionTouchesTableCell(): boolean {
 }
 
 /**
+ * Whether every block the selection touches is an item of a list of one
+ * kind, which is where a list toggle of that kind takes the items out of
+ * their list instead of making a list ({@link $blocksTouchedBy} says which
+ * blocks those are).
+ *
+ * @param type - The kind of list.
+ * @returns `false` when some block is no item of such a list, and for a
+ *   selection that is not a range.
+ */
+function $selectionLiesInListOfType(type: ListType): boolean {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return false;
+    }
+
+    return $blocksTouchedBy(selection).every((block) => {
+        const list = $isListItemNode(block) ? block.getParent() : null;
+
+        return $isListNode(list) && list.getListType() === type;
+    });
+}
+
+/**
+ * The blocks a range selection touches: those holding its two ends and
+ * every selected leaf, and an empty block it covers. An item holding only a
+ * nested list is no block of its own, its nested items are.
+ *
+ * @param selection - The selection.
+ * @returns The blocks, one entry per end and leaf, so a block can repeat;
+ *   `null` for a node in no block.
+ */
+function $blocksTouchedBy(selection: RangeSelection): Array<ElementNode | null> {
+    // A selected element that holds blocks (a list, an item holding a nested list) is no block itself.
+    const leaves = selection.getNodes().filter((node) => !$isElementNode(node) || node.isInline() || node.isEmpty());
+
+    return [selection.anchor.getNode(), selection.focus.getNode(), ...leaves].map($findEnclosingBlock);
+}
+
+/**
+ * Whether every block the selection touches ({@link $blocksTouchedBy}) is
+ * already of a block type, so that converting them to it would only replace
+ * each by an equal one — and would write a heading or a code block in the
+ * standard form where it was written in another, dropping a code block's
+ * language.
+ *
+ * @param type - The block type asked for.
+ * @returns `false` when some block is of another type, and for a selection
+ *   that is not a range.
+ */
+function $selectedBlocksHaveType(type: MarkdownBlockType): boolean {
+    const selection = $getSelection();
+
+    if (!$isRangeSelection(selection)) {
+        return false;
+    }
+
+    // A heading's type is its level; a paragraph, a quote and a code block are named as their nodes are.
+    return $blocksTouchedBy(selection).every((block) => ($isHeadingNode(block) ? block.getTag() : block?.getType()) === type);
+}
+
+/**
  * Whether a node is a run kept as Markdown source that the formats, styles
  * and links decline to touch: the per-node half of
  * {@link $selectionCoversSourceRun}'s test, which adds how much of the run
@@ -2596,7 +2806,8 @@ function registerRangeGuards(editor: LexicalEditor): () => void {
  * selection's inline-format state, so the format toggles can show a
  * checkmark on active formats — a table cell holds inline text too, so it
  * gets the same toggles as plain prose, alongside its row/column/table
- * commands), or an empty paragraph outside any table.
+ * commands), or an empty paragraph outside any table. Each carries the
+ * {@link CommandAvailability} of the current selection.
  *
  * @remarks Exported (not part of the public `MarkdownEditor` callable) so it
  * can be imported directly in tests, mirroring how `Markdown.test.ts` imports
@@ -2610,14 +2821,16 @@ export type ContextMenuTarget =
           hasEnclosingBlock?: boolean;
           linkUrl?: string | null;
           columnAlignment?: MarkdownTableAlignment;
+          availability: CommandAvailability;
       }
-    | { kind: "empty-line"; hasSelectedText: boolean }
+    | { kind: "empty-line"; hasSelectedText: boolean; availability: CommandAvailability }
     | {
           kind: "text";
           hasSelectedText: boolean;
           bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean;
           hasEnclosingBlock?: boolean;
           linkUrl?: string | null;
+          availability: CommandAvailability;
       };
 
 /**
@@ -2771,6 +2984,481 @@ function $readFormatFlags(
 }
 
 /**
+ * Which of the editor's commands would apply at the current selection: each
+ * field is `false` where the commands it covers would do nothing. The
+ * context menu dims the items of an unavailable command, and
+ * {@link MarkdownEditorSelectionState} reports the fields a toolbar needs
+ * under the same names.
+ *
+ * @remarks Exported (not part of the public `MarkdownEditor` callable)
+ * because the exported {@link ContextMenuTarget} carries it.
+ */
+export interface CommandAvailability {
+    /** `toggleBold`, `toggleItalic`, `toggleUnderline`, `toggleStrikethrough` and `toggleInlineCode`. */
+    canFormat: boolean;
+    /** `setTextColor`, `setFontFamily` and `setFontSize`. */
+    canStyle: boolean;
+    /** `toggleLink` with a URL: Insert link… and Edit link…. */
+    canLink: boolean;
+    /** `removeLink`. */
+    canRemoveLink: boolean;
+    /** `clearFormatting`. */
+    canClearFormatting: boolean;
+    /** `setBlockType`, `toggleUnorderedList` and `toggleOrderedList`. */
+    canSetBlockType: boolean;
+    /** `setBlockAlignment` and `setColumnCount`. */
+    canSetBlockLayout: boolean;
+    /** `insertParagraphBeforeBlock` and `insertParagraphAfterBlock`. */
+    canInsertParagraphAroundBlock: boolean;
+    /** `insertTable`. */
+    canInsertTable: boolean;
+    /** `insertImage`. */
+    canInsertImage: boolean;
+    /**
+     * The commands acting on the table the caret is in: the row and column
+     * inserts and deletes, `deleteTable`, `setTableColumnAlignment` and
+     * `setTableColumnWidth`.
+     */
+    canEditTable: boolean;
+    /** `mergeTableCells`. */
+    canMergeCells: boolean;
+    /** `unmergeTableCell`. */
+    canUnmergeCell: boolean;
+}
+
+/**
+ * The node `insertTable` and `insertImage` insert at when there is no range
+ * selection: both then put a caret at the document's end, so it is the
+ * document's last node.
+ *
+ * @returns The last descendant of the root, or the root of an empty document.
+ */
+function $documentEndNode(): LexicalNode {
+    return $getRoot().getLastDescendant() ?? $getRoot();
+}
+
+/**
+ * Whether `insertTable` or `insertImage` would insert into a raw Markdown
+ * block or a code block, which hold only text, so both decline: the range
+ * selection touches one, or there is no range selection and the document
+ * ends in one, which is where the insert would then go.
+ *
+ * @param touchesTextOnlyBlock - What {@link $selectionTouchesTextOnlyBlock}
+ *   gives for the current selection, passed in so a caller that has already
+ *   read it does not walk the selection a second time.
+ * @returns `true` when the insert would land in a text-only block.
+ */
+function $insertTouchesTextOnlyBlock(touchesTextOnlyBlock: boolean): boolean {
+    const selection = $getSelection();
+
+    return $isRangeSelection(selection)
+        ? touchesTextOnlyBlock
+        : $findMatchingParent($documentEndNode(), $isTextOnlyBlock) !== null;
+}
+
+/**
+ * Whether a table `insertTable` adds would land inside another table, whose
+ * cells hold no table in this dialect. A table-edge range
+ * ({@link $isTableEdgeRange}) never does: `insertTable` removes it first,
+ * the table it reaches into included, and keeps the caret that leaves out of
+ * any other table. Any other range selection has both its ends in one table
+ * or both outside every table, so the table it would go into is the one
+ * holding its anchor. With no range selection the insert goes to the
+ * document's end.
+ *
+ * @returns `true` when the insert position is inside a table.
+ */
+function $tableInsertWouldNest(): boolean {
+    const selection = $getSelection();
+    const isTableEdge = $isTableEdgeRange(selection);
+
+    if (isTableEdge) {
+        return false;
+    }
+
+    const node = $isRangeSelection(selection) ? selection.anchor.getNode() : $documentEndNode();
+
+    return $findTableHolding(node) !== null;
+}
+
+/**
+ * Whether `insertImage` would insert at the current selection: what
+ * `canInsertImage` reports, and the test the command itself declines on
+ * before it touches the selection.
+ *
+ * @param touchesTextOnlyBlock - What {@link $selectionTouchesTextOnlyBlock}
+ *   gives for the current selection.
+ * @returns `false` where the image would land in a raw Markdown block or a
+ *   code block.
+ */
+function $imageInsertApplies(touchesTextOnlyBlock: boolean): boolean {
+    return !$insertTouchesTextOnlyBlock(touchesTextOnlyBlock);
+}
+
+/**
+ * Whether `insertTable` would insert at the current selection: what
+ * `canInsertTable` reports, and the test the command itself declines on
+ * before it touches the selection.
+ *
+ * @param touchesTextOnlyBlock - What {@link $selectionTouchesTextOnlyBlock}
+ *   gives for the current selection.
+ * @returns `false` where the table would land in a raw Markdown block, a
+ *   code block or another table.
+ */
+function $tableInsertApplies(touchesTextOnlyBlock: boolean): boolean {
+    return !$insertTouchesTextOnlyBlock(touchesTextOnlyBlock) && !$tableInsertWouldNest();
+}
+
+/**
+ * The format `clearFormatting` leaves on a text node: none of the inline
+ * formats, except those the node's own source writes — a run of a link
+ * nested in a link, or of a construct kept as written, keeps them.
+ *
+ * @param node - The text node.
+ * @returns The format bitmask the node has once cleared.
+ */
+function $formatOnceCleared(node: TextNode): number {
+    const kept = $getState(node, keptSourceState);
+    const written = !$isMarkdownSourceTextNode(node) ? 0 : kept !== null ? kept.writes : Math.max(0, $getState(node, nestedLinkState));
+
+    return node.getFormat() & (~IS_ALL_FORMATTING | written);
+}
+
+/**
+ * Whether a table selection has a cell the format toggles would format.
+ * They format the selected cells one at a time and leave out a cell that
+ * takes no format; this asks {@link $cellTakesFormat}, the test the toggles
+ * themselves pick the cells by, so the two cannot disagree about a cell.
+ *
+ * @param selection - The table selection.
+ * @returns `true` when at least one selected cell takes the format.
+ */
+function $someCellTakesFormat(selection: TableSelection): boolean {
+    return selection.getNodes().filter($isTableCellNode).some($cellTakesFormat);
+}
+
+/**
+ * Whether a range selection holds text: at least one character of a text
+ * node lies inside it. A range from the end of one block to the start of the
+ * next holds none (what Shift+Right selects at a line's end), nor does one
+ * over an image or a line break alone, nor a collapsed one.
+ *
+ * @remarks
+ * Judged on a copy of the selection whose points are moved into the text
+ * they sit beside ({@link $moveBlockPointsIntoText}). A point on a block
+ * itself, which a programmatic selection can hold, names the same place as
+ * one at the edge of the text next to it; left as it is, a range between
+ * the two forms of one place would count that whole text node as selected.
+ *
+ * @param selection - The selection, left as it is.
+ * @returns `true` when the selection covers a character.
+ */
+function $rangeHoldsText(selection: RangeSelection): boolean {
+    const judged = selection.clone();
+
+    $moveBlockPointsIntoText(judged);
+
+    return [...$selectedSlices(judged).values()].some(([from, to]) => to > from);
+}
+
+/**
+ * Moves each point of a range selection that sits on an element, between
+ * its children, to the same place named as a point in text, where there is
+ * text beside it: the end of the text before it, or the start of the text
+ * it opens on. A point with no text beside it stays where it is. The
+ * browser's selection always arrives in this form; only a selection made in
+ * code holds the other.
+ *
+ * @param selection - The selection whose points are moved.
+ */
+function $moveBlockPointsIntoText(selection: RangeSelection): void {
+    for (const point of [selection.anchor, selection.focus]) {
+        if (point.type === "element") {
+            $setPointFromCaret(point, $normalizeCaret($caretFromPoint(point, "next")));
+        }
+    }
+}
+
+/**
+ * Whether a link put on a range selection would have something to hold:
+ * text, or an image, which a link wraps as it wraps text. A caret in text
+ * has the run it sits in, which `toggleLink` links whole; a caret in an
+ * empty block has nothing, and neither has a range holding no more than a
+ * line break or the gap between two blocks.
+ *
+ * @param selection - The selection.
+ * @returns `true` when `toggleLink` with a URL would make or re-point a link.
+ */
+function $selectionHoldsLinkable(selection: RangeSelection): boolean {
+    const holdsImage = selection.getNodes().some($isMarkdownImageNode);
+    const isCollapsed = selection.isCollapsed();
+
+    if (holdsImage || !isCollapsed) {
+        return holdsImage || $rangeHoldsText(selection);
+    }
+
+    const anchorNode = selection.anchor.getNode();
+
+    return $isTextNode(anchorNode) && anchorNode.getTextContentSize() > 0;
+}
+
+/**
+ * Reads which of the commands that format, style, link or clear the
+ * selected text would apply. A collapsed caret is judged on what a command
+ * would act on: the format, style and link commands first expand it to its
+ * word or run, so a non-null `expansion` decides whether a run kept as
+ * Markdown source would be covered.
+ *
+ * The style and link commands act on a range selection only. A caret takes
+ * a format or a style as pending, for the text typed next; a range must
+ * hold text to carry either ({@link $rangeHoldsText}), and a link needs
+ * text or an image to hold ({@link $selectionHoldsLinkable}). The format
+ * toggles also format the cells of a table selection, one by one
+ * ({@link $someCellTakesFormat}). `removeLink` needs a link around the
+ * anchor, and `clearFormatting` a selected text node carrying a format it
+ * would take off.
+ *
+ * @param expansion - The would-be word/run expansion for a collapsed caret
+ *   (from {@link $computeWordExpansion}), or `null` when there is none.
+ * @param touchesTextOnlyBlock - What {@link $selectionTouchesTextOnlyBlock}
+ *   gives for the current selection.
+ * @returns The inline fields of the {@link CommandAvailability}.
+ */
+function $readInlineAvailability(
+    expansion: WordExpansion | null,
+    touchesTextOnlyBlock: boolean,
+): Pick<CommandAvailability, "canFormat" | "canStyle" | "canLink" | "canRemoveLink" | "canClearFormatting"> {
+    const selection = $getSelection();
+    const isRange = $isRangeSelection(selection);
+    const coversSourceRun = expansion !== null ? $isFormatBlockingSourceRun(expansion.node) : $selectionCoversSourceRun();
+    const inNestedLinkRun = $selectionInNestedLinkRun();
+    const inLink = isRange && $findEnclosingLinkNode(selection.anchor.getNode()) !== null;
+    const writesInline = isRange && !touchesTextOnlyBlock && !coversSourceRun;
+    const formatsRange = writesInline && (selection.isCollapsed() || $rangeHoldsText(selection));
+    const formatsCells = $isTableSelection(selection) && $someCellTakesFormat(selection);
+    const linksRange = writesInline && !inNestedLinkRun && $selectionHoldsLinkable(selection);
+    const holdsClearableFormat = isRange
+        && selection.getNodes().some((node) => $isTextNode(node) && $formatOnceCleared(node) !== node.getFormat());
+
+    return {
+        canFormat:          formatsRange || formatsCells,
+        canStyle:           formatsRange && !inLink,
+        canLink:            linksRange,
+        canRemoveLink:      inLink && !inNestedLinkRun,
+        canClearFormatting: holdsClearableFormat,
+    };
+}
+
+/**
+ * Reads which of the table commands would apply. Those acting on the table
+ * the caret is in need a range selection anchored in one of its cells;
+ * unmerging needs that cell to span more than one row or column; merging
+ * needs a table selection of more than one cell.
+ *
+ * @returns The table fields of the {@link CommandAvailability}.
+ */
+function $readTableAvailability(): Pick<CommandAvailability, "canEditTable" | "canMergeCells" | "canUnmergeCell"> {
+    const selection = $getSelection();
+    const cell = $getEnclosingTableCellNode();
+    const selectedCells = $isTableSelection(selection) ? selection.getNodes().filter($isTableCellNode).length : 0;
+
+    return {
+        canEditTable:   cell !== null,
+        canMergeCells:  selectedCells > 1,
+        canUnmergeCell: cell !== null && (cell.getColSpan() > 1 || cell.getRowSpan() > 1),
+    };
+}
+
+/**
+ * Reads which commands would apply at the current selection, from the same
+ * tests the commands decline on, so that what the menu and the toolbar dim
+ * says what the commands do: a field is `false` wherever its commands would
+ * leave the document and the selection as they are. What it does not
+ * foresee is a format, style or link the save could not write as shown,
+ * which those commands still decline after trying it.
+ *
+ * The block conversions, alignment and columns act on a range selection
+ * only; the conversions also decline in a table cell. A line is inserted
+ * before or after the block holding the anchor, so there must be one. The
+ * two inserts make a caret of their own when there is no range selection.
+ * The inline and table fields are read by {@link $readInlineAvailability}
+ * and {@link $readTableAvailability}.
+ *
+ * @param expansion - The would-be word/run expansion for a collapsed caret
+ *   (from {@link $computeWordExpansion}), or `null` when there is none.
+ * @returns The {@link CommandAvailability} of the current selection.
+ */
+function $readCommandAvailability(expansion: WordExpansion | null): CommandAvailability {
+    const selection = $getSelection();
+    const isRange = $isRangeSelection(selection);
+    const touchesTextOnlyBlock = $selectionTouchesTextOnlyBlock();
+    const inInsertableBlock = isRange && $findEnclosingInsertableBlock(selection.anchor.getNode()) !== null;
+
+    return {
+        ...$readInlineAvailability(expansion, touchesTextOnlyBlock),
+        canSetBlockType:               isRange && !$selectionTouchesTableCell(),
+        canSetBlockLayout:             isRange,
+        canInsertParagraphAroundBlock: inInsertableBlock,
+        canInsertTable:                $tableInsertApplies(touchesTextOnlyBlock),
+        canInsertImage:                $imageInsertApplies(touchesTextOnlyBlock),
+        ...$readTableAvailability(),
+    };
+}
+
+/**
+ * The formats a range selection carries, as Lexical reads them when the
+ * selection changes: those every selected text node has, leaving out a node
+ * the range only touches at its edge.
+ *
+ * @param selection - A range selection that is not collapsed.
+ * @returns The combined format bitmask, `0` when the range holds no text.
+ */
+function $formatOfRange(selection: RangeSelection): number {
+    const [start, end] = $orderedPoints(selection);
+    const nodes = selection.getNodes();
+    let combined = IS_ALL_FORMATTING;
+    let holdsText = false;
+
+    nodes.forEach((node, index) => {
+        const isText = $isTextNode(node);
+
+        if (!isText) {
+            return;
+        }
+
+        const size = node.getTextContentSize();
+        const touchedAtItsEnd = index === 0 && node.getKey() === start.key && start.offset === size;
+        const touchedAtItsStart = index === nodes.length - 1 && node.getKey() === end.key && end.offset === 0;
+
+        if (size !== 0 && !touchedAtItsEnd && !touchedAtItsStart) {
+            holdsText = true;
+            combined &= node.getFormat();
+        }
+    });
+
+    return holdsText ? combined : 0;
+}
+
+/**
+ * Gives a selection read from the browser, which carries no format, the
+ * format Lexical would give it on a selection change: a collapsed one in
+ * text takes the format and style of that text, so text typed at it
+ * continues the run it sits in; a collapsed one in an empty block takes the
+ * format and style the block keeps for text typed into it; and a range takes
+ * the formats all its text has.
+ *
+ * @remarks This and {@link $formatOfRange} follow what Lexical's own
+ * `selectionchange` handling does (`onSelectionChange` in `lexical`), which
+ * it does not export. A Lexical upgrade that changes those rules needs the
+ * same change here.
+ *
+ * @param selection - The selection to set the format of.
+ */
+function $carryFormatOfLanding(selection: RangeSelection): void {
+    const isCollapsed = selection.isCollapsed();
+
+    if (!isCollapsed) {
+        selection.setFormat($formatOfRange(selection));
+
+        return;
+    }
+
+    const anchorNode = selection.anchor.getNode();
+    const inText = $isTextNode(anchorNode);
+    const inEmptyBlock = $isElementNode(anchorNode) && anchorNode.isEmpty();
+
+    if (inText) {
+        selection.setFormat(anchorNode.getFormat());
+        selection.setStyle(anchorNode.getStyle());
+    } else if (inEmptyBlock) {
+        selection.setFormat(anchorNode.getTextFormat());
+        selection.setStyle(anchorNode.getTextStyle());
+    }
+}
+
+/**
+ * Brings the editor's selection to the one the browser holds when a context
+ * menu opens. On Linux and macOS a right-click raises `contextmenu` on mouse
+ * down, after the browser has moved its own caret to the click point but
+ * before the `selectionchange` on which Lexical follows it, so the editor's
+ * selection is still the one from before the click, while the commands the
+ * menu offers will act on the new one. Adopting the browser's selection
+ * first makes the menu describe what its items will act on.
+ *
+ * Leaves the selection alone when the browser's is the same, so a format
+ * pending at an unmoved caret is kept, and while table cells are selected,
+ * wherever the click lands: the browser holds no cell selection of its own,
+ * a right-click on the cells must still act on all of them, and Lexical
+ * itself keeps a table selection through a right-click outside its table,
+ * so the commands go on acting on the cells. The menu is then the one for
+ * those cells ({@link $contextMenuNodeFor}).
+ *
+ * A selection read from the browser carries no format, so an adopted one is
+ * given the format Lexical would give it ({@link $carryFormatOfLanding}).
+ * Left without, Lexical would keep the bare format of a collapsed one for
+ * the `selectionchange` that follows, and a letter typed into a bold word
+ * would come out plain.
+ *
+ * @remarks Exported (not part of the public `MarkdownEditor` callable) so it
+ * can be tested directly, mirroring {@link $classifyContextMenuTarget}.
+ *
+ * @param fromDom - The browser's selection read as a Lexical range
+ *   selection, or `null` when it holds none inside the editor.
+ */
+export function $adoptDomSelection(fromDom: RangeSelection | null): void {
+    const current = $getSelection();
+    const holdsCells = $isTableSelection(current);
+
+    if (fromDom === null || holdsCells) {
+        return;
+    }
+
+    const unmoved = $isRangeSelection(current) && current.anchor.is(fromDom.anchor) && current.focus.is(fromDom.focus);
+
+    if (unmoved) {
+        return;
+    }
+
+    $carryFormatOfLanding(fromDom);
+    $setSelection(fromDom);
+}
+
+/**
+ * Picks the node the context menu is built for. While table cells are
+ * selected it is the selection's anchor cell, wherever the event landed: a
+ * right-click leaves a table selection in place even outside its table
+ * ({@link $adoptDomSelection}), every command goes on acting on the cells,
+ * and the menu must be the one for what its items act on. Otherwise the
+ * node the event's target resolved to is used unless it is the root: that
+ * is what a menu opened from the keyboard (Shift+F10, the ContextMenu key)
+ * targets, and a right-click in the root's own padding, and neither has
+ * content under it. The menu is then built for the selection's anchor, or
+ * for the root itself when there is no selection.
+ *
+ * @remarks Exported (not part of the public `MarkdownEditor` callable) so it
+ * can be tested directly, mirroring {@link $classifyContextMenuTarget}.
+ *
+ * @param target - The node the native `contextmenu` event's DOM target resolved to.
+ * @returns The node to classify.
+ */
+export function $contextMenuNodeFor(target: LexicalNode): LexicalNode {
+    const selection = $getSelection();
+    const holdsCells = $isTableSelection(selection);
+
+    if (holdsCells) {
+        return selection.anchor.getNode();
+    }
+
+    const isRoot = $isRootNode(target);
+
+    if (!isRoot) {
+        return target;
+    }
+
+    return $isRangeSelection(selection) ? selection.anchor.getNode() : target;
+}
+
+/**
  * Classifies an already-resolved Lexical node for the right-click context
  * menu: a table cell wins even when empty, an empty paragraph outside any
  * table is the insert context, and everything else is the format context —
@@ -2783,13 +3471,18 @@ function $readFormatFlags(
  * so the menu shows what an action would operate on without pre-emptively
  * performing it.
  *
- * @param node - The node the native `contextmenu` event's DOM target resolved to.
+ * The `availability` every kind carries is read from the live selection, not
+ * from `node`: the commands act on the selection, so it is the selection
+ * that decides whether they would decline.
+ *
+ * @param node - The node the menu is built for (see {@link $contextMenuNodeFor}).
  * @returns The classified {@link ContextMenuTarget}.
  */
 export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget {
     const selection = $getSelection();
     const expansion = $computeWordExpansion();
     const formatState = $readFormatFlags(selection, expansion);
+    const availability = $readCommandAvailability(expansion);
     const hasSelectedText = expansion !== null
         || ($isRangeSelection(selection) && selection.getTextContent() !== "");
     const linkUrl = $findEnclosingLinkNode(node)?.getURL() ?? null;
@@ -2800,24 +3493,57 @@ export function $classifyContextMenuTarget(node: LexicalNode): ContextMenuTarget
         const hasEnclosingBlock = $findEnclosingInsertableBlock(node) !== null;
         const columnAlignment   = $tableCellAlignment(tableCell);
 
-        return { kind: "table-cell", hasSelectedText, hasEnclosingBlock, linkUrl, columnAlignment, ...formatState };
+        return { kind: "table-cell", hasSelectedText, hasEnclosingBlock, linkUrl, columnAlignment, availability, ...formatState };
     }
 
     const block = $findEnclosingBlock(node);
 
     if ($isParagraphNode(block) && block.getTextContent() === "") {
-        return { kind: "empty-line", hasSelectedText };
+        return { kind: "empty-line", hasSelectedText, availability };
     }
 
     const hasEnclosingBlock = $findEnclosingInsertableBlock(node) !== null;
 
-    return { kind: "text", hasSelectedText, hasEnclosingBlock, linkUrl, ...formatState };
+    return { kind: "text", hasSelectedText, hasEnclosingBlock, linkUrl, availability, ...formatState };
+}
+
+/**
+ * The `can…` fields of a {@link MarkdownEditorSelectionState}: the part of
+ * the {@link CommandAvailability} a toolbar reads. They are picked by the
+ * shape of their name, so a `can…` field added to the selection state
+ * belongs here without being listed, and everything typed with this fails
+ * to compile until it gives the new field too.
+ */
+type ReportedAvailability = Pick<MarkdownEditorSelectionState, Extract<keyof MarkdownEditorSelectionState, `can${string}`>>;
+
+/**
+ * Picks the fields the selection state reports out of an availability
+ * record, each under its own name.
+ *
+ * @param availability - The record.
+ * @returns Its reported fields.
+ */
+function reportedAvailability(availability: CommandAvailability): ReportedAvailability {
+    return {
+        canFormat:         availability.canFormat,
+        canStyle:          availability.canStyle,
+        canLink:           availability.canLink,
+        canRemoveLink:     availability.canRemoveLink,
+        canSetBlockType:   availability.canSetBlockType,
+        canSetBlockLayout: availability.canSetBlockLayout,
+        canInsertTable:    availability.canInsertTable,
+        canInsertImage:    availability.canInsertImage,
+        canEditTable:      availability.canEditTable,
+        canMergeCells:     availability.canMergeCells,
+        canUnmergeCell:    availability.canUnmergeCell,
+    };
 }
 
 /**
  * Reads the toolbar's live selection state directly off `$getSelection()` —
  * the five format flags (via {@link $readFormatFlags}), whether there's a
- * selection to act on, the enclosing link's URL (if any), table-cell
+ * selection to act on, the enclosing link's URL (if any), which commands
+ * would apply (via {@link $readCommandAvailability}), table-cell
  * presence and its column's alignment, and the enclosing `:::` block's
  * alignment and column count. Unlike {@link $classifyContextMenuTarget},
  * this takes no node parameter: the toolbar has no click target to resolve
@@ -2836,11 +3562,13 @@ function $readSelectionState(): MarkdownEditorSelectionState {
     const anchor = $isRangeSelection(selection) ? selection.anchor.getNode() : null;
     const block = anchor === null ? null : $findMatchingParent(anchor, $isMarkdownBlockNode);
     const linkUrl = anchor === null ? null : ($findEnclosingLinkNode(anchor)?.getURL() ?? null);
+    const availability = $readCommandAvailability(expansion);
 
     return {
         ...format,
         hasSelectedText,
         linkUrl,
+        ...reportedAvailability(availability),
         inTable:              cell !== null,
         tableColumnAlignment: cell !== null ? $tableCellAlignment(cell) : null,
         blockAlignment:       (block?.getAlign() ?? null) as MarkdownBlockAlignment | null,
@@ -2848,28 +3576,51 @@ function $readSelectionState(): MarkdownEditorSelectionState {
     };
 }
 
-/** The {@link MarkdownEditorSelectionState} reported before the Lexical editor is built, or when nothing tracked applies. */
+/**
+ * The {@link MarkdownEditorSelectionState} reported before the Lexical editor
+ * is built: what an editor with no selection reports, where only the two
+ * inserts, which make a caret of their own, would apply. Whether they would
+ * depends on how the document ends, which is not known until it is built;
+ * the build reports the state again if the document turns either off.
+ */
 const NEUTRAL_SELECTION_STATE: MarkdownEditorSelectionState = {
     bold: false, italic: false, strikethrough: false, code: false, underline: false,
     hasSelectedText: false, linkUrl: null,
+    canFormat: false, canStyle: false, canLink: false, canRemoveLink: false,
+    canSetBlockType: false, canSetBlockLayout: false, canInsertTable: true, canInsertImage: true,
+    canEditTable: false, canMergeCells: false, canUnmergeCell: false,
     inTable: false, tableColumnAlignment: null, blockAlignment: null, columnCount: 1,
+};
+
+/**
+ * The `can…` fields of a {@link MarkdownEditorSelectionState} with none of
+ * them available: what a read-only editor reports, whatever its selection.
+ * Typed by {@link ReportedAvailability}, so a `can…` field added to the
+ * selection state must be given here before this compiles, and cannot stay
+ * `true` on a read-only editor by being forgotten.
+ */
+const NO_COMMAND_APPLIES: ReportedAvailability = {
+    canFormat: false, canStyle: false, canLink: false, canRemoveLink: false,
+    canSetBlockType: false, canSetBlockLayout: false, canInsertTable: false, canInsertImage: false,
+    canEditTable: false, canMergeCells: false, canUnmergeCell: false,
 };
 
 /**
  * Whether two {@link MarkdownEditorSelectionState} values are field-for-field
  * equal — what {@link MarkdownEditor.updateSelectionState} uses to decide
  * whether a commit's resulting state is worth a `"selectionstate"` emit.
+ * Every field is compared, whichever the state has: each holds a plain
+ * value, and a field added to the state is then compared without being
+ * named here.
  *
  * @param a - The first state.
  * @param b - The second state.
  * @returns Whether every field of `a` matches the same field of `b`.
  */
 function selectionStatesEqual(a: MarkdownEditorSelectionState, b: MarkdownEditorSelectionState): boolean {
-    return a.bold === b.bold && a.italic === b.italic && a.strikethrough === b.strikethrough
-        && a.code === b.code && a.underline === b.underline
-        && a.hasSelectedText === b.hasSelectedText && a.linkUrl === b.linkUrl
-        && a.inTable === b.inTable && a.tableColumnAlignment === b.tableColumnAlignment
-        && a.blockAlignment === b.blockAlignment && a.columnCount === b.columnCount;
+    const fields = Object.keys(a) as Array<keyof MarkdownEditorSelectionState>;
+
+    return fields.every((field) => a[field] === b[field]);
 }
 
 // A text caret over the whole surface signals editability. The surface is also
@@ -2911,14 +3662,16 @@ class WysiwygSurface extends Component {
      * Constructs the WYSIWYG surface.
      *
      * @param onReady - Called on the surface's first connected + sized layout.
+     * @param contentEditable - Whether the surface starts editable: `false`
+     *   for a read-only editor.
      * @param subclassDefaults - Optional subclass defaults bag.
      */
-    constructor(onReady: () => void, subclassDefaults?: Partial<ComponentOptions>) {
+    constructor(onReady: () => void, contentEditable: boolean, subclassDefaults?: Partial<ComponentOptions>) {
         super(undefined, { ..._defaultWysiwygSurfaceOptions, ...(subclassDefaults ?? {}) });
 
         this._onReady = onReady;
 
-        this.setContentEditable(true);
+        this.setContentEditable(contentEditable);
         // Fills its host box and scrolls internally when the document overflows.
         this.setOverflow("auto");
         // A few pixels of inset off the padding box: without it the caret sits
@@ -3177,10 +3930,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * The {@link MarkdownEditorSelectionState} as of the last `"selectionstate"`
-     * emit (or the neutral default before the first one). Compared against on
-     * every commit so a commit that changes nothing tracked emits nothing.
+     * emit, or, before the first one, the state the surface the editor was
+     * constructed showing reports. Compared against on every commit so a
+     * commit that changes nothing tracked emits nothing.
      */
     private _lastSelectionState: MarkdownEditorSelectionState = NEUTRAL_SELECTION_STATE;
+
+    /**
+     * Whether the host asked for an editable WYSIWYG surface
+     * ({@link MarkdownEditor.setContentEditable}). The surface is editable
+     * only while this holds and the editor is not read-only.
+     */
+    private _contentEditable: boolean = true;
 
     /**
      * Constructs a Markdown editor.
@@ -3211,7 +3972,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         this._card = new Card();
         this.setLayoutManager(this._card);
 
-        this._wysiwyg = new WysiwygSurface(() => this.mountWysiwyg());
+        this._wysiwyg = new WysiwygSurface(() => this.mountWysiwyg(), !(this._options.readOnly ?? false));
         // Arrow, not a bare method reference: ListenerBag.fire (which this `on`
         // ultimately dispatches through) calls listeners bare with no `this`
         // rebinding, unlike Event.addListener's `.apply(component, …)`.
@@ -3233,6 +3994,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             this.getMode() === "source" ? this._codeEditor.getId() : this._wysiwyg.getId());
 
         this._cleanValue = this.getValue();
+
+        // What `getSelectionState()` reports from the start, so the first `"selectionstate"` is a change
+        // from it. The source surface does not report the neutral state: its commands apply.
+        this._lastSelectionState = this.readActiveSelectionState();
 
         this.applyListeners(options?.listeners);
     }
@@ -3309,7 +4074,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Whether the WYSIWYG selection touches a raw Markdown block or a code
      * block, where the commands that format, link or insert decline, as the
      * typing shortcuts do: what they would add there is shown but not saved,
-     * both blocks saving their text as written.
+     * both blocks saving their text as written. The commands an availability
+     * field covers read that field instead ({@link commandApplies}), which
+     * holds this test; this is what is left for `toggleLink(null)`, which no
+     * field covers.
      *
      * @returns `true` when any part of the selection lies in a raw block or a
      *   code block.
@@ -3319,16 +4087,83 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Whether the WYSIWYG selection touches a table cell, where the block
-     * conversions decline before anything is dispatched: a cell holds text
-     * only, so a block made there would be saved into the cell as its
-     * literal syntax.
+     * Whether the commands an availability field covers would apply at the
+     * WYSIWYG selection. Every such command declines on this before it
+     * touches the document or the selection, and it is the field the context
+     * menu and the selection state report ({@link $readCommandAvailability}),
+     * so what is dimmed and what a command does cannot come apart: a command
+     * whose field is `false` changes nothing and reports nothing. No command
+     * applies on a read-only editor, which is refused here for all of them,
+     * before the Lexical editor is so much as built.
      *
-     * @returns `true` when any part of the selection lies in a table cell,
-     *   or whole cells are selected.
+     * @param field - The field covering the command.
+     * @returns `false` where the command would do nothing, and always while
+     *   the editor is read-only.
      */
-    private declinesInTableCell(): boolean {
-        return this.ensureEditor().read($selectionTouchesTableCell);
+    private commandApplies(field: keyof CommandAvailability): boolean {
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) {
+            return false;
+        }
+
+        return this.ensureEditor().read(() => $readCommandAvailability($computeWordExpansion())[field]);
+    }
+
+    /**
+     * Hands keyboard focus back to the WYSIWYG surface after a command that
+     * applies but found nothing to change. A toolbar button or a menu row
+     * takes focus off the surface before its command runs. A command that
+     * changes the document gets it back when Lexical writes the selection
+     * to the browser; one that asks for what is already there runs no such
+     * update, and would leave the keyboard on the control that was clicked.
+     * The document, the selection and the undo history stay as they are, as
+     * after {@link MarkdownEditor.copy}, which hands focus back the same way.
+     *
+     * @returns This component, for method chaining.
+     */
+    private refocusSurface(): this {
+        this.ensureEditor().focus();
+
+        return this;
+    }
+
+    /**
+     * Shared body of {@link MarkdownEditor.toggleUnorderedList} and
+     * {@link MarkdownEditor.toggleOrderedList} on the WYSIWYG surface. Where
+     * every block the selection touches is already an item of a list of
+     * `type` ({@link $selectionLiesInListOfType}), the toggle is off: those
+     * items leave their list as {@link MarkdownEditor.setBlockType} makes
+     * them paragraphs, the list split around them, which is what the
+     * source-mode toggle does to the same lines. Otherwise `insert` is
+     * dispatched, and Lexical makes the selected blocks items of such a list,
+     * a list of the other kind converting whole. Lexical's insert goes by
+     * the selected leaves, so a selection point on a block itself is first
+     * moved into the text beside it ({@link $moveBlockPointsIntoText}): a
+     * range from one block's end to the next one's start then takes both
+     * blocks however its points are held.
+     *
+     * @param type - The kind of list toggled.
+     * @param insert - Lexical's command inserting a list of that kind.
+     */
+    private toggleList(type: ListType, insert: LexicalCommand<void>): void {
+        const editor = this.ensureEditor();
+        const liesInListOfType = editor.read(() => $selectionLiesInListOfType(type));
+
+        if (liesInListOfType) {
+            this.setBlockType("paragraph");
+
+            return;
+        }
+
+        editor.update(() => {
+            const selection = $getSelection();
+
+            if ($isRangeSelection(selection)) {
+                $moveBlockPointsIntoText(selection);
+            }
+        }, { discrete: true });
+        editor.dispatchCommand(insert, undefined);
     }
 
     /**
@@ -3339,13 +4174,17 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * No-op (no conversion, no `"change"`) when already in `mode`. Otherwise
      * emits a fresh `"selectionstate"` for the newly-shown surface, so a
      * toolbar's pressed/enabled state never keeps what the outgoing surface
-     * last reported.
+     * last reported. It is emitted once the surface is the one shown, in
+     * either direction, also when the switch is what first builds the
+     * Lexical editor.
      *
      * @param mode - The surface to show.
      * @returns This component, for method chaining.
      */
     setMode(mode: MarkdownEditorMode): this {
-        if (this.getMode() === mode) {
+        const current = this.getMode();
+
+        if (current === mode) {
             return this;
         }
 
@@ -3353,14 +4192,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const markdown = this.getValue();
         this._options.mode = mode;
 
+        // The incoming surface is shown first, in both directions: loading into it reports the selection
+        // state (a mounted source view reports its change at once, and so does building the Lexical
+        // editor), and a listener must find the surface that state describes already showing.
         if (mode === "source") {
-            this._codeEditor.setValue(markdown);
             this._card.setVisibleComponentId(this._codeEditor.getId());
+            this._codeEditor.setValue(markdown);
         } else {
-            this.ensureEditor().update(() => {
+            this._card.setVisibleComponentId(this._wysiwyg.getId());
+
+            // As in setValue(): an editor not built yet is built with the document it has, which is replaced
+            // right here, so that document's selection state is not reported, only the loaded one's.
+            const editor = this._editor ?? this.buildEditor();
+
+            editor.update(() => {
                 this.adoptSourceMap($importMarkdown(markdown));
             }, { discrete: true });
-            this._card.setVisibleComponentId(this._wysiwyg.getId());
         }
 
         this.updateSelectionState();
@@ -3391,15 +4238,19 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Reads the current selection's tracked state — the five inline-format
-     * flags, table/column-alignment context, and enclosing-block
-     * alignment/column count — recomputed fresh from whichever surface is
-     * active on every call, mirroring `CodeEditor.getCursorPosition`'s own
-     * always-fresh contract; nothing is cached here beyond what
-     * `updateSelectionState` needs for its own emit-dedup. In `"source"` mode
-     * the five format flags, `hasSelectedText` and `linkUrl` are derived from
-     * the raw Markdown, read as the viewer reads it, and
+     * flags, which commands would apply, table/column-alignment
+     * context, and enclosing-block alignment/column count — recomputed fresh
+     * from whichever surface is active on every call, mirroring
+     * `CodeEditor.getCursorPosition`'s own always-fresh contract; nothing is
+     * cached here beyond what `updateSelectionState` needs for its own
+     * emit-dedup. In `"source"` mode the five format flags, `hasSelectedText`
+     * and `linkUrl` are derived from the raw Markdown, read as the viewer
+     * reads it; the `can…` fields are `true` (`canRemoveLink` only inside a
+     * link) except `canSetBlockLayout` and the three table fields, the
+     * alignment, column and table commands being no-ops there; and
      * `inTable`/`tableColumnAlignment`/`blockAlignment`/`columnCount` report
-     * the fields that mode has no notion of.
+     * the fields that mode has no notion of. While the editor is read-only
+     * every `can…` field is `false`, on either surface.
      *
      * @returns The current {@link MarkdownEditorSelectionState}: in
      *   `"source"` mode the state read from the raw Markdown, which is always
@@ -3417,16 +4268,34 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * only what raw text can answer — the five format flags, whether there is
      * something to act on, and any enclosing link — and reports the table and
      * `:::` block fields as absent, which is what a consumer toolbar needs to
-     * disable the controls those fields drive.
+     * disable the controls those fields drive. Where a source-mode command
+     * declines depends on the raw text around the selection, which is not
+     * predicted, so the `can…` fields of the commands that mode has are
+     * `true`, except `canRemoveLink`, which is `true` only inside a link;
+     * `canSetBlockLayout`, `canEditTable`, `canMergeCells` and
+     * `canUnmergeCell` are `false`, the alignment, column and table commands
+     * being no-ops there.
      *
      * @returns The current {@link MarkdownEditorSelectionState}.
      */
-    private readActiveSelectionState(): MarkdownEditorSelectionState {
+    private readSurfaceSelectionState(): MarkdownEditorSelectionState {
         if (this.isSourceMode()) {
             const selection = this._codeEditor.getSelection();
+            const source = readSourceSelectionState(this._codeEditor.getValue(), selection.from, selection.to);
 
             return {
-                ...readSourceSelectionState(this._codeEditor.getValue(), selection.from, selection.to),
+                ...source,
+                canFormat:            true,
+                canStyle:             true,
+                canLink:              true,
+                canRemoveLink:        source.linkUrl !== null,
+                canSetBlockType:      true,
+                canSetBlockLayout:    false,
+                canInsertTable:       true,
+                canInsertImage:       true,
+                canEditTable:         false,
+                canMergeCells:        false,
+                canUnmergeCell:       false,
                 inTable:              false,
                 tableColumnAlignment: null,
                 blockAlignment:       null,
@@ -3440,23 +4309,46 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
+     * The tracked selection state of the active surface as the editor
+     * reports it: what {@link readSurfaceSelectionState} reads, with every
+     * `can…` field `false` while the editor is read-only, where each editing
+     * command is refused on both surfaces.
+     *
+     * @returns The current {@link MarkdownEditorSelectionState}.
+     */
+    private readActiveSelectionState(): MarkdownEditorSelectionState {
+        const state = this.readSurfaceSelectionState();
+        const readOnly = this.getReadOnly();
+
+        return readOnly ? { ...state, ...NO_COMMAND_APPLIES } : state;
+    }
+
+    /**
      * Replaces the whole document from a Markdown string, targeting the active
      * surface: the source `CodeEditor` in `"source"` mode, else the Lexical
-     * editor (building it if needed). A resulting content change fires `"change"`.
+     * editor (building it if needed). A resulting content change fires
+     * `"change"`, and `"selectionstate"` fires when the loaded document's
+     * state differs from the last one reported.
      *
      * @param value - The new Markdown source.
      * @returns This component, for method chaining.
      */
     setValue(value: string): this {
-        if (this.getMode() === "source") {
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) {
             this._codeEditor.setValue(value);
 
             return this;
         }
 
+        // An editor not built yet is built with the document it has, and that document is replaced
+        // right here: its selection state is not reported, only the loaded one's is, by the update.
+        const editor = this._editor ?? this.buildEditor();
+
         // Discrete forces a synchronous commit, so the resulting `"change"`
         // fires before this returns rather than on a later flush.
-        this.ensureEditor().update(() => {
+        editor.update(() => {
             this.adoptSourceMap($importMarkdown(value));
         }, { discrete: true });
 
@@ -3496,9 +4388,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Sets whether the editor rejects edits, on **both** surfaces. Caches the
-     * state; when the Lexical editor exists, toggles its editable flag (which
-     * also drops the caret / editing affordances on the mounted view); and
-     * forwards to the source `CodeEditor`.
+     * state; when the Lexical editor exists, toggles its editable flag, so it
+     * stops acting on input; turns the WYSIWYG surface's `contenteditable`
+     * off, which is what drops the caret and stops the browser from editing
+     * the shown text itself (Lexical leaves that attribute to its host), or
+     * back to what {@link MarkdownEditor.setContentEditable} last asked for;
+     * and forwards to the source `CodeEditor`.
+     *
+     * While read-only, every command that edits the document is refused
+     * and leaves the document and the selection as they are: on the WYSIWYG
+     * surface silently, on the source surface with the source editor's
+     * rejection flash. `cut()` and `paste()` are refused on both; `copy()`
+     * still copies. The `can…` fields of the selection state are then all
+     * `false`, and `"selectionstate"` fires when this call changes them.
+     * Replacing the whole document with `setValue` stays possible, as it
+     * does on a read-only `CodeEditor`: read-only guards against edits, not
+     * against the host loading another document.
      *
      * @param readOnly - Whether the editor should reject edits.
      * @returns This component, for method chaining.
@@ -3506,7 +4411,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     setReadOnly(readOnly: boolean): this {
         this._options.readOnly = readOnly;
         this._editor?.setEditable(!readOnly);
+        this.applyContentEditable();
         this._codeEditor.setReadOnly(readOnly);
+        this.updateSelectionState();
 
         return this;
     }
@@ -3515,7 +4422,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Moves keyboard focus into the active editing surface, placing a caret
      * ready for typing: the Lexical contenteditable in WYSIWYG mode (building
      * and mounting the editor if needed), or the source `CodeEditor` in
-     * `"source"` mode.
+     * `"source"` mode. A read-only editor's WYSIWYG surface is not
+     * `contenteditable`, so there it takes no keyboard focus and shows no
+     * caret; its source surface is focused as usual.
      *
      * Overrides {@link core!Component.focus}, whose default focuses this component's
      * own host element — the `Card` wrapper — which would leave the caret out of
@@ -3561,9 +4470,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+        const applies = this.commandApplies("canFormat");
 
-        if (touchesTextOnlyBlock) { return this; }
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -3595,9 +4504,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+        const applies = this.commandApplies("canFormat");
 
-        if (touchesTextOnlyBlock) { return this; }
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -3628,9 +4537,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+        const applies = this.commandApplies("canFormat");
 
-        if (touchesTextOnlyBlock) { return this; }
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -3662,9 +4571,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+        const applies = this.commandApplies("canFormat");
 
-        if (touchesTextOnlyBlock) { return this; }
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -3695,9 +4604,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+        const applies = this.commandApplies("canFormat");
 
-        if (touchesTextOnlyBlock) { return this; }
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -3738,16 +4647,17 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             return this;
         }
 
-        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+        const applies = this.commandApplies("canStyle");
 
-        if (touchesTextOnlyBlock) { return this; }
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
         editor.update(() => {
             const selection = $getSelection();
+            const inLink = $isRangeSelection(selection) && $findEnclosingLinkNode(selection.anchor.getNode()) !== null;
 
-            if (!$isRangeSelection(selection) || $findEnclosingLinkNode(selection.anchor.getNode()) !== null) {
+            if (!$isRangeSelection(selection) || inLink) {
                 return;
             }
 
@@ -3841,10 +4751,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Converts the selected blocks into an unordered (bulleted) list, or out of
-     * one when already a list. No-op without a range selection, and when the
-     * selection touches a table cell (whole cells selected included), which
-     * holds text only.
+     * Converts the selected blocks into an unordered (bulleted) list, or out
+     * of one: when every selected block is already an item of a bulleted
+     * list, those items become paragraphs and the list is split around them.
+     * A numbered list the selection touches converts whole. No-op without a
+     * range selection, and when the selection touches a table cell (whole
+     * cells selected included), which holds text only.
      *
      * In `"source"` mode, toggles the `- ` list over the raw Markdown's
      * selected lines instead.
@@ -3856,20 +4768,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const touchesTableCell = this.declinesInTableCell();
+        const applies = this.commandApplies("canSetBlockType");
 
-        if (touchesTableCell) { return this; }
+        if (!applies) { return this; }
 
-        this.ensureEditor().dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined);
+        this.toggleList("bullet", INSERT_UNORDERED_LIST_COMMAND);
 
         return this;
     }
 
     /**
-     * Converts the selected blocks into an ordered (numbered) list, or out of
-     * one when already a list. No-op without a range selection, and when the
-     * selection touches a table cell (whole cells selected included), which
-     * holds text only.
+     * Converts the selected blocks into an ordered (numbered) list, or out
+     * of one: when every selected block is already an item of a numbered
+     * list, those items become paragraphs and the list is split around them.
+     * A bulleted list the selection touches converts whole. No-op without a
+     * range selection, and when the selection touches a table cell (whole
+     * cells selected included), which holds text only.
      *
      * In `"source"` mode, toggles the `1. ` list over the raw Markdown's
      * selected lines instead.
@@ -3881,11 +4795,11 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const touchesTableCell = this.declinesInTableCell();
+        const applies = this.commandApplies("canSetBlockType");
 
-        if (touchesTableCell) { return this; }
+        if (!applies) { return this; }
 
-        this.ensureEditor().dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined);
+        this.toggleList("number", INSERT_ORDERED_LIST_COMMAND);
 
         return this;
     }
@@ -3916,9 +4830,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+        const readOnly = this.getReadOnly();
 
-        if (touchesTextOnlyBlock) { return this; }
+        if (readOnly) { return this; }
+
+        // Unlinking has no field of its own: it declines where the selection touches a block holding text only.
+        const applies = url === null ? !this.declinesInTextOnlyBlock() : this.commandApplies("canLink");
+
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -3967,6 +4886,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
+        const applies = this.commandApplies("canRemoveLink");
+
+        if (!applies) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -3977,9 +4900,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
 
             const linkNode = $findEnclosingLinkNode(selection.anchor.getNode());
-            const inNestedLinkRun = $selectionInNestedLinkRun();
 
-            if (linkNode === null || inNestedLinkRun) {
+            if (linkNode === null) {
                 return;
             }
 
@@ -4013,6 +4935,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
+        const applies = this.commandApplies("canClearFormatting");
+
+        if (!applies) { return this; }
+
         const editor = this.ensureEditor();
 
         editor.update(() => {
@@ -4025,11 +4951,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             $editWritably(() => {
                 for (const node of selection.getNodes()) {
                     if ($isTextNode(node)) {
-                        // A nested link's run, or a kept construct's, keeps the formats its source writes.
-                        const kept = $getState(node, keptSourceState);
-                        const written = !$isMarkdownSourceTextNode(node) ? 0 : kept !== null ? kept.writes : Math.max(0, $getState(node, nestedLinkState));
-
-                        node.setFormat(node.getFormat() & (~IS_ALL_FORMATTING | written));
+                        node.setFormat($formatOnceCleared(node));
                     }
                 }
             });
@@ -4107,19 +5029,27 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * throwing) when there is no range selection, or the selection is
      * collapsed with nothing to expand into. A selection that runs from
      * outside a table into one of its cells is cut with the whole table: the
-     * clipboard gets the text that is removed.
+     * clipboard gets the text that is removed. Refused in a read-only
+     * editor, on either surface: nothing is copied and nothing removed.
      *
      * In `"source"` mode, delegates to the source editor's own `cut()`
-     * instead.
+     * instead, which refuses a read-only editor with its rejection flash, as
+     * it refuses every other command there.
      *
      * @returns This component, for method chaining.
      */
     cut(): this {
-        if (this.isSourceMode()) {
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) {
             this._codeEditor.cut();
 
             return this;
         }
+
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) { return this; }
 
         this.copy();
 
@@ -4141,13 +5071,23 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * selection.
      *
      * In `"source"` mode, delegates to the source editor's own `paste()`
-     * instead.
+     * instead, which refuses a read-only editor with its rejection flash.
+     *
+     * Refused in a read-only editor, on either surface: the clipboard is not
+     * read.
      *
      * @returns A promise resolving `true` when the clipboard was read (even if
-     *   it was empty), or `false` when the read was unavailable or denied.
+     *   it was empty), or `false` when the read was unavailable or denied, or
+     *   not made because the editor is read-only.
      */
     async paste(): Promise<boolean> {
-        if (this.isSourceMode()) { return this._codeEditor.paste(); }
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) { return this._codeEditor.paste(); }
+
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) { return false; }
 
         const text = await DOM.source.readClipboardText();
 
@@ -4181,7 +5121,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Converts the selected blocks to `type` (paragraph, `h1`–`h6`, blockquote,
      * or fenced code). No-op without a range selection, and when the selection
      * touches a table cell (whole cells selected included), which holds text
-     * only.
+     * only. Where every block the selection touches is already of `type` the
+     * call changes nothing: no block is replaced, so a heading or a code
+     * block keeps the form it was written in and a code block its language,
+     * and no undo step is added.
      *
      * In `"source"` mode, converts the raw Markdown's selected blocks instead —
      * see `sourceTransformForBlockType`.
@@ -4194,11 +5137,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const touchesTableCell = this.declinesInTableCell();
+        const applies = this.commandApplies("canSetBlockType");
 
-        if (touchesTableCell) { return this; }
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
+        const alreadySet = editor.read(() => $selectedBlocksHaveType(type));
+
+        if (alreadySet) { return this.refocusSurface(); }
 
         editor.update(() => {
             const selection = $getSelection();
@@ -4217,7 +5163,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * updating the enclosing fence's alignment if the caret already sits
      * inside one). Unwraps and removes the enclosing fence when clearing its
      * alignment leaves it with no more than one column either. No-op
-     * without a range selection.
+     * without a range selection, and — adding no undo step — when the
+     * enclosing fence already has that alignment, or there is none and
+     * `align` is `null`.
      *
      * No-op in `"source"` mode, where the raw-Markdown surface is shown.
      *
@@ -4225,7 +5173,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     setBlockAlignment(align: MarkdownBlockAlignment | null): this {
-        if (this.isSourceMode()) { return this; }
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) { return this; }
+
+        const applies = this.commandApplies("canSetBlockLayout");
+
+        if (!applies) { return this; }
 
         this.ensureEditor().update(() => {
             const selection = $getSelection();
@@ -4237,9 +5191,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             const existing = $findMatchingParent(selection.anchor.getNode(), $isMarkdownBlockNode);
 
             if (existing !== null) {
-                existing.setAlign(align);
+                const isSet = existing.getAlign() === align;
 
-                if (existing.canUnwrap()) {
+                // Written only where it differs: a write alone marks the block changed, which is an undo step.
+                if (!isSet) {
+                    existing.setAlign(align);
+                }
+
+                const leftBare = existing.canUnwrap();
+
+                if (leftBare) {
                     $unwrapMarkdownBlock(existing);
                 }
 
@@ -4251,7 +5212,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             }
         }, { discrete: true });
 
-        return this;
+        // The update commits nothing where the alignment asked for is the one in place.
+        return this.refocusSurface();
     }
 
     /**
@@ -4265,7 +5227,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * shrinking back returns the original document. Unwraps and removes the
      * enclosing fence when the result leaves it with no more than one
      * column and no alignment. `count` is clamped to 1–6; `null` means one
-     * column. No-op without a range selection.
+     * column. No-op without a range selection, and — adding no undo step —
+     * when the enclosing fence already has that many columns and that gap,
+     * or there is none and one column is asked for.
      *
      * No-op in `"source"` mode, where the raw-Markdown surface is shown.
      *
@@ -4274,7 +5238,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     setColumnCount(count: number | null, gap?: string | null): this {
-        if (this.isSourceMode()) { return this; }
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) { return this; }
+
+        const applies = this.commandApplies("canSetBlockLayout");
+
+        if (!applies) { return this; }
 
         const target = Math.max(1, Math.min(count ?? 1, MAX_COLUMN_COUNT));
 
@@ -4294,16 +5264,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
             $setBlockColumnCount(block, target);
 
-            if (gap !== undefined) {
+            // Written only where it differs, as the alignment is.
+            const gapDiffers = gap !== undefined && block.getColumnGap() !== gap;
+
+            if (gapDiffers) {
                 block.setColumnGap(gap);
             }
 
-            if (block.canUnwrap()) {
+            const leftBare = block.canUnwrap();
+
+            if (leftBare) {
                 $unwrapMarkdownBlock(block);
             }
         }, { discrete: true });
 
-        return this;
+        // The update commits nothing where the count and the gap asked for are the ones in place.
+        return this.refocusSurface();
     }
 
     /**
@@ -4324,6 +5300,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const handledBySource = this.editSource(paragraphAroundBlockSource(false));
 
         if (handledBySource) { return this; }
+
+        const applies = this.commandApplies("canInsertParagraphAroundBlock");
+
+        if (!applies) { return this; }
 
         this.ensureEditor().update(() => { $insertParagraphAroundEnclosingBlock(false); }, { discrete: true });
 
@@ -4349,6 +5329,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
+        const applies = this.commandApplies("canInsertParagraphAroundBlock");
+
+        if (!applies) { return this; }
+
         this.ensureEditor().update(() => { $insertParagraphAroundEnclosingBlock(true); }, { discrete: true });
 
         return this;
@@ -4357,12 +5341,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Inserts a table of `rows` rows by `columns` columns at the caret. The
      * first row is the header row, so `insertTable(2, 3)` gives a header row
-     * plus one body row. The caret lands in the first header cell. No-op when
-     * the selection touches a raw Markdown block or a code block. A selection
-     * that runs from outside a table into one of its cells is removed first,
-     * that table included; where the removal leaves the caret at a raw block,
-     * a code block or another table next to it, the new table goes into a
-     * new paragraph where the removed one was.
+     * plus one body row. The caret lands in the first header cell. Without
+     * a text selection — none at all, or table cells selected — the table
+     * goes in at the document's end.
+     *
+     * No-op, leaving the selection as it is, when the selection touches a raw
+     * Markdown block or a code block (or, without a text selection, the
+     * document ends in one), and when the table would land inside another
+     * table: the selection lies in one table, or, without a text selection,
+     * the document ends in one. A selection that runs from outside a table
+     * into one of its cells is not such a case, whichever way it was made:
+     * it is removed first, that table included, and the new table goes in
+     * where it started; where the removal leaves the caret at a raw block, a
+     * code block or another table next to it, the new table goes into a new
+     * paragraph where the removed one was. `canInsertTable` reports whether
+     * the table would go in.
      *
      * In `"source"` mode, inserts the raw-Markdown GFM table skeleton above
      * the block holding the caret instead.
@@ -4376,9 +5369,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+        const applies = this.commandApplies("canInsertTable");
 
-        if (touchesTextOnlyBlock) { return this; }
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -4408,14 +5401,19 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Inserts a sized, validated image at the caret. No-op when `src` fails
-     * the scheme allow-list — never inserts a broken or unsafe image — when
-     * `alt` holds a `[` or `]`, which Markdown's image syntax cannot hold, and
-     * when the selection touches a raw Markdown block or a code block. A
-     * selection that runs from outside a table into one of its cells is
-     * removed first, that table included; where the removal leaves the caret
-     * at a raw block or a code block next to it, the image goes into a new
-     * paragraph where the table was.
+     * Inserts a sized, validated image at the caret. Without a text
+     * selection — none at all, or table cells selected — the image goes in
+     * at the document's end.
+     *
+     * No-op, leaving the selection as it is, when `src` fails the scheme
+     * allow-list — never inserts a broken or unsafe image — when `alt` holds
+     * a `[` or `]`, which Markdown's image syntax cannot hold, and when the
+     * selection touches a raw Markdown block or a code block (or, without a
+     * text selection, the document ends in one); `canInsertImage` reports
+     * the last of these. A selection that runs from outside a table into one
+     * of its cells is removed first, that table included; where the removal
+     * leaves the caret at a raw block or a code block next to it, the image
+     * goes into a new paragraph where the table was.
      *
      * In `"source"` mode, inserts the raw-Markdown `![alt](src)` — plus a
      * `{width=… height=…}` attribute block when either dimension is set —
@@ -4440,9 +5438,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const touchesTextOnlyBlock = this.declinesInTextOnlyBlock();
+        const applies = this.commandApplies("canInsertImage");
 
-        if (touchesTextOnlyBlock) { return this; }
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -4481,14 +5479,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     insertTableRow(after: boolean = true): this {
-        if (this.isSourceMode()) { return this; }
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) { return this; }
+
+        const applies = this.commandApplies("canEditTable");
+
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
         editor.update(() => {
-            if ($selectionIsInTableCell()) {
-                $insertTableRowAtSelection(after);
-            }
+            $insertTableRowAtSelection(after);
         }, { discrete: true });
 
         return this;
@@ -4503,14 +5505,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     deleteTableRow(): this {
-        if (this.isSourceMode()) { return this; }
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) { return this; }
+
+        const applies = this.commandApplies("canEditTable");
+
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
         editor.update(() => {
-            if ($selectionIsInTableCell()) {
-                $deleteTableRowAtSelection();
-            }
+            $deleteTableRowAtSelection();
         }, { discrete: true });
 
         return this;
@@ -4527,14 +5533,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     insertTableColumn(after: boolean = true): this {
-        if (this.isSourceMode()) { return this; }
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) { return this; }
+
+        const applies = this.commandApplies("canEditTable");
+
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
         editor.update(() => {
-            if ($selectionIsInTableCell()) {
-                $insertTableColumnAtSelection(after);
-            }
+            $insertTableColumnAtSelection(after);
         }, { discrete: true });
 
         return this;
@@ -4549,14 +5559,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     deleteTableColumn(): this {
-        if (this.isSourceMode()) { return this; }
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) { return this; }
+
+        const applies = this.commandApplies("canEditTable");
+
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
         editor.update(() => {
-            if ($selectionIsInTableCell()) {
-                $deleteTableColumnAtSelection();
-            }
+            $deleteTableColumnAtSelection();
         }, { discrete: true });
 
         return this;
@@ -4565,7 +5579,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Sets the alignment of the column holding the caret, on every cell in
      * that column. No-op without throwing when the caret is not inside a
-     * table cell.
+     * table cell, and — adding no undo step — when the column already has
+     * that alignment.
      *
      * No-op in `"source"` mode, where the raw-Markdown surface is shown.
      *
@@ -4573,9 +5588,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     setTableColumnAlignment(alignment: MarkdownTableAlignment): this {
-        if (this.isSourceMode()) { return this; }
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) { return this; }
+
+        const applies = this.commandApplies("canEditTable");
+
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
+        const alreadySet = editor.read(() => $enclosingColumnHasAlignment(alignment));
+
+        if (alreadySet) { return this.refocusSurface(); }
 
         editor.update(() => {
             $setEnclosingColumnAlignment(alignment);
@@ -4593,7 +5617,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     deleteTable(): this {
-        if (this.isSourceMode()) { return this; }
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) { return this; }
+
+        const applies = this.commandApplies("canEditTable");
+
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -4615,7 +5645,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     mergeTableCells(): this {
-        if (this.isSourceMode()) { return this; }
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) { return this; }
+
+        const applies = this.commandApplies("canMergeCells");
+
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
@@ -4626,11 +5662,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 return;
             }
 
-            const cells = selection.getNodes().filter($isTableCellNode);
-
-            if (cells.length > 1) {
-                $mergeCells(cells);
-            }
+            $mergeCells(selection.getNodes().filter($isTableCellNode));
         }, { discrete: true });
 
         return this;
@@ -4645,14 +5677,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     unmergeTableCell(): this {
-        if (this.isSourceMode()) { return this; }
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) { return this; }
+
+        const applies = this.commandApplies("canUnmergeCell");
+
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
 
         editor.update(() => {
-            if ($selectionIsInTableCell()) {
-                $unmergeCell();
-            }
+            $unmergeCell();
         }, { discrete: true });
 
         return this;
@@ -4661,7 +5697,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Sets (or, with `null`, clears) the width of the column the caret sits
      * in, in pixels. No-op without throwing when the caret is not inside a
-     * table cell.
+     * table cell, and — adding no undo step — when the column already has
+     * that width, or has none and `width` is `null`.
      *
      * No-op in `"source"` mode, where the raw-Markdown surface is shown.
      *
@@ -4669,18 +5706,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     setTableColumnWidth(width: number | null): this {
-        if (this.isSourceMode()) { return this; }
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) { return this; }
+
+        const applies = this.commandApplies("canEditTable");
+
+        if (!applies) { return this; }
 
         const editor = this.ensureEditor();
+        const alreadySet = editor.read(() => $enclosingColumnWidth() === (width ?? 0));
+
+        if (alreadySet) { return this.refocusSurface(); }
 
         editor.update(() => {
-            const selection = $getSelection();
-
-            if (!$isRangeSelection(selection)) {
-                return;
-            }
-
-            const cell = $getTableCellNodeFromLexicalNode(selection.anchor.getNode());
+            const cell = $getEnclosingTableCellNode();
 
             if (cell === null) {
                 return;
@@ -4759,13 +5799,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Sets whether the WYSIWYG surface's element hosts an editable region.
-     * Forwards to the private surface, preserving the public setter.
+     * Read-only wins: a read-only editor's surface stays not
+     * `contenteditable` whatever is asked for here, and takes what was last
+     * asked for once {@link MarkdownEditor.setReadOnly} makes the editor
+     * editable again.
      *
-     * @param contentEditable - Whether the element is contenteditable.
+     * @param contentEditable - Whether the element is contenteditable while
+     *   the editor is not read-only.
      * @returns This component, for method chaining.
      */
     setContentEditable(contentEditable: boolean): this {
-        this._wysiwyg.setContentEditable(contentEditable);
+        this._contentEditable = contentEditable;
+        this.applyContentEditable();
 
         return this;
     }
@@ -4773,10 +5818,21 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Returns whether the WYSIWYG surface's element hosts an editable region.
      *
-     * @returns The contenteditable state.
+     * @returns The contenteditable state: `false` on a read-only editor,
+     *   whatever {@link MarkdownEditor.setContentEditable} asked for.
      */
     getContentEditable(): boolean {
         return this._wysiwyg.getContentEditable();
+    }
+
+    /**
+     * Writes the WYSIWYG surface's `contenteditable`: on only when the host
+     * asked for an editable surface and the editor is not read-only.
+     */
+    private applyContentEditable(): void {
+        const readOnly = this.getReadOnly();
+
+        this._wysiwyg.setContentEditable(this._contentEditable && !readOnly);
     }
 
     /**
@@ -4805,57 +5861,83 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Builds the headless Lexical editor on first use. Idempotent: the editor is
-     * built once. Offline the editor stays headless — the state, and every value
-     * / command operation, still work.
+     * Returns the Lexical editor, building it on first use
+     * ({@link buildEditor}). Emits `"selectionstate"` once built when the
+     * document gives a state other than the neutral one reported until then,
+     * which only a document ending where the inserts decline does.
      *
      * @returns The live (headless-capable) Lexical editor.
      */
     private ensureEditor(): LexicalEditor {
-        if (!this._editor) {
-            const editor = createEditor({ nodes: EDITOR_NODES, theme: EDITOR_THEME, onError: reportEditorError });
-            const unregisterWritableStateRules = registerWritableStateRules(editor);
-
-            // Populate the initial state before registering the update listener,
-            // so loading the cached value does not fire a spurious `"change"`.
-            editor.update(() => {
-                this.adoptSourceMap($importMarkdown(this._options.value ?? ""));
-            }, { discrete: true });
-            editor.setEditable(!(this._options.readOnly ?? false));
-
-            // An unedited document saves as loaded, except that `\r\n` line endings become
-            // `\n`, so from here on `getValue()` reports the converted form rather than the
-            // string this editor was built with. Re-take the clean Markdown from the
-            // converted form so both sides of `onDocChange`'s comparison come from the same
-            // converter — but only while the document is still clean, since a first build can
-            // also happen after a source-mode edit, and re-taking then would clear a real
-            // dirty flag.
-            if (!this.isDirty()) {
-                this._cleanValue = editor.read(() => $serializeMarkdown(this._sourceMap));
-            }
-
-            this._unregister = mergeRegister(
-                unregisterWritableStateRules,
-                registerRichText(editor),
-                registerList(editor),
-                registerTablePlugin(editor),
-                registerHistory(editor, createEmptyHistoryState(), HISTORY_DELAY_MS),
-                registerMarkdownShortcutsOutsideRawBlocks(editor),
-                editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
-                registerColumnPaste(editor),
-                registerTextOnlyBlockRules(editor),
-                registerRangeGuards(editor),
-                registerWritableFormatCommand(editor),
-                editor.registerUpdateListener(() => {
-                    this.handleChange();
-                    this.updateSelectionState();
-                }),
-            );
-
-            this._editor = editor;
+        if (this._editor) {
+            return this._editor;
         }
 
-        return this._editor;
+        const editor = this.buildEditor();
+
+        // Before the build the neutral state stood in. The built document can turn the two insert
+        // fields off (it may end in a block the inserts decline), so report what it gives.
+        this.updateSelectionState();
+
+        return editor;
+    }
+
+    /**
+     * Builds the headless Lexical editor with the document the editor holds,
+     * and registers everything that acts on it. Offline the editor stays
+     * headless — the state, and every value / command operation, still work.
+     * Reports no selection state: a caller that goes on to replace the
+     * document reports the new one's instead ({@link MarkdownEditor.setValue}
+     * and {@link MarkdownEditor.setMode}), every other goes through
+     * {@link ensureEditor}.
+     *
+     * @returns The built editor, also kept as `_editor`.
+     */
+    private buildEditor(): LexicalEditor {
+        const editor = createEditor({ nodes: EDITOR_NODES, theme: EDITOR_THEME, onError: reportEditorError });
+        const unregisterWritableStateRules = registerWritableStateRules(editor);
+
+        // Populate the initial state before registering the update listener,
+        // so loading the cached value does not fire a spurious `"change"`.
+        editor.update(() => {
+            this.adoptSourceMap($importMarkdown(this._options.value ?? ""));
+        }, { discrete: true });
+        editor.setEditable(!(this._options.readOnly ?? false));
+
+        // An unedited document saves as loaded, except that `\r\n` line endings become
+        // `\n`, so from here on `getValue()` reports the converted form rather than the
+        // string this editor was built with. Re-take the clean Markdown from the
+        // converted form so both sides of `onDocChange`'s comparison come from the same
+        // converter — but only while the document is still clean, since a first build can
+        // also happen after a source-mode edit, and re-taking then would clear a real
+        // dirty flag.
+        const dirty = this.isDirty();
+
+        if (!dirty) {
+            this._cleanValue = editor.read(() => $serializeMarkdown(this._sourceMap));
+        }
+
+        this._unregister = mergeRegister(
+            unregisterWritableStateRules,
+            registerRichText(editor),
+            registerList(editor),
+            registerTablePlugin(editor),
+            registerHistory(editor, createEmptyHistoryState(), HISTORY_DELAY_MS),
+            registerMarkdownShortcutsOutsideRawBlocks(editor),
+            editor.registerCommand(KEY_ENTER_COMMAND, $handleSeparatorShortcut, COMMAND_PRIORITY_HIGH),
+            registerColumnPaste(editor),
+            registerTextOnlyBlockRules(editor),
+            registerRangeGuards(editor),
+            registerWritableFormatCommand(editor),
+            editor.registerUpdateListener(() => {
+                this.handleChange();
+                this.updateSelectionState();
+            }),
+        );
+
+        this._editor = editor;
+
+        return editor;
     }
 
     /**
@@ -4880,8 +5962,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * `WysiwygSurface`'s `"contextmenu"` handler: resolves the native event's
      * DOM target to a Lexical node, classifies it (and the current
      * selection) for the menu, and shows the resulting context menu at the
-     * click point. Read-only — a right-click never mutates the document's
-     * selection; classification reports what a collapsed caret's format
+     * click point. A menu opened from the keyboard (Shift+F10, the
+     * ContextMenu key) targets the editor root, so it is built for the caret
+     * instead (see {@link $contextMenuNodeFor}), at the point the browser
+     * reports for it, which is the caret's.
+     *
+     * The editor's selection is first brought to the one the browser holds
+     * (see {@link $adoptDomSelection}): where a right-click moves the caret
+     * before raising the event, the menu must describe the caret its items
+     * will act on. Nothing beyond that is changed — the selection is never
+     * widened here. Classification reports what a collapsed caret's format
      * toggles/Cut/Copy *would* operate on without performing that expansion
      * (see {@link $classifyContextMenuTarget}), so a menu action that needs
      * the wider selection (a format toggle, Cut, or Copy) performs it itself,
@@ -4899,6 +5989,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         const editor = this.ensureEditor();
         let context: ContextMenuTarget | null = null;
 
+        // The live selection is read through the seam's named escape, and Lexical keeps none of it:
+        // what comes back is a selection of Lexical's own document, or null offline and outside the editor.
+        editor.update(() => {
+            $adoptDomSelection(DOM.source.readDocumentSelection((selection) => $createRangeSelectionFromDom(selection, editor)));
+        }, { discrete: true });
+
         editor.read(() => {
             const node = $getNearestNodeFromDOMNode(domTarget);
 
@@ -4906,7 +6002,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 return;
             }
 
-            context = $classifyContextMenuTarget(node);
+            context = $classifyContextMenuTarget($contextMenuNodeFor(node));
         });
 
         if (context === null) {
@@ -5026,12 +6122,20 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     }
 
     /**
-     * Dispatches a classified right-click context to the item list for its kind.
+     * Dispatches a classified right-click context to the item list for its
+     * kind. A read-only editor's menu offers only Copy, whatever the kind:
+     * every other item edits the document.
      *
      * @param context - The classified {@link ContextMenuTarget}.
      * @returns The `MenuItemConfig` array for {@link Menu.show}.
      */
     private buildContextMenuItems(context: ContextMenuTarget): MenuItemConfig[] {
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) {
+            return buildClipboardMenuItems({ hasSelectedText: context.hasSelectedText, copy: () => this.copy() });
+        }
+
         switch (context.kind) {
             case "table-cell": return this.buildTableCellContextMenuItems(context);
             case "empty-line": return this.buildEmptyLineContextMenuItems(context);
@@ -5048,14 +6152,17 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * toggled in one right-click.
      *
      * @param format - The current selection's inline-format state.
+     * @param enabled - Whether the format toggles would apply at the
+     *   selection; `false` dims all five rows.
      * @returns The five `MenuItemConfig` entries: Bold, Italic, Underline, Strikethrough, Code.
      */
     private buildFormatToggleItems(
         format: { bold: boolean; italic: boolean; strikethrough: boolean; code: boolean; underline: boolean },
+        enabled: boolean,
     ): MenuItemConfig[] {
         const toggleRow = (text: string, checked: boolean, toggle: () => void): MenuItemConfig => ({
             row: () => {
-                const row = new CheckboxMenuRow({ text, checked });
+                const row = new CheckboxMenuRow({ text, checked, enabled });
 
                 row.on("action", toggle);
 
@@ -5078,13 +6185,16 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * preset list plus a "Default" item that clears the override by calling
      * the setter with `null`.
      *
+     * @param enabled - Whether the text-style commands would apply at the
+     *   selection; `false` dims the item, which then does not open.
      * @returns The `MenuItemConfig` for the "Text style" submenu.
      */
-    private buildTextStyleMenuItem(): MenuItemConfig {
+    private buildTextStyleMenuItem(enabled: boolean): MenuItemConfig {
         const presetItem = (text: string, action: () => void): MenuItemConfig => ({ text, action });
 
         return {
             text: "Text style",
+            enabled,
             submenu: {
                 label: "Text style",
                 items: [
@@ -5132,11 +6242,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * menus: fixed 2/3/4-column presets plus a "None" item that clears the
      * column region entirely, each applying {@link setColumnCount}.
      *
+     * @param enabled - Whether the column commands would apply at the
+     *   selection; `false` dims the item, which then does not open.
      * @returns The `MenuItemConfig` for the "Columns" submenu.
      */
-    private buildColumnsMenuItem(): MenuItemConfig {
+    private buildColumnsMenuItem(enabled: boolean): MenuItemConfig {
         return {
             text:    "Columns",
+            enabled,
             submenu: {
                 label: "Columns",
                 items: [
@@ -5171,25 +6284,31 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * "Insert link…" when the click is not inside a link (dimmed unless there
      * is a selection or expandable word to wrap), or "Edit link…" plus "Remove
      * link" when it is. The two states are mutually exclusive, so exactly one
-     * of these shapes is ever shown — never a permanently-disabled item.
+     * of these shapes is ever shown — never a permanently-disabled item. Each
+     * item is also dimmed where its command would do nothing at the
+     * selection.
      *
      * @param context - Carries `linkUrl` (`undefined`/`null` outside a link, the
      *   URL inside one) and `hasSelectedText`.
+     * @param availability - Which commands would apply at the selection.
      * @returns One or two `MenuItemConfig` entries.
      */
-    private buildLinkMenuItems(context: { linkUrl?: string | null; hasSelectedText: boolean }): MenuItemConfig[] {
+    private buildLinkMenuItems(
+        context: { linkUrl?: string | null; hasSelectedText: boolean },
+        availability: CommandAvailability,
+    ): MenuItemConfig[] {
         const linkUrl = context.linkUrl ?? null;
 
         if (linkUrl === null) {
             return [{
-                text: "Insert link…", enabled: context.hasSelectedText,
+                text: "Insert link…", enabled: context.hasSelectedText && availability.canLink,
                 action: () => void this.promptAndApplyLink("Insert link", ""),
             }];
         }
 
         return [
-            { text: "Edit link…", action: () => void this.promptAndApplyLink("Edit link", linkUrl) },
-            { text: "Remove link", action: () => this.removeLink() },
+            { text: "Edit link…", enabled: availability.canLink, action: () => void this.promptAndApplyLink("Edit link", linkUrl) },
+            { text: "Remove link", enabled: availability.canRemoveLink, action: () => this.removeLink() },
         ];
     }
 
@@ -5197,22 +6316,28 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Builds the format menu shown over a word, a range selection, or an
      * ordinary (non-empty) block: the shared inline-format toggles, a
      * block-style submenu (paragraph, headings, a blockquote, or a fenced
-     * code block), and a clear-formatting action.
+     * code block), the text-style, alignment and columns submenus, and a
+     * clear-formatting action. An item whose command would do nothing at
+     * the selection is dimmed, each by the field of the context's
+     * `availability` that covers its command.
      *
      * @param context - The `"text"` classification, carrying the current
-     *   selection's inline-format state.
+     *   selection's inline-format state and which commands would apply.
      * @returns The `MenuItemConfig` array for {@link Menu.show}.
      */
     private buildTextContextMenuItems(context: ContextMenuTarget & { kind: "text" }): MenuItemConfig[] {
+        const availability = context.availability;
+
         const items: MenuItemConfig[] = [
             ...this.clipboardMenuItems(context.hasSelectedText),
             { separator: true },
-            ...this.buildFormatToggleItems(context),
+            ...this.buildFormatToggleItems(context, availability.canFormat),
             { separator: true },
-            ...this.buildLinkMenuItems(context),
+            ...this.buildLinkMenuItems(context, availability),
             { separator: true },
             {
                 text:    "Block style",
+                enabled: availability.canSetBlockType,
                 submenu: {
                     label: "Block style",
                     items: [
@@ -5226,9 +6351,10 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 },
             },
             { separator: true },
-            this.buildTextStyleMenuItem(),
+            this.buildTextStyleMenuItem(availability.canStyle),
             {
                 text:    "Alignment",
+                enabled: availability.canSetBlockLayout,
                 submenu: {
                     label: "Alignment",
                     items: [
@@ -5240,20 +6366,31 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                     ],
                 },
             },
-            this.buildColumnsMenuItem(),
+            this.buildColumnsMenuItem(availability.canSetBlockLayout),
             { separator: true },
-            { text: "Clear formatting", action: () => this.clearFormatting() },
+            { text: "Clear formatting", enabled: availability.canClearFormatting, action: () => this.clearFormatting() },
         ];
 
         if (context.hasEnclosingBlock) {
-            items.push(
-                { separator: true },
-                { text: "Insert line before block", action: () => this.insertParagraphBeforeBlock() },
-                { text: "Insert line after block", action: () => this.insertParagraphAfterBlock() },
-            );
+            items.push({ separator: true }, ...this.buildInsertLineItems(availability.canInsertParagraphAroundBlock));
         }
 
         return items;
+    }
+
+    /**
+     * Builds the two items, shared by the text and table-cell context menus,
+     * that insert an empty line before or after the block the caret is in.
+     *
+     * @param enabled - Whether the two commands would apply at the selection;
+     *   `false` dims both.
+     * @returns The two `MenuItemConfig` entries.
+     */
+    private buildInsertLineItems(enabled: boolean): MenuItemConfig[] {
+        return [
+            { text: "Insert line before block", enabled, action: () => this.insertParagraphBeforeBlock() },
+            { text: "Insert line after block", enabled, action: () => this.insertParagraphAfterBlock() },
+        ];
     }
 
     /**
@@ -5261,34 +6398,41 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Heading submenu, an Insert submenu (block conversions plus new-object
      * insertion), and the Columns submenu. Omits a "Paragraph" item — the
      * classification already guarantees the caret sits in an empty paragraph,
-     * so converting it to a paragraph is a guaranteed no-op.
+     * so converting it to a paragraph is a guaranteed no-op. An item whose
+     * command would do nothing at the selection is dimmed; the Insert
+     * entries follow three rules (the block conversions one, Table and
+     * Image… one each), so they are dimmed one by one.
      *
      * @param context - The `"empty-line"` classification, carrying whether
      *   the current selection has text (a drag-selection ending on an empty
-     *   line, which still classifies as `"empty-line"`).
+     *   line, which still classifies as `"empty-line"`) and which commands
+     *   would apply.
      * @returns The `MenuItemConfig` array for {@link Menu.show}.
      */
     private buildEmptyLineContextMenuItems(context: ContextMenuTarget & { kind: "empty-line" }): MenuItemConfig[] {
+        const availability = context.availability;
+        const canSetBlockType = availability.canSetBlockType;
+
         return [
             ...this.clipboardMenuItems(context.hasSelectedText),
             { separator: true },
-            { text: "Heading", submenu: { label: "Heading", items: this.buildHeadingMenuItems() } },
+            { text: "Heading", enabled: canSetBlockType, submenu: { label: "Heading", items: this.buildHeadingMenuItems() } },
             {
                 text:    "Insert",
                 submenu: {
                     label: "Insert",
                     items: [
-                        { text: "Quote", action: () => this.setBlockType("quote") },
-                        { text: "Code block", action: () => this.setBlockType("code") },
-                        { text: "Bulleted list", action: () => this.toggleUnorderedList() },
-                        { text: "Numbered list", action: () => this.toggleOrderedList() },
+                        { text: "Quote", enabled: canSetBlockType, action: () => this.setBlockType("quote") },
+                        { text: "Code block", enabled: canSetBlockType, action: () => this.setBlockType("code") },
+                        { text: "Bulleted list", enabled: canSetBlockType, action: () => this.toggleUnorderedList() },
+                        { text: "Numbered list", enabled: canSetBlockType, action: () => this.toggleOrderedList() },
                         { separator: true },
-                        { text: "Table", action: () => this.insertTable(2, 3) },
-                        { text: "Image…", action: () => void this.promptAndInsertImage() },
+                        { text: "Table", enabled: availability.canInsertTable, action: () => this.insertTable(2, 3) },
+                        { text: "Image…", enabled: availability.canInsertImage, action: () => void this.promptAndInsertImage() },
                     ],
                 },
             },
-            this.buildColumnsMenuItem(),
+            this.buildColumnsMenuItem(availability.canSetBlockLayout),
         ];
     }
 
@@ -5297,33 +6441,34 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * shared inline-format toggles and Clear formatting as the text context
      * menu — a cell holds inline text too, just never a heading or quote in
      * this dialect, so no Block style submenu — then a Table submenu holding
-     * every table-structure action.
+     * every table-structure action. An item whose command would do nothing
+     * at the selection is dimmed, the Table submenu's entries among them
+     * ({@link buildTableMenuItem}).
      *
      * @param context - The `"table-cell"` classification, carrying the
-     *   current selection's inline-format state.
+     *   current selection's inline-format state and which commands would
+     *   apply.
      * @returns The `MenuItemConfig` array for {@link Menu.show}.
      */
     private buildTableCellContextMenuItems(context: ContextMenuTarget & { kind: "table-cell" }): MenuItemConfig[] {
+        const availability = context.availability;
+
         const items: MenuItemConfig[] = [
             ...this.clipboardMenuItems(context.hasSelectedText),
             { separator: true },
-            ...this.buildFormatToggleItems(context),
+            ...this.buildFormatToggleItems(context, availability.canFormat),
             { separator: true },
-            ...this.buildLinkMenuItems(context),
+            ...this.buildLinkMenuItems(context, availability),
             { separator: true },
-            this.buildTextStyleMenuItem(),
+            this.buildTextStyleMenuItem(availability.canStyle),
             { separator: true },
-            { text: "Clear formatting", action: () => this.clearFormatting() },
+            { text: "Clear formatting", enabled: availability.canClearFormatting, action: () => this.clearFormatting() },
             { separator: true },
-            this.buildTableMenuItem(context.columnAlignment ?? "none"),
+            this.buildTableMenuItem(context.columnAlignment ?? "none", availability),
         ];
 
         if (context.hasEnclosingBlock) {
-            items.push(
-                { separator: true },
-                { text: "Insert line before block", action: () => this.insertParagraphBeforeBlock() },
-                { text: "Insert line after block", action: () => this.insertParagraphAfterBlock() },
-            );
+            items.push({ separator: true }, ...this.buildInsertLineItems(availability.canInsertParagraphAroundBlock));
         }
 
         return items;
@@ -5365,12 +6510,18 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * submenu (row, column, or the whole table), Merge cells, Unmerge cell,
      * Column width…, and the Align column submenu — every table-structure
      * action gathered under one entry, at the same nesting depth "Text style"
-     * already uses for its Colour/Font/Size sub-submenus.
+     * already uses for its Colour/Font/Size sub-submenus. An entry whose
+     * command would do nothing at the selection is dimmed: the row, column
+     * and whole-table entries act on the table the caret is in, so they are
+     * dimmed while cells are selected, where only Merge cells applies.
      *
      * @param columnAlignment - The clicked column's current alignment, forwarded to {@link buildColumnAlignmentItems}.
+     * @param availability - Which commands would apply at the selection.
      * @returns The `MenuItemConfig` for the "Table" submenu.
      */
-    private buildTableMenuItem(columnAlignment: MarkdownTableAlignment): MenuItemConfig {
+    private buildTableMenuItem(columnAlignment: MarkdownTableAlignment, availability: CommandAvailability): MenuItemConfig {
+        const canEditTable = availability.canEditTable;
+
         return {
             text:    "Table",
             submenu: {
@@ -5378,6 +6529,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 items: [
                     {
                         text:    "Insert",
+                        enabled: canEditTable,
                         submenu: {
                             label: "Insert",
                             items: [
@@ -5390,6 +6542,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                     },
                     {
                         text:    "Delete",
+                        enabled: canEditTable,
                         submenu: {
                             label: "Delete",
                             items: [
@@ -5400,11 +6553,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                         },
                     },
                     { separator: true },
-                    { text: "Merge cells", action: () => this.mergeTableCells() },
-                    { text: "Unmerge cell", action: () => this.unmergeTableCell() },
-                    { text: "Column width…", action: () => void this.promptAndSetColumnWidth() },
+                    { text: "Merge cells", enabled: availability.canMergeCells, action: () => this.mergeTableCells() },
+                    { text: "Unmerge cell", enabled: availability.canUnmergeCell, action: () => this.unmergeTableCell() },
+                    { text: "Column width…", enabled: canEditTable, action: () => void this.promptAndSetColumnWidth() },
                     {
                         text:    "Align column",
+                        enabled: canEditTable,
                         submenu: {
                             label: "Align column",
                             items: this.buildColumnAlignmentItems(columnAlignment),
@@ -5480,15 +6634,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * toolbar's live state is observed: the Lexical `registerUpdateListener`
      * callback (typing, a caret move, undo/redo, or a same-position format
      * toggle), the source `CodeEditor`'s own `"selectionchange"`,
-     * `handleCodeChange`, and `setMode`. No-op before either surface has
-     * anything to report (source mode always does; WYSIWYG needs the Lexical
-     * editor built).
+     * `handleCodeChange`, `setMode`, `setReadOnly`, and `ensureEditor` once
+     * it has built the Lexical editor. Before that build the WYSIWYG surface
+     * reports the neutral state, so nothing but a change of the read-only
+     * state emits then.
      */
     private updateSelectionState(): void {
-        if (!this.isSourceMode() && !this._editor) {
-            return;
-        }
-
         const state = this.readActiveSelectionState();
 
         if (selectionStatesEqual(state, this._lastSelectionState)) {

@@ -1513,6 +1513,11 @@ export class ModelledDOMSource implements DOMSource {
         return "";
     }
 
+    /** No live Selection offline; `reader` is never called, mirroring the sink's `mountView`. */
+    readDocumentSelection<T>(_reader: (selection: Selection | null) => T): T | null {
+        return null;
+    }
+
     /** No system clipboard offline; always reports the read as unavailable. */
     readClipboardText(): Promise<string | null> {
         return Promise.resolve(null);

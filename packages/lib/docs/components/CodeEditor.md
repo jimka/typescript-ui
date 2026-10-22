@@ -142,6 +142,7 @@ loadExtension: async () => {
 - When the result does change the document, the editor's visible area no longer unconditionally jumps to the top. It stays exactly in place when nothing above it changed length, which is the common case for an incremental edit-then-save, and can otherwise shift — by roughly however much text the formatter added or removed above it, never all the way back to the top — when a reformat changes text throughout the document, e.g. a first-time format of a wholly unformatted file.
 - If the formatter **throws** (invalid syntax, or an `options` value the engine rejects — e.g. a negative `indentWidth`), the promise **rejects** and the document is left **completely untouched** — formatting never loses content.
 - If the active language has no formatter (or none is set), `format()` re-indents the whole document using CodeMirror's own indentation service instead, ignoring `options` entirely.
+- While the editor is read-only, `format()` is refused: no formatter runs, nothing is re-indented, and the rejection surfaces through the `"readonlyedit"` event and the read-only flash, as it does for `replaceRange()`. The promise still resolves.
 
 ## Formatting options
 
@@ -329,7 +330,7 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 | `getLanguage()` / `setLanguage(id, options?)` | Read or swap the active language and its options (grammar loads lazily; omitted options reset to `{}`). |
 | `getLanguageOptions()` | Read a copy of the active language's options. |
 | `getReadOnly()` / `setReadOnly(readOnly)` | Read or toggle whether the editor accepts edits. |
-| `format(options?)` | Format the document (or re-indent, with no formatter). |
+| `format(options?)` | Format the document (or re-indent, with no formatter). Refused, with the read-only flash, while the editor is read-only: nothing is formatted or re-indented. |
 | `on('change', fn)` / `off('change', fn)` | Subscribe to document changes. |
 | `getAutoHeightMaxRows()` | Read the configured `autoHeightMaxRows`, or `null` when unset. |
 | `on('heightchange', fn)` / `off('heightchange', fn)` | Subscribe to the editor's own auto-height changes (only fires when `autoHeightMaxRows` is set). |
@@ -342,8 +343,8 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 | `getTabSize()` / `setTabSize(size)` | Read, set, or (`null`) clear the tab-stop width, in columns. |
 | `getLineNumbers()` / `setLineNumbers(show)` | Read or toggle whether the line-number gutter is shown. |
 | `getSpellcheck()` / `setSpellcheck(spellcheck)` | Read or toggle whether the browser's native spellcheck runs inside the editor. |
-| `cut()` / `copy()` | Cut or copy the primary selection's text to the system clipboard. |
-| `paste()` | Read the system clipboard and insert it at the primary selection, replacing any selected text. Async: resolves `true` when the clipboard was read, `false` when there is no mounted view or the browser refused the read. |
+| `cut()` / `copy()` | Cut or copy the primary selection's text to the system clipboard. `cut()` is refused, with the read-only flash, while the editor is read-only: nothing is copied or removed. |
+| `paste()` | Read the system clipboard and insert it at the primary selection, replacing any selected text. Async: resolves `true` when the clipboard was read, `false` when there is no mounted view or the browser refused the read. Refused, with the read-only flash, while the editor is read-only: it resolves `false` without reading the clipboard. |
 | `getCursorPosition()` | Read the primary caret's `{ line, column, offset }` — `line`/`column` 1-based, `offset` a 0-based raw document position. Returns the document start when the editor is not mounted. |
 | `on('cursorchange', fn)` / `off('cursorchange', fn)` | Subscribe to caret moves — fires once per real move to a different line, column, or offset. |
 | `getSelection()` | Read the primary selection's `{ characterCount, lineCount, from, to }`. `0`/`1`/`0`/`0` for a collapsed selection (a bare caret) at the document start. Returns that same value when the editor is not mounted. |

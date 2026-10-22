@@ -51,19 +51,27 @@ export interface MarkdownDocumentPanelOptions extends ContainerOptions {
 }
 
 /**
+ * What {@link LinkPopupPanel} reads of the editor's selection each time it
+ * opens: the enclosing link's URL, and whether the two link commands would
+ * apply there.
+ */
+export type LinkPopupState = Pick<MarkdownEditorSelectionState, "linkUrl" | "canLink" | "canRemoveLink">;
+
+/**
  * The Link toolbar button's popup content: a URL field and an Insert/Update
- * action, plus a Remove action while editing an existing link. Exported
+ * action, plus a Remove action while editing an existing link. Each action
+ * is disabled where its command would decline at the selection. Exported
  * (not part of `component/editor/index.ts`'s barrel) so tests can construct
  * and drive it directly, mirroring how `MarkdownEditor.ts`'s own
  * `$classifyContextMenuTarget` is exported for the same reason.
  */
 export class LinkPopupPanel extends PopupPanel {
-    private readonly _urlField:   TextField;
-    private readonly _submitBtn:  Button;
-    private readonly _removeBtn:  Button;
-    private readonly _getLinkUrl: () => string | null;
-    private readonly _onSubmit:   (url: string) => void;
-    private readonly _onRemove:   () => void;
+    private readonly _urlField:     TextField;
+    private readonly _submitBtn:    Button;
+    private readonly _removeBtn:    Button;
+    private readonly _getLinkState: () => LinkPopupState;
+    private readonly _onSubmit:     (url: string) => void;
+    private readonly _onRemove:     () => void;
 
     // The URL the popup was last opened with — null outside a link, its URL
     // inside one. Set by showAt(), read by handleSubmit() to skip a no-op
@@ -71,18 +79,19 @@ export class LinkPopupPanel extends PopupPanel {
     private _openedWithUrl: string | null = null;
 
     /**
-     * @param getLinkUrl - Reads the enclosing link's URL (or `null`) at the
-     *   moment the popup opens.
+     * @param getLinkState - Reads the enclosing link's URL (or `null`), and
+     *   whether the link commands would apply, at the moment the popup
+     *   opens.
      * @param onSubmit - Called with the field's trimmed value when the user
      *   confirms a new or changed URL.
      * @param onRemove - Called when the user clicks Remove link.
      */
-    constructor(getLinkUrl: () => string | null, onSubmit: (url: string) => void, onRemove: () => void) {
+    constructor(getLinkState: () => LinkPopupState, onSubmit: (url: string) => void, onRemove: () => void) {
         super({ layoutManager: new VBox({ spacing: 6, stretching: true }) });
 
-        this._getLinkUrl = getLinkUrl;
-        this._onSubmit   = onSubmit;
-        this._onRemove   = onRemove;
+        this._getLinkState = getLinkState;
+        this._onSubmit     = onSubmit;
+        this._onRemove     = onRemove;
 
         this._urlField  = new TextField({ placeholder: "https://example.com" });
         this._submitBtn = new Button("Insert link");
@@ -101,19 +110,25 @@ export class LinkPopupPanel extends PopupPanel {
     }
 
     /**
-     * Refreshes the field/buttons from {@link _getLinkUrl} before delegating
-     * to the inherited placement/measurement logic, so the popup's content
-     * is current on every open.
+     * Refreshes the field/buttons from {@link _getLinkState} before
+     * delegating to the inherited placement/measurement logic, so the
+     * popup's content is current on every open: the submit button is enabled
+     * where a link would be made or re-pointed, and Remove link where the
+     * link would be removed.
      *
      * @param anchorRect - The trigger's bounding rect to place against.
      * @returns This panel, for method chaining.
      */
     showAt(anchorRect: Rect): this {
-        this._openedWithUrl = this._getLinkUrl();
+        const state = this._getLinkState();
+
+        this._openedWithUrl = state.linkUrl;
 
         this._urlField.setValue(this._openedWithUrl ?? "");
         this._submitBtn.setText(this._openedWithUrl === null ? "Insert link" : "Update link");
+        this._submitBtn.setEnabled(state.canLink);
         this._removeBtn.setVisible(this._openedWithUrl !== null);
+        this._removeBtn.setEnabled(state.canRemoveLink);
 
         return super.showAt(anchorRect);
     }
@@ -177,6 +192,9 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
     private _codeBtn!:          ToggleButton;
     private _linkBtn!:          PopupButton<PopupButtonOptions>;
     private _tableBtn!:         MenuButton<MenuButtonOptions>;
+    private _textStyleBtn!:     MenuButton<MenuButtonOptions>;
+    private _alignmentBtn!:     MenuButton<MenuButtonOptions>;
+    private _columnsBtn!:       MenuButton<MenuButtonOptions>;
 
     private readonly _listeners: ListenerBag<"change"> =
         this.registerListenerBag(new ListenerBag<"change">());
@@ -240,7 +258,7 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
         this._linkBtn = new PopupButton<PopupButtonOptions>({
             glyph: "link", text: "Link…", showText: false,
             panel: () => new LinkPopupPanel(
-                () => this._editor.getSelectionState().linkUrl,
+                () => this._editor.getSelectionState(),
                 (url) => this._editor.toggleLink(url),
                 () => this._editor.removeLink(),
             ),
@@ -254,7 +272,7 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
         // shape and fail the widening check when passed to addComponents.
         const insertBtn = new MenuButton<MenuButtonOptions>({
             glyph: "plus", text: "Insert…", showText: false,
-            menuItems: this.buildInsertMenuItems(),
+            menuItems: () => this.buildInsertMenuItems(),
         });
 
         this._tableBtn = new MenuButton<MenuButtonOptions>({
@@ -262,17 +280,17 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
             menuItems: () => this.buildTableMenuItems(),
         });
 
-        const textStyleBtn = new MenuButton<MenuButtonOptions>({
+        this._textStyleBtn = new MenuButton<MenuButtonOptions>({
             glyph: "palette", text: "Text style…", showText: false,
             menuItems: this.buildTextStyleMenuItems(),
         });
 
-        const alignmentBtn = new MenuButton<MenuButtonOptions>({
+        this._alignmentBtn = new MenuButton<MenuButtonOptions>({
             glyph: "align-left", text: "Alignment…", showText: false,
             menuItems: () => this.buildAlignmentMenuItems(),
         });
 
-        const columnsBtn = new MenuButton<MenuButtonOptions>({
+        this._columnsBtn = new MenuButton<MenuButtonOptions>({
             glyph: "columns", text: "Columns…", showText: false,
             menuItems: () => this.buildColumnsMenuItems(),
         });
@@ -285,7 +303,7 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
             ToolBarSeparator(),
             insertBtn, this._tableBtn,
             ToolBarSeparator(),
-            textStyleBtn, alignmentBtn, columnsBtn,
+            this._textStyleBtn, this._alignmentBtn, this._columnsBtn,
             Spacer.flex(),
             sourceToggle,
         );
@@ -293,26 +311,42 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
         return bar;
     }
 
-    /** Insert dropdown contents — mirrors the sibling plan's empty-line "Insert" submenu. */
+    /**
+     * Insert dropdown contents — mirrors the sibling plan's empty-line "Insert"
+     * submenu, dimming each entry whose command would decline at the selection
+     * as that submenu does.
+     */
     private buildInsertMenuItems(): MenuItemConfig[] {
+        const state = this._editor.getSelectionState();
+
         return [
-            { text: "Quote", action: () => this._editor.setBlockType("quote") },
-            { text: "Code block", action: () => this._editor.setBlockType("code") },
-            { text: "Bulleted list", action: () => this._editor.toggleUnorderedList() },
-            { text: "Numbered list", action: () => this._editor.toggleOrderedList() },
+            { text: "Quote", enabled: state.canSetBlockType, action: () => this._editor.setBlockType("quote") },
+            { text: "Code block", enabled: state.canSetBlockType, action: () => this._editor.setBlockType("code") },
+            { text: "Bulleted list", enabled: state.canSetBlockType, action: () => this._editor.toggleUnorderedList() },
+            { text: "Numbered list", enabled: state.canSetBlockType, action: () => this._editor.toggleOrderedList() },
             { separator: true },
-            { text: "Table", action: () => this._editor.insertTable(2, 3) },
-            { text: "Image…", action: () => void this.promptAndInsertImage() },
+            { text: "Table", enabled: state.canInsertTable, action: () => this._editor.insertTable(2, 3) },
+            { text: "Image…", enabled: state.canInsertImage, action: () => void this.promptAndInsertImage() },
         ];
     }
 
-    /** Table dropdown contents — mirrors the sibling plan's table-cell "Table" submenu, with a live Align column checkmark. */
+    /**
+     * Table dropdown contents — mirrors the sibling plan's table-cell "Table"
+     * submenu, with a live Align column checkmark, dimming each entry whose
+     * command would decline at the selection as that submenu does: the row,
+     * column and whole-table entries act on the table the caret is in
+     * (`canEditTable`), Merge cells on selected cells (`canMergeCells`), and
+     * Unmerge cell on a merged cell (`canUnmergeCell`).
+     */
     private buildTableMenuItems(): MenuItemConfig[] {
-        const currentAlignment = this._editor.getSelectionState().tableColumnAlignment;
+        const state = this._editor.getSelectionState();
+        const currentAlignment = state.tableColumnAlignment;
+        const canEditTable = state.canEditTable;
 
         return [
             {
                 text: "Insert",
+                enabled: canEditTable,
                 submenu: {
                     label: "Insert",
                     items: [
@@ -325,6 +359,7 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
             },
             {
                 text: "Delete",
+                enabled: canEditTable,
                 submenu: {
                     label: "Delete",
                     items: [
@@ -335,11 +370,12 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
                 },
             },
             { separator: true },
-            { text: "Merge cells", action: () => this._editor.mergeTableCells() },
-            { text: "Unmerge cell", action: () => this._editor.unmergeTableCell() },
-            { text: "Column width…", action: () => void this.promptAndSetColumnWidth() },
+            { text: "Merge cells", enabled: state.canMergeCells, action: () => this._editor.mergeTableCells() },
+            { text: "Unmerge cell", enabled: state.canUnmergeCell, action: () => this._editor.unmergeTableCell() },
+            { text: "Column width…", enabled: canEditTable, action: () => void this.promptAndSetColumnWidth() },
             {
                 text: "Align column",
+                enabled: canEditTable,
                 submenu: {
                     label: "Align column",
                     items: [
@@ -475,16 +511,24 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
 
     /**
      * Applies a {@link MarkdownEditorSelectionState} snapshot to the toolbar:
-     * presses/releases the five format toggles; enables the Link button with
-     * a text selection or while the caret is inside a link; and enables the
-     * Table button only while the caret is inside a table — reusing
-     * `Button`'s existing enabled/disabled state rather than a bespoke
-     * highlight, since every command the Link popup or Table dropdown calls
-     * is a no-op outside its respective context anyway. The Alignment,
-     * Columns, and Table dropdowns need no push here — their `menuItems` are
-     * providers that call {@link MarkdownEditor.getSelectionState} directly
-     * at open time, so they are always current without a second copy of this
-     * state.
+     * presses/releases the five format toggles, and enables them only where
+     * the format commands would apply (`canFormat`); enables the Text style
+     * dropdown only where its own commands would (`canStyle`), and the
+     * Alignment and Columns dropdowns only where theirs would
+     * (`canSetBlockLayout`); enables the Link button where one of its
+     * popup's two actions would apply — linking text there is to link or
+     * re-pointing the enclosing link (`canLink`), or removing that link
+     * (`canRemoveLink`); and enables the Table button where one of its
+     * dropdown's commands would apply — those acting on the table the caret
+     * is in (`canEditTable`), merging the selected cells (`canMergeCells`)
+     * or unmerging the caret's cell (`canUnmergeCell`) — so Merge cells is
+     * reached with cells selected. It reuses `Button`'s existing
+     * enabled/disabled state rather than a bespoke highlight, since every
+     * command these controls call is a no-op outside its respective context
+     * anyway. The contents of the Insert, Alignment, Columns, and Table
+     * dropdowns need no push here — their `menuItems` are providers that
+     * call {@link MarkdownEditor.getSelectionState} directly at open time,
+     * so they are always current without a second copy of this state.
      *
      * @param state - The selection state to reflect onto the toolbar.
      */
@@ -494,8 +538,16 @@ class MarkdownDocumentPanel<TOptions extends MarkdownDocumentPanelOptions = Mark
         this._underlineBtn.setSelected(state.underline);
         this._strikethroughBtn.setSelected(state.strikethrough);
         this._codeBtn.setSelected(state.code);
-        this._linkBtn.setEnabled(state.hasSelectedText || state.linkUrl !== null);
-        this._tableBtn.setEnabled(state.inTable);
+        this._boldBtn.setEnabled(state.canFormat);
+        this._italicBtn.setEnabled(state.canFormat);
+        this._underlineBtn.setEnabled(state.canFormat);
+        this._strikethroughBtn.setEnabled(state.canFormat);
+        this._codeBtn.setEnabled(state.canFormat);
+        this._textStyleBtn.setEnabled(state.canStyle);
+        this._alignmentBtn.setEnabled(state.canSetBlockLayout);
+        this._columnsBtn.setEnabled(state.canSetBlockLayout);
+        this._linkBtn.setEnabled((state.canLink && (state.hasSelectedText || state.linkUrl !== null)) || state.canRemoveLink);
+        this._tableBtn.setEnabled(state.canEditTable || state.canMergeCells || state.canUnmergeCell);
     }
 
     /**
