@@ -432,3 +432,121 @@ Which characters each built-in language closes, read off the harness: `javascrip
 [^basicsetup-dep]: `codemirror` is declared in `packages/lib/package.json` and matched by the lib build's `external` pattern (`vite.lib.config.ts:99`), but no source or test file imports it today. K2 is its first import. Run offline while planning, `EditorState.create({ extensions: basicSetup })` builds under the node test environment, and K2 passes on the final order and fails on today's.
 
 [^any-pair]: `deleteBracketPair` (autocomplete/dist/index.js:1861–1880) checks only that the character before the caret is an opening token and the one after is its closing counterpart. It does not ask whether `closeBrackets()` inserted the pair. Every `basicSetup` editor behaves this way, and the changelog entry says so.
+
+---
+
+## Implementation Notes
+
+Implemented on `feature/codeeditor-bracket-pair-backspace`, branched from `feature/markdown-editor-paste-undo-merge` at `85b55a8f4`. That base is five branches above the tip the plan was written against, so every path, line number and claim of the plan was checked against the code before a test was written. Nothing the plan relies on had changed in substance; the differences are listed here.
+
+### Differences from the plan
+
+1. **Line numbers.** Every quoted text the plan names was found unchanged, and each edit was placed by that text. The numbers have moved:
+
+   | Place | Plan | At the base (`85b55a8f4`) |
+   |---|---|---|
+   | `mount()` in `CodeEditor.ts` | 2140 | 2177 |
+   | the `keymap.of([...])` line | 2162 | 2199 |
+   | the `completionKeymap` comment | 2192–2196 | 2229–2233 |
+   | `EditorState.create` / `DOM.sink.mountView` | 2264 / 2274 | 2301 / 2311 |
+   | `buildReadOnlyExtension`, `setRevealHighlight` | 383, 393 | 383, 393 (unchanged) |
+   | `describe('built-in markdown language typing', …)` | 3104 | 3139 |
+   | `TYPING_EXTENSIONS` | 3113 | 3148 |
+   | row H2 | ends at 3449 | 3518–3520 |
+   | `describe('CodeEditor mount() initial height-sync scheduling', …)` | 2551 | 2551 (unchanged) |
+   | Keyboard table in `CodeEditor.md` | 271–283 | 273–285 |
+   | `packages/lib/package.json`, `codemirror` | 217 | 217 (unchanged) |
+
+2. **The harness has more rows than the plan counts.** The plan speaks of rows M1–M33, H1 and H2 (35 rows). The base has M1–M37, with M34, M36 and M37 run for three tab sizes each, plus H1 and H2: 45 tests. All 45 pass unchanged on the reordered list. The new rows were added after H2, as planned.
+
+3. **The changelog's last `### Components` bullet is another one now.** The plan names the "Typing HTML in Markdown source…" bullet as the last one under `## Fixed` → `### Components`. Later branches added bullets after it. The new bullet went in as the last bullet of the subsection, which is what the plan asks for. It is hard-wrapped at 76 columns with a two-space hanging indent, as every other bullet in the file is; the plan gives it as one line.
+
+4. **Read-only is not enforced by a transaction filter on this base.** The run's briefing said a read-only `CodeEditor` now refuses its editing commands through a transaction filter in `buildReadOnlyExtension`. On this base it does not: `buildReadOnlyExtension` still returns `EditorState.readOnly.of(readOnly)` alone ([CodeEditor.ts:383](packages/lib/src/typescript/lib/component/editor/CodeEditor.ts#L383)). The filter is what `plans/markdown-language-readonly-and-fences.md` adds later. The fix does not need it: both Backspace commands in the list read `state.readOnly` and return `false` (`deleteBracketPair`, autocomplete/dist/index.js:1861; `deleteBy`, which `deleteCharBackward` calls, commands/dist/index.js:1158).
+
+5. **Five rows (11 tests: B18 runs once per language) were added beyond B1–B17**, in the same `describe`, after B17. They pin cases the plan's table does not have. B18 and B20 fail before the reorder and pass after; B19, B21 and B22 pass on both orders and guard against the reorder changing something else.
+
+   | # | Case | Before the reorder |
+   |---|---|---|
+   | B18 | `[` then Backspace gives an empty document, once per built-in language (`javascript`, `json`, `html`, `sql`, `markdown`, `css`, `python`). `[` is the one bracket all seven close | `\|]` in all seven |
+   | B19 | Backspace between `()` in a read-only state changes nothing | same |
+   | B20 | two carets, each between an empty pair (`a(\|)b[\|]c`): both pairs go | `a)b]c` |
+   | B21 | two carets, one between a pair and one not (`(\|)ab\|`): one character is deleted at each, leaving `)a` | same |
+   | B22 | text selected inside a pair (`(«a»)`): only the selection is deleted | same |
+
+   B19 builds its read-only state with `EditorState.readOnly.of(true)`, which is what `buildReadOnlyExtension(true)` returns today; that function is not exported on this base.
+
+6. **Two sentences of the docs and changelog text differ from the plan's wording.** Both changes make the text match what the command does.
+
+   | Where | Plan | Written | Why |
+   |---|---|---|---|
+   | Keyboard table, Backspace row | "caret between an empty pair, such as `()` or `""`" → "Delete both characters" | "caret between an empty pair the language closes, such as `()` or `""`" → "Delete both characters. With several carets, only when every caret is between such a pair" | see the two findings below |
+   | Changelog bullet | "between an empty pair — `()`, `[]`, `{}`, `""`, `''` — now deletes both characters" | "between an empty pair of characters the language closes — `()`, `[]`, `{}`, `""` and `''` in most — now deletes both characters", plus the sentence "With several carets it deletes pairs only when every caret is between one." | the same |
+
+   - *A pair the language does not close is not a pair.* `deleteBracketPair` reads the active language's `closeBrackets` set. In `json`, which closes only `[`, `{` and `"`, Backspace between `()` or `''` already in the document deletes one character. Probed on the harness for all seven languages and for no language.
+   - *With several carets it is all or nothing.* `deleteBracketPair` deletes pairs only when every caret is between one, and otherwise returns `false`, so the plain Backspace runs at every caret (autocomplete/dist/index.js:1866–1879). Row B21 pins it. This is CodeMirror's own behaviour, the same in any `basicSetup` editor.
+
+7. **Manual row V5, fold.** The plan says to press `Ctrl-Shift-[` "with the caret inside a function body". Nothing folds there. CodeMirror's `foldCode` folds only a range that starts on the caret's line (`syntaxFolding` in language/dist/index.js requires `value.from >= start`), so the caret has to be on the line that opens the body. On that line the key folds and `Ctrl-Shift-]` unfolds. The fold keys have one binding each, so the reorder does not reach them; the row's wording was off, not the editor.
+
+8. **No demo was added** (worker step 7). The demo's "CodeEditor" and "MD Editor" tabs already hold editors in which the fix shows, and V1–V4 were run in them.
+
+9. **Shared files** (`code-editor.test.ts`, `next.md`) were edited in the one code commit and the one documentation commit, not in commits of their own, as the commit rules require.
+
+### Checks beyond the plan's own
+
+- **Every registered language.** Row B18, and a scratch probe that typed each of `(`, `[`, `{`, `"`, `'` and a backtick and then pressed Backspace, in all seven languages and with none. The sets match the addendum: `javascript` and `sql` close all six, `json` closes `[`, `{`, `"`, the rest close the first five. Whatever a language closes, Backspace right after removes both characters.
+- **Read-only.** Row B19, and in the mounted demo: with "Read-only" on and the caret between `[]`, Backspace changes nothing; with it off, Backspace deletes the pair. A read-only `markdown` editor can still be edited by Markdown's own Enter and Backspace commands, as before this plan; that is defect 2 of `markdown-language-readonly-and-fences` and is not touched here.
+- **Multiple carets and a selection.** Rows B20–B22.
+- **IME composition.** The plan does not cover it, and no real IME was used. From the source: CodeMirror drops every key event while a composition is active (`ignoreDuringComposition`, view/dist/index.js:4645–4649), so no key binding runs then, in either order; and the `closeBrackets` input handler declines while one is active (autocomplete/dist/index.js:1845). The reorder therefore cannot change what happens during a composition. On Android, CodeMirror turns a deletion it sees in the DOM back into a Backspace key press (view/dist/index.js:4332–4341), which runs the same list, so the pair is deleted there too. That last point is read from the source only.
+- **Markdown source mode.** `markdown-source-edits.test.ts` and its siblings were not edited and pass unchanged.
+- **Keys bound twice.** Re-derived from the constant on the Linux, macOS and Windows key names: inside the list only Backspace is bound twice in the plain editor scope, and Escape a second time through `searchKeymap`, as the addendum says.
+
+### Changes made after the review
+
+The audit ended with no blocking finding. Its advisory findings were then fixed as well, at the coordinator's request, under the user's standing rule for this stack that advisories are fixed, not left. Each fix was folded into the commit it belongs to. None of them was read by a reviewer afterwards.
+
+| # | Advisory | What was done |
+|---|---|---|
+| A1 | No row pinned "a pair the language closes" | Row **B23**: in `json`, Backspace between `()` gives `\|)`, and between `''` gives `\|'`. Run against a mutant in which Backspace deletes any bracket or quote pair whatever the language closes, B23 fails with `expected '\|' to be '\|)'`. The mutant is a stand-in for `@codemirror/autocomplete`, swapped in by a scratch Vitest config, so the worktree was not edited to run it |
+| A2 | K1 could leave `EditorState.create` spied if `mount()` threw | The `describe` now has `afterEach(() => vi.restoreAllMocks())`, the idiom `describe('collectSyntaxErrors', …)` in the same file already uses, and the spy lives in a helper, `mountOffline`. K1's two assertions are unchanged; its hand-written `mockRestore()` is gone |
+| A3 | K2 checked order and subset only, so a dropped keymap would pass | Row **K3**: the `basicSetup` bindings the list leaves out are exactly `completionKeymap` and `lintKeymap`. With `foldKeymap` dropped from the list by a second stand-in, K3 fails and K2 still passes. K2 itself is unchanged. K3 names the two absent keymaps rather than the five present ones, so the test file still holds no copy of the list |
+| A4 | The "Registering a language" paragraph did not hold for `Mod-f` and Escape | The paragraph now says what stays ahead of a `Prec.high` language keymap: the completion list's keys, and the editor's own `Ctrl-F` and `Escape`. Row **K4** pins all of it on the state `mount()` builds, with a stand-in keymap loaded into the language compartment: after the editor's at the default precedence, ahead of it at `Prec.high`, behind the editor's `Mod-f`, and behind the completion list's and the editor's `Escape` |
+| A5 | Python's triple quotes were not mentioned | Checked on the old and the new order. It is new with this branch. In `python`, three quotes typed in a row give `"""\|"""`. Before, Backspace there gave `""\|"""` and two more left `\|"""`. Now each Backspace deletes one quote on each side: `""\|""`, `"\|"`, `\|`. The Backspace row of the Keyboard table and the changelog bullet say so, and row **B24** pins it. Any other language gives the same result for six quotes already in the document, since a quote on each side of the caret is a pair |
+| A6 | B21 and the "several carets" sentences pin behaviour CodeMirror's docs do not promise | The row stays, with a comment. **If a CodeMirror upgrade fails B21:** read `deleteBracketPair` in the new `@codemirror/autocomplete` again; if it now deletes the pair at each caret that is between one, change B21's expectation and the "several carets" sentences in the Backspace row of `CodeEditor.md` and in the changelog to match |
+| A7 | B19 overlaps row RO6 of the later read-only plan | Nothing changed in code. The note for that plan stays, under "For the plans that follow" |
+| — | The notes said "five rows" for eleven tests | Corrected in 5 |
+
+These fixes add to what differs from the plan:
+
+- **Tests.** K1 has the same assertions as the plan's, on a helper and an `afterEach` in place of the plan's inline spy and `mockRestore()`. Rows K3, K4, B23 and B24 are not in the plan. The test file now also imports `Prec`, `completionKeymap` and `lintKeymap`.
+- **Docs.** The "Registering a language" paragraph has three sentences after the plan's two. The Backspace row and the changelog bullet each gained the `python` sentence.
+
+### Verification
+
+- `npm run typecheck`, `npm run typecheck:test`, `npm run lint`: clean. `npm run test`: green (the count is in the run's report). `npm run docs:api`: no warnings. `npm run docs:llms:check`: OK.
+- The four greps of `## Verification` give the results the plan names.
+- V1–V5 were run on 2026-10-11 against the worktree's own demo server (`127.0.0.1:5391`, not 8015), with real key events sent through Chrome DevTools. All gave the expected result, with V5's fold key pressed on the line that opens the function (see 7).
+
+### Decisions that await the user's sign-off
+
+Nothing here changes behaviour beyond the plan, and no non-goal was reversed. Two things were written that the user has not seen:
+
+- **The docs and changelog wording in 6.** It is in the documentation commit. To go back to the plan's wording, drop "the language closes" / "of characters the language closes … in most" and the two "several carets" sentences.
+- **Rows B18–B22 in 5.** They are in the code commit, as one block after B17 in `code-editor.test.ts`. They are tests of the plan's own behaviour, so they were not split into a commit of their own; removing the block removes them.
+
+### For the plans that follow
+
+**`markdown-language-enter-inside-html`**
+
+- The harness now types on `codeEditorKeymap`, so its rows run on the editor's real list. `pressKey` is unchanged and still walks the whole `keymap` facet, highest precedence first, so a `Prec.high` Enter binding from the `"markdown"` loader is reached before the editor's.
+- Its line references into `code-editor.test.ts` are stale twice over. After this branch: `describe('CodeEditor keymap order', …)` 3141, with rows K1–K4; `describe('built-in markdown language typing', …)` 3223; `TYPING_EXTENSIONS` 3234; `buildTypingState` 3248; `settle` 3268; `pressKey` 3283; `typeCharacter` 3320; `typeText` 3362; `show` 3386; `typed` 3402; row M14 3462; row H2 3604; rows B1–B24 3608–3748.
+- Its step 2 puts the C rows "after the new M33 block and before `it('H1: …')`". The base now has rows M34–M37 and M35 between M33 and H1; rows B1–B24 follow H2. Row ids B1–B24 and K1–K4 are taken.
+- "Registering a language" in `CodeEditor.md` now ends with a paragraph saying a language keymap that binds a key the editor also binds must use `Prec.high`, and what still comes ahead of it then. The plan's new Enter binding is an instance of it: the completion list's Enter is tried first and passes the key on when no list is open. Row K4 has a helper, `commandsFor`, that lists the commands for a key with a stand-in language loaded, should that plan want to pin its binding's place.
+- Its rows C39–C41 press Backspace on a continued prefix. `deleteBracketPair` is now tried before the plain Backspace; it returns `false` there, since a prefix is not a bracket pair, so those rows should give what the plan expects.
+
+**`markdown-language-readonly-and-fences`**
+
+- Its step 0 check, `grep -c 'codeEditorKeymap' …/CodeEditor.ts`, now prints 3.
+- `buildReadOnlyExtension` is still at 372–385 and still unexported. The text after it has changed: the `codeEditorKeymap` constant and its JSDoc now sit between it and `REVEAL_MARK` (387–419).
+- Its row RO6 ("Enter and Backspace between brackets change nothing in a read-only `javascript` editor") overlaps row B19 here. Once `buildReadOnlyExtension` is exported, B19 can build its state with it, or be dropped in favour of RO6.
+- Both of the editor's Backspace commands already read `state.readOnly`, so the reorder adds no route that edits a read-only document.
+- If that plan gains a manual fold check, the caret must be on the line that opens the block (see 7).

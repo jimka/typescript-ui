@@ -1431,6 +1431,20 @@ page resets to empty.
   held out of the list. That text is now an item of its own after the
   pasted blocks and keeps those blocks, as it does when a table is
   inserted at the same caret. No consumer action is needed.
+- **Backspace deletes an empty bracket pair in `CodeEditor`.** Typing `(`
+  inserts `)` after the caret, and Backspace right after is documented to
+  delete both. It deleted only the `(` and left the `)` behind. The same
+  held for `[`, `{` and quotes, in every language and in `MarkdownEditor`'s
+  `"source"` mode: the editor tried CodeMirror's plain Backspace command
+  before the bracket one, so the bracket one never ran. Backspace with the
+  caret between an empty pair of characters the language closes — `()`,
+  `[]`, `{}`, `""` and `''` in most — now deletes both characters, whether
+  the pair was just typed or was already in the document. Anywhere else it
+  deletes one character, as before. With several carets it deletes pairs
+  only when every caret is between one. In `python`, where three quotes
+  typed in a row close as a triple-quoted pair, each Backspace between the
+  two triples deletes one quote on each side; it deleted one quote on the
+  left only. No consumer action is needed.
 
 ### Core
 

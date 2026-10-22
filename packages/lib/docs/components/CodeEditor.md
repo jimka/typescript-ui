@@ -143,6 +143,8 @@ loadExtension: async () => {
 },
 ```
 
+A language extension that binds a key the editor also binds — Enter, Backspace or Tab, say — must raise its keymap's precedence: `Prec.high(keymap.of([...]))`, as `@codemirror/lang-markdown` does. At the default precedence the editor's own bindings are tried first, so the language's binding runs only when the editor's passes the key on. `Prec.high` does not put a language ahead of everything. The completion list's keys are still tried first; all but `Ctrl-Space` pass the key on when no list is open. So are the editor's own `Ctrl-F` (`Cmd-F` on macOS) and `Escape` bindings, which are at `Prec.high` themselves: `Ctrl-F` always opens the search panel, so a language cannot rebind it this way, and a language's `Escape` runs only when neither the completion list nor the search panel took the key.
+
 ## `format()` semantics
 
 `editor.format(options?)` returns a `Promise<void>`:
@@ -274,15 +276,15 @@ Tab then moves focus again, and the same shortcut switches back to indenting.
 | --- | --- |
 | `Mod-/` | Toggle line comment |
 | `Alt-A` | Toggle block comment |
-| `Ctrl-Shift-[` / `Ctrl-Shift-]` | Fold / unfold at the cursor |
+| `Ctrl-Shift-[` / `Ctrl-Shift-]` (`Cmd-Alt-[` / `Cmd-Alt-]` on macOS) | Fold / unfold at the cursor |
 | `Ctrl-F` (`Cmd-F` on macOS) | Open the floating search panel |
 | `Escape` | Close the floating search panel |
 | `Enter` (find field) | Find the next match |
 | `Shift-Enter` (find field) | Find the previous match |
 | `Enter` (replace field) | Replace the current match |
 | `Ctrl-Space` | Open completions explicitly |
-| `{` / `(` / `[` (typed) | Insert the matching closing bracket, caret between |
-| `Backspace` (over a bracket pair) | Delete both brackets |
+| `(` / `[` / `{` / `"` / `'` (typed) | Insert the matching closing character, caret between. The active language decides which characters close: `json` closes only `[`, `{` and `"`, while `javascript` and `sql` also close a backtick |
+| `Backspace` (caret between an empty pair the language closes, such as `()` or `""`) | Delete both characters. With several carets, only when every caret is between such a pair. In `python`, three quotes typed in a row close as `"""` on each side of the caret, and each `Backspace` there deletes one quote on each side |
 
 When the app enables [spatial focus navigation](/concepts/accessibility#spatial-focus-navigation), its `Ctrl+Alt`+arrow chord takes `Ctrl-Alt-↑` / `Ctrl-Alt-↓` (add a cursor above / below) on Windows and Linux: the chord moves focus out of the editor instead. Alt+drag still makes a rectangular selection. Word selection (`Ctrl-Shift-←` / `Ctrl-Shift-→`) is not affected.
 
