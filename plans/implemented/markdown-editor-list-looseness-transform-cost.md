@@ -902,3 +902,35 @@ describe('list looseness: what an edit of one item leaves', () => {
 
 [^paste-rest]: A paste tags its update so that every block it changed is tidied whole, and the tidy reads the document's link reference definitions once per block. See *Addendum: other costs measured*, row 1.
 
+
+---
+
+## Implementation Notes
+
+Base: `f6419093b`, which carries the raw block range edits, the join escapes and the cross item range removal under the plan's `75d022ba1`. Step 1's greps matched the plan's counts (five function matches, six `$keepLoosenessWritable(` matches), and the plan's block replaced the three functions with no other change.
+
+**Row L8 differed.** The plan's step 3 expected 6 failed and 10 passed on the base; on this base 7 failed, because L8 failed too. L8 appended a raw block holding one space to item `a` and then typed `<div>` into it. Since the raw block range edits, a blank raw block is normalised to a paragraph, and text typed into a paragraph runs `$keepLoosenessAfterTyping`, which reads the item. The list therefore turned loose at the typing step and the row no longer left a list out of step, so it would have passed without the first whole read. The row keeps its intent and now builds the out-of-step list differently: a paragraph holding a space is appended to item `a`, its text is set to `<div>` in an update with `skipTransforms`, so no rule runs, and item `c` is then ticked. The expected tree shows a `paragraph("<div>")` in place of the raw block, and the save escapes it as `\<div>`. With the first whole read removed, C7, C8 and L8 fail; with it, all 16 rows pass.
+
+**Differential.** The scripts ran with one job at a time (the machine limit) instead of three. `cmpall.sh parent branch` printed `ALL IDENTICAL`: looseness set 12 record files and 12 digest files (33,480 and 1,963,635 identical lines), the extra documents (2,061 and 89,930 lines), fuzz results 60 files and fuzz digests 60 files (5,403,360 lines), toggle sets 63 record files and 63 digest files (117,464 and 2,811,743 lines). The parent is `f6419093b`, the branch code commit is the one titled "Keep list looseness in time proportional to the items an edit changes".
+
+**Timings.** Three runs, medians, the parent and the branch run one after the other (not at the same time, because only one vitest process may run); the machine was not fully idle (load average about 2 from another worker's tests). Tight bulleted list of 125 / 250 / 500 / 1,000 / 2,000 items:
+
+| Edit | Parent | Branch |
+|---|---|---|
+| Load | 91 / 327 / 1,298 / 5,196 / 21,642 ms | 14 / 22 / 32 / 54 / 113 ms |
+| Numbered toggle over the whole list | 105 / 338 / 1,379 / 5,492 / 23,690 ms | 17 / 29 / 70 / 142 / 343 ms |
+| Enter in the middle item | 16.5 / 60.5 / 256 / 1,069 / 4,196 ms | 2.2 / 3.8 / 8.7 / 14.9 / 31.2 ms |
+| One typed character | 0.5 / 0.8 / 1.1 / 2.0 / 4.2 ms | 0.5 / 0.8 / 1.2 / 2.1 / 4.0 ms |
+| Paste of a list into an empty document | 113 / 417 / 1,620 / 6,404 / 25,676 ms | 64 / 223 / 809 / 3,217 / 12,328 ms |
+
+Undo, redo and save are unchanged. The paste at 500 items into a list took 19,745 ms on the parent and 4,060 ms on the branch. The paste stays quadratic, as the plan's *Addendum: other costs measured* says. The toggle's last doubling is x2.4 (142 to 343 ms), at the plan's bound.
+
+**Other checks.** Full suite 21,215 passed and 2 todo in 573 files (16 more tests than the base). `npm run typecheck`, `typecheck:test`, `lint`, `docs:api`, `docs:llms:check` and `build:lib` are clean. The manual browser check of the plan was not run.
+
+**Stale claims of the plan.** The plan's non-goal and defect about a list left out of step after typing in a raw block (lines 430 and 538) are stale on this base. The original row L8 already turns the list loose at the typing step even with the first whole read removed, so that read now guards a state no known edit reaches. It is kept for safety.
+
+**Paste ratios.** The paste of a list into an empty document takes 0.56, 0.53, 0.50, 0.50 and 0.48 of the parent's time at 125 to 2,000 items. The two smallest sizes miss the plan's "under half".
+
+**Toggle bound.** The toggle's last doubling (1,000 to 2,000 items) is x2.415, just over the plan's x2.4 bound. That is within the noise of the runs, and is stated here and not rounded.
+
+**Untested listener.** No test reaches the update listener that clears the set of lists read whole at each commit. As with `registerDefinitionRules`' listener, it is documented and cannot be reproduced in the test harness.

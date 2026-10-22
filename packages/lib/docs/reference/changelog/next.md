@@ -1920,6 +1920,13 @@ page resets to empty.
   cell, in a `:::` column the list is not in, or between two blocks joins
   nothing and leaves the item as before. No consumer action is needed.
 
+- **`MarkdownEditor` edits that change many items of one list are much
+  faster.** In WYSIWYG mode, loading a long list, toggling it to the other
+  kind, or pressing Enter in one took time that grew with the square of its
+  length: a list of 1,000 items took seconds to load or to toggle. These now
+  grow with the length. Pasting a list is about twice as fast but still slows
+  with the square of the list's length. What is saved is unchanged.
+
 ### Core
 
 - **A completing animation no longer clears a `transition` a later animation
