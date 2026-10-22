@@ -1200,3 +1200,93 @@ describe('a Markdown typing shortcut is applied by typing alone (TY rows)', () =
 [^differential]: The harness makes documents of one to three blocks that hold escaped, nearly complete shortcut text, places the caret, and runs up to 8 steps drawn from: a typed character by the command, a typed character by the two input commands, Backspace, Delete, a word delete, a selection removed, a cut, a paste of one or two characters, a drop, undo, redo, Enter, a caret move and `toggleBold`. It records the save after every step and whether an update of the step carried `history-push`, which Lexical's shortcut update sets when it applies one.
 
 [^fuzz]: The baselines were made from commit `11782acb`, whose editor source differs from the tip's in comments only. The harnesses record failures of their own checks (a save that does not reload, a surface that differs from the viewer), not every state, so identical files mean that no such check changed its outcome; the random-edit harness of item 2 is the one that compares states.
+
+---
+
+## Implementation Notes
+
+### Sign-off decisions: decided
+
+The repository's owner answered all five on 2026-10-12, as the plan recommends:
+
+1. A paste or drop of the one character that completes a shortcut applies none.
+2. A text replacement (autocorrect) counts as typing.
+3. Text that changes with no input event completes no shortcut.
+4. The Enter path stays for every marker.
+5. A completed shortcut stays two undo steps.
+
+### Base
+
+The plan was drafted on `feature/markdown-language-readonly-and-fences`; this branch stands on `feature/nested-scroll-reveal`. Line numbers were off and code was located by symbol. The "without" case held: the base had no `registerTypingTags`, `GUARDED_DELETION_TAG` or `markdown-editor-typing-shortcuts.test.ts`, so step 2 was skipped. The test file was copied from the planner's run copy (identical to the plan's addendum).
+
+### Beside the read-only editor (`markdown-editor-readonly-keyboard-selection`)
+
+The read-only guard (`registerReadOnlyGuard`) is the last registration and sits at `COMMAND_PRIORITY_BEFORE_CRITICAL` for `BEFORE_INPUT_COMMAND`, `INPUT_COMMAND` and `CONTROLLED_TEXT_INSERTION_COMMAND`, so in a read-only editor those commands end before this plan's listeners (CRITICAL, and EDITOR) run: a refused edit is tagged as nothing, and `awaited` is never set by one.
+
+One gap in the plan's design remained: the wait for an `input` event (`awaited`) was cleared only by the next input command. A typed `beforeinput` left to the browser, then read-only switched on, a refused `input` command and read-only lifted, left the wait standing, and every update after it counted as typed (a Backspace or `cut()` then completed a shortcut: 28 of 28 rows in the first review). The same held, with no read-only, for a typed `beforeinput` whose `input` command never arrives.
+
+Deviation from the plan, small: the wait now ends at a definite point, and never outlives the event it is for. It ends at the `input` command or the next `beforeinput` command, at the end of the task in which the `beforeinput` was handled (`DOM.sink.setTimeout` of no delay: a browser fires the `input` event in that task and Lexical's mutation observer reads the text in a microtask of it), and when the editor's editability changes (`registerEditableListener`); disposal ends it too. The first version of this note, and of the code, added an `editor.isEditable()` test to `isTypedUpdate`; it hid the stale wait while read-only and did not clear it. It is removed: with the wait ended at those points, no update the editor really makes needs it (the one update the restore of a refused composition makes, in `finishViewRestore`, runs with the editor editable and changes no text), and no row failed without it once the wait ended at the switch.
+
+### Fix round 1 (first independent review)
+
+- **Blocking 1, the stale wait.** Fixed as above. Rows in `markdown-editor-typing-shortcuts.test.ts`: TY10 (typed `beforeinput`, read-only on, `input` refused, read-only off, then Backspace or `cut()`: text stays text), TY11 (a typed `beforeinput` whose `input` never arrives, a task passes, then a removal: text), TY12 (wait, read-only on, an update that changes the text with no command: text). TY10 fails without the editability listener (14 tests, and 14 more in TY12), TY11 without the timer (14). The old TY10/TY11 pinned updates the editor never makes (a text-changing update with no command, and a `COMPOSITION_END_TAG` update, in a read-only editor) and were replaced. A mounted row, M7 in `markdown-editor-readonly-mounted.test.ts` (a typed `beforeinput` command, read-only on, a real `input` event the guard refuses, read-only off, a range removal: the block stays a paragraph), fails without the editability listener. jsdom's `InputEvent` has no `getTargetRanges`, so Lexical listens for no `beforeinput` there: the `beforeinput` is dispatched as the command, and only the `input` event is a real DOM event. A real `beforeinput` against a read-only surface is covered by that file's R-rows, which this plan did not change.
+- **Blocking 2, untested marks.** TY13 (text Lexical inserts in the update of a prevented typing `beforeinput`), TY14 (an `insertCompositionText` `input` event read off the DOM, no composition on) and TY15 (a browser-made deletion read before its `input` event) each fail, 14 tests, when their line goes: the tag in the `BEFORE_INPUT_COMMAND` listener, `"insertCompositionText"` in `TYPING_INPUT_TYPES`, and `awaited` set for every type.
+- **Blocking 3, Verification not completed.** Run on the final code, see *Verification run*.
+- **Advisories fixed:** TY9 filters the one route that is no command by its index and says what it exercises (the guard's refusal, not this plan's code); the step-8 note below; the header of the test file cites the plan by its slug.
+- **Advisories left:** `registerTypedTextMarks` returns `{ unregister, isTypedUpdate }` where every other `register*` returns a function (the plan prescribes it); Lexical's own `beforeinput` and `input` handlers could now be driven by the mounted harness instead of `standInForLexicalInputHandlers` (the plan's premise that they cannot run offline is out of date on this base).
+
+### Fix round 2 (second independent review)
+
+- **Blocking 1, a composition that typed nothing.** Round 2 added a rule for it; round 3 removed the rule again (see *Round 3*). What stands from this round: TY19, the advisory fixes and the other items below.
+- **Blocking 2, the code commit's message.** Reworded in the autosquash rebase; it now describes the wait's five ends, the absence of an editability test, and the composition rule.
+- **Blocking 3, the end at the next `beforeinput`.** TY19 (a typed `beforeinput`, then a deletion `beforeinput`, then a removal read in an update with no command: text). It fails (14) when the `endWait()` in the `beforeinput` listener is deleted.
+- **Advisories fixed:** the JSDoc of `registerTypedTextMarks` is reordered (the wait and its five ends in one paragraph) and no longer says "until its `input` event arrives" alone; TY12's title says what it pins; TY9 picks its excluded route by name (`ROUTE_READING_TEXT_IN_ITS_OWN_UPDATE`), not by index; the loose count above is corrected; the three lines with two statements in the test file are split; M7 moved to the end of its describe.
+- **Timer hygiene, unpinned:** removing the `clearTimeout` in `endWait` or the `endWait` at disposal fails no test. Neither changes behaviour a user or a caller can see: a timer that outlives its wait only calls `endWait` once more, in the same or the next task, and one that outlives the editor only clears two variables nobody reads. A row would have to wait on a race between two zero-delay timers, which is not an honest test.
+- **Mutations:** 24 mutations of `registerTypedTextMarks` and the wrapper were run against the typing-shortcuts and mounted read-only files. 22 of them failed a test; the two timer-hygiene lines above did not. That was a run of those 24 mutations, not a claim that every line of the function is pinned: the composition logic added in this round, since removed, had branches no row reached.
+- **The rest of the fuzz:** the 20-file result below stands for now. The script `/home/jika/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/impl/typing-shortcuts/fuzz-all.sh` runs the plan's 71 files for the branch tip and the parent baseline, one vitest process at a time, and is run by the orchestrator after this round; the closing pass will record its result here.
+
+### Differences from the plan's text
+
+- Step 8 (other tests that type without a command): the first note said none of the `insertText(` callers failed, which cannot catch a test that expects a shortcut to be declined. The first review instrumented six Markdown suites to log untyped edits that look like typing and found no other helper that needs the change; the three helpers of the plan are the only ones changed.
+- The suite counts at this base are 19,590 passed in 589 files, 2 todo (the brief expected about 20,00x). The new test file has 232 tests (the plan's 90, plus 142 of TY9 to TY19 and the known-limit and composed-over-selection rows); the mounted file gained M7.
+
+### Verification run
+
+Round 1 verification, kept as history; round 3 reran the checks on the final code, and the fuzz comparison of round 2 is in *Round 3*.
+
+- `npm run typecheck`, `typecheck:test`, full `npm run lint`, `docs:api`, `docs:llms:check`: clean. Full suite with `--maxWorkers=4`: 19,590 passed, 2 todo.
+- Browser: `check2.mjs` against this worktree's demo in headless Chromium: `ALL ROWS PASS` (Matrix A 85, Matrix B 62). `p2d.mjs` (the Firefox-order simulation): as the plan expects, `update tags=[]` before `cmd INPUT_COMMAND` on every line, each shortcut applied, the typed character shown once more after the formatted text as for the parent, and Backspace under the simulation leaves `a \*x\*b`. Script-built events stand in for `insertFromComposition`, `insertReplacementText` and `insertFromDrop`.
+- Differential check against the parent (`feature/nested-scroll-reveal`, `326dd4717`), seeds 1, 2, 3, `P2D_N=4000`: `hard check ... : 0` on all three, in private copies.
+- Seeded fuzz harnesses, parent and branch run one after the other, one vitest process at a time, in private copies, parent baseline taken on `feature/nested-scroll-reveal`. **Cut for time, the same on both sides:** seeds 601, 1709 and 2207 (of 11) for the column-paste, table-edge (both strict modes), list-item and list-item-without-exemption families, and r7 seeds 11 and 23 (of 5): 20 output files per side instead of 71. All 20 are byte-identical between parent and branch (`cmp`). The files record failures of the harnesses' own checks, not every state; the random-edit differential above is the one that compares states.
+
+### Round 3 (third independent review)
+
+- **What review 3 found.** Round 2's composition rule counted a composition's end as typing only if the whole document's text was longer than before the composition began. Lexical's composition start replaces a selection with its first character in that same update, so a composed completing character over a selection (a dead-key or IME `*` over ` zz` in `a \*x zz b`) never counted: it no longer went italic, while a typed key and the parent did. That broke the plan's own rule and TY7's case for compositions, and the rule had branches no row reached (the start of the composition's size, and an `awaitsComposedText` branch Lexical cannot reach, since it returns before dispatching `BEFORE_INPUT_COMMAND` for `insertCompositionText`).
+- **The owner's decision (2026-10-14).** Remove round 2's rule and return to the plan's design: the end of a composition counts as typing, as the plan's path rows 3 and 4 say.
+- **What was removed.** The size tracking (`sizeBeforeComposition`, `textSizeOf`, every use of `prevEditorState` and `editorState`), `COMPOSED_TEXT_TAG` with its `insertCompositionText` branch, and the `UpdatePayload` type. `isTypedUpdate` takes the tags again and reads no editor state; the plan's step-6 check on `payload.prevEditorState` holds in substance. Nothing kept from rounds 1 and 2 needed the payload. Kept: the wait's five ends, TY10 to TY15, TY19, M7, the advisory fixes of round 2.
+- **The known limit.** A composition that is cancelled or emptied right behind shortcut-shaped text, or that ends by removing text, applies the shortcut. It is how every release behaves and how the parent behaves, and it is stated in the JSDoc of `registerTypedTextMarks`, on the component page and in the changelog. Rows TY16 and TY17 pin it for all 14 kinds, titled as a known limit; a change that closes it changes them. The cost of a fix is a rule about what a composition changed, which the review showed to need care (a composition over a selection replaces text in its first update); it was not taken. Manual check 8 (Safari) is added to the list below, not run.
+- **Pinned regression.** TY18 (a character composed over a selection, selected forwards and backwards) applies the shortcut, like TY7 for a typed key. It fails on round 2's code.
+- **Advisories taken:** the calls in `if` conditions went with the removed code, and `BEFORE_INPUT_COMMAND` is imported among the commands in the mounted test. Not taken: the object returned by `registerTypedTextMarks`; `COMPOSED_TEXT_TAG` and TY14/TY18 of the old numbering pinned a path Chromium does not take (moot, removed).
+- **Fuzz.** The full comparison ran on `9f79d7574` (round 2's code): 71 of 71 output files identical between parent and branch (`fuzz-all/RESULT-9f79d7574.txt` in the scratch folder). The final code differs from it in `registerTypedTextMarks` and the tests, so the orchestrator reran the branch side on the final code (tip `ca38b640f`, before this sentence was added) on 2026-10-14: 71 of 71 output files identical to the parent's (`fuzz-all/RESULT.txt`).
+
+
+### Manual checks not run here (Firefox, Safari/WebKit, Android)
+
+Do these on the demo's **MD Editor** page; a failure is reported, not worked around. Nothing below was run by the implementer.
+
+1. Safari on macOS, Swedish layout: type `a `, a backtick via the dead key, `x`, a backtick again: `x` becomes inline code. Then ` ~~y~~` with the tilde from Option+`¨` then Space: `y` is struck through.
+2. Safari on macOS: in source mode set the document to `a \*x\*.b`, switch back, caret after the `.`, Backspace: the text stays `a *x*b` with the asterisks showing.
+3. Firefox on Windows, Microsoft Japanese IME: with the IME off type `a *x`; IME on (Hiragana), type `*` (shows `＊`), F10, Enter: `x` becomes italic. Control in Chrome or Edge.
+4. Firefox: type ` *y*` at the end of a paragraph: `y` italic and no `*` after it.
+5. Firefox: as check 2.
+6. Chrome on Android, Gboard: `- item` in an empty paragraph makes a list item; ` **b**` makes bold; then check 2 with the on-screen Backspace.
+7. Chrome on Android, Gboard: a composition that ends by removing text. In source mode set the document to `\- x`, switch back, place the caret after the `x` (Gboard composes the word it touches) and press the on-screen Backspace over the `x`, the only composed letter. The text must stay `- ` as text, not a list item. Not run.
+8. Safari on macOS, a cancelled composition: with a dead key held (Swedish layout) press the backtick dead key, then Escape or Backspace, right behind `a \`x\`` typed as escaped text (source mode: `a \\`x\\` b`). The known limit says the shortcut may apply; record whether it does. Not run.
+
+### For `markdown-editor-raw-block-range-edits`, when it resumes
+
+That branch is held (owner's decision of 2026-10-13) and sits on top of this one. The list below was written by the orchestrator at closing, from that branch's seventh review (`scratch-keep/impl/raw-block-range-edits/review7/REPORT.md`); it replaces a list written from this plan's text alone, which named the branch's code as it stood before its seventh round. When the branch resumes it must:
+
+- Drop its commit "Complete no typing shortcut after a removal the editor makes itself": this branch holds the general rule. With it go `GUARDED_DELETION_TAG`, `$removeGuardedRangeAsDeletion` and its callers (each goes back to `$removeGuardedRange`), the direct tag on the paragraph command's guarded route, and the `isDeletion` test in the shortcut wrapper. A removal route needs no tag here: an update with no typing mark completes no shortcut.
+- Take this branch's `markdown-editor-typing-shortcuts.test.ts` as the file, and move into it only those of its own rows (`TY1`, `TY1b`, `TY1c`, `TY5`, `TK6`, `TK8` and the rest of its shortcut rows) that still say something this branch's rows do not; `TY5` and `TK6` pin behaviour this branch removes and must change to expect text.
+- Keep its docs wording in step with this branch's bullet in `MarkdownEditor.md` and changelog entry.

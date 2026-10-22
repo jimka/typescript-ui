@@ -3,7 +3,7 @@ import {
     $createLineBreakNode, $createParagraphNode, $createRangeSelection, $getRoot, $getSelection, $getState, $isElementNode, $isLineBreakNode,
     $isParagraphNode, $isRangeSelection, $isTextNode, $setSelection, $setState, $createTextNode, KEY_ENTER_COMMAND,
     SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, PASTE_COMMAND, DELETE_CHARACTER_COMMAND, FORMAT_TEXT_COMMAND, COMMAND_PRIORITY_LOW,
-    UNDO_COMMAND, INDENT_CONTENT_COMMAND,
+    UNDO_COMMAND, INDENT_CONTENT_COMMAND, CONTROLLED_TEXT_INSERTION_COMMAND,
 } from 'lexical';
 import type { ElementNode, LexicalEditor, LexicalNode, RangeSelection, TextNode } from 'lexical';
 import { $createListItemNode, $createListNode, $isListNode, $isListItemNode } from '@lexical/list';
@@ -862,22 +862,6 @@ describe('editing raw blocks and source nodes', () => {
         }
     }
 
-    /**
-     * Types one character at the selection.
-     *
-     * @param char - The character.
-     * @returns The edit.
-     */
-    function type(char: string): () => void {
-        return () => {
-            const selection = $getSelection();
-
-            if ($isRangeSelection(selection)) {
-                selection.insertText(char);
-            }
-        };
-    }
-
     it('Enter in the middle of a raw block inserts a line break in the block', () => {
         const editor = load('<div>\nxy\n</div>');
 
@@ -1019,9 +1003,13 @@ describe('editing raw blocks and source nodes', () => {
         }, { discrete: true });
     }
 
-    /** Types `*` at the selection, as a keystroke does, in its own update. */
+    /** Types `*` at the selection with the command a keystroke dispatches, in its own update. */
     function typeStar(editor: MarkdownEditor): void {
-        lexicalOf(editor).update(type('*'), { discrete: true });
+        const lexical = lexicalOf(editor);
+
+        lexical.update(() => {
+            lexical.dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, '*');
+        }, { discrete: true });
     }
 
     it('a typing shortcut applies in a paragraph (control for the next case)', () => {
@@ -2935,16 +2923,18 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
         }
 
         /**
-         * Types text one character at a time, each in its own update, as the keyboard does, so the typing
-         * shortcuts run after each.
+         * Types text one character at a time, with the command a keystroke dispatches, each in its own update,
+         * so the typing shortcuts run after each.
          *
          * @param editor - The editor.
          * @param text - The characters.
          */
         function typeChars(editor: MarkdownEditor, text: string): void {
+            const lexical = lexicalOf(editor);
+
             for (const char of text) {
                 edit(editor, () => {
-                    ($getSelection() as RangeSelection).insertText(char);
+                    lexical.dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, char);
                 });
             }
         }
