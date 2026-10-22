@@ -7873,7 +7873,7 @@ describe('MarkdownEditor link, format and paste command fixes', () => {
             const pasted = await editor.paste();
 
             expect(pasted).toBe(true);
-            expect(editor.getValue()).toBe('| a | b |\n| --- | --- |\n| PASTED | d |\n\nafter');
+            expect(editor.getValue()).toBe('| a | b |\n| - | - |\n| PASTED | d |\n\nafter');
         });
 
         it('P2: with the cells selected backward the text goes into the cell the selection began in', async () => {

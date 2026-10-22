@@ -565,11 +565,9 @@ page resets to empty.
   setters, `insertImage`, `setBlockType` and the list toggles now run the
   WYSIWYG command on the Markdown around the selection and write back the
   text it changes, so both surfaces give the same document for the same
-  selection. A command writes the top-level block it changes in the
-  editor's own form, as a WYSIWYG edit does (`* one` / `    * inner` /
-  `* two` with `two` bolded saves `* one` / `  * inner` / `* **two**`). A
-  command on text the WYSIWYG surface keeps as a raw Markdown block does
-  nothing, where source mode converted some of those lines before
+  selection. A command writes the part of a block it changes in the
+  editor's own form, as a WYSIWYG edit does. A command on text the WYSIWYG
+  surface keeps as a raw Markdown block does nothing, where source mode converted some of those lines before
   (`> - one`). A command also does nothing with the caret on several empty
   items, rows, cells or columns of one block (`-` / `-` / `-`), on the blank
   lines between blocks or before the first block, and where the editor does
@@ -578,6 +576,14 @@ page resets to empty.
   command that edits text, `insertTable` and the two paragraph inserts
   included, with `"readonlyedit"` up front, also where the command would
   have done nothing. No consumer action is needed.
+
+- **`MarkdownEditor` keeps the unedited parts of an edited block as
+  written.** An edit in a list, table, fenced code block or `:::` fence
+  used to rewrite the whole block in the editor's standard form; now only
+  the item, row, cell or column block you edited is, and its neighbours
+  keep their source: the indentation of a list nested four spaces deep, a
+  table's padding, a `~~~` fence. This holds for the source-mode commands
+  too. No consumer action is needed.
 
 ### Overlay
 

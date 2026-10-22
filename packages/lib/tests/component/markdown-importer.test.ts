@@ -1940,7 +1940,7 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
     describe('#3b a code fence keeps its whole info string', () => {
         const rows: Array<[string, string, string]> = [
             ['words after the language', '```ts extra\ncode\n```', '```ts extra\ncodex\n```'],
-            ['escapes and spacing inside it', '``` ts  a\\_b {x}\ncode\n```', '```ts  a\\_b {x}\ncodex\n```'],
+            ['escapes and spacing inside it', '``` ts  a\\_b {x}\ncode\n```', '``` ts  a\\_b {x}\ncodex\n```'],
         ];
 
         for (const [name, source, saved] of rows) {
@@ -2598,9 +2598,9 @@ describe('$importMarkdown — whole-stack review fixes: edit-fuzz round', () => 
             }
 
             const ONE_COLUMN = '| h |\n| --- |\n';
-            // The source writes `C++` escaped (`C\+\+`), as saves once did; the save writes it bare (`C++`), which reads the same.
+            // The source writes `C++` escaped (`C\+\+`), as saves once did; the save keeps that unedited cell as written (`C\+\+`).
             const UNDERLINE_DECLINED_BY_ONE_CELL: ReadonlyArray<[name: string, source: string, from: string, to: string, on: string]> = [
-                ['C++ above Rust', `${ONE_COLUMN}| C\\+\\+ |\n| Rust |`, 'C++', 'Rust', `${ONE_COLUMN}| C++ |\n| ++Rust++ |`],
+                ['C++ above Rust', `${ONE_COLUMN}| C\\+\\+ |\n| Rust |`, 'C++', 'Rust', `${ONE_COLUMN}| C\\+\\+ |\n| ++Rust++ |`],
                 ['a+b beside d', `${HEAD}| a+b | d |`, 'a+b', 'd', `${HEAD}| a+b | ++d++ |`],
                 ['a lone + beside d', `${HEAD}| + | d |`, '+', 'd', `${HEAD}| + | ++d++ |`],
             ];

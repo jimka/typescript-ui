@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import {
-    $addUpdateTag, $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $getSelection, $isElementNode, $setState,
+    $addUpdateTag, $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $getSelection, $getNodeByKey, $isElementNode, $setState,
     TEXT_TYPE_TO_FORMAT,
 } from "lexical";
 import type { ElementNode, LexicalNode, NodeKey, TextFormatType, TextNode } from "lexical";
@@ -25,10 +25,11 @@ import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
 import { CELL_LINE_BREAK_TAG } from "~/component/display/markdownTableExtension.js";
 import type { MdTableBodyCell, MdTableHeaderCell, MdTableToken } from "~/component/display/markdownTableExtension.js";
 import {
-    lineEndAt, resolveBlockStyle, resolveImageSpec, resolveSpanStyle, spanStyleToCss, splitColumnSections,
+    lineEndAt, readFenceLine, resolveBlockStyle, resolveImageSpec, resolveSpanStyle, spanStyleToCss, splitColumnSections,
+    startFenceLineScan,
 } from "~/component/display/markdownAttributes.js";
 import type { MarkdownSpanStyle } from "~/component/display/markdownAttributes.js";
-import { $createMarkdownBlockNode, $createMarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
+import { $createMarkdownBlockNode, $createMarkdownColumnNode, $isMarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import type { MarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
 import { $createMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import type { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
@@ -41,14 +42,19 @@ import {
 import { $createReferenceLinkNode, $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import type { ReferenceLinkReference } from "~/component/editor/markdownReferenceLinkNode.js";
 import {
-    $documentDefinitions, $listReadsLoose, $readDefinitions, $serializeLinkContent, $serializeTopLevelBlocks, rawBlockAtMargin, rawBlockInItem,
+    $documentDefinitions, $listReadsLoose, $readDefinitions, $recordPartFingerprints, contentColumn, $serializeLinkContent, rawBlockAtMargin, rawBlockInItem,
     rawBlockStandsInItem, runsOn, withoutBlankEdges,
 } from "~/component/editor/markdownSerializer.js";
 import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode, $isMarkdownRawBlockNode } from "~/component/editor/markdownSourceNodes.js";
 import { headingSlugSource, slugify } from "~/component/display/markdownHeadingIds.js";
 import { $readStandardForm, keptImageShown } from "~/component/editor/markdownSerializer.js";
 import type { StandardFormReading } from "~/component/editor/markdownSerializer.js";
-import type { MarkdownSourceBlock, MarkdownSourceLoad, MarkdownSourceMap } from "~/component/editor/markdownSourceMap.js";
+import { columnBlockKey } from "~/component/editor/markdownSourceMap.js";
+import type {
+    MarkdownSourceBlock, MarkdownSourceCodeFrame, MarkdownSourceDelimiterRow, MarkdownSourceItem, MarkdownSourceLoad, MarkdownSourceMap,
+    MarkdownSourcePart, MarkdownSourceRow,
+} from "~/component/editor/markdownSourceMap.js";
+import type { RecordedFingerprints } from "~/component/editor/markdownSerializer.js";
 
 // ---------------------------------------------------------------- constants
 
@@ -133,6 +139,48 @@ const IMPORT_DEFINITIONS: { current: Links | null } = { current: null };
  * may be ones the edit did not remove, which only became a line's opening.
  */
 const LOADING_DOCUMENT: { current: boolean } = { current: false };
+
+/**
+ * What a column's load knows before the document's definitions are read: one
+ * object per column, shared by its blocks.
+ */
+interface ColumnLoad {
+    /** The column's text before its first block. */
+    readonly prefix:          string;
+    /** Whether the column's text ends with a newline. */
+    readonly endsWithNewline: boolean;
+    /** The number of blocks the column held. */
+    readonly blockCount:      number;
+    /** Whether the column's last block runs to its end (an unclosed code fence). */
+    readonly endsOpen:        boolean;
+}
+
+/** A part's source as a builder records it; {@link $recordSourceMap} adds its load, column and fingerprint. */
+type RecordedPart =
+    | Omit<MarkdownSourceItem, "load" | "column" | "fingerprint">
+    | Omit<MarkdownSourceRow, "load" | "column" | "fingerprint" | "cellFingerprints">
+    | Omit<MarkdownSourceDelimiterRow, "fingerprint">
+    | Omit<MarkdownSourceCodeFrame, "fingerprint">
+    | { readonly kind: "columnBlock"; readonly node: NodeKey; readonly columnLoad: ColumnLoad; readonly index: number; readonly body: string; readonly after: string };
+
+/**
+ * The nested parts the running load records, keyed by node (a block of a
+ * column by {@link columnBlockKey} of its node); `null` outside a
+ * load, so a block read again in the middle of an edit records none.
+ */
+const IMPORT_PARTS: { current: Map<NodeKey, RecordedPart> | null } = { current: null };
+
+/**
+ * An item's first line as its source holds it: up to three spaces, the marker
+ * (a bullet, or a number and its delimiter) and the spaces after it.
+ */
+const ITEM_START = /^( {0,3})(?:([-*+])|(\d{1,9})([.)]))( *)/;
+
+/** A fence line that can close a fenced code block: up to three spaces, a run of one fence character, then only whitespace. */
+const CLOSING_FENCE_LINE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
+
+/** A fenced code block's opening line at its container's margin: a run of one fence character. */
+const OPENING_FENCE_LINE = /^(`{3,}|~{3,})/;
 
 /**
  * `marked`'s own patterns for a full reference (`[text][label]`) and for a
@@ -235,8 +283,11 @@ export function $importMarkdown(markdown: string): MarkdownSourceMap {
     const root = $getRoot();
 
     $addUpdateTag(MARKDOWN_IMPORT_TAG);
+    const recorded = new Map<NodeKey, RecordedPart>();
+
     IMPORT_DEFINITIONS.current = lexMarkdownLinkDefinitions(source);
     LOADING_DOCUMENT.current = true;
+    IMPORT_PARTS.current = recorded;
 
     const located = locateBlocks(source, lexMarkdown(source));
     let blocks: LexicalNode[];
@@ -246,6 +297,7 @@ export function $importMarkdown(markdown: string): MarkdownSourceMap {
     } finally {
         IMPORT_DEFINITIONS.current = null;
         LOADING_DOCUMENT.current = false;
+        IMPORT_PARTS.current = null;
     }
 
     root.clear();
@@ -256,7 +308,7 @@ export function $importMarkdown(markdown: string): MarkdownSourceMap {
         root.selectStart();
     }
 
-    return $recordSourceMap(source, located);
+    return $recordSourceMap(source, located, recorded);
 }
 
 /** One top-level block of a document, as a load locates it. */
@@ -424,19 +476,25 @@ export function $buildInlineContent(block: ElementNode, tokens: Token[]): void {
 
 /**
  * Records, for each root block just built, its source, the text after it and
- * its standard output (its fingerprint). Runs after the document is complete
- * — reference links' contents recorded — but before Lexical's node transforms
- * run at commit, so a transform that changes a block's content (the list
- * merge) makes it differ from its fingerprint and save in the standard form.
+ * its standard output (its fingerprint), and for each nested part the load
+ * recorded ({@link IMPORT_PARTS}) its source and its fingerprint. Runs after
+ * the document is complete — reference links' contents recorded — but before
+ * Lexical's node transforms run at commit, so a transform that changes a
+ * block's content (the list merge) makes it differ from its fingerprint and
+ * save in the standard form.
  *
  * @param source - The loaded source, its line endings normalized.
  * @param located - The root's located blocks, one per root node.
- * @returns The source map; it holds no block when the root's nodes do not
- *   pair one to one with the located blocks.
+ * @param recorded - The parts the builders recorded, keyed by node (a column block by {@link columnBlockKey}).
+ * @returns The source map; it holds no block and no part when the root's
+ *   nodes do not pair one to one with the located blocks.
  */
-function $recordSourceMap(source: string, located: LocatedBlock[]): MarkdownSourceMap {
+function $recordSourceMap(source: string, located: LocatedBlock[], recorded: ReadonlyMap<NodeKey, RecordedPart>): MarkdownSourceMap {
     const definitions = $readDefinitions();
-    const rendered = $serializeTopLevelBlocks(definitions);
+    const record: RecordedFingerprints = {
+        partFingerprints: new Map(), blockFingerprints: new Map(), cellFingerprints: new Map(), standardItems: new Map(),
+    };
+    const rendered = $recordPartFingerprints(definitions, record);
     const load: MarkdownSourceLoad = {
         prefix:          located.length > 0 ? source.slice(0, located[0]!.start) : source,
         endsWithNewline: source.endsWith("\n"),
@@ -450,17 +508,182 @@ function $recordSourceMap(source: string, located: LocatedBlock[]): MarkdownSour
     if (located.length === 0 && rendered.length === 1) {
         const { node, text } = rendered[0]!;
 
-        blocks.set(node.getKey(), { load, index: 0, body: "", after: "", fingerprint: text });
-    } else if (rendered.length === located.length) {
-        located.forEach((entry, index) => {
-            const after = source.slice(entry.end, located[index + 1]?.start ?? source.length);
-            const { node, text } = rendered[index]!;
+        blocks.set(node.getKey(), { load, index: 0, body: "", after: "", fingerprint: text, partsDiffer: false });
 
-            blocks.set(node.getKey(), { load, index, body: source.slice(entry.start, entry.end), after, fingerprint: text });
-        });
+        return { latest: load, blocks, parts: new Map() };
     }
 
-    return { latest: load, blocks };
+    if (rendered.length !== located.length) {
+        return { latest: load, blocks, parts: new Map() };
+    }
+
+    const bodies = new Map<NodeKey, string>();
+
+    located.forEach((entry, index) => {
+        bodies.set(rendered[index]!.node.getKey(), source.slice(entry.start, entry.end));
+    });
+
+    const { parts, differing } = $recordedParts(recorded, record, load, bodies);
+
+    located.forEach((entry, index) => {
+        const after = source.slice(entry.end, located[index + 1]?.start ?? source.length);
+        const { node, text } = rendered[index]!;
+        const body = bodies.get(node.getKey())!;
+
+        blocks.set(node.getKey(), { load, index, body, after, fingerprint: text, partsDiffer: differing.has(node.getKey()) });
+    });
+
+    return { latest: load, blocks, parts };
+}
+
+/**
+ * Builds the source map's nested parts from what the builders recorded and
+ * the fingerprints the fingerprint pass stored. A part is dropped when its
+ * node is no longer in the document (the items of a list that could not be
+ * built, and became a raw block), when no fingerprint was stored for it, or
+ * when the top-level block holding it has a tab in its source: a tab in a
+ * container's indentation reads by its column, which a part moved elsewhere
+ * would change.
+ *
+ * @param recorded - The parts the builders recorded, keyed by node (a column block by {@link columnBlockKey}).
+ * @param record - The fingerprints the fingerprint pass stored.
+ * @param load - The document's import.
+ * @param bodies - Each top-level block's source, keyed by its node.
+ * @returns The parts, and the keys of the blocks that hold a part whose source is not its standard form.
+ */
+function $recordedParts(
+    recorded: ReadonlyMap<NodeKey, RecordedPart>, record: RecordedFingerprints, load: MarkdownSourceLoad, bodies: ReadonlyMap<NodeKey, string>,
+): { readonly parts: Map<NodeKey, MarkdownSourcePart>; readonly differing: Set<NodeKey> } {
+    const parts = new Map<NodeKey, MarkdownSourcePart>();
+    const differing = new Set<NodeKey>();
+    const columnBlocks: Array<readonly [NodeKey, Extract<RecordedPart, { kind: "columnBlock" }>, NodeKey]> = [];
+
+    for (const [recordedKey, part] of recorded) {
+        const key = part.kind === "columnBlock" ? part.node : recordedKey;
+        const place = $placeOfRecordedPart(key, part, record, bodies);
+
+        if (place === null) {
+            continue;
+        }
+
+        if (part.kind === "columnBlock") {
+            columnBlocks.push([key, part, place.column!]);
+        } else {
+            parts.set(key, completedPart(key, part, place, record, load));
+        }
+
+        const differs = differsFromStandard(part, place.fingerprint, record.standardItems.get(key));
+
+        if (differs) {
+            place.blockKeys.forEach((blockKey) => differing.add(blockKey));
+        }
+    }
+
+    const columnLoads = new Map<ColumnLoad, MarkdownSourceLoad>();
+
+    for (const [key, part, column] of columnBlocks) {
+        const columnLoad = columnLoads.get(part.columnLoad) ?? { ...part.columnLoad, definitions: load.definitions, definitionsKey: load.definitionsKey };
+        const block: MarkdownSourceBlock = {
+            load: columnLoad, index: part.index, body: part.body, after: part.after, fingerprint: record.blockFingerprints.get(key)!,
+            partsDiffer: differing.has(key),
+        };
+
+        columnLoads.set(part.columnLoad, columnLoad);
+        parts.set(columnBlockKey(key), { kind: "columnBlock", column, block });
+    }
+
+    return { parts, differing };
+}
+
+/** Where a recorded part stands in the finished document. */
+interface RecordedPlace {
+    /** The key of the `:::` column holding it; `null` for none. */
+    readonly column:      NodeKey | null;
+    /** Its standard form at load. */
+    readonly fingerprint: string;
+    /** The keys of the part's own node and every block above it up to the top-level one. */
+    readonly blockKeys:   readonly NodeKey[];
+}
+
+/**
+ * Finds where a recorded part stands, or drops it: its node must still be in
+ * the document, the fingerprint pass must have stored its standard form, and
+ * the top-level block holding it must have no tab in its source.
+ *
+ * @param key - The part's node key.
+ * @param part - The part as its builder recorded it.
+ * @param record - The fingerprints the fingerprint pass stored.
+ * @param bodies - Each top-level block's source, keyed by its node.
+ * @returns Its place, or `null` for a part to drop.
+ */
+function $placeOfRecordedPart(key: NodeKey, part: RecordedPart, record: RecordedFingerprints, bodies: ReadonlyMap<NodeKey, string>): RecordedPlace | null {
+    const node = $getNodeByKey(key);
+    const isInDocument = node?.isAttached() === true;
+
+    if (node === null || !isInDocument) {
+        return null;
+    }
+
+    const ancestors = node.getParents();
+    const top = ancestors[ancestors.length - 2] ?? node;
+    const fingerprint = part.kind === "columnBlock" ? record.blockFingerprints.get(key) : record.partFingerprints.get(key);
+    const hasTab = bodies.get(top.getKey())?.includes("\t");
+
+    if (fingerprint === undefined || hasTab !== false) {
+        return null;
+    }
+
+    return {
+        column:    ancestors.find($isMarkdownColumnNode)?.getKey() ?? null,
+        fingerprint,
+        blockKeys: [node, ...ancestors.slice(0, -1)].map((ancestor) => ancestor.getKey()),
+    };
+}
+
+/**
+ * Adds to a recorded part what the load knows: its import, its column and its
+ * fingerprint.
+ *
+ * @param key - The part's node key.
+ * @param part - The part as its builder recorded it, a column block excepted.
+ * @param place - Where it stands.
+ * @param record - The fingerprints the fingerprint pass stored.
+ * @param load - The document's import.
+ * @returns The part for the source map.
+ */
+function completedPart(
+    key: NodeKey, part: Exclude<RecordedPart, { kind: "columnBlock" }>, place: RecordedPlace, record: RecordedFingerprints, load: MarkdownSourceLoad,
+): MarkdownSourcePart {
+    const { column, fingerprint } = place;
+
+    if (part.kind === "item") {
+        return { ...part, load, column, fingerprint };
+    }
+
+    if (part.kind === "row") {
+        return { ...part, load, column, fingerprint, cellFingerprints: record.cellFingerprints.get(key) ?? [] };
+    }
+
+    return { ...part, fingerprint };
+}
+
+/**
+ * Tells whether a part's source is not its standard form at load, which is
+ * when an edit of the block holding it must write it part by part. A code
+ * frame and a column block are always taken to differ.
+ *
+ * @param part - The part as its builder recorded it.
+ * @param fingerprint - Its standard form at load.
+ * @param standardItem - For an item, its standard lines under the marker it is written with.
+ * @returns `true` when the part's source is not its standard form.
+ */
+function differsFromStandard(part: RecordedPart, fingerprint: string, standardItem: string | undefined): boolean {
+    switch (part.kind) {
+        case "item":         return part.source !== standardItem;
+        case "row":          return part.line !== fingerprint;
+        case "delimiterRow": return part.line !== fingerprint;
+        default:             return true;
+    }
 }
 
 /**
@@ -924,7 +1147,38 @@ function $buildCode(token: Tokens.Code): CodeNode {
         code.append($createTextNode(text));
     }
 
+    recordCodeFrame(code, token);
+
     return code;
+}
+
+/**
+ * Records a fenced code block's fence lines when the load is recording parts,
+ * its opening line starts at its container's margin and its last line is a
+ * fence that closes it: a save of an edited block writes them as they were
+ * while its info string and its code allow.
+ *
+ * @param code - The code block.
+ * @param token - The code token.
+ */
+function recordCodeFrame(code: CodeNode, token: Tokens.Code): void {
+    const parts = IMPORT_PARTS.current;
+
+    if (parts === null || token.codeBlockStyle === "indented") {
+        return;
+    }
+
+    const lines = token.raw.trimEnd().split("\n");
+    const opening = OPENING_FENCE_LINE.exec(lines[0]!)?.[1];
+    const closing = lines.length > 1 ? CLOSING_FENCE_LINE.exec(lines[lines.length - 1]!)?.[1] : undefined;
+
+    if (opening === undefined || closing === undefined || closing[0] !== opening[0] || closing.length < opening.length) {
+        return;
+    }
+
+    parts.set(code.getKey(), {
+        kind: "codeFrame", opening: lines[0]!, closing: lines[lines.length - 1]!, fenceCharacter: opening[0] as "`" | "~", fenceLength: opening.length,
+    });
 }
 
 /**
@@ -1101,6 +1355,9 @@ function $buildListItem(item: Tokens.ListItem): ListItemNode | null {
 
     const listItem = $createListItemNode();
     const itemText = $createMarkdownListItemTextNode();
+
+    recordItemPart(listItem, item);
+
     const opensWithItemText = text !== null || located.length === 0;
 
     if (opensWithItemText) {
@@ -1120,6 +1377,69 @@ function $buildListItem(item: Tokens.ListItem): ListItemNode | null {
     }
 
     return $buildItemBlocks(listItem, blocks);
+}
+
+/**
+ * Records a list item's source when the load is recording parts and the item
+ * can be written elsewhere as its source: it starts with a list marker after
+ * at most three spaces and holds no lazy continuation line, a line after the
+ * first, not blank, indented less than the item's content column, which
+ * reads as the item's text only by where the item stands.
+ *
+ * @param node - The item's node.
+ * @param item - The list-item token.
+ */
+function recordItemPart(node: ListItemNode, item: Tokens.ListItem): void {
+    const parts = IMPORT_PARTS.current;
+    const source = item.raw.trimEnd();
+    const match = parts === null ? null : ITEM_START.exec(source);
+
+    if (parts === null || match === null) {
+        return;
+    }
+
+    const [, indent, bullet, digits, delimiter, spacing] = match as unknown as [string, string, string | undefined, string | undefined, string | undefined, string];
+    const marker = bullet ?? delimiter!;
+    const itemLines = source.split("\n");
+    const column = contentColumn(itemLines[0]!);
+
+    const isLazy = itemLines.slice(1).some((line) => line.trim() !== "" && /^ */.exec(line)![0].length < column);
+
+    if (isLazy) {
+        return;
+    }
+
+    parts.set(node.getKey(), {
+        kind:            "item",
+        source,
+        indent:          indent.length,
+        marker,
+        digits:          digits ?? null,
+        spacing,
+        separatesBlocks: separatesItemBlocks(item.tokens),
+    });
+}
+
+/**
+ * Tells whether a blank line stands between two blocks of a list item, as
+ * `marked` reads looseness: a `space` token holding two line ends, followed
+ * later by a token that is not `space`.
+ *
+ * @param tokens - The item's block tokens.
+ * @returns `true` when one does.
+ */
+function separatesItemBlocks(tokens: Token[]): boolean {
+    let blank = false;
+
+    for (const token of tokens) {
+        if (token.type === "space") {
+            blank = blank || (token.raw.match(/\n/g)?.length ?? 0) >= 2;
+        } else if (blank) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 /**
@@ -1207,8 +1527,92 @@ function $buildTable(token: MdTableToken): TableNode | null {
     }
 
     table.setColWidths(token.widths.map((width) => width ?? 0));
+    recordTableParts(table, token);
 
     return table;
+}
+
+/**
+ * Records a table's rows and its delimiter row when the load is recording
+ * parts and the table's source has one line per row: the header, the
+ * delimiter row and each body row. Each row's cells are kept as written, so
+ * a save of an edited row writes the cells it did not change as they were.
+ *
+ * @param table - The table, its rows built.
+ * @param token - The `mdtable` token.
+ */
+function recordTableParts(table: TableNode, token: MdTableToken): void {
+    const parts = IMPORT_PARTS.current;
+    const lines = token.raw.trimEnd().split("\n");
+    const rows = table.getChildren();
+
+    if (parts === null || lines.length !== 2 + token.rows.length || rows.length !== 1 + token.rows.length) {
+        return;
+    }
+
+    parts.set(table.getKey(), { kind: "delimiterRow", line: lines[1]! });
+
+    rows.forEach((row, index) => {
+        const line = lines[index === 0 ? 0 : index + 1]!;
+        const trimmed = line.trim();
+
+        parts.set(row.getKey(), {
+            kind:       "row",
+            line,
+            cells:      rowCells(line),
+            outerPipes: trimmed.startsWith("|") && trimmed.endsWith("|") && !trimmed.endsWith("\\|"),
+        });
+    });
+}
+
+/**
+ * Splits a pipe-row line into its cells as the table tokenizer does, but
+ * keeps each cell's text as written, spaces and escapes included: one leading
+ * and one trailing pipe dropped, a split at each unescaped `|`.
+ *
+ * @param line - One raw table-row line.
+ * @returns The text between the pipes, one entry per cell.
+ *
+ * @example
+ * ```
+ * rowCells("| a   | bb |")  // -> [" a   ", " bb "]
+ * rowCells("a | b")         // -> ["a ", " b"]
+ * ```
+ */
+function rowCells(line: string): string[] {
+    let trimmed = line.trim();
+    const opensWithPipe = trimmed.startsWith("|");
+
+    if (opensWithPipe) {
+        trimmed = trimmed.slice(1);
+    }
+
+    const closesWithPipe = trimmed.endsWith("|") && !trimmed.endsWith("\\|");
+
+    if (closesWithPipe) {
+        trimmed = trimmed.slice(0, -1);
+    }
+
+    const cells: string[] = [];
+    let current = "";
+
+    for (let i = 0; i < trimmed.length; i += 1) {
+        const char = trimmed[i]!;
+
+        if (char === "\\" && trimmed[i + 1] === "|") {
+            current += "\\|";
+            i += 1;
+        } else if (char === "|") {
+            cells.push(current);
+            current = "";
+        } else {
+            current += char;
+        }
+    }
+
+    cells.push(current);
+
+    return cells;
 }
 
 /**
@@ -1266,15 +1670,56 @@ function $buildFence(token: MdBlockToken): MarkdownBlockNode {
     fence.setColumnGap(style.columnGap);
     $setState(fence, fenceOpeningState, FENCE_OPENING.exec(token.raw.slice(0, lineEndAt(token.raw, 0)))?.[1] ?? "");
 
+    // A `\|||` line is unescaped by the split, so a column's text is a slice of the source only without one.
+    const scan = startFenceLineScan();
+    const slicesSource = !token.raw.split("\n").some((line) => readFenceLine(scan, line) === "escaped-separator");
+
     token.columns.forEach((tokens, index) => {
         const column = $createMarkdownColumnNode();
-        const blocks = $buildBlockList(sections[index] ?? "", tokens);
+        const section = sections[index] ?? "";
+        const located = locateBlocks(section, tokens);
+        const blocks = located.map($buildLocatedBlock);
+
+        if (slicesSource) {
+            recordColumnBlocks(section, located, blocks);
+        }
 
         column.append(...(blocks.length > 0 ? blocks : [$createParagraphNode()]));
         fence.append(column);
     });
 
     return fence;
+}
+
+/**
+ * Records the blocks of one column of a fence when the load is recording
+ * parts: each block's source and the text after it, in the column's own text,
+ * so a save of an edited column writes it as a document is written.
+ *
+ * @param section - The column's text.
+ * @param located - The column's located blocks.
+ * @param blocks - The nodes built for them, one each.
+ */
+function recordColumnBlocks(section: string, located: LocatedBlock[], blocks: LexicalNode[]): void {
+    const parts = IMPORT_PARTS.current;
+
+    if (parts === null || located.length === 0) {
+        return;
+    }
+
+    const columnLoad: ColumnLoad = {
+        prefix:          section.slice(0, located[0]!.start),
+        endsWithNewline: section.endsWith("\n"),
+        blockCount:      located.length,
+        endsOpen:        endsOpen(section, located),
+    };
+
+    located.forEach((entry, index) => {
+        parts.set(columnBlockKey(blocks[index]!.getKey()), {
+            kind: "columnBlock", node: blocks[index]!.getKey(), columnLoad, index, body: section.slice(entry.start, entry.end),
+            after: section.slice(entry.end, located[index + 1]?.start ?? section.length),
+        });
+    });
 }
 
 // ---------------------------------------------------------------- inline
