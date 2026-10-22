@@ -65,6 +65,17 @@ page resets to empty.
   must add a `|` or a `:` to it (`| a |` over `| --- |`, or `a` over
   `:--`). See [Migration](/reference/migration/next) for the full note.
 
+- **`Markdown` and `MarkdownEditor` read through `marked` 18.1.0.** The
+  parser is pinned to exactly 18.1.0; the library was tested on 18.0.9
+  before. A link written around a link (`[[a](/in)](/out)`) shows its
+  outer brackets and destination as text, a numeric character reference
+  (`&#35;`) reads as its character, a line after a fence closed inside a
+  nested quote is shown again, an HTML block on the line after a list item
+  ends the list, a tab in a list item's text is kept, a code fence alone on
+  a paragraph's last line opens an empty code block, and reference labels
+  match by Unicode case folding. Each is the reading CommonMark or GFM
+  specifies. See [Migration](/reference/migration/next) for the table.
+
 ### Core
 
 - **`DOM.sink` and `DOM.source` are now read-only.** Swap a seam through
@@ -477,19 +488,14 @@ page resets to empty.
   assistive technology for an editing host, on either surface; see
   *Read-only* in the `MarkdownEditor` docs.
 
-- **`marked` is pinned to exactly 18.0.10.** The library declared
+- **`marked` is pinned to one exact version, 18.1.0.** The library declared
   `^18.0.5`, so a fresh install resolved the newest 18.x, and an
   application with an older lockfile kept an older one. `marked`'s patch
   releases change how a document reads, so the same document could read
-  differently in two applications: of the eleven versions the range
-  admitted, the library's Markdown tests pass on two. The library now
-  declares a version it is tested on. Two readings change from 18.0.9,
-  both to what CommonMark specifies: a code fence alone on a paragraph's
-  last line (`foo` then ```` ``` ````) ends the paragraph and opens an
-  empty code block, and emphasis followed by a backslash and an emoji
-  (`*a*\🙂`) holds only its text, with the backslash shown. No consumer
-  action is needed; an application that depends on `marked` itself at
-  another version gets a second copy beside the library's.
+  differently in two applications. The library now declares the version it
+  is tested on. An application that depends on `marked` itself at another
+  version gets a second copy beside the library's.
+
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
@@ -625,9 +631,9 @@ page resets to empty.
   `__bold__` and `_italic_`, reference links, bare-URL, `www.` and email
   autolinks — and each checks its result, doing nothing when the edited text
   would not read back as intended (markers left literal by Markdown's flanking
-  rules or a backslash, or cutting another construct). `removeLink` on a link
-  nested in another link's text takes it out of the outer link
-  (`[[a](/in) b](/out)` gives `a[ b](/out)`). The block commands work on
+  rules or a backslash, or cutting another construct). `removeLink` on an
+  autolink nested in another link's text takes it out of the outer link
+  (`[<https://a.test/in> b](/out)` gives `https\://a.test/in[ b](/out)`). The block commands work on
   whole blocks as the viewer reads them: a block `setBlockType` or a list
   toggle converts leaves the quotes and list items around it for the top
   level, and what followed it inside them stays there, re-opened by its own
@@ -1688,6 +1694,10 @@ page resets to empty.
   was refused and flashed the disposed editor, which ended as an unhandled
   rejection with `DOM handle … is not registered`. No consumer action is
   needed.
+
+- **A reference keeps its form when its label and its definition's differ
+  in case folding or outer spaces.** `[ẞ]` with the definition `[SS]: /url`
+  was written `[ẞ](/url)` once its block was edited; it stays `[ẞ]`.
 
 ### Core
 

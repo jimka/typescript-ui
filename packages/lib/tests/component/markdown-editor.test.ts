@@ -1243,6 +1243,8 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['C4', '::: columns\none\n|||\nRight\n:::', 'one', null, 'OL', '::: columns\n1. one\n|||\nRight\n:::', '::: columns\n1. one\n|||\nRight\n:::'],
         ['Z1', '- one\n-\n- three', 'one', null, 'UL', 'one\n\n-\n- three', 'one\n\n-\n- three'],
         ['Z1', '- one\n-\n- three', 'one', null, 'OL', '1. one\n\n-\n- three', '1. one\n-\n- three'],
+        // A tab in an item's text is content: both surfaces keep it.
+        ['E19', '- one\ttab\n- z', 'one', null, 'h2', '## one\ttab\n\n- z', '## one\ttab\n- z'],
     ];
 
     const DIFFERS: ParityRow[] = [
@@ -1277,7 +1279,6 @@ describe('MarkdownEditor list toggles in a list of their kind', () => {
         ['E16', 'one\\\ntwo', 'one', 'two', 'h2', 'one\\\ntwo\n---', 'one\\\ntwo'],
         ['E17', '- one\\\n  two\n- three', 'one', 'three', 'UL', 'one\\\ntwo\n\nthree', '- one\\\n  two\n- three'],
         ['E19', '-\tone\n\n\tsecond\n- two', 'one', null, 'UL', 'one\n\nsecond\n\n- two', '-\tone\n\n\tsecond\n- two'],
-        ['E19', '- one\ttab\n- z', 'one', null, 'h2', '## one   tab\n\n- z', '- one\ttab\n- z'],
         // The source-mode lift rule is deferred: what a list item holds after its text leaves the list with the
         // text on the WYSIWYG surface, and stays in the list in source mode, in an item its marker re-opens. A
         // task item that holds such blocks, or a nested list, is left alone there. Each row below is a row the
@@ -2930,16 +2931,15 @@ describe('MarkdownEditor source-mode line commands read the viewer\'s blocks', (
         });
     }
 
-    // The editor keeps this document as a raw block, which shows `b`; the
-    // viewer hides it. Only the decline is checked.
-    it('a heading declines on a line the viewer does not show', () => {
+    // `b` is a paragraph after the quote: a fence closed inside a nested quote ends the lines the quote takes.
+    it('a heading acts on the line after a fence closed inside a nested quote', () => {
         const doc = '> > ```\n> > a\n> > ```\nb';
         const editor = new MarkdownEditor(doc, { mode: 'source' });
 
         injectLiveSourceView(editor, doc, doc.length, doc.length);
         editor.setBlockType('h2');
 
-        expect(editor.getValue()).toBe(doc);
+        expect(editor.getValue()).toBe('> > ```\n> > a\n> > ```\n## b');
     });
 });
 
@@ -5310,7 +5310,7 @@ describe('MarkdownEditor context menu — caret and availability', () => {
     const CODE_BLOCK = '```\ncode\n```';
     const LINK_PROSE = 'A [text](https://x) link.';
     const SOURCE_RUN = 'a <span>x</span> b';
-    const NESTED_LINK = '[[b - c](https://y)](https://x)';
+    const NESTED_LINK = '[<https://y.test/b-c>](https://x)';
     const PROSE_AND_TABLE = 'para\n\n| a |\n| - |\n| c |';
 
     /** Builds an editor showing `markdown`. */
@@ -5957,14 +5957,14 @@ describe('MarkdownEditor context menu — caret and availability', () => {
                 available: ['canFormat', 'canLink', 'canRemoveLink', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
             },
             {
-                // Offset 2 of "b - c" has no word character on either side, so the caret expands to nothing.
+                // Offset 6 of "https://y.test/b-c" stands between `:` and `/`, no word character on either side, so the caret expands to nothing.
                 name: 'A7: a bare caret in a link nested in a link', markdown: NESTED_LINK,
-                select: (editor) => caretIn(editor, 'b - c', 2),
+                select: (editor) => caretIn(editor, 'https://y.test/b-c', 6),
                 available: ['canFormat', 'canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
             },
             {
                 name: 'A7: a caret inside a word of a link nested in a link', markdown: NESTED_LINK,
-                select: (editor) => caretIn(editor, 'b - c', 5),
+                select: (editor) => caretIn(editor, 'https://y.test/b-c', 2),
                 available: ['canSetBlockType', 'canSetBlockLayout', 'canInsertTable', 'canInsertImage'],
             },
             {

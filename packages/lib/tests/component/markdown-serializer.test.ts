@@ -532,8 +532,10 @@ describe('$serializeMarkdown — escaping', () => {
         ['E7', '# not a heading', '\\# not a heading'],
         ['E8', 'C:\\path\\x', 'C:\\path\\x'],
         ['E9', 'ends with \\', 'ends with \\\\'],
-        ['E10', '&amp; &#35;', '&amp; &#35;'],
+        ['E10', '&amp; &#35;', '&amp; \\&#35;'],
         ['E11', '[x]: https://e.com', '\\[x\\]: https\\://e.com'],
+        ['E12', '&#x41; b', '\\&#x41; b'],
+        ['E13', '&#12345678; &#abc; &#;', '&#12345678; &#abc; &#;'],
     ];
 
     for (const [id, input, expected] of cases) {
@@ -1639,8 +1641,8 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
 
     describe('emphasis next to a word: a run between a letter and punctuation stays lossy', () => {
         // No delimiter opens after a letter and before punctuation, or closes after punctuation and before a letter.
-        // CommonMark's remedy, a character reference for the letter (`fuz&#x7A;*\\**`), shows as typed in the viewer,
-        // which does not decode references. Each case asserts the loss, so a writer that fixes one turns it red.
+        // CommonMark's remedy is a character reference for the letter (`fuz&#x7A;*\\**`), which the viewer reads as
+        // the letter. The serializer does not write one. Each case asserts the loss, so a writer that fixes one turns it red.
         const cases: Array<[string, () => LexicalNode[], string]> = [
             ['italic text opening with punctuation after a word (CommonMark 437 after a typed word)', () => [p(
                 'foo fuzz', text('*', ['italic']),

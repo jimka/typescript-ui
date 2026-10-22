@@ -1645,7 +1645,7 @@ function appendText(target: InlineTarget, text: string, context: InlineContext):
  * open no link node, so it is kept as source and its destination is never
  * dropped — as is one at the block's edge whose own text beside them is
  * only whitespace, which a save would trim: a link all of whose text sits
- * in nested links (`marked` nests an autolink or a link in link text;
+ * in nested links (`marked` nests an autolink in link text;
  * Lexical's links do not nest) becomes source nodes showing that text as
  * the viewer does ({@link appendNestedLinkRuns}), and a link whose text shows nothing
  * (`[](u)`) one source node showing nothing. A link with text of its own

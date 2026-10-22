@@ -22,7 +22,7 @@ import {
     resolveImageSpec, resolveSpanStyle, spanStyleToAttributes,
 } from "~/component/display/markdownAttributes.js";
 import {
-    lexMarkdown, lexMarkdownInline, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions,
+    lexMarkdown, lexMarkdownInline, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions, linkLabelKey,
 } from "~/component/display/markdownExtensions.js";
 import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
 import type { MdTableToken } from "~/component/display/markdownTableExtension.js";
@@ -307,6 +307,14 @@ const EMAIL_LOCAL_CHARACTER = /^[A-Za-z0-9._+-]$/;
 
 /** A character of the domain of a GFM bare email autolink. */
 const EMAIL_DOMAIN_CHARACTER = /^[A-Za-z0-9_-]$/;
+
+/**
+ * A numeric character reference at the start of the text: `&#35;` or
+ * `&#x23;`, with one to seven decimal digits or one to six hexadecimal ones
+ * (the limits copy `marked`'s own rule). `marked` reads one as the character
+ * it names, so the `&` of a reference the text holds as typed is escaped.
+ */
+const NUMERIC_CHARACTER_REFERENCE = /^&#(?:\d{1,7}|[Xx][0-9A-Fa-f]{1,6});/;
 
 /** The highest C0 control character code; a link destination holding one must be written in angle brackets. */
 const LAST_C0_CONTROL = 0x1f;
@@ -4281,8 +4289,8 @@ function writeBracketed(
 
 /**
  * Tells whether `definitions` resolve `node`'s label to exactly its current
- * URL and title, matching labels as `marked` does: whitespace runs collapsed
- * to one space, then lowercased. An empty title counts as none, as `marked`
+ * URL and title, matching labels as `marked` does ({@link linkLabelKey}).
+ * An empty title counts as none, as `marked`
  * gives a reference link with an empty title none. A title holding a blank
  * line only a definition can write — an inline link's would end its block —
  * so a link with one keeps its reference form while its label resolves to
@@ -4298,7 +4306,7 @@ function resolvesToNode(node: ReferenceLinkNode, definitions: Links | null): boo
         return false;
     }
 
-    const key = node.getReference().label.replace(/\s+/g, " ").toLowerCase();
+    const key = linkLabelKey(node.getReference().label);
 
     if (!Object.hasOwn(definitions, key)) {
         return false;
@@ -5735,8 +5743,9 @@ interface EscapeSite {
  * code or bracket character always; a `\` before punctuation or at a run's
  * end; a `_` that is not intraword; a tag-shaped `<`; a `+` next to a `+`
  * (underline); a `|` in a table cell; the `:` of a bare URL scheme, the `.`
- * of `www.` and the `@` of an email address (GFM autolinks); a `!` just
- * before a link (an image); and a `(` or `{` after a `]` or an image's `)`
+ * of `www.` and the `@` of an email address (GFM autolinks); the `&` of a
+ * numeric character reference; a `!` just before a link (an image); and a
+ * `(` or `{` after a `]` or an image's `)`
  * — `marked` unescapes the brackets of link text before reading it, so
  * `\]` followed by `(` or `{` would otherwise become a link or span there.
  *
@@ -5764,6 +5773,7 @@ function needsEscape(char: string, site: EscapeSite): boolean {
         case ":":  return BARE_URL_SCHEME.test(site.text.slice(0, site.index)) && site.text.startsWith("//", site.index + 1);
         case ".":  return BARE_WWW_PREFIX.test(site.text.slice(0, site.index));
         case "@":  return EMAIL_LOCAL_CHARACTER.test(site.previous) && EMAIL_DOMAIN_CHARACTER.test(site.next);
+        case "&":  return NUMERIC_CHARACTER_REFERENCE.test(site.text.slice(site.index));
         case "!":  return isLast && site.next === "[";
         case "(":  return site.previous === "]";
         case "{":  return site.previous === "]" || (site.index === 0 && site.previous === ")");

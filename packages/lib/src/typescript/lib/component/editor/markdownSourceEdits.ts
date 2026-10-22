@@ -1031,11 +1031,11 @@ export function linkSource(url: string | null): MarkdownSourceTransform {
 export const REMOVE_LINK_SOURCE: MarkdownSourceTransform = linkSource(null);
 
 /**
- * Builds the edit replacing a link with its text. A link nested in another
- * link's text (`[[a](/in) b](/out)`) is taken out of the outer link, whose
- * text before and after it each keep the outer link's target
- * (`a[ b](/out)`), so its text is unlinked rather than joining the outer
- * link, as removing the link in WYSIWYG mode does.
+ * Builds the edit replacing a link with its text. An autolink nested in
+ * another link's text (`[<https://a.test/in> b](/out)`) is taken out of the
+ * outer link, whose text before and after it each keep the outer link's
+ * target (`https\://a.test/in[ b](/out)`), so its text is unlinked rather
+ * than joining the outer link, as removing the link in WYSIWYG mode does.
  *
  * @param analysis - The document's analysis.
  * @param link - The link.

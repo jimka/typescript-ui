@@ -609,8 +609,8 @@ describe('MarkdownDocumentPanel live toolbar state', () => {
         it('in a link nested in a link the Link button disables: the link commands decline there', () => {
             const panel = new MarkdownDocumentPanel();
 
-            panel.setValue('[[b - c](https://y)](https://x)');
-            caretIn(panel.getEditor(), 'b - c', 5);
+            panel.setValue('[<https://y.test/b-c>](https://x)');
+            caretIn(panel.getEditor(), 'https://y.test/b-c', 5);
 
             expect(panel.getEditor().getSelectionState().linkUrl).not.toBeNull();
             expect(findPopupButton(panel, 'Link…').isEnabled()).toBe(false);
@@ -619,9 +619,9 @@ describe('MarkdownDocumentPanel live toolbar state', () => {
         it('with only the far end of a selection in a link nested in a link the Link button disables', () => {
             const panel = new MarkdownDocumentPanel();
 
-            panel.setValue('plain [[b - c](https://y)](https://x)');
+            panel.setValue('plain [<https://y.test/b-c>](https://x)');
             lexicalOf(panel.getEditor()).update(() => {
-                const [plain, nested] = ['plain ', 'b - c'].map((text) => {
+                const [plain, nested] = ['plain ', 'https://y.test/b-c'].map((text) => {
                     return $getRoot().getAllTextNodes().find((candidate) => candidate.getTextContent() === text)!;
                 });
 
