@@ -1056,6 +1056,24 @@ page resets to empty.
   document was then left partly edited. These edits now apply normally. No
   consumer action is needed.
 
+- **`MarkdownEditor` no longer joins the block after a table into a deleted
+  selection.** Deleting a selection that ran from a paragraph into a table
+  cell removed the table, then joined the paragraph after the table onto the
+  rest of the first one (from the middle of `Above` into a cell, Delete gave
+  `Abovafter`). A selection from a cell down into a paragraph joined that
+  paragraph's rest onto the block above the table. Typing, pasting, Enter or
+  Ctrl+Backspace over such a selection left part of the table behind instead,
+  and `insertTable()` split the cell the selection ended in and inserted no
+  table. A selection that reaches into a table now covers the whole table:
+  the edit removes the selected text and the table, and the block on the
+  table's far side stays as it was. A cut or a copy of such a selection,
+  from the keyboard or through `cut()` / `copy()`, puts the whole table on
+  the clipboard; a copy changes neither the document nor the selection.
+  `insertTable()` and `insertImage()` remove the selection first, then
+  insert at the caret, as one undo step. A paste that inserts nothing, and
+  Shift+Enter where no line break could be written once the selection is
+  gone, leave the selection as it was. No consumer action is needed.
+
 - **`MarkdownEditor` keeps the caret inside text a save trims.** Deleting
   the last line of a block converted from a code block (for example with
   `setBlockType("quote")`) left the caret past the end of the trimmed text,

@@ -578,3 +578,424 @@ No public API changes. The behaviour change gets the MarkdownEditor.md sentence 
     `$deleteCellHandler` gives the same end point (`selectNext` with no next
     sibling selects the column's end), so this plan neither causes nor changes
     the result.
+
+---
+
+## Implementation Notes
+
+- **Red phase: D13 already passed before the fix.** Step 1 predicted every D
+  row would fail. D13 (`"code"@2` → `last-cell-end` in `CODE_ABOVE`) gave
+  `CODE_ABOVE_RESULT` unfixed too: `$joinIntoTextOnlyBlock` joins the end
+  cell's rest, which is empty at the end of the last cell, and Lexical then
+  removed the whole table. The row still pins the result, but not the
+  CRITICAL decision `[^critical]` says it does. Row D17, added during the
+  audit, is the case that decision is about: `"code"@2` → `"c1"@1` in
+  `CODE_ABOVE` gives `CODE_ABOVE_RESULT`, caret `"co"@2`. It fails with the
+  table-edge delete listener at `COMMAND_PRIORITY_HIGH` after
+  `$joinIntoTextOnlyBlock`, and passes at CRITICAL.
+- **`$removeTableEdgeRange` removes a range from a table into a later block
+  in two steps** (`$removeRangeKeepingEndBlock`), not the plan's single
+  `removeText()`. The scratch fuzz harness found the single removal broke
+  the tree when the end block was emptied: Lexical 0.49.0 removes an emptied
+  end block and every container it empties when the range starts between
+  blocks, but leaves the root's last child in place, so a range from a table
+  to the end of a list's last item left an empty list, and one to the end of
+  a fence's only line left a `:::` block with no column (editor and viewer
+  then disagreed, and later edits pasted text straight into the block). The
+  removal now trims the end block up to the end first, then removes from the
+  table's edge to the end block's own position. Neither step is a
+  stale-focus range, so `$removeTableEdgeRange` no longer calls
+  `$removeRangeIfStaleFocus`, and step 6's grep finds four call sites, each
+  preceded by the table-edge removal (`$removeRangeIfTableEdge`, or in
+  `insertImage()` the block described below). Rows D18–D20 pin the list,
+  fence and heading cases; D18 and D19 failed before the change.
+- **A column the end's table was the only block of keeps an empty
+  paragraph** (`$refillEmptiedColumn`). Found by the same fuzz run: a range
+  from a paragraph into a table that is its fence's only block emptied the
+  column node itself (the caret settling only refills the start's parent),
+  and a later list toggle saved what the editor did not show. This is the
+  plan's non-goal shape; the fence still saves as `::: {}`, now with a valid
+  column. Row D21 pins it.
+- **Enter in a raw block over a table-edge range** is routed too, found by
+  the audit: `$handleRawBlockEnter` calls `insertLineBreak()` directly and
+  never dispatches the insert commands, so it now calls
+  `$removeRangeIfTableEdge` first, as `cut()`/`paste()`/`insertImage()` do.
+  Row R10 pins it (its expected value was first what the same Enter gives
+  over the same text with no table, a line break ending the raw block; the
+  review fixes below changed that). The removal runs before the handler
+  checks for the block's start, so a backward range from a raw block into a cell above it
+  leaves the caret at the block's start and Enter puts an empty paragraph
+  before the block (row R17); checked after the removal, a line break there
+  would have been dropped by the save. The handler takes the raw block at
+  either end of a table-edge range, not only at the anchor, so the same
+  range dragged the other way gives the same document (rows R18 and R19;
+  before, the forward drag of R17's range left an empty raw block, and the
+  backward drag of R10's range saved one line break fewer). When the removal
+  leaves the caret outside the raw block — the table closed a `:::` column
+  before it — the handler dispatches `INSERT_PARAGRAPH_COMMAND`, as
+  `@lexical/rich-text`'s Enter does, instead of breaking the line the caret
+  landed in (row R20). The stale-focus guard had the same gap on that
+  route; the command-crash-fixes branch has since closed it (its row R17),
+  and the handler here takes either shape through `$removeGuardedRange`
+  (since round 2 of the review fixes, below, inside `$removeRangeBeforeEnter`,
+  which removes any other range with an end in a raw block as well).
+  After these changes the two-step path was re-checked in Chrome: a drag
+  from `c1` into the middle of `two` in `Above para`, the table, `- one`,
+  `- two` highlighted the table, and Delete left `Above para` and the list
+  item `o`, caret at its start; Ctrl+Z restored the document.
+- **Typing keeps the format of the range's first text node**
+  (`$clearTableEdgeRangeBeforeTyping`), found by the last audit. The plan
+  routed `CONTROLLED_TEXT_INSERTION_COMMAND` through
+  `$clearTableEdgeRangeBeforeInsert`, and `[^precedent]` called the
+  stale-focus typing listener's format handling specific to its own shape.
+  It is not: any guard that collapses the range before Lexical's
+  `insertText` loses the format Lexical would type in, so typing over a
+  range from bold text into a table typed plain (`**Abov**x`). The typing
+  route has its own listener, as the stale-focus guard has: a range that
+  starts in text outside the table types in that text node's format and
+  style (row R21). A range that starts in the table types in the format of
+  the text the caret lands in, which is what the plan's non-goal says
+  happens; before, it typed in whatever format the selection carried (row
+  R26).
+- **`insertImage()` keeps the image out of a raw block or code block the
+  removal leaves the caret in** (`$moveCaretOutOfTextOnlyBlock`), found by
+  the last audit. `insertImage()` declines a selection touching such a
+  block, but checks the selection before the removal; a range from one
+  table into another, or from a table closing a column, can leave the caret
+  at the start of a code block after the table or at the end of one before
+  it, and the image then became text of that block. The image now goes into
+  a new paragraph where the table was (rows R22 and R23).
+- **A cut and a copy put the whole table on the clipboard**
+  (`$grownTableEdgeRange`), a deviation from the non-goal "What a cut puts
+  on the clipboard", found by the last audit for the cut and decided by the
+  user for the copy. The non-goal rests on the browser having grown the
+  selection over the table. `@lexical/table` grows a range dragged into one
+  table, but not one from a table into another
+  (`$fixRangeSelectionForSelectedTable` moves an end only when the other end
+  is in no table), and a selection set through the API is never grown. In
+  both cases the cut removed whole tables and copied part of one. `cut()`
+  and the native cut now read from a copy of the selection grown the way
+  `@lexical/table` grows it — to the start of the first cell or the end of
+  the last — which is never set as the editor's selection. The
+  points `$coverWholeTables` sets cannot be used for this: Lexical's
+  `getTextContent()` reads no text from the last text node of a range that
+  ends between blocks. Rows R24 and R25 pin the two routes offline (R25
+  with `$getClipboardDataFromSelection` replaced by the selection's text,
+  since writing HTML needs a document); row K6 pins the native cut's text
+  and HTML in jsdom with the real function. The docs sentence and the
+  changelog entry say so.
+  **Decided by the user on 2026-10-06: copy and cut both copy whole
+  tables.** The reviews had left copying as it was — `copy()` and the
+  native copy took the selection as it stands, on the ground that only a
+  cut removes more than an ungrown selection holds — and asked the user.
+  The user chose one rule: a copy or a cut of a table-edge range puts on
+  the clipboard what the cut removes, on both routes, so Ctrl/Cmd+C,
+  `copy()`, Ctrl/Cmd+X and `cut()` agree. `copy()` reads from the grown
+  copy as `cut()` did, and `cut()` calls `copy()` again as it did before
+  this branch (the private `copyWysiwygSelection(wholeTables)`, which
+  existed only to tell the two apart, is gone). The native copy has a
+  listener of its own, `$copyTableEdgeRange`, registered with the range
+  guards: for a table-edge range it hands `copyToClipboard` the grown
+  copy's data, as `$cutGuardedRange` does, and removes nothing; any other
+  selection — inside one cell, over cells of one table, outside every
+  table, or cells selected as a table selection — is left to Lexical's own
+  copy and copied as it stands. It is at HIGH, not CRITICAL as the other
+  guards: given no copy event, `copyToClipboard` has the browser fire one
+  and takes it in a listener it registers at CRITICAL for that long, and
+  that event belongs to the copy or cut already under way. A copy changes
+  neither the document, the selection nor the undo stack. Rows R28 (written
+  first, seen to fail): for a paragraph-to-cell range in both directions,
+  a cell-to-following-paragraph range in both directions and a two-table
+  range, `copy()` writes the text `cut()` writes and the native copy hands
+  on the data the native cut hands on; the copy event is handed on; the
+  listener stays behind a CRITICAL one; neither copy is an undo step; the
+  three ranges that cross no table's edge and a cell selection are left as
+  they stand. Row K7 pins the native copy's text, HTML and Lexical nodes
+  against the native cut's in jsdom. Each of these fails a row when taken
+  out: `copy()` reading the selection as it stands, the listener's
+  registration, its table-edge test (widened to any range, and to any
+  selection), the event it hands on, the grown copy in it, and its
+  priority raised to CRITICAL. Checked in Chrome against this worktree's
+  dev server, in the demo's MD Editor: a drag from the quote above the
+  table into a cell (which `@lexical/table` grows over the table), then
+  Ctrl+C, put the quote's selected text and the whole table on the
+  clipboard, as text and as HTML, and left the document and the selection
+  as they were; Ctrl+V in the empty paragraph below brought the table in
+  whole. A native selection from a cell of that table into a cell of the
+  pasted one stayed ungrown; Ctrl+C put both tables and the blocks between
+  them on the clipboard and left the selection ungrown, Ctrl+X put the same
+  text and HTML there and removed them, and Ctrl+Z restored the document.
+  Three letters selected inside one cell copied as those letters alone. Checked in Chrome against this worktree's dev
+  server, with `**Above para**`, the table, `mid`, a second table and
+  `after`: a native selection from `c1` into the second table's `x` stayed
+  ungrown (text points in both cells); Ctrl+X put both tables and `mid` on
+  the clipboard, whole, as text and as HTML, left `Above para` and `after`,
+  and Ctrl+Z restored the document and the selection. In the same document
+  a selection from the middle of `Above para` into `d1` grew over the first
+  table, and typing `x` over it gave bold `Abovx`.
+- **Test helpers beyond the plan's list.** The offline file adds
+  `$firstTable`, `$setEnd`, `$describePoint`/`caretOf` (caret as
+  `"text"@offset` or `type@offset`), `caretBlockIndex`, `rootChildren` and
+  `deleteRange`; the mounted file adds `mountedWithSelection` and
+  `pressKey`. K4 dispatches `CUT_COMMAND` inside a discrete update, like the
+  key rows.
+- **Manual checks M1–M7, run in Chrome against this worktree's dev server.**
+  M1–M4, M6 and M7 were driven by real mouse drags and key presses, and all
+  matched. M2's undo restored the grown selection (anchor `Above para`@4,
+  focus at the end of the last cell). M3's Ctrl+V after the cut pasted the
+  cut content back (`Above para` and the table), with an empty paragraph
+  after the table: that is Lexical's paste of block nodes at a paragraph's
+  end, not this guard. M5 could not be driven as a path (the browser tool
+  drags straight from one element to another, and a straight drag from a
+  header cell out of the table ended collapsed), so its selection was set as
+  a native DOM selection from the table element into `after`: Lexical read it
+  as first-cell-start → `"after"`@2, all four cells highlighted, and Delete
+  left exactly two paragraphs, `Above para` and `ter`. The table-node anchor
+  shape itself is covered offline by D6.
+- **A drag-and-drop move of a table-edge selection** (a drag that starts
+  inside the highlighted selection) was hit by accident during M4: the
+  source removal left `Abov` and kept `after` its own paragraph, and the
+  dropped content landed at the drop point. No guard change was needed.
+- **Scratch fuzz harness** (`b7fz.sh`, run/paste, seeds 601 1709 2207 3313
+  4409 5521 6607 7703 8819 9907 11003, n=3000 each; baseline 0 signatures).
+  The plan's single-removal implementation produced six `editParity`
+  signatures across seeds 3313, 4409, 6607 and 7703 (the empty-list,
+  column-less-fence and emptied-column cases above). With the two-step
+  removal and the column refill, all eleven seeds give 0 signatures.
+  The harness lived in a temporary directory and was lost before the last
+  audit round, so the changes that round made (the `endsInLaterBlock` case
+  for D22, the raw-block Enter changes, the typing, image and cut changes
+  above, and the two-step removal's wider use below) were not run through
+  it. They were run through a smaller
+  seeded fuzz written for the purpose, also scratch: generated documents
+  holding a table (at the root, in a fence or in a column), a random range
+  with one end in a table and the other outside it, one of fourteen routes,
+  then optionally a typed character or Enter; it checks for a throw, a
+  table left attached, an empty list, table, row, fence or column, a
+  changed block on the table's far side, and that the editor shows what the
+  save reads as in the viewer and after a reload. The same eleven seeds at
+  n=3000 give 0 failures; with the two-step removal disabled it reports
+  the empty-container, parity and throw failures described above. It skips
+  the parity check when a range end is in a raw block, where one divergence
+  that needs no table shows: a raw block cut down to `<div` as the last
+  line of the document or of a column shows as a raw block and reads in the
+  viewer as a paragraph.
+- **Rows R11–R16, added during the audit,** pin the six routes the plan's R
+  table left untested: `DELETE_LINE_COMMAND`, `REMOVE_TEXT_COMMAND`,
+  `INSERT_LINE_BREAK_COMMAND`, `INSERT_TAB_COMMAND`, a plain-text
+  `PASTE_COMMAND`, and `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` through
+  `$insertGeneratedNodes`. Each fails with its registration removed.
+- **A table that opens a list item** (`listitem[table, "tail"]`, a shape the
+  importer never builds but the serializer writes; no editing route was
+  found that makes it, so the rows build it on the node tree). The table's
+  outer edge is then a point inside the list item, a block, not between
+  blocks. For a range from the table into the item's own text, the start,
+  after covering, is an element point on that list item, which is also the
+  end's block, so `$removeTableEdgeRange` takes the single-removal path
+  (`endBlock.is(startNode)`), not the two-step one. Row D22 covers the
+  shape, but as first written it asserted only the saved value and that no
+  table was left, which the two-step path gives too; what differs is the
+  caret, left on the list node. The review fixes below add the caret to D22
+  and rows D27–D30, which do tell the two paths apart. D22's saved list is
+  loose because the table made it loose, as a plain `remove()` of the table
+  leaves it. For a range into the table from before the item,
+  the covered end lies in the list item, a later block, and a single
+  removal joined the item's text onto the start's block (`Abovtail`), or,
+  from another table, left part of the item's table. The two-step removal
+  is therefore taken whenever the covered end lies in a later block, not
+  only when the range starts in a table, it keeps the start as the point it
+  is (a text point, or a table's edge), and its first step starts at the
+  end block's own start instead of a caret brought down into its first
+  text, which a table opening the block would take in. Rows D23–D25 pin a
+  start in a paragraph, in another table and in an earlier item of the
+  list. Both changes reach the importer's shapes only through the first
+  step's start point; the fuzz and every earlier row are unchanged by it,
+  and the Chrome check of the two-step path was repeated afterwards: with
+  `**Above para**`, the table, `- one`, `- two` and `after`, a selection
+  from `c1` into the middle of `two` grew over the table, Delete left
+  `Above para`, the list item `o` with the caret at its start, and `after`,
+  and Ctrl+Z restored the document.
+- **Two lists the table stood between join.** "Leaves the block on the
+  table's far side as it was" has this one exception, which is the
+  editor's existing rule for lists of one marker made next to each other
+  (the *Lists* bullet of `MarkdownEditor.md`), not this guard: the list
+  past the table keeps its items as they were, in the one list. Row D26
+  pins it, and the *Tables* bullet says so.
+- **Row R14 asserts the tab.** `@lexical/rich-text` inserts a tab at the
+  caret on `INSERT_TAB_COMMAND` and the save trims it from the paragraph's
+  end, so the saved value alone would not notice a listener that swallowed
+  the command; the row also checks the paragraph's text.
+- **Review fixes** (combined review of 2026-10-05, items B-1 to B-14).
+  - *One guard listener per command* (`registerRangeGuards`, renamed from
+    `registerStaleFocusRangeGuards`). The table-edge listeners had mirrored
+    the stale-focus ones pair by pair, differing in predicate and remover,
+    and their order rested on where `ensureEditor` listed them. Each command
+    now has one listener, built on `$removeGuardedRange`, which takes a
+    table-edge range ahead of a stale-focus one: `$deleteGuardedRange`,
+    `$clearGuardedRangeBeforeInsert`, `$clearGuardedRangeBeforeLineBreak`,
+    `$clearGuardedRangeBeforePastedText`, `$clearGuardedRangeBeforeTyping`,
+    `$clearGuardedRangeBeforePaste` and `$cutGuardedRange`. `cut()`,
+    `paste()` and `insertImage()` call `$removeGuardedRange` too, so
+    `$removeRangeIfTableEdge` and `$removeRangeIfStaleFocus` are gone.
+    `DELETE_CHARACTER_COMMAND` keeps two listeners, since its two guards sit
+    either side of `$joinIntoTextOnlyBlock` (`$deleteTableEdgeRange` at
+    CRITICAL, `$deleteStaleFocusRange` at HIGH). `ensureEditor` holds no
+    registration of this branch any more. Each registration row, the order
+    inside `$removeGuardedRange`, and the two "inserts nothing" checks were
+    removed or swapped in turn; every one fails rows of this file or of
+    `markdown-editor-command-crashes.test.ts`.
+  - *A paste that inserts nothing leaves the range* (B-1). The table-edge
+    listener sat on `PASTE_COMMAND` unconditionally, so a pasted screenshot
+    or an empty clipboard deleted the range and the table. The merged
+    listener reads the range's shape first, then `pasteWillInsertText`; the
+    clipboard-nodes listener removes only when there are nodes. Rows R27.
+    Known and accepted: plain text beside HTML that yields no node.
+  - *The single-removal against two-step choice is pinned* (B-2): D22's
+    caret, D27 and D28 fail without `!endBlock.is(startNode)`, D29 and D30
+    throw without `!endBlock.isParentOf(startNode)` (`startParent` was
+    renamed: it is the start's node, B-9). The third clause,
+    `!$isRootOrShadowRoot(endBlock)`, changed no outcome: 18,000 fuzzed
+    cases (six seeds) gave the same document with and without it, value and
+    node tree. It is removed, so a range ending at the far edge of a table
+    in a `:::` column the start is outside of now takes the two-step path
+    with that column as the kept block (`endsApartFromStart`).
+  - *`copy()` copied the selection as it stands*, pinned at the time by row
+    R28 (B-3), which failed when `copy()` grew the range as `cut()` does.
+    Replaced on 2026-10-06 by the user's decision that a copy copies whole
+    tables as a cut does (see the cut-and-copy note above); R28 now pins
+    that.
+  - *An inserted image keeps to the table's side of an empty code block*
+    (B-4). `$moveCaretOutOfTextOnlyBlock` read the side off the caret, and an
+    empty block's start and end are one point. `$settleCaretIntoBlock` now
+    takes `staysOutOf`, a test for the blocks the caret must not enter, and
+    decides while the caret is still between the blocks. Lexical takes a caret left first or last in its parent into
+    the neighbouring block itself, so `$removeTableEdgeRange` first puts it
+    back on the table's edge. Rows R29, R30, R38–R40; R38 and R39 are shapes
+    the fuzz caught in the first cut of this fix.
+  - *Raw-block Enter re-checks the block's end after the removal* (B-5).
+    Enter over a range is the removal, then Enter at the caret it leaves; at
+    the raw block's end that is a new paragraph after the block, not a line
+    break inside it. Rows R31 and R32. R10 and R19 changed with it: their
+    range takes the rest of the raw block, so the caret is at the block's
+    end, and the line break they expected was the one a reload drops.
+  - *Shift+Enter is declined before the range is removed* (B-6). The break
+    is declined at HIGH by `$declinesLineBreak`, after the CRITICAL guard had
+    already removed the range, so Shift+Enter acted as Delete.
+    `$tableEdgeRemovalDeclinesLineBreak` tells ahead whether the caret the
+    removal leaves is where no break can be written
+    (`$lineBreakUnwritableAt`, which `markdownWritable.ts` exports, and
+    `$breakRuleContainerOf`, exported with it here), and the listener then
+    swallows the command. Rows R33. A scratch differential
+    (the fuzz's eleven seeds, 3,000 ranges each) compared it with removing
+    the range and then pressing Shift+Enter: the two agree on whether a break
+    goes in, and on the document when one does, except where an end of the
+    range is in a raw Markdown block the removal makes read as another block
+    (720 of the 33,000 cases); there the range is still removed and the break
+    dropped. The
+    stale-focus guard had the same gap for a range starting in a level 3–6
+    heading; the command-crash-fixes branch has since closed it
+    (`$staleFocusRemovalDeclinesLineBreak`, its row R16), and the listener
+    here asks `$guardedRemovalDeclinesLineBreak`, which tells for a
+    table-edge range first and a stale-focus range otherwise, in the order
+    `$removeGuardedRange` takes them.
+  - *Typing in an emptied block types plain* (B-10): a range that starts in
+    the table and lands on no text clears the selection's format and style.
+    Row R36. Rows R34 and R35 pin the style half of the capture (B-7).
+  - *`insertTable()` removes a table-edge range first* (B-11), as
+    `insertImage()` does; Lexical inserts at the focus and removes nothing,
+    so the table had split the cell the range ended in. Its caret stays out
+    of a raw block or a code block, as the image's does, and out of another
+    table too (`$holdsNoTable`): Lexical declines a table inside a cell, so
+    a caret settled into the table after the removed ones would have left
+    the range removed and nothing inserted. Over a table-edge range that
+    touches no raw block or code block, `insertTable()` therefore always
+    inserts. Rows R37.
+  - *Undo* (B-8): rows U4–U7 undo the two-step removal (shapes D18, D19,
+    D23–D26) and the native cut.
+  - *Smaller:* calls other than plain type guards no longer sit in `if`
+    conditions in this branch's helpers, and `$cutGuardedRange` reads the
+    shape once (B-12);
+    `$orderedPoints` replaces the three ordered-pair expressions; `paste()`'s
+    comments pointed at `copyWysiwygSelection()` while that private method
+    was `copy()`'s and `cut()`'s shared body (B-14), and point at `copy()`
+    again now that it is gone. Not run in a browser:
+    every changed route is a command dispatch the offline rows drive, and
+    the mounted K rows still pass.
+- **Review fixes, round 2.** A second review read the fixes above; these
+  are its findings against this branch. Each behavioural one was pinned by a
+  row written first and seen to fail; each "surviving mutant" by a row that
+  fails under the mutation the review named, applied and taken out again.
+  - *`insertTable()` over a table-edge range is one undo step.* The range
+    was removed in the update that seeds the selection, and the table
+    inserted by a command dispatched after it, so the first Undo took back
+    the new table only and left the document without the old one too.
+    `INSERT_TABLE_COMMAND` is now dispatched inside that update. Rows U8
+    (and U9, `insertImage()` over the same range, as the control). The
+    update is discrete, so the table is in the document when `insertTable()`
+    returns, as the image is after `insertImage()`.
+  - *The table-edge half of the raw-block Enter guard is pinned.* The
+    command-crash-fixes branch's round 2 made `$handleRawBlockEnter` remove
+    any range with an end in a raw block and decide from the caret the
+    removal leaves; here its `$removeRangeBeforeEnter` removes a table-edge
+    or stale-focus range through `$removeGuardedRange` and any other through
+    Lexical's own removal. Every Enter row with an end in a raw block was
+    also a stale-focus range, so removing the table-edge half changed no
+    row. Rows R41 end the range on the last cell itself, a point that is no
+    stale-focus end, with the anchor in the raw block and with it on the
+    cell: they fail when the guarded removal is taken for a stale-focus
+    range only.
+  - *Typing keeps the format of the range's first text inside one table.*
+    `startsInTable` is `isTableEdge && …`: a stale-focus range with both
+    ends in one table — two paragraphs of a cell — is no table-edge range
+    and types as Lexical types over any range. Row R42 fails without
+    `isTableEdge &&`.
+  - *`insertImage()` over a range from a point on the root to the end of a
+    document ending in a list no longer throws.* No browser makes such a
+    range, a programmatic selection can. Lexical's removal leaves the root's
+    last child in place when it empties it — the list, with no item, and the
+    caret on it — and `insertNodes` throws for a caret with no block around
+    it. The same range over a document ending in a `:::` block did not
+    throw but put the image on the emptied block, where no save writes it.
+    `insertImage()` now removes the range itself (`$removeRangeBeforeImage`:
+    the guarded removal as before, any other range through Lexical's own)
+    and replaces an emptied list or `:::` block at the caret by an empty
+    paragraph (`$replaceEmptiedContainerAtCaret`) before it inserts. Rows
+    R43, both directions, with a paragraph-ended document as the control.
+    Left as they are, none of them a throw: a document ending in a quote
+    keeps the quote around the image, and the same range over the other
+    routes, which the finding did not name — Delete leaves the emptied list
+    or `:::` block as the whole document, typing types into it, and Enter and
+    `insertTable()` insert without removing a range that starts on the root.
+- **Review fixes, round 3.** A third review read round 2's fixes; these are
+  its findings against this branch, and one change the restack brought.
+  - *An emptied list or `:::` block right after the caret is replaced too.*
+    Round 2 replaced the emptied container only when the caret was on it. A
+    range from a point on the root further down — just before the list — to
+    a point on the list node itself, at its end, empties the list as well,
+    but leaves the caret on the root before it: `insertImage()` then put the
+    image in a paragraph of its own and left the item-less list in the
+    document (`Above para\n\n- one\n- two`; the save was right, the tree
+    was not). `$replaceEmptiedContainerAtCaret` now takes the block right
+    after a caret that is on a root or shadow root as well as the element a
+    caret is on. Rows in R43, written first and seen to fail, both
+    directions: a list, a list with a paragraph after it, and a `:::` block.
+  - *Pinned: a list that keeps an item is not replaced.* `container.isEmpty()`
+    could be dropped with every test green. A row in R43 ends the same range
+    between the list's two items, so the second item is left: the list stays
+    after the image's paragraph, and the row fails without the check.
+    Left as it is: when the removal leaves the caret *on* a list or `:::`
+    block that still holds an item or a column (a range from a point on the
+    list between its items to the end of its last item, and the three like
+    shapes measured), `insertImage()` throws in Lexical's `insertNodes`, as
+    it does for a collapsed caret put there; the check keeps the item, and
+    no browser makes such a point.
+  - *Enter removes a range in the order Delete's listeners run, here with
+    the table-edge guard first.* The command-crash-fixes branch's round 3
+    made `$removeRangeBeforeEnter` try `$deleteRangeFromTextOnlyBlock` first,
+    so the rest of a rich-text block joins a raw block as its Markdown. On
+    this branch a table-edge range is taken ahead of that, through
+    `$removeGuardedRange`, as `$deleteTableEdgeRange` runs ahead of
+    `$joinIntoTextOnlyBlock` on Delete: a range from a raw block into a cell
+    loses the whole table instead of having the cell's rest joined. Rows
+    R10, R19 and R31 fail when the join is tried first (applied and taken
+    out again).

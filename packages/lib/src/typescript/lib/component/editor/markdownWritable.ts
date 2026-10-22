@@ -1117,7 +1117,7 @@ function $isBreakRuleContainer(node: LexicalNode | null): node is ElementNode {
  * @returns The block, or `null` when the node sits elsewhere (a table cell,
  *   a code block, a raw block).
  */
-function $breakRuleContainerOf(node: LexicalNode): ElementNode | null {
+export function $breakRuleContainerOf(node: LexicalNode): ElementNode | null {
     const block = $findEnclosingBlock(node);
 
     return $isBreakRuleContainer(block) ? block : null;
