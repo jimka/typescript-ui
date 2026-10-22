@@ -499,6 +499,9 @@ function viewerInlineToken(runs: Run[], token: Token, context: RunContext): void
         case 'mdimage':
             viewerImage(runs, token as Tokens.Generic, context);
             break;
+        case 'br':
+            runs.push({ kind: 'break' });
+            break;
         default:
             pushText(runs, (token as Tokens.Generic).text ?? token.raw ?? '', context);
     }

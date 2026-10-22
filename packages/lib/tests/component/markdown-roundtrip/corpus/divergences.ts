@@ -18,7 +18,7 @@ export const DIVERGENCES = {
     // unmodelled
     referenceLinks: { cause: 'unmodelled', reason: 'The editor has no reference-link or definition node: [text][ref], [ref][] and [ref] show as literal text, and each definition shows as a paragraph the viewer does not render.' },
     autolinks:      { cause: 'unmodelled', reason: 'The editor has no autolink support: <scheme:…>, <name@host> and bare https:// URLs show as plain text where the viewer links them.' },
-    lineBreaks:     { cause: 'unmodelled', reason: 'The editor shows each line break inside a paragraph as a line break (a LineBreakNode); the viewer flows the lines into one, rendering neither a soft break nor marked\'s br token as a break (a backslash hard break shows its backslash).' },
+    lineBreaks:     { cause: 'unmodelled', reason: 'The editor shows each soft line break inside a paragraph as a line break (a LineBreakNode); the viewer flows the lines into one.' },
     thematicBreak:  { cause: 'unmodelled', reason: 'The editor has no thematic-break node: ---, ***, ___ and - - - import as paragraph or list text (*** and ___ save escaped), while the viewer prints the break\'s source as a raw text block.' },
     quoteBlocks:    { cause: 'unmodelled', reason: 'QuoteNode holds inline content only: a heading, list, code fence, nested quote or second paragraph inside a blockquote imports as text, and a blank > line saves as > >.' },
     listItemBlocks: { cause: 'unmodelled', reason: 'ListItemNode holds inline content and nested lists only, with no loose/tight flag: a second paragraph or a heading inside an item leaves the item or shows as text, and a loose list saves tight.' },
