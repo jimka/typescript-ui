@@ -20,7 +20,7 @@ import {
 } from "@lexical/table";
 import type { TableCellNode, TableNode } from "@lexical/table";
 import { $dfs } from "@lexical/utils";
-import { lexMarkdown, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions } from "~/component/display/markdownExtensions.js";
+import { FULL_REFERENCE, lexMarkdown, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions, SHORT_REFERENCE } from "~/component/display/markdownExtensions.js";
 import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
 import { CELL_LINE_BREAK_TAG } from "~/component/display/markdownTableExtension.js";
 import type { MdTableBodyCell, MdTableHeaderCell, MdTableToken } from "~/component/display/markdownTableExtension.js";
@@ -38,7 +38,7 @@ import type { MarkdownHorizontalRuleNode } from "~/component/editor/markdownHori
 import type { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { $createMarkdownListItemTextNode, $isMarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
 import {
-    bareAutolinkState, codeInfoState, fenceOpeningState, hardBreakMarkerState, imageAttributesState, KEPT_SOURCE_WRITES_LINK,
+    bareAutolinkState, codeInfoState, fenceOpeningState, hardBreakMarkerState, IMAGE_MARK_FORMATS, imageAttributesState, imageMarksState, imageWrittenState, KEPT_SOURCE_WRITES_LINK,
     KEPT_SOURCE_WRITES_STYLE, keptSourceState, listLooseState, listMarkerState, NESTED_LINK_WRITES_STYLE, nestedLinkGroupState,
     nestedLinkState, spanAttributesState,
 } from "~/component/editor/markdownNodeState.js";
@@ -205,15 +205,6 @@ const CLOSING_FENCE_LINE = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
 /** A fenced code block's opening line at its container's margin: a run of one fence character. */
 const OPENING_FENCE_LINE = /^(`{3,}|~{3,})/;
 
-/**
- * `marked`'s own patterns for a full reference (`[text][label]`) and for a
- * collapsed or shortcut one (`[label][]`, `[label]`) — the patterns that
- * produced a reference's `link` token, so a label holding an escaped bracket
- * or a code span is read exactly as the viewer read it.
- */
-const FULL_REFERENCE = Lexer.rules.inline.gfm.reflink;
-const SHORT_REFERENCE = Lexer.rules.inline.gfm.nolink;
-
 // ---------------------------------------------------------------- types
 
 /** One located block token with its source text, or a stretch of text no token covers, and where it lies. */
@@ -273,9 +264,6 @@ const FENCE_OPENING = /^\s*:::(.*?)\s*$/;
 
 /** A styled span's `raw` ending: its attribute text between the braces. */
 const SPAN_ATTRIBUTES = /\]\{([^{}]*)\}$/;
-
-/** An image's `raw` ending, when it has an attribute group: its text between the braces. */
-const IMAGE_ATTRIBUTES = /\)\{([^{}]*)\}$/;
 
 /** The context an inline walk starts from: no formats, no style, no link. */
 const PLAIN: InlineContext = { formats: [], spanStyle: NO_STYLE, spanAttributes: "", link: null };
@@ -3112,10 +3100,10 @@ function styledSpanContext(token: Tokens.Generic, context: InlineContext): Inlin
  *
  * @param target - Where nodes are appended.
  * @param token - The `mdimage` token.
- * @param context - The formatting it inherits; only its link applies.
+ * @param context - The formatting it inherits; its link applies, and its marks are kept on the image.
  */
 function appendImage(target: InlineTarget, token: Tokens.Generic, context: InlineContext): void {
-    const image = $imageNode(token);
+    const image = $imageNode(token, context.formats);
 
     if (image === null) {
         appendSourceNode(target, "", token.raw, context);
@@ -3138,23 +3126,35 @@ function $imageSpec(token: Tokens.Generic): ReturnType<typeof resolveImageSpec> 
 
 /**
  * Creates the image node for an `mdimage` token the viewer renders, keeping
- * the attribute text it was written with ({@link imageAttributesState}).
+ * its title, the attribute text it was written with ({@link imageAttributesState})
+ * the Markdown it was written as ({@link imageWrittenState}), which a save
+ * writes back while it still reads as the image, and the marks it was read
+ * inside ({@link imageMarksState}), which a save writes back around it.
  *
  * @param token - The `mdimage` token.
+ * @param formats - The formats in force where the image stands; bold, italic, strikethrough and underline are kept.
  * @returns The image, or `null` for a source the viewer rejects.
  */
-function $imageNode(token: Tokens.Generic): MarkdownImageNode | null {
+function $imageNode(token: Tokens.Generic, formats: readonly TextFormatType[] = []): MarkdownImageNode | null {
     const spec = $imageSpec(token);
 
     if (spec === null) {
         return null;
     }
 
-    const image = $createMarkdownImageNode(spec);
-    const attributes = IMAGE_ATTRIBUTES.exec(token.raw)?.[1] ?? "";
+    const image = $createMarkdownImageNode(spec, (token.title as string | null) ?? null);
+    const attributes = token.attributeText as string;
 
     if (attributes !== "") {
         $setState(image, imageAttributesState, attributes);
+    }
+
+    $setState(image, imageWrittenState, token.imageRaw as string);
+
+    const marks = formats.filter((format) => IMAGE_MARK_FORMATS.includes(format));
+
+    if (marks.length > 0) {
+        $setState(image, imageMarksState, marks.join(" "));
     }
 
     return image;

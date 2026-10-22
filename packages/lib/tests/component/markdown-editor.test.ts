@@ -89,6 +89,8 @@ const CORPUS: Record<string, string> = {
     'block columns':         '::: columns\nLeft\n|||\nRight\n:::',
     'block columns aligned': '::: columns {align=center}\nA\n|||\nB\n:::',
     'sized image':           '![d](/img/d.png){width=320}',
+    'titled image':          '![d](/img/d.png "Diagram"){width=320}',
+    'reference image':       '![d][img]\n\n[img]: /img/d.png "Diagram"',
 };
 
 // The exact token types the read-only `Markdown` viewer renders; anything else

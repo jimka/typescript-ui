@@ -581,7 +581,7 @@ does, in the viewer and the editor alike.
 | `[a](/f&ouml; "&#35;1")` | links to `/f&ouml;`, titled `&#35;1` | links to `/fö`, titled `#1` |
 | ```` ```j&#115; ```` | a code block of language `j&#115;` | of language `js` |
 | `# Terms &amp; Conditions` | `id="terms-amp-conditions"` | `id="terms-conditions"` |
-| `&notaname;`, `&copy` (no `;`), a reference in code, an autolink, an image, an HTML block, a tag's attributes, or between `<code>`, `<pre>`, `<kbd>` or `<script>` and its end tag | shown as typed | shown as typed (unchanged) |
+| `&notaname;`, `&copy` (no `;`), a reference in code, an autolink, an HTML block, a tag's attributes, or between `<code>`, `<pre>`, `<kbd>` or `<script>` and its end tag | shown as typed | shown as typed (unchanged) |
 
 In the editor, text typed as `&copy;` is now saved as `\&copy;`, so that it
 stays the text that was typed.
@@ -692,4 +692,49 @@ showed `[ ]` as text at an item's start on purpose writes `\[ \]`.
 
 <!-- After: shows a checkbox; to keep the text, escape it -->
 - \[ \] a
+```
+
+## `Markdown` and `MarkdownEditor` read every CommonMark image form
+
+**What changed and why.** The viewer read an image only as `![alt](src)`,
+with no brackets in the alt text and no space or parenthesis in the source.
+Every other CommonMark image form showed its alt text as plain text. The
+viewer and the editor now read an image with a title, a reference image
+(`![alt][label]`, `![label][]`, `![label]`), an angle-bracket destination and
+images or links in the alt text as CommonMark does, and the `{width=…
+height=…}` group works after every form. A title becomes the `<img>`'s
+`title` attribute, and the alt text is the description's plain text.
+
+| Source | Before | Now |
+|---|---|---|
+| `![a](/u "t")` | the text `a` | `<img src="/u" alt="a" title="t">` |
+| `![a][r]` with `[r]: /i.png` | the text `a` | `<img src="/i.png" alt="a">` |
+| `![a](<b.png>)` | `<img src="<b.png>">` | `<img src="b.png">` |
+| `![a *b*](u.png)` | `alt="a *b*"` | `alt="a b"` |
+| `![a](/a\_b.png)` | `<img src="/a\_b.png">` | `<img src="/a_b.png">` |
+| `MarkdownEditor.insertImage(src, { alt: 'a[b]' })` | did nothing | inserts the image |
+
+**Who needs to act.** Content that relied on a titled or reference image
+showing its alt text as text writes that text instead, or escapes both
+brackets to show the source as typed (`!\[a\]\[r\]` shows `![a][r]`); an
+escaped `!` alone (`\![a][r]`) shows a `!` followed by a link, not text.
+An image's destination and title now read backslash escapes and character
+references, as a link's do: `![a](/a\_b.png)` had the `src` `/a\_b.png` and
+now has `/a_b.png`, so an address that held a literal backslash writes it
+doubled. Code that read the editor's tree for a `MarkdownSourceTextNode`
+holding a titled or reference image reads the `markdown-image` node and its
+`getTitle()`. Tests that asserted an `<img>`'s `alt` or `src` for alt text
+with escapes or a `<…>` destination expect the read values.
+
+```markdown
+<!-- Before: showed the text "logo"; after: shows the image -->
+![logo][l]
+
+[l]: /img/logo.png
+
+<!-- To keep the source as text: escape both brackets, which shows ![logo][l] -->
+!\[logo\]\[l\]
+
+<!-- To keep the old output, write the alt text itself -->
+logo
 ```

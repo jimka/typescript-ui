@@ -61,14 +61,16 @@ Rendered prose is selectable, and a right-click offers a Copy row for whatever i
 | `[text](url)` | `<a href target="_blank" rel="noopener noreferrer">`; a link written around a link (`[[a](/in)](/out)`) is no link, and its brackets and destination show as text around the inner link |
 | `[text][label]`, `[label][]`, `[label]` | `<a>` whose href is the matching reference definition's URL; labels match by Unicode case folding with outer spaces ignored, and an undefined label renders as literal text |
 | `[label]: url "title"` | nothing — the definition only supplies a URL, wherever it sits (top level, blockquote, list item, `:::` fence) |
-| `&copy;`, `&amp;`, `&#35;`, `&#x23;` | the character the reference names (`©`, `&`, `#`) — in text, a link's destination and title, and a code fence's info string; a name the HTML list does not hold (`&notaname;`), a name without its `;` (`&copy`), and any reference in a code span, a code block, an autolink, an image, an HTML block, an HTML tag's attributes, or the text between an inline `<code>`, `<pre>`, `<kbd>` or `<script>` tag and its end tag are shown as typed |
+| `&copy;`, `&amp;`, `&#35;`, `&#x23;` | the character the reference names (`©`, `&`, `#`) — in text, a link's or an image's destination and title, an image's alt text, and a code fence's info string; a name the HTML list does not hold (`&notaname;`), a name without its `;` (`&copy`), and any reference in a code span, a code block, an autolink, an HTML block, an HTML tag's attributes, or the text between an inline `<code>`, `<pre>`, `<kbd>` or `<script>` tag and its end tag are shown as typed |
 | pipe table | `<table>` with `<thead>`/`<tbody>` |
 | delimiter cell `{width=240}` | `<colgroup>` / `<col style="width:240px">` — see [Extension syntax](#extension-syntax) |
 | body cell `<<` / `^^` | merges into the preceding cell as `colspan`/`rowspan` — see [Extension syntax](#extension-syntax) |
 | `<br>` (or `<br/>`, `<br />`) inside a table cell | `<br>` — a line break in the cell; elsewhere, and inside a code span, it is literal text like any other HTML |
 | `\n\n` inside a table cell (backslash, `n`, twice) | `<br>` — a line break in the cell; a single `\n` stays literal text |
 | `::: {align=... gap=...}` … `:::`, columns split by `\|\|\|` | one `<div>` region holding one `<div>` per column, laid out with flexbox — see [Extension syntax](#extension-syntax) |
-| `![alt](src){width=... height=...}` | `<img>`, or nothing at all when `src` fails the scheme allow-list — see [Extension syntax](#extension-syntax) |
+| `![alt](src "title")`, `![alt](<src>)` | `<img src alt title>` — the alt text is the description's plain text (`![*a* b](u)` gives `alt="a b"`), and a title, in `"…"`, `'…'` or `(…)`, becomes the `title` attribute; nothing at all when `src` fails the scheme allow-list — see [Extension syntax](#extension-syntax) |
+| `![alt][label]`, `![label][]`, `![label]` | `<img>` whose `src` and title are the matching reference definition's, labels matched as for reference links; an undefined label renders as literal text |
+| `{width=... height=...}` right after any image form | the `<img>`'s `width` / `height` — see [Extension syntax](#extension-syntax) |
 
 A table is a header row followed directly by a delimiter row with the same number of cells, and the delimiter row must hold at least one `|` or `:` — so a line over `---` is a setext heading, as GFM specifies, and a one-column table needs a pipe or an alignment colon in its delimiter row (`| a |` over `| --- |`, or `a` over `:--`). Indented or fenced code, an ATX heading, a thematic break, a blockquote, a list, an HTML block, a link reference definition or a `:::` fence that starts on the header line wins over a table. The body runs to the first blank line.
 
@@ -156,7 +158,7 @@ Right column.
 :::
 ```
 
-Sized images reuse the `{key=value}` grammar on top of CommonMark's own `![alt](src)` image syntax, e.g. `![Diagram](/img/d.png){width=320 height=200}`; the `src` scheme is additionally checked against an allow-list (a relative path, `http:`, `https:`, or an allow-listed `data:image/…` base64 URI — `data:image/svg+xml` is refused since it can embed script), and an image whose `src` fails that check renders nothing at all rather than a broken or unsafe `<img>`.
+Sized images reuse the `{key=value}` grammar after any CommonMark image form (`![alt](src "title")`, `![alt][label]`, `![label]`, …), e.g. `![Diagram](/img/d.png){width=320 height=200}`; the `src` scheme is additionally checked against an allow-list (a relative path, `http:`, `https:`, or an allow-listed `data:image/…` base64 URI — `data:image/svg+xml` is refused since it can embed script), and an image whose `src` fails that check renders nothing at all rather than a broken or unsafe `<img>`.
 
 A document using these constructs is **not portable**: a foreign Markdown renderer has no meaning for the non-standard markers and shows them as literal text (`++text++`, `[text]{...}`, `<<`, `^^`, `|||`) rather than applying them; a delimiter cell carrying `{width=240}` fails a foreign GFM parser's stricter delimiter-row check entirely, turning that whole table into paragraphs; and a sized image's trailing `{width=...}` renders as visible text after an otherwise-ordinary image. This is a deliberate trade for a small, safe, in-house grammar over embedding raw HTML or switching the persisted format away from Markdown. It renders correctly only in this library's `Markdown` viewer and `MarkdownEditor`.
 

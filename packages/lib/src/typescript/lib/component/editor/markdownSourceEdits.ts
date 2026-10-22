@@ -54,8 +54,8 @@ const WORD_CHARACTER = /[\p{L}\p{N}_]/u;
 /** The inline token types a normalised range is absorbed into when it covers one exactly. */
 const ABSORBED_TYPES: ReadonlySet<string> = new Set(["strong", "em", "del", "underline", "codespan"]);
 
-/** The inline token types that are images: the dialect's own, and `marked`'s for one it does not take (a titled image). */
-const IMAGE_TYPES: ReadonlySet<string> = new Set(["mdimage", "image"]);
+/** The inline token type of an image: every form arrives as the dialect's `mdimage`. */
+const IMAGE_TYPES: ReadonlySet<string> = new Set(["mdimage"]);
 
 // ---------------------------------------------------------------- ranges
 

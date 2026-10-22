@@ -22,6 +22,7 @@ import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 import { CORPUS } from './markdown-roundtrip/corpus';
+import { IMAGE_CASES } from './markdown-roundtrip/corpus/images';
 import { $selectShownPlaces, shownPlacement } from './markdown-roundtrip/shownPlacement';
 import type { ShownPlacement } from './markdown-roundtrip/shownPlacement';
 import { $selectionCharacters, charactersOfSourceCaret, lexicalEditorOf, sourceMapOfEditor } from './markdown-roundtrip/sourceCaret';
@@ -1049,7 +1050,9 @@ const DIFFERENTIAL_PARTS = 8;
 
 describe('the corpus differential', () => {
     it.each(Array.from({ length: DIFFERENTIAL_PARTS }, (_, part) => part))('9: part %i: every source-mode command gives what the WYSIWYG command gives at the same selection, but for the declines', (part) => {
-        const documents = [...CORPUS, ...HAND_WRITTEN, ...EDGE_DOCUMENTS].map((entry, index) => ({ entry, index })).filter(({ index }) => index % DIFFERENTIAL_PARTS === part);
+        // The image cases come last, so every other document keeps the place its commands are picked by.
+        const documents = [...CORPUS.filter((entry) => !IMAGE_CASES.includes(entry)), ...HAND_WRITTEN, ...EDGE_DOCUMENTS, ...IMAGE_CASES]
+            .map((entry, index) => ({ entry, index })).filter(({ index }) => index % DIFFERENTIAL_PARTS === part);
         const differences: string[] = [];
         const counts = { compared: 0, declined: 0, unplaced: 0, gaps: 0, ambiguous: 0, shown: 0, blank: 0, innerBlank: 0 };
 

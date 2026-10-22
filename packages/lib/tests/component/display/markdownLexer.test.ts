@@ -1031,3 +1031,44 @@ describe('rebuilding a Markdown untracks the old content and tracks the new', ()
         expect(bookkeeping._ownedHandles).toHaveLength(ownedCountBefore - contentBefore.length + contentAfter.length);
     });
 });
+
+describe('every image form arrives as one mdimage token', () => {
+    /** The first inline token of the first block. */
+    function firstInline(source: string): Tokens.Generic {
+        const lexed = lexMarkdown(source);
+
+        expect(lexMarkdownUnbounded(source)).toEqual(lexed);
+
+        return (lexed[0] as Tokens.Generic).tokens![0] as Tokens.Generic;
+    }
+
+    it('reads an image with a title', () => {
+        expect(firstInline('![foo](/url "title")')).toMatchObject({
+            type: 'mdimage', raw: '![foo](/url "title")', imageRaw: '![foo](/url "title")', alt: 'foo', src: '/url', title: 'title', attributeText: '',
+        });
+    });
+
+    it('reads a reference image with a size group, the group kept apart from the image', () => {
+        expect(firstInline('![a][r]{width=10}\n\n[r]: /i.png')).toMatchObject({
+            type: 'mdimage', raw: '![a][r]{width=10}', imageRaw: '![a][r]', src: '/i.png', title: null, attributes: { width: '10' }, attributeText: 'width=10',
+        });
+    });
+
+    it('drops the brackets of an angle-bracket destination', () => {
+        expect(firstInline('![foo](<url>)')).toMatchObject({ src: 'url' });
+    });
+
+    it('gives an image with links and images in its description a plain alt text and no tokens', () => {
+        const token = firstInline('![[[foo](uri1)](uri2)](uri3)');
+
+        expect(token).toMatchObject({ alt: '[foo](uri2)', src: 'uri3' });
+        expect('tokens' in token).toBe(false);
+    });
+
+    it('reads a shortcut label that names no definition as the text ! and a styled span', () => {
+        const tokens = (lexMarkdown('![a]{width=10}')[0] as Tokens.Generic).tokens!;
+
+        expect(tokens[0]).toMatchObject({ type: 'text', raw: '!' });
+        expect(tokens[1]).toMatchObject({ type: 'styledspan' });
+    });
+});

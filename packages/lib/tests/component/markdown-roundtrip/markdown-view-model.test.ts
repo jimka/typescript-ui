@@ -323,7 +323,7 @@ describe('editor surface projection', () => {
         expect(surface).toEqual(viewerModel(source).blocks);
 
         expect(surface).toEqual([
-            { kind: 'paragraph', runs: [{ kind: 'image', src: '/img/d.png', alt: 'd', width: 320, height: null, link: null }] },
+            { kind: 'paragraph', runs: [{ kind: 'image', src: '/img/d.png', alt: 'd', title: null, width: 320, height: null, link: null }] },
         ]);
     });
 

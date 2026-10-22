@@ -22,9 +22,9 @@ import {
     resolveImageSpec, resolveSpanStyle, spanStyleToAttributes,
 } from "~/component/display/markdownAttributes.js";
 import {
-    lexMarkdown, lexMarkdownInline, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions, linkLabelKey,
+    FULL_REFERENCE, lexMarkdown, lexMarkdownInline, lexMarkdownLinkDefinitions, lexMarkdownWithDefinitions, linkLabelKey, SHORT_REFERENCE,
 } from "~/component/display/markdownExtensions.js";
-import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
+import type { MdBlockToken, MdImageToken } from "~/component/display/markdownExtensions.js";
 import { needsAngleBrackets } from "~/component/display/markdownDestinations.js";
 import { headingSlug } from "~/component/display/markdownHeadingIds.js";
 import { holdsLineContent } from "~/component/display/markdownLineContent.js";
@@ -40,7 +40,7 @@ import { $isMarkdownListItemTextNode } from "~/component/editor/markdownListItem
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import type { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import {
-    bareAutolinkState, codeInfoState, fenceOpeningState, hardBreakMarkerState, imageAttributesState, KEPT_SOURCE_WRITES_LINK,
+    bareAutolinkState, codeInfoState, fenceOpeningState, hardBreakMarkerState, imageAttributesState, imageMarksState, imageWrittenState, KEPT_SOURCE_WRITES_LINK,
     KEPT_SOURCE_WRITES_STYLE, keptSourceState, listLooseState, listMarkerState, NESTED_LINK_WRITES_STYLE, nestedLinkGroupState,
     nestedLinkState, spanAttributesState,
 } from "~/component/editor/markdownNodeState.js";
@@ -144,6 +144,9 @@ const DEFINITIONS_READ = new Map<string, Links>();
  * Every keystroke and every save ask for each raw block's written form.
  */
 const AT_MARGIN = new Map<string, string>();
+
+/** The image forms {@link readImageForm} read that name no definition; cleared when it holds {@link RUNS_ON_CACHE_SIZE} entries. */
+const IMAGE_FORMS_READ = new Map<string, MdImageToken | null>();
 
 /**
  * Source that ends inside a link reference definition's label a line of it
@@ -631,7 +634,7 @@ type Segment =
         /** A run of a kept construct, before its runs are joined. */
         member?: KeptMember;
     }
-    | { kind: "image"; node: MarkdownImageNode; link: LinkNode | null; member?: KeptMember }
+    | { kind: "image"; node: MarkdownImageNode; marks: Mark[]; link: LinkNode | null; member?: KeptMember }
     | { kind: "break"; marker: string; link: LinkNode | null; member?: KeptMember };
 
 /** A run of an inline construct kept as written ({@link keptSourceState}), as flattened. */
@@ -641,7 +644,7 @@ interface KeptMember {
     readonly source: string;
     /** What the run shows, as segments. */
     readonly shown:  Segment[];
-    /** Whether the run still shows what it did at load (an image keeps its source, alt text and size). */
+    /** Whether the run still shows what it did at load (an image keeps its source, alt text, title and size). */
     readonly intact: boolean;
 }
 
@@ -689,7 +692,7 @@ type Piece =
     | { kind: "delimiter"; text: string; mark: Mark; opens: boolean } // an emphasis delimiter, written as is
     | { kind: "autolink"; text: string; bare: string } // `bare` where its neighbours bound it, else `text`
     | { kind: "source"; text: string; shortcut?: boolean } // a source node's Markdown, written as is; `shortcut` for a shortcut reference
-    | { kind: "reference"; text: string; shortcut: boolean } // `[label]` or `[label][]`, written as is
+    | { kind: "reference"; text: string; shortcut: boolean; image?: boolean } // `[label]` or `[label][]`, written as is; `image` for a shortcut or collapsed reference image, whose `]` a `{` can attach a size group to
     | { kind: "break"; marker: string }     // a hard line break with its marker
     | { kind: "newline" };                  // a soft line break kept from the source
 
@@ -1139,7 +1142,7 @@ function $definitionsReader(asksDocument: boolean): (nodes: readonly LexicalNode
  */
 function $referenceIn(nodes: readonly LexicalNode[]): LexicalNode | null {
     for (const node of nodes) {
-        const isReference = $isReferenceLinkNode(node) || ($isMarkdownSourceTextNode(node) && node.getSource().includes(LABEL_OPEN));
+        const isReference = $isReferenceLinkNode(node) || ($isMarkdownSourceTextNode(node) && node.getSource().includes(LABEL_OPEN)) || $imageNamesLabel(node);
 
         if (isReference) {
             return node;
@@ -1164,7 +1167,18 @@ function $referenceIn(nodes: readonly LexicalNode[]): LexicalNode | null {
  * @returns `true` when it holds one.
  */
 function $needsDefinitions(): boolean {
-    return $dfs().some(({ node }) => $isReferenceLinkNode(node) || ($isMarkdownSourceTextNode(node) && node.getSource().includes(LABEL_OPEN)));
+    return $dfs().some(({ node }) => $isReferenceLinkNode(node) || ($isMarkdownSourceTextNode(node) && node.getSource().includes(LABEL_OPEN)) || $imageNamesLabel(node));
+}
+
+/**
+ * Whether a node is an image whose written form can name a definition, so a
+ * save needs the document's definitions to judge it.
+ *
+ * @param node - The node.
+ * @returns `true` for such an image.
+ */
+export function $imageNamesLabel(node: LexicalNode): boolean {
+    return $isMarkdownImageNode(node) && imageFormNamesLabel($getState(node, imageWrittenState));
 }
 
 /**
@@ -4791,7 +4805,7 @@ function appendSegments(nodes: LexicalNode[], link: LinkNode | null, segments: S
         } else if ($isLineBreakNode(node)) {
             segments.push(keptLeafSegment({ kind: "break", marker: $getState(node, hardBreakMarkerState), link }, node));
         } else if ($isMarkdownImageNode(node)) {
-            segments.push(keptLeafSegment({ kind: "image", node, link }, node));
+            segments.push(keptLeafSegment({ kind: "image", node, marks: imageSegmentMarks(node), link }, node));
         } else if ($isMarkdownTaskCheckboxNode(node)) {
             // Not inline content: the item's writer writes its marker (withTaskMarker).
         } else if ($isMarkdownSourceTextNode(node) && $getState(node, keptSourceState) === null && node.hasFormat("code") && !/\S/.test(node.getSource())) {
@@ -4906,6 +4920,19 @@ function sourceSegment(node: MarkdownSourceTextNode, link: LinkNode | null): Sou
 }
 
 /**
+ * The marks an image was read inside ({@link imageMarksState}), in the fixed
+ * order. Must run inside an `editor.read` or `editor.update`.
+ *
+ * @param node - The image.
+ * @returns Its marks.
+ */
+function imageSegmentMarks(node: MarkdownImageNode): Mark[] {
+    const formats = $getState(node, imageMarksState).split(" ");
+
+    return MARK_ORDER.filter((mark) => formats.includes(MARK_FORMATS[mark]));
+}
+
+/**
  * Marks an image or line break that is a run of a kept construct
  * ({@link keptSourceState}) with its member record; any other is returned
  * as it is.
@@ -4940,8 +4967,8 @@ function keptLink(kept: KeptSource, link: LinkNode | null): LinkNode | null {
 }
 
 /**
- * What an image showed, for {@link KeptSource.shown}: its source, alt text
- * and size. A kept construct is written as its source only while its image
+ * What an image showed, for {@link KeptSource.shown}: its source, alt text,
+ * title and size. A kept construct is written as its source only while its image
  * still shows the same. Must run inside an `editor.read` or
  * `editor.update`.
  *
@@ -4949,7 +4976,7 @@ function keptLink(kept: KeptSource, link: LinkNode | null): LinkNode | null {
  * @returns A key of what it shows.
  */
 export function keptImageShown(node: MarkdownImageNode): string {
-    return JSON.stringify([node.getSrc(), node.getAlt(), node.getImageWidth(), node.getImageHeight()]);
+    return JSON.stringify([node.getSrc(), node.getAlt(), node.getTitle(), node.getImageWidth(), node.getImageHeight()]);
 }
 
 /**
@@ -5409,12 +5436,13 @@ function unitCarries(unit: Unit, mark: Mark): boolean {
         return unit.units.every((inner) => unitCarries(inner, mark));
     }
 
-    return (unit.kind === "text" || unit.kind === "source") && unit.marks.includes(mark);
+    return (unit.kind === "text" || unit.kind === "source" || unit.kind === "image") && unit.marks.includes(mark);
 }
 
 /**
  * Writes one segment, first closing and opening marks to match it. A break
- * carries no marks, and neither does an image, which is written inside the
+ * carries no marks. An image is written inside the marks it was read inside
+ * ({@link imageMarksState}) where their delimiters can pair, and inside the
  * marks {@link imageMarks} chooses so whitespace on either side of it keeps
  * them.
  *
@@ -5438,11 +5466,19 @@ function writeSegment(writer: InlineWriter, segment: Segment, inherited: readonl
         return;
     }
 
-    syncMarks(writer, segment.kind === "image" ? imageMarks(writer, inherited, next) : [], "");
+    if (segment.kind === "image") {
+        // The marks the image was read inside are written where their delimiters can pair around its punctuation.
+        const own = invisibleRunMarks(writer, segment.marks.filter((mark) => !inherited.includes(mark)), next);
 
-    writer.pieces.push(segment.kind === "image"
-        ? { kind: "syntax", text: writeImage(segment.node, writer.context) }
-        : writeBreak(segment.marker, writer.context));
+        syncMarks(writer, [...new Set([...imageMarks(writer, inherited, next), ...own])], "");
+        writeImage(writer, segment.node);
+
+        return;
+    }
+
+    syncMarks(writer, [], "");
+
+    writer.pieces.push(writeBreak(segment.marker, writer.context));
 }
 
 /**
@@ -5979,7 +6015,7 @@ function holdsOddCodeSpan(pieces: readonly Piece[]): boolean {
 
 /**
  * The marks every text or source segment of a group carries beyond the
- * inherited ones. An image or break carries none. Underline is left out when
+ * inherited ones. A break carries none. Underline is left out when
  * what the link writes after its text (its destination, or its reference's
  * label) holds a `+`, which the underline grammar cannot span.
  *
@@ -5994,7 +6030,7 @@ function commonMarks(group: LinkGroup | StyleGroup, inherited: readonly Mark[], 
     return MARK_ORDER.filter((mark) =>
         !inherited.includes(mark)
         && !(mark === "underline" && destination.includes("+"))
-        && segments.every((segment) => (segment.kind === "text" || segment.kind === "source") && segment.marks.includes(mark)));
+        && segments.every((segment) => (segment.kind === "text" || segment.kind === "source" || segment.kind === "image") && segment.marks.includes(mark)));
 }
 
 /**
@@ -6139,24 +6175,62 @@ function writeCodeSpan(code: string, context: InlineContext, inLink: boolean): s
 
 /**
  * Writes a link's destination and title, in parentheses. A title's line
- * breaks are written where its block can hold them: none in a heading or
- * table cell, whose content is one line, so each becomes a space; and no
- * blank line anywhere, which would end the block, so each stretch of line
- * breaks becomes one. The `&` of a character reference is escaped in both
- * (`\&copy;`), since `marked` reads one as its character.
+ * breaks are written where its block can hold them: in a heading or table
+ * cell, whose content is one line, each is written `&#10;`, which reads back
+ * as the line feed; elsewhere no blank line is written, which would end the
+ * block, so each stretch of line breaks becomes one. The `&` of a character
+ * reference is escaped in both (`\&copy;`), since `marked` reads one as its
+ * character.
  *
  * @param link - The link.
  * @param context - Where it is written.
  * @returns `(url)`, `(<url>)` when the URL holds a character a bare destination cannot, plus ` "title"`.
  */
 function writeLinkDestination(link: LinkNode, context: InlineContext): string {
-    const url = link.getURL();
-    const title = link.getTitle();
+    return writeDestination(link.getURL(), link.getTitle(), context);
+}
+
+/**
+ * Writes a title's text between its quotes. A line feed is written as a
+ * character reference (`&#10;`), which reads back as the line feed, wherever
+ * a literal one would end the block or the line: in a block that holds one
+ * line, and next to a blank line or a line edged by whitespace. A line feed
+ * between two lines of text stays a literal line break. The last backslash of
+ * a title that ends in one is written `&#92;`.
+ *
+ * @param title - The title.
+ * @param context - Where it is written.
+ * @returns The title's text.
+ */
+function writeTitleLines(title: string, context: InlineContext): string {
+    const parts = title.split("\n");
+    const joined = parts.reduce((written, part, index) => {
+        const escaped = escapeCharacterReferences(part.replace(/[\\"]/g, "\\$&"));
+        const bothHoldText = /\S$/.test(parts[index - 1] ?? "") && /^\S/.test(part);
+
+        return index === 0 ? escaped : written + (context.singleLine || !bothHoldText ? "&#10;" : "\n") + escaped;
+    }, "");
+
+    return joined.replace(/\\\\$/, "&#92;");
+}
+
+/**
+ * Writes a destination and title in parentheses, as {@link writeLinkDestination}
+ * does for a link and {@link writeImage} does for an image. The last backslash
+ * of a title that ends in one is written `&#92;`, since `marked` reads a
+ * closing quote after a backslash as escaped.
+ *
+ * @param url - The destination.
+ * @param title - The title; `null` or `""` for none.
+ * @param context - Where it is written.
+ * @returns `(url)`, `(<url>)` when the URL holds a character a bare destination cannot, plus ` "title"`.
+ */
+function writeDestination(url: string, title: string | null, context: InlineContext): string {
     const titled = title !== null && title !== "";
     const bare = url !== "" && ![...url].some((char) => needsAngleBrackets(char));
     const destination = bare ? escapeCharacterReferences(url) : url === "" && !titled ? "" : `<${escapeCharacterReferences(url.replace(/[\\<>]/g, "\\$&"))}>`;
-    const lines = titled ? title.replace(/\n[ \t]*(?=\n)/g, "").replace(/\n+/g, context.singleLine ? " " : "\n") : "";
-    const written = `(${destination}${titled ? ` "${escapeCharacterReferences(lines.replace(/[\\"]/g, "\\$&"))}"` : ""})`;
+    const titleText = titled ? writeTitleLines(title, context) : "";
+    const written = `(${destination}${titled ? ` "${titleText}"` : ""})`;
 
     return context.inTableCell ? written.replace(/\|/g, "\\|") : written;
 }
@@ -6253,19 +6327,135 @@ function writeAutolink(link: LinkNode, context: InlineContext, marked = false): 
 }
 
 /**
- * Writes an image with its attributes, in the form the viewer reads.
- * Brackets are removed from the alt text, which the image grammar cannot hold.
+ * Writes an image onto the line being built: the form it was loaded in while
+ * that still reads as this image, else the standard form
+ * `![alt](destination "title")`, its alt text written as link text is. Both
+ * forms are followed by the image's attribute group.
  *
+ * @param writer - The inline writer.
  * @param node - The image.
- * @param context - Where it is written.
- * @returns `![alt](src)`, plus `{…}` when it has attribute text.
  */
-function writeImage(node: MarkdownImageNode, context: InlineContext): string {
+function writeImage(writer: InlineWriter, node: MarkdownImageNode): void {
     const attributeText = imageAttributeText(node);
     const attributes = attributeText === "" ? "" : `{${attributeText}}`;
-    const written = `![${node.getAlt().replace(/[[\]]/g, "")}](${node.getSrc()})${attributes}`;
+    const written = $getState(node, imageWrittenState);
 
-    return context.inTableCell ? written.replace(/\|/g, "\\|") : written;
+    if (writtenFormHolds(node, written, writer.context)) {
+        const form = attributes === "" ? imageReferenceForm(written) : null;
+
+        // A shortcut or collapsed reference is a reference piece, as a reference link's are: its `]` is no reason
+        // to escape a `(` after it, and a shortcut is written collapsed where the next character would join it.
+        writer.pieces.push(form === "shortcut" || form === "collapsed"
+            ? { kind: "reference", text: written, shortcut: form === "shortcut", image: true }
+            : { kind: "syntax", text: written + attributes });
+
+        return;
+    }
+
+    writer.pieces.push({ kind: "syntax", text: "!" }, { kind: "syntax", text: "[" });
+
+    const altStart = writer.pieces.length;
+
+    node.getAlt().split("\n").forEach((line, index) => {
+        if (index > 0) {
+            writer.pieces.push({ kind: "syntax", text: "&#10;" });
+        }
+
+        if (line !== "") {
+            writer.pieces.push({ kind: "text", text: line });
+        }
+    });
+
+    protectLabelBrackets(writer.pieces, altStart);
+    writer.pieces.push({ kind: "syntax", text: `]${writeDestination(node.getSrc(), node.getTitle(), writer.context)}${attributes}` });
+}
+
+/**
+ * Whether a written image form can name a link reference definition: it ends
+ * in `]` (a reference form) or holds a `[` after its `![` (its alt text may
+ * hold a reference).
+ *
+ * @param written - The image as written.
+ * @returns `true` when it can.
+ */
+function imageFormNamesLabel(written: string): boolean {
+    return written.endsWith("]") || written.includes(LABEL_OPEN, 2);
+}
+
+/**
+ * Reads a written image form alone, under definitions.
+ *
+ * @param written - The image as written, without its attribute group.
+ * @param definitions - The definitions in force; `null` for none.
+ * @returns The image token when the whole text reads as one image, else `null`.
+ */
+export function readImageForm(written: string, definitions: Links | null): MdImageToken | null {
+    const namesLabel = imageFormNamesLabel(written);
+    const known = namesLabel ? undefined : IMAGE_FORMS_READ.get(written);
+
+    if (known !== undefined) {
+        return known;
+    }
+
+    const tokens = lexMarkdownInline(written, definitions ?? undefined);
+    const only = tokens.length === 1 && tokens[0]!.type === "mdimage" && tokens[0]!.raw === written ? tokens[0] as unknown as MdImageToken : null;
+
+    if (!namesLabel) {
+        if (IMAGE_FORMS_READ.size >= RUNS_ON_CACHE_SIZE) {
+            IMAGE_FORMS_READ.clear();
+        }
+
+        IMAGE_FORMS_READ.set(written, only);
+    }
+
+    return only;
+}
+
+/**
+ * Whether an image's written form still reads as the image: lexed alone under
+ * the save's definitions, it is one image whose source, alt text and title
+ * equal the node's, and it can stand where it is written.
+ *
+ * @param node - The image.
+ * @param written - The form it was loaded in; `""` for an image made in the editor.
+ * @param context - Where it is written.
+ * @returns `true` when the written form can be saved as it is.
+ */
+function writtenFormHolds(node: MarkdownImageNode, written: string, context: InlineContext): boolean {
+    if (written === "" || BLANK_LINE_IN_TITLE.test(written) || (context.singleLine && written.includes("\n")) || (context.inTableCell && written.includes("|"))) {
+        return false;
+    }
+
+    const image = readImageForm(written, context.definitions);
+    const title = node.getTitle();
+
+    return image !== null && image.src === node.getSrc() && image.alt === node.getAlt()
+        && (image.title === title || BLANK_LINE_IN_TITLE.test(title ?? ""));
+}
+
+/**
+ * Which reference form a written image is, read the way `marked` and the
+ * reference-link importer read it: by matching the whole written text against
+ * `marked`'s own patterns, never by how it ends, since a label may end in an
+ * escaped bracket (`![a\[]` is a shortcut reference to the label `a\[`).
+ *
+ * @param written - The image as written, without its attribute group.
+ * @returns `"full"` (`![alt][label]`), `"collapsed"` (`![label][]`), `"shortcut"` (`![label]`), or `null` for an inline image.
+ */
+function imageReferenceForm(written: string): "full" | "collapsed" | "shortcut" | null {
+    const matchesWhole = (pattern: RegExp, text: string): boolean => pattern.exec(text)?.[0] === text;
+
+    if (matchesWhole(FULL_REFERENCE, written)) {
+        return "full";
+    }
+
+    if (!matchesWhole(SHORT_REFERENCE, written)) {
+        return null;
+    }
+
+    const collapsed = written.endsWith("[]") && matchesWhole(SHORT_REFERENCE, written.slice(0, -2));
+
+    return collapsed ? "collapsed" : "shortcut";
 }
 
 /**
@@ -6326,7 +6516,7 @@ function segmentReading(segments: readonly Segment[], context: InlineContext): s
                 pushBreakReading(reading);
             }
         } else if (segment.kind === "image") {
-            reading.push(imageReading(segment.node.getSrc(), link));
+            reading.push(imageReading(segment.node.getSrc(), segment.node.getAlt(), segment.node.getTitle(), link));
         } else if (segment.kind === "source") {
             if (!pushSourceReading(reading, segment, link, context)) {
                 return null;
@@ -6481,8 +6671,14 @@ function pushTokenReading(
             case "escape":     pushCharacterReading(reading, (token as Tokens.Escape).text, scope, context); break;
             case "br":         pushBreakReading(reading); break;
             case "html":       pushHtmlReading(reading, token as Tokens.HTML, scope, context); break;
-            case "mdimage":    reading.push(imageReading((token as unknown as { src: string }).src, scope.link)); break;
-            // As the viewer shows any other token: its text (a `marked` image the dialect's image rule declined shows its alt text), else its source.
+            case "mdimage": {
+                const image = token as unknown as MdImageToken;
+
+                reading.push(imageReading(image.src, image.alt, image.title, scope.link));
+
+                break;
+            }
+            // As the viewer shows any other token: its text, else its source.
             default:           pushCharacterReading(reading, (token as Tokens.Generic).text ?? token.raw, scope, context);
         }
 
@@ -6642,8 +6838,8 @@ function linkReading(href: string, title: string): string {
  * @param link - The reading key of the link around it.
  * @returns The unit.
  */
-function imageReading(src: string, link: string): string {
-    return ["\u0002image", src, link].join(READING_KEY_SEPARATOR);
+function imageReading(src: string, alt: string, title: string | null, link: string): string {
+    return ["\u0002image", src, alt, title ?? "", link].join(READING_KEY_SEPARATOR);
 }
 
 // ---------------------------------------------------------------- inline: lines and escaping
@@ -7070,7 +7266,10 @@ function renderLine(
 
         // A reference's closing `]` is never read as a link's or span's
         // opening bracket, so it is no reason to escape a `(` or `{` after it.
-        const before = previous === undefined ? continuesAfter ?? "\n" : previous.kind === "reference" ? "" : previous.text.slice(-1);
+        // A reference image's is the exception for a `{`, which attaches the
+        // image's size group to it.
+        const before = previous === undefined ? continuesAfter ?? "\n"
+            : previous.kind === "reference" && !(previous.image === true && piece.text.startsWith("{")) ? "" : previous.text.slice(-1);
         const after = pieces[index + 1]?.text[0] ?? "\n";
 
         const leanText = lean === null ? null : { pairable: lean.pairable, grouped: lean.grouped[index] === true, drops: lean.drops };

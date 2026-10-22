@@ -27,7 +27,7 @@ import { lexMarkdownWithDefinitions, linkLabelKey } from "~/component/display/ma
 import { holdsLineContent } from "~/component/display/markdownLineContent.js";
 import {
     $definitionsSource, $documentDefinitions, $headingWritesOneLine, $itemReadsLoose, $listReadsLoose, $rawBlockWritesAsParagraph, $readsBackAsShown,
-    $runsReadingOtherwise, $serializeBlock, $writesSomething, $writesSyntaxBeforeText, $writtenListMarker, definitionsOfSource, keptImageShown, NO_DEFINITIONS_SOURCE, rawBlockStandsInItem,
+    $imageNamesLabel, $runsReadingOtherwise, $serializeBlock, $writesSomething, $writesSyntaxBeforeText, $writtenListMarker, definitionsOfSource, keptImageShown, NO_DEFINITIONS_SOURCE, rawBlockStandsInItem, readImageForm,
 } from "~/component/editor/markdownSerializer.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import { $isMarkdownHorizontalRuleNode } from "~/component/editor/markdownHorizontalRuleNode.js";
@@ -37,7 +37,7 @@ import {
     MarkdownListItemTextNode,
 } from "~/component/editor/markdownListItemNode.js";
 import { MarkdownQuoteNode } from "~/component/editor/markdownQuoteNode.js";
-import { keptSourceState, listLooseState, nestedLinkState, spanAttributesState } from "~/component/editor/markdownNodeState.js";
+import { imageWrittenState, keptSourceState, listLooseState, nestedLinkState, spanAttributesState } from "~/component/editor/markdownNodeState.js";
 import { $isMarkdownBlockNode, MarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import { $isReferenceLinkNode } from "~/component/editor/markdownReferenceLinkNode.js";
 import {
@@ -1522,12 +1522,14 @@ interface DefinitionsShown {
  * Registers the definition rule. What a block shows was read under the
  * document's link reference definitions, and only source kept as written
  * reads differently under others: a run whose source holds a `[` — an empty
- * reference (`[][ref]`), a reference image (`![alt][ref]`), a reference kept
- * inside a construct — shows what its source read as, while the save writes
+ * reference (`[][ref]`), a reference kept inside a construct, an image inside
+ * such a construct — shows what its source read as, while the save writes
  * that source unchanged. Everything else the editor holds reads alike under
  * any definitions: text escapes its brackets, so text never becomes a link,
- * and a reference link keeps its own URL, saved inline once its label no
- * longer resolves to it.
+ * a reference link keeps its own URL, saved inline once its label no longer
+ * resolves to it, and a reference image keeps its own source and title the
+ * same way, saved `![alt][label]` while its label's definition gives them and
+ * inline otherwise.
  *
  * So when an update changes the definitions — one typed, edited, pasted or
  * removed in a raw block, at any depth — each top-level block whose runs
@@ -1650,7 +1652,7 @@ function $showBlocksAsDefinitionsRead(previous: Links, current: Links, changed: 
     for (const block of $getRoot().getChildren()) {
         const named = $namesLabel(block, changed);
 
-        if ($isElementNode(block) && $dfs(block).some(({ node }) => $isReferenceLinkNode(node))) {
+        if ($isElementNode(block) && $dfs(block).some(({ node }) => $isReferenceLinkNode(node) || $imageNamesLabel(node))) {
             $adoptDefinitionTitles(block, current);
             $showRunsAsSaved(block);
         }
@@ -1680,6 +1682,16 @@ function $showBlocksAsDefinitionsRead(previous: Links, current: Links, changed: 
  */
 function $adoptDefinitionTitles(block: ElementNode, definitions: Links): void {
     for (const { node } of $dfs(block)) {
+        if ($isMarkdownImageNode(node) && BLANK_LINE_IN_TITLE.test(node.getTitle() ?? "")) {
+            const image = readImageForm($getState(node, imageWrittenState), definitions);
+
+            if (image !== null && image.src === node.getSrc() && image.alt === node.getAlt() && image.title !== node.getTitle()) {
+                node.setTitle(image.title);
+            }
+
+            continue;
+        }
+
         if (!$isReferenceLinkNode(node) || !BLANK_LINE_IN_TITLE.test(node.getTitle() ?? "")) {
             continue;
         }
@@ -1695,10 +1707,9 @@ function $adoptDefinitionTitles(block: ElementNode, definitions: Links): void {
 /**
  * What Markdown shows under given definitions, in a form two readings can
  * compare: its tokens, except that where a reference points is left out
- * where the viewer shows nothing of it — a link with no content, and an
- * image `marked` reads from a reference (`![alt][ref]`), which the viewer
- * shows as its alt text — so a definition whose URL is edited shows such a
- * block anew only where a link it points shows.
+ * where the viewer shows nothing of it — a link with no content — so a
+ * definition whose URL is edited shows such a block anew only where a link
+ * it points shows.
  *
  * @param markdown - The Markdown.
  * @param definitions - The definitions in force.
@@ -1706,9 +1717,9 @@ function $adoptDefinitionTitles(block: ElementNode, definitions: Links): void {
  */
 function shownReading(markdown: string, definitions: Links): string {
     return JSON.stringify(lexMarkdownWithDefinitions(markdown, definitions), (_key, value: unknown) => {
-        const token = value as Partial<Tokens.Link | Tokens.Image> | null;
+        const token = value as Partial<Tokens.Link> | null;
 
-        if (token?.type === "image" || (token?.type === "link" && token.tokens?.length === 0)) {
+        if (token?.type === "link" && token.tokens?.length === 0) {
             return { type: token.type, raw: token.raw, text: token.text };
         }
 
@@ -1737,7 +1748,7 @@ function $namesLabel(block: LexicalNode, labels: readonly string[]): boolean {
         return false;
     }
 
-    const sources = $dfs(block).map(({ node }) => ($isMarkdownSourceTextNode(node) ? node.getSource() : "")).join("");
+    const sources = $dfs(block).map(({ node }) => ($isMarkdownSourceTextNode(node) ? node.getSource() : $isMarkdownImageNode(node) ? $getState(node, keptSourceState)?.source ?? "" : "")).join("");
     const bracketed = [...sources.matchAll(BRACKETED_TEXT)].map((match) => linkLabelKey(match[1]!));
 
     return labels.some((label) => bracketed.includes(label));

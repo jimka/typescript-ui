@@ -154,6 +154,17 @@ page resets to empty.
   `<input type="checkbox">` and is read back from one, so a task item copied
   from one `MarkdownEditor` pastes into another with its checkbox. See
   [Migration](/reference/migration/next).
+- **`Markdown` and `MarkdownEditor` read every CommonMark image form.** An
+  image with a title (`![a](/u "t")`), a reference image (`![a][ref]`,
+  `![a][]`, `![a]`) and an image with images or links in its alt text
+  rendered as its alt text; they now render as images, and the title is
+  the `<img>`'s `title` attribute. An `<…>` destination loses its
+  brackets, as CommonMark reads it, and the alt text is the description's
+  plain text, its escapes and character references read. The
+  `{width=… height=…}` group works after every form. `MarkdownEditor`
+  shows these images, keeps the form each was written in, and writes a
+  reference image whose definition changes inline with its own source.
+  See [Migration](/reference/migration/next).
 
 ### Core
 
@@ -375,6 +386,10 @@ page resets to empty.
   The `protected` fields `_typeAheadBuf` and `_typeAheadAt` of
   `AbstractSelectableList` are gone. No consumer action is needed unless a
   subclass read those two fields.
+- **`MarkdownEditor.insertImage('')` does nothing.** An empty source inserted
+  an image with no address; the command now declines it, as a pasted `<img>`
+  with no `src` pastes as nothing. The `Markdown` viewer still draws
+  `![a]()` as an `<img src="">`, as CommonMark reads it.
 
 ### Core
 
@@ -546,8 +561,7 @@ page resets to empty.
   list's looseness follows its save; a table stays rectangular with every
   cell aligned by its column, and a heading or list pasted into a cell becomes
   its lines of text; an HTML block left open before other blocks shows as the
-  paragraph it saves as; `insertImage` declines alt text holding a bracket.
-  No consumer action is needed.
+  paragraph it saves as. No consumer action is needed.
 
 - **`Markdown` merges a table cell only into a whole rectangle.** A `<<`
   extends only a cell begun in its own row, and a `^^` extends the cell
@@ -914,6 +928,11 @@ page resets to empty.
   link's text opens nothing. An editable editor
   follows no link, as before: a click there places the caret. See
   *Following a link* in the `MarkdownEditor` docs.
+- **`MarkdownEditor.insertImage()` takes a `title`, and pasted images stay
+  images.** `insertImage(src, { title })` writes `![alt](src "title")`; an
+  alt text holding `[` or `]` is inserted, escaped, where the command did
+  nothing. An `<img>` pasted from another application becomes an image,
+  with its alt text, title and size.
 
 ### Core
 
@@ -2218,6 +2237,21 @@ page resets to empty.
   in such quotes, where they did nothing. A long quote loads in a fraction of
   the time (a quote of 2,000 paragraphs: 176 ms, where it took 9.4 s). No
   consumer action is needed.
+- **`MarkdownEditor` saves a link or image title as it is.** A title that ends
+  in a backslash was written `"…\\"`, which `marked` reads as an escaped
+  quote, so the link fell apart on reload; the last backslash is now written
+  `&#92;`. A line feed in a title of a heading or table cell was written as a
+  space and a blank line collapsed to one line feed, so the title changed on
+  reload; each is now written `&#10;`.
+- **`MarkdownEditor` keeps the emphasis around an image.** Emphasis, strong,
+  strikethrough or underline around an image (`*![a](/i.png)*`) was dropped
+  from the save at the first edit in its block; an image now remembers the
+  marks it was read inside and is written back inside them. Clear formatting
+  over an image takes its marks off; the format toggles leave an image's
+  marks as they were.
+- **`MarkdownEditor` neutralises an image pasted as Lexical JSON with a refused
+  source.** Such a source (`javascript:…`) now becomes an empty one, as it is
+  refused everywhere else an image enters the editor.
 
 ### Core
 

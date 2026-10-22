@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { DecoratorNode } from "lexical";
-import type { EditorConfig, LexicalNode, NodeKey, SerializedLexicalNode, Spread } from "lexical";
+import type { DOMConversionMap, EditorConfig, LexicalNode, NodeKey, SerializedLexicalNode, Spread } from "lexical";
+import { resolveImageSpec } from "~/component/display/markdownAttributes.js";
 import { DOM } from "~/core/DOM.js";
 import type { MarkdownImageSpec } from "~/component/display/markdownAttributes.js";
 
@@ -12,6 +13,7 @@ export type SerializedMarkdownImageNode = Spread<
         alt:    string;
         width:  number | null;
         height: number | null;
+        title?: string | null;
     },
     SerializedLexicalNode
 >;
@@ -26,9 +28,11 @@ function keepElement<T>(element: T): T {
 }
 
 /**
- * `![alt](src){width=… height=…}` — a sized, validated image, rendered as an
- * inline atomic node (no further editable content) alongside surrounding
- * text.
+ * Every CommonMark image form — `![alt](src "title")`, `![alt](<src>)`,
+ * `![alt][label]`, `![label][]`, `![label]` — with the dialect's
+ * `{width=… height=…}` group after it: a validated image with its title,
+ * rendered as an inline atomic node (no further editable content) alongside
+ * surrounding text.
  *
  * A `DecoratorNode`, not an `ElementNode`, since an image has no children a
  * selection can enter — the same shape Lexical's own image examples use.
@@ -42,14 +46,56 @@ export class MarkdownImageNode extends DecoratorNode<null> {
     __alt:    string;
     __width:  number | null;
     __height: number | null;
+    __title:  string | null;
 
-    constructor(spec: MarkdownImageSpec, key?: NodeKey) {
+    /**
+     * Creates an image node.
+     *
+     * @param spec - The image's validated source, alt text and size.
+     * @param title - The image's title; `null` or `""` for none.
+     * @param key - The node key, set by Lexical when it clones the node.
+     */
+    constructor(spec: MarkdownImageSpec, title: string | null = null, key?: NodeKey) {
         super(key);
 
         this.__src = spec.src;
         this.__alt = spec.alt;
         this.__width = spec.width;
         this.__height = spec.height;
+        this.__title = title === "" ? null : title;
+    }
+
+    /**
+     * An `<img>` pasted from another application becomes an image, with its
+     * `src`, `alt`, `title`, `width` and `height` attributes; an `<img>` with
+     * no `src` (a lazy-loaded one that carries only `data-src`) or a source the
+     * scheme allow-list refuses makes no node.
+     *
+     * @returns The conversion map.
+     */
+    static importDOM(): DOMConversionMap | null {
+        return {
+            img: (node) => ({
+                conversion: () => {
+                    const handle = DOM.source.intern(node);
+                    const attributes: Record<string, string> = {};
+
+                    for (const key of ["width", "height"]) {
+                        const value = DOM.source.getAttribute(handle, key);
+
+                        if (value !== null) {
+                            attributes[key] = value;
+                        }
+                    }
+
+                    const src = DOM.source.getAttribute(handle, "src") ?? "";
+                    const spec = src === "" ? null : resolveImageSpec(src, DOM.source.getAttribute(handle, "alt") ?? "", attributes);
+
+                    return { node: spec === null ? null : $createMarkdownImageNode(spec, DOM.source.getAttribute(handle, "title")) };
+                },
+                priority: 0,
+            }),
+        };
     }
 
     static getType(): string {
@@ -59,15 +105,27 @@ export class MarkdownImageNode extends DecoratorNode<null> {
     static clone(node: MarkdownImageNode): MarkdownImageNode {
         return new MarkdownImageNode(
             { src: node.__src, alt: node.__alt, width: node.__width, height: node.__height },
+            node.__title,
             node.__key,
         );
     }
 
+    /**
+     * Reads a serialized image, as a Lexical JSON paste delivers one. The
+     * source goes through the scheme allow-list, as every other way into the
+     * editor does: a refused source is neutralised to an empty one, which the
+     * viewer draws as an image with no address, never as an unsafe one.
+     *
+     * @param json - The serialized image.
+     * @returns The image.
+     */
     static importJSON(json: SerializedMarkdownImageNode): MarkdownImageNode {
+        const accepted = resolveImageSpec(json.src, json.alt, {}) !== null;
+
         // `updateFromJSON` restores the node's state (its authored attributes), as Lexical's own nodes do.
         return new MarkdownImageNode({
-            src: json.src, alt: json.alt, width: json.width, height: json.height,
-        }).updateFromJSON(json);
+            src: accepted ? json.src : "", alt: json.alt, width: json.width, height: json.height,
+        }, json.title ?? null).updateFromJSON(json);
     }
 
     /**
@@ -106,6 +164,29 @@ export class MarkdownImageNode extends DecoratorNode<null> {
         return this.getLatest().__height;
     }
 
+    /**
+     * Returns the image's title, shown as its tooltip.
+     *
+     * @returns The image's title; `null` when it has none.
+     */
+    getTitle(): string | null {
+        return this.getLatest().__title;
+    }
+
+    /**
+     * Sets the image's title.
+     *
+     * @param title - The title; `null` or `""` for none.
+     * @returns This node.
+     */
+    setTitle(title: string | null): this {
+        const self = this.getWritable();
+
+        self.__title = title === "" ? null : title;
+
+        return self;
+    }
+
     isInline(): boolean {
         return true;
     }
@@ -123,6 +204,7 @@ export class MarkdownImageNode extends DecoratorNode<null> {
             alt:    this.getAlt(),
             width:  this.getImageWidth(),
             height: this.getImageHeight(),
+            title:  this.getTitle(),
         };
     }
 
@@ -137,6 +219,12 @@ export class MarkdownImageNode extends DecoratorNode<null> {
 
         if (height !== null) {
             setAttr.height = String(height);
+        }
+
+        const title = this.getTitle();
+
+        if (title !== null) {
+            setAttr.title = title;
         }
 
         const element = DOM.sink.createViewElement("img", {
@@ -158,8 +246,15 @@ export class MarkdownImageNode extends DecoratorNode<null> {
     }
 }
 
-export function $createMarkdownImageNode(spec: MarkdownImageSpec): MarkdownImageNode {
-    return new MarkdownImageNode(spec);
+/**
+ * Creates an image node.
+ *
+ * @param spec - The image's validated source, alt text and size.
+ * @param title - The image's title; `null` or `""` for none.
+ * @returns The node.
+ */
+export function $createMarkdownImageNode(spec: MarkdownImageSpec, title: string | null = null): MarkdownImageNode {
+    return new MarkdownImageNode(spec, title);
 }
 
 export function $isMarkdownImageNode(node: LexicalNode | null | undefined): node is MarkdownImageNode {
