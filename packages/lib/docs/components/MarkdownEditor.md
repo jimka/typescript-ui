@@ -32,7 +32,7 @@ Give the editor a sized host (a `Fit` panel, as above, or an explicit `preferred
 | `value` | `string` | `""` | Initial Markdown source. |
 | `readOnly` | `boolean` | `false` | Whether the editor rejects edits. |
 | `mode` | `"wysiwyg" \| "source"` | `"wysiwyg"` | Which editing surface is shown — see [Source / WYSIWYG mode](#source-wysiwyg-mode). |
-| `listeners` | `{ change?: (payload) => void, selectionstate?: (payload) => void }` | — | Construction-time listener bag for the `"change"` and `"selectionstate"` events. |
+| `listeners` | `{ change?: (payload) => void, selectionstate?: (payload) => void, readonlyedit?: () => void }` | — | Construction-time listener bag for the `"change"`, `"selectionstate"` and `"readonlyedit"` events. |
 
 Inherits the common [`ComponentOptions`](/api/core/interfaces/ComponentOptions) fields (preferred size, background, foreground, etc.).
 
@@ -130,7 +130,7 @@ There is no built-in toolbar in v1. Formatting is invoked four ways, all provide
 | `setBlockAlignment(align)` | Set (or, with `null`, clear) the block alignment of the top-level blocks the selection spans, wrapping (or unwrapping) a `:::` fence as needed. |
 | `setColumnCount(count, gap?)` | Grow or shrink the number of explicit column regions in the block the selection sits in (or wrap the top-level blocks the selection spans in a new one), and optionally set the column gap. Growing appends empty columns; shrinking merges the surplus columns' content into the last column kept, except a column left exactly as this method created it (a single empty paragraph), which is dropped instead. `count` is clamped to 1–6; `null` means one column. Unwraps the fence when the result carries no alignment and no more than one column. |
 | `insertImage(src, options?)` | Insert a sized, validated image at the caret. `options` may set `alt`, `width`, and `height`. Without a text selection it goes in at the document's end. No-op when `src` fails the scheme allow-list, or `alt` holds a `[` or `]`. |
-| `cut()` / `copy()` | Write the selected text to the system clipboard; `cut()` also removes it. A selection that runs from outside a table into one of its cells is cut or copied with the whole table (see *Tables* above). `cut()` is refused while the editor is [read-only](#read-only): nothing is copied or removed. |
+| `cut()` / `copy()` | Write the selected text to the system clipboard; `cut()` also removes it. A selection that runs from outside a table into one of its cells is cut or copied with the whole table (see *Tables* above). `cut()` is refused while the editor is [read-only](#read-only): nothing is copied or removed. Ctrl/Cmd+X on the WYSIWYG surface is refused the same way. |
 | `paste()` | Read the system clipboard and insert it at the caret, replacing any selection. Async: resolves `true` when the clipboard was read, `false` when the browser would not allow the read. Refused while the editor is [read-only](#read-only): it resolves `false` without reading the clipboard. |
 
 Each command operates on the current selection and no-ops (without throwing) when there is no selection, except `insertTable` and `insertImage`, which then insert at the document's end. The format toggles, the colour/font/size setters and `toggleLink` also no-op when their result could not be saved as it shows — see [What Markdown cannot hold](#what-markdown-cannot-hold). The format toggles, the colour/font/size setters, `toggleLink`, `insertTable` and `insertImage` also no-op when the selection touches a raw Markdown block or a code block (for the two inserts without a text selection: when the document ends in one), and the toggles, setters and `toggleLink` when it holds an atomic run kept as source (see [Kept as source](#kept-as-source)). With whole table cells selected, a format toggle works cell by cell under the same rules: a cell holding such a run, or whose result could not be saved as it shows, is left as it is, as is a cell with no text (an empty one, or one holding an image alone), and the rest take the format, which comes off when all the text in the cells taking it already has it. `setBlockType` and the two list toggles no-op when the selection touches a table cell — whole cells selected included — which holds text only — a heading or list made there would be saved into the cell as its literal syntax. A list next to a raw list block is saved with another bullet or delimiter when its own would make the viewer join the two lists. The row/column/table commands additionally no-op when the caret is not inside a table cell, and for a selection that starts in a cell and runs out of its table; `mergeTableCells` needs more than one cell selected instead. `insertParagraphBeforeBlock`/`insertParagraphAfterBlock` no-op when the caret is not inside a blockquote, list, fenced code block, or table cell. A command declined for any of these reasons changes nothing: the document, its selection and the undo history stay as they were, and neither `"change"` nor `"selectionstate"` fires. The one exception is a format, style or link declined because its result could not be saved as it shows: that is found by trying it, so a collapsed caret is left expanded to its word.
@@ -263,6 +263,7 @@ that way, the press changes nothing.
 | `on('change', fn)` / `off('change', fn)` | Subscribe to content changes (the payload carries the new Markdown). |
 | `getSelectionState()` | Read the caret's current tracked state — see [Live selection state](#live-selection-state). |
 | `on('selectionstate', fn)` / `off('selectionstate', fn)` | Subscribe to changes in that state. |
+| `on('readonlyedit', fn)` / `off('readonlyedit', fn)` | Subscribe to edits refused because the editor is read-only — see [Read-only](#read-only). |
 | `dispose()` | Detach the Lexical registrations and the editor root — call before discarding a dynamically-built `MarkdownEditor`. |
 | `markClean()` | Clear the dirty flag, accepting the current document as the clean baseline. |
 
@@ -309,13 +310,61 @@ One corner case: a `markClean()` taken in source mode over text the WYSIWYG surf
 
 ## Read-only
 
-`setReadOnly(true)` locks the editor against edits (dropping the caret and editing affordances); `false` restores them. While read-only the WYSIWYG surface is not `contenteditable`: its text can still be selected with the mouse and copied, but it shows no caret and takes no keyboard focus, so its context menu, which then offers only Copy, opens from a right-click and not from the keyboard. Read-only wins over `setContentEditable(true)`, which takes effect once the editor is editable again: `setReadOnly(false)` gives the surface whatever `setContentEditable` last asked for. The source surface keeps its caret and keyboard selection while read-only, as `CodeEditor` does. No key pressed there changes the document: see [CodeEditor's Read-only section](/components/CodeEditor#read-only).
+`setReadOnly(true)` locks the editor against edits; `false` lifts the lock. A read-only editor keeps its caret, on both surfaces:
 
-Read-only also refuses every command that edits the document, on both surfaces: a call such as `toggleBold()`, `insertTable()` or `cut()` leaves the document and the selection as they are, and `paste()` resolves `false` without reading the clipboard. `copy()` still copies. `getSelectionState()` then reports every `can…` field `false`, and `"selectionstate"` fires when `setReadOnly` changes them, so a toolbar built on those fields greys out — as [`MarkdownDocumentPanel`](/components/MarkdownDocumentPanel)'s does, its Table button included, which reads `canEditTable`, `canMergeCells` and `canUnmergeCell`. `inTable` is not such a field: it says where a caret or a text selection is (it is `false` while whole table cells are selected, and for a selection that runs out of its table), and stays `true` in a read-only editor's table cell, so a control enabled on it alone would stay enabled. Replacing the whole document with `setValue()` stays possible, as on a read-only `CodeEditor`: read-only guards against edits, not against the host loading another document. To change a read-only editor's document from code, load the new text with `setValue()`, or lift the lock around the command.
+- It is a tab stop. Tab and Shift+Tab leave it, from a table cell too.
+- The arrow keys, Home and End, PageUp and PageDown, and their word and document forms move the caret. Shift with any of them selects, and Ctrl/Cmd+A selects the editor's text, not the page's. The mouse selects as before.
+- Ctrl/Cmd+C copies the selection. Shift+F10 or the ContextMenu key opens the context menu at the caret, which then offers only Copy.
+- Enter with the caret in a link opens the link, and so does a click on one — see [below](#following-a-link).
+- Switching read-only on or off leaves the selection and the keyboard focus where they are.
+
+While read-only no edit reaches the document or the undo history, and a refused edit leaves the caret or the selection where it is:
+
+- Typing, Enter outside a link, Backspace and Delete, a paste, a cut, a drop, a composition (IME input), a spelling replacement, and the browser's format shortcuts (Ctrl/Cmd+B, +I, +U) are refused. Text that is dragged out of the editor is copied, not moved.
+- The undo and redo keys (Ctrl/Cmd+Z, Ctrl+Y, Ctrl/Cmd+Shift+Z, and Alt+Backspace with or without Shift, which a browser on Windows gives its undo and redo) do nothing: not in the editor, whose history is kept as it is for when the lock is lifted, and not in the rest of the page, whose last edit the browser's own undo would otherwise take back from here.
+- Every command that edits is refused, called from code or from a toolbar: a call such as `toggleBold()`, `insertTable()` or `cut()` leaves the document and the selection as they are, and `paste()` resolves `false` without reading the clipboard. `copy()` still copies.
+- Replacing the whole document with `setValue()` stays possible, as on a read-only `CodeEditor`: read-only guards against edits, not against the host loading another document. To change a read-only editor's document from code, load the new text with `setValue()`, or lift the lock around the command.
+
+A refused edit fires `"readonlyedit"` and flashes the surface it was made on, with the brief error-coloured wash a read-only `CodeEditor` plays. In WYSIWYG mode the event fires once for each edit the surface refuses, for each editing command called on the editor, and once for each step of a composition, when the browser announces the text it is about to write. A composition that starts with no text to write, as an on-screen keyboard starts one around the word a tap puts the caret in, is no edit and is not reported. Two kinds of key are not reported there: Tab, which moves the focus on, and the undo and redo keys, which are stopped quietly. In `"source"` mode the event fires for what the source editor reports, which [CodeEditor's Read-only section](/components/CodeEditor#read-only) lists; there too the undo and redo keys are quiet, as are the line commands, and the cut key copies the selection where the WYSIWYG surface refuses it.
+
+```typescript
+editor.on('readonlyedit', () => statusBar.setText('This document is read-only.'));
+```
+
+`getSelectionState()` reports every `can…` field `false` while read-only, and `"selectionstate"` fires when `setReadOnly` changes them, so a toolbar built on those fields greys out — as [`MarkdownDocumentPanel`](/components/MarkdownDocumentPanel)'s does, its Table button included, which reads `canEditTable`, `canMergeCells` and `canUnmergeCell`. The other fields follow the caret as it moves: `bold`, `linkUrl`, `inTable` and the rest say what the caret is in. `inTable` is not a `can…` field: it says where a caret or a text selection is (it is `false` while whole table cells are selected, and for a selection that runs out of its table), and stays `true` in a read-only editor's table cell, so a control enabled on it alone would stay enabled.
+
+While it is `contenteditable`, the WYSIWYG surface is a multi-line text box to assistive technology: it carries `role="textbox"`, `aria-multiline="true"` and `aria-readonly`, which follows the read-only state. These are the attributes the source surface's content carries. After `setContentEditable(false)` it carries none of the three: it takes no focus and has no caret, and its headings, links, lists and tables are exposed as what they are.
+
+What a browser makes of `aria-readonly` is the browser's. Chromium reports the text box and that it is multi-line, but reports an editing host as editable whatever `aria-readonly` says, on the WYSIWYG surface and on the source surface alike. That was measured in Chromium's accessibility tree; no screen reader was run. A screen reader user there may meet a field announced as editable that takes no typing, and nothing but the flash, which is visual, says why. `"readonlyedit"` is the hook for a host that wants to say it, in its own words, through a description or an announcement of its own.
+
+`setContentEditable` is separate from read-only, in both directions. It decides whether the WYSIWYG surface hosts a caret at all: `setContentEditable(false)` takes the caret, the keyboard selection and the tab stop away, read-only or not. A read-only editor's surface is `contenteditable`, which is what gives it its caret, and `setContentEditable(true)` cannot make a read-only editor editable: every edit is refused all the same.
+
+Known limits of a read-only WYSIWYG surface:
+
+- `copy()` at a caret copies the word the caret is in without selecting it.
+- Each keystroke of a refused composition is reported, since putting the view back ends the composition.
+- A composition refused while whole table cells are selected leaves the cells selected, but the browser's caret is not put back where it was.
+- Keyboard selection is the browser's. Shift with an arrow key selects text inside a table cell; carried past the cell's edge it selects whole cells, and the browser's own selection then no longer shows what Ctrl/Cmd+C copies.
+- An open context menu is not worked with the arrow keys; Ctrl/Cmd+C is the keyboard's way to Copy.
+- The surface raises an on-screen keyboard on a touch device when it takes focus, and shows the browser's spelling marks, as an editable one does.
+- Text that a script or a browser extension writes straight into the surface's elements, with no input event, reaches the document as it does on an editable editor.
+- So does a key's or a composition's edit where another script has a capture listener on the window, registered before the library's, that stops `beforeinput` from propagating, and a listener for `input` there too. With `beforeinput` hidden from it the editor can neither cancel the edit nor step aside for it, and the other listener's turn at `input` comes first.
+- The read-only state is written as `aria-readonly`, which Chromium does not pass on to assistive technology for an editing host (see above).
 
 For a purely *display* use case, prefer the leaner [`Markdown`](/components/Markdown) viewer, which needs no Lexical — `MarkdownEditor`'s read-only mode is for temporarily locking an editor, not for replacing the viewer.
 
-A source-mode command refused because the editor is read-only flashes the source `CodeEditor`, the same feedback a rejected keystroke gets, `cut()` and `paste()` included; the WYSIWYG surface has no such flash and refuses silently. That editor fires its own `"readonlyedit"` event, but it is `MarkdownEditor`'s private child: `MarkdownEditor` neither exposes it nor re-emits the event, so there is currently no public hook for the refusal.
+### Following a link
+
+A read-only editor follows its links; an editable one does not, since a click there places the caret for editing and Enter breaks the paragraph.
+
+- **By keyboard:** move the caret into the link and press Enter. `getSelectionState().linkUrl` says when the caret is in one, and Enter follows the link at every place where it does: in the link's text, and beside an image the link holds. A held Enter opens the link once.
+- **By mouse:** click the link, with the main button or the middle one. A run of clicks opens the link once, on its first click: the later clicks of a double click, a triple click or a longer run go on to select a word or a block and open nothing more. A first click that itself selects text, the end of a drag or a Shift+click, does not open the link. A click on a link whose text is selected already opens it, and a click beside a link does not.
+
+The link opens in a new tab, with `target="_blank"` and `rel="noopener noreferrer"`, as a link of the [`Markdown`](/components/Markdown) viewer does by default. Its address is the one the link was written with, which is what `linkUrl` reports: a relative address, or one that starts with `http:`, `https:`, `mailto:`, `tel:` or `sms:`. A link with any other scheme, `javascript:` for instance, is not followed, and neither is a relative address that holds a `:` or a link with an empty address (`[text]()`); Enter in such a link is a refused edit like Enter anywhere else. Following a link is not an edit: no `"readonlyedit"` fires and nothing flashes.
+
+Enter follows a link from a caret only, and pressed alone. With text selected it is a refused edit, and so is Shift+Enter; with Ctrl, Alt or Cmd held the editor does not treat it as Enter and leaves the key to the browser: it follows no link, and whatever edit the browser then announces is a refused edit like any other.
+
+The editor alone follows a link of a read-only editor. Where the surface is not `contenteditable` (after `setContentEditable(false)`), a browser would follow a clicked or middle-clicked link itself, a click in the same tab; the editor cancels that and opens the link in a new tab as above. There a link is a tab stop of its own, and Enter on it follows it. An editable editor leaves a click on a link to the browser.
 
 ## Theming
 

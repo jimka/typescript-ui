@@ -49,6 +49,7 @@ The framework sets WAI-ARIA roles automatically for its components. Some highlig
 | [`Dialog`](/components/Dialog) | `dialog`, or `alertdialog` for `Dialog.confirm` / `Dialog.warning` / `Dialog.error`; named by its title, described by its message |
 | [`Window`](/components/Window) / [`TabWindow`](/components/TabWindow) | `dialog`, non-modal; named by the header text, or by the active tab's label |
 | [`Drawer`](/components/Drawer) / [`Popover`](/components/Popover) / [`PopupPanel`](/components/PopupPanel) | `dialog`; a `Popover` is named by its title, a `PopupPanel` by the button that opens it, a `Drawer` by you |
+| [`MarkdownEditor`](/components/MarkdownEditor) | `textbox` with `aria-multiline` on each editing surface, and `aria-readonly` following the [read-only](/components/MarkdownEditor#read-only) state. Chromium does not pass `aria-readonly` on for an editing host, so there the state does not reach assistive technology. The WYSIWYG surface carries none of the three after `setContentEditable(false)` |
 
 You don't need to set these on built-in components; they're applied at construction time.
 

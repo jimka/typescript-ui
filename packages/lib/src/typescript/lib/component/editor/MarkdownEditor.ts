@@ -2,6 +2,7 @@
 
 import { Component, ComponentOptions } from "~/core/Component.js";
 import { DOM } from "~/core/DOM.js";
+import type { TimerId } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Insets } from "~/primitive/Insets.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -28,6 +29,7 @@ import {
     $caretFromPoint, $normalizeCaret, $setPointFromCaret, KEY_BACKSPACE_COMMAND, KEY_DELETE_COMMAND, $isRootOrShadowRoot,
     $getChildCaret, INTERNAL_$isBlock, $createRangeSelectionFromDom, $setSelection, COMMAND_PRIORITY_LOW,
     INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND, $getNodeByKey, $addUpdateTag, $setState,
+    HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG,
 } from "lexical";
 import type {
     LexicalEditor, ElementNode, ElementFormatType, LexicalNode, TextFormatType, TextNode, BaseSelection,
@@ -67,6 +69,10 @@ import {
     registerWritableStateRules,
 } from "~/component/editor/markdownWritable.js";
 import { registerMarkdownHistory } from "~/component/editor/markdownHistory.js";
+import {
+    $selectionMark, $takeLinkClick, addressToFollow, isUndoOrRedoKey, registerReadOnlyGuard,
+} from "~/component/editor/markdownReadOnly.js";
+import { ReadOnlyFlash } from "~/component/editor/ReadOnlyFlash.js";
 import { EMPTY_SOURCE_MAP } from "~/component/editor/markdownSourceMap.js";
 import type { MarkdownSourceBlock, MarkdownSourceMap } from "~/component/editor/markdownSourceMap.js";
 import {
@@ -268,8 +274,10 @@ export interface MarkdownEditorSelectionState {
  *   changed (payload {@link MarkdownEditorSelectionState}); fires on every
  *   editor commit whose resulting state differs from the last reported one,
  *   including a format toggle that leaves the selection itself unmoved.
+ * - `"readonlyedit"` — an edit was refused because the editor is read-only,
+ *   on either surface (no payload).
  */
-type MarkdownEditorEvent = "change" | "selectionstate";
+type MarkdownEditorEvent = "change" | "selectionstate" | "readonlyedit";
 
 /**
  * The editing surface a {@link MarkdownEditor} currently shows: the WYSIWYG
@@ -314,10 +322,11 @@ export interface MarkdownEditorOptions extends ComponentOptions {
     readOnly?: boolean;
     /** Which surface is shown. Default `"wysiwyg"`. */
     mode?: MarkdownEditorMode;
-    /** Construction-time listener bag; the events are `"change"` and `"selectionstate"`. */
+    /** Construction-time listener bag; the events are `"change"`, `"selectionstate"` and `"readonlyedit"`. */
     listeners?: {
         change?:         (payload: MarkdownEditorChange) => void;
         selectionstate?: (payload: MarkdownEditorSelectionState) => void;
+        readonlyedit?:   () => void;
     };
 }
 
@@ -5243,17 +5252,56 @@ function selectionStatesEqual(a: MarkdownEditorSelectionState, b: MarkdownEditor
     return fields.every((field) => a[field] === b[field]);
 }
 
-// A text caret over the whole surface signals editability. The surface is also
-// a contenteditable editing host, which the browser exempts from the framework's
-// `user-select: none` on its own, and Lexical additionally stamps
-// `user-select: text` inline on the root when it mounts — stating the same
-// intent here in the framework's own rule means select-and-copy does not depend
-// on that inline write surviving a later re-render. As class defaults both land
-// on the shared `.WysiwygSurface` rule rather than each instance's `#id` rule.
+/**
+ * How long after the view of a read-only editor was rendered anew its
+ * selection is written back, in milliseconds, where no frame is painted
+ * first: none. What matters is that it is a task of its own, after the
+ * event in which the browser changed the view, at whose end the browser
+ * sets a selection itself.
+ */
+const VIEW_RESTORE_DELAY_MS = 0;
+
+/** `MouseEvent.button` of the middle button, by the DOM's own numbering of a mouse's buttons. */
+const MIDDLE_BUTTON = 1;
+
+/**
+ * The address of the link a read-only editor follows on Enter: the link the
+ * selection state reports for the caret, which is `linkUrl` as
+ * {@link $readSelectionState} computes it, so that Enter follows a link
+ * exactly where a host is told the caret is in one. A selection of text
+ * stands in no link: Enter follows a link from a caret.
+ *
+ * @returns The address, or `null` where there is no caret, the caret is in
+ *   no link, or the link's address is not one to open.
+ */
+function $linkUrlToFollowAtCaret(): string | null {
+    const selection = $getSelection();
+    const isCaret = $isRangeSelection(selection) && selection.isCollapsed();
+    const linkUrl = isCaret ? $readSelectionState().linkUrl : null;
+
+    return addressToFollow(linkUrl);
+}
+
+/**
+ * Stacking order of the read-only rejection wash within the editor's own
+ * element: above the WYSIWYG surface's content, which sets no z-index of its
+ * own, so one step up is enough.
+ */
+const WYSIWYG_FLASH_Z_INDEX = 1;
+
+// A text caret over the whole surface says the text can be selected, in a
+// read-only editor too. The surface is also a contenteditable editing host,
+// which the browser exempts from the framework's `user-select: none` on its
+// own, and Lexical additionally stamps `user-select: text` inline on the root
+// when it mounts — stating the same intent here in the framework's own rule
+// means select-and-copy does not depend on that inline write surviving a later
+// re-render. As class defaults both land on the shared `.WysiwygSurface` rule
+// rather than each instance's `#id` rule.
 const _defaultWysiwygSurfaceOptions: Partial<ComponentOptions> = { userSelect: "text", cursor: "text" };
 
-/** The event {@link WysiwygSurface} exposes through its custom `on` / `off` surface. */
-type WysiwygSurfaceEvent = "contextmenu";
+/** The events {@link WysiwygSurface} exposes through its custom `on` / `off` surface. */
+type WysiwygSurfaceEvent =
+    "contextmenu" | "readonlyedit" | "unpreventableedit" | "uncancelledinput" | "readonlyenter" | "readonlypress" | "readonlyclick";
 
 /**
  * The private WYSIWYG editing surface: the element Lexical's `contenteditable`
@@ -5266,32 +5314,57 @@ type WysiwygSurfaceEvent = "contextmenu";
  * CodeMirror's view are two foreign live widgets that each need their own host
  * element. `MarkdownEditor` keeps ownership of the Lexical editor object; only
  * the mount element (and its `contenteditable` / caret plumbing) lives here.
+ *
+ * While it is `contenteditable` the surface is a multi-line text box to
+ * assistive technology, and it is nothing of the kind while it is not: with
+ * the attribute off it takes no focus and has no caret, and is a plain
+ * container of what it shows ({@link WysiwygSurface.applyTextBoxState}).
+ *
+ * The surface stays `contenteditable` while its editor is read-only: that
+ * attribute is what gives the browser a caret, keyboard navigation and
+ * selection, and a tab stop. A read-only surface therefore cancels the edits
+ * the browser announces for an editing host itself, stops the undo and redo
+ * keys, and reports the edits it cannot cancel, before and after the
+ * browser makes them, so that the editor can keep them out of the document
+ * and put the shown text back.
  */
 class WysiwygSurface extends Component {
 
     /** Whether this surface's element hosts an editable region (`contenteditable`). */
     private _contentEditable: boolean = false;
 
+    /** Whether the editor this surface belongs to is read-only, so that the browser's own edits are refused here. */
+    private _readOnly: boolean = false;
+
     /** Invoked on the surface's first connected + sized layout — the moment to mount the live view. */
     private readonly _onReady: () => void;
 
-    /** Custom-event fan-out for `"contextmenu"`. */
+    /**
+     * Where the surface was scrolled to when the editor's view was taken out
+     * of it ({@link WysiwygSurface.takeOutView}); `null` while the view is
+     * in, and before one is mounted.
+     */
+    private _takenOutAt: { top: number; left: number } | null = null;
+
+    /** Custom-event fan-out for the events of {@link WysiwygSurfaceEvent}. */
     private readonly _listeners: ListenerBag<WysiwygSurfaceEvent> = this.registerListenerBag(new ListenerBag<WysiwygSurfaceEvent>());
 
     /**
      * Constructs the WYSIWYG surface.
      *
      * @param onReady - Called on the surface's first connected + sized layout.
-     * @param contentEditable - Whether the surface starts editable: `false`
-     *   for a read-only editor.
+     * @param readOnly - Whether the editor the surface belongs to starts
+     *   read-only. The surface is `contenteditable` either way.
      * @param subclassDefaults - Optional subclass defaults bag.
      */
-    constructor(onReady: () => void, contentEditable: boolean, subclassDefaults?: Partial<ComponentOptions>) {
+    constructor(onReady: () => void, readOnly: boolean, subclassDefaults?: Partial<ComponentOptions>) {
         super(undefined, { ..._defaultWysiwygSurfaceOptions, ...(subclassDefaults ?? {}) });
 
         this._onReady = onReady;
 
-        this.setContentEditable(contentEditable);
+        // No tabindex: an editing host is a tab stop by itself.
+        this.setContentEditable(true);
+        this.setReadOnly(readOnly);
         // Fills its host box and scrolls internally when the document overflows.
         this.setOverflow("auto");
         // A few pixels of inset off the padding box: without it the caret sits
@@ -5316,6 +5389,23 @@ class WysiwygSurface extends Component {
         // registration (ParentHeader.ts:305).
         Event.addSubtreeListener(this, "contextmenu", { prevent: true, handler: this.handleContextMenu });
 
+        // The events by which the browser announces an edit to an editing
+        // host, or reports one it has made. Subtree for the same reason: they
+        // are fired on the node the caret is in. Each handler acts only while
+        // the surface is read-only, so none sets a registration floor.
+        Event.addSubtreeListener(this, "beforeinput", this.handleBeforeInput);
+        Event.addSubtreeListener(this, "paste", this.handleEditIntent);
+        Event.addSubtreeListener(this, "cut", this.handleEditIntent);
+        Event.addSubtreeListener(this, "drop", this.handleEditIntent);
+        Event.addSubtreeListener(this, "input", this.handleInput);
+        // Two kinds of key are taken, and only while read-only: undo and redo, and Enter where it follows a link.
+        Event.addSubtreeListener(this, "keydown", this.handleKeyDown);
+        // A press of the pointer, then a click with the main button or one with any other, for the links of a
+        // read-only surface. The press is heard for every button: a middle click has one too.
+        Event.addSubtreeListener(this, "mousedown", { button: "any", handler: this.handlePress });
+        Event.addSubtreeListener(this, "click", this.handleClick);
+        Event.addSubtreeListener(this, "auxclick", this.handleAuxClick);
+
         this.onFirstLayout(() => this._onReady());
     }
 
@@ -5324,7 +5414,10 @@ class WysiwygSurface extends Component {
      * state in `_contentEditable` and writes the `contenteditable` attribute
      * through `setElementAttribute`, whose buffer replays the value onto the
      * element once one is created — so a call made during detached
-     * construction still lands.
+     * construction still lands. Whether edits are accepted is a separate
+     * matter ({@link WysiwygSurface.setReadOnly}): the attribute decides
+     * whether the browser gives the surface a caret at all, and with it
+     * whether the surface is a text box ({@link WysiwygSurface.applyTextBoxState}).
      *
      * @param contentEditable - Whether the element is contenteditable.
      * @returns This surface, for method chaining.
@@ -5332,6 +5425,7 @@ class WysiwygSurface extends Component {
     setContentEditable(contentEditable: boolean): this {
         this._contentEditable = contentEditable;
         this.setElementAttribute("contenteditable", contentEditable ? "true" : "false");
+        this.applyTextBoxState();
 
         return this;
     }
@@ -5346,40 +5440,138 @@ class WysiwygSurface extends Component {
     }
 
     /**
-     * Registers a listener for the `"contextmenu"` event, fired on a native
-     * right-click over this surface's element.
+     * Sets whether the editor this surface belongs to is read-only. Caches the
+     * state in `_readOnly`, which the edit handlers read, and has the text
+     * box state follow it ({@link WysiwygSurface.applyTextBoxState}). The
+     * `contenteditable` attribute is not touched: a read-only surface keeps
+     * its caret.
      *
-     * @param event - Must be `"contextmenu"`.
+     * @param readOnly - Whether the surface refuses the browser's edits.
+     * @returns This surface, for method chaining.
+     */
+    setReadOnly(readOnly: boolean): this {
+        this._readOnly = readOnly;
+        this.applyTextBoxState();
+
+        return this;
+    }
+
+    /**
+     * Writes what the surface is to assistive technology, from its two
+     * states. An editing host is a multi-line text box, read-only or not:
+     * `role="textbox"`, `aria-multiline="true"`, and `aria-readonly`
+     * following the read-only state, which are the attributes CodeMirror
+     * writes on the source surface's content. A surface that is not an
+     * editing host takes no focus and has no caret, so it is no text box: it
+     * carries none of the three, read-only or not, and what it shows
+     * (headings, links, lists, tables) is exposed as what it is.
+     */
+    private applyTextBoxState(): void {
+        const aria = this.getAria();
+
+        if (this._contentEditable) {
+            aria.setRole("textbox").setMultiline(true).setReadOnly(this._readOnly);
+        } else {
+            aria.clearRole().setMultiline(null).setReadOnly(null);
+        }
+    }
+
+    /**
+     * Returns whether this surface refuses the browser's edits.
+     *
+     * @returns The read-only state.
+     */
+    getReadOnly(): boolean {
+        return this._readOnly;
+    }
+
+    /**
+     * Registers a listener for the `"contextmenu"` event, fired on a native
+     * right-click over this surface's element, or for `"readonlyclick"`,
+     * fired on a click or a middle click over it while it is read-only.
+     *
+     * @param event - `"contextmenu"` or `"readonlyclick"`.
      * @param listener - Invoked with the native `MouseEvent`.
      * @returns This surface, for method chaining.
      */
-    on(event: WysiwygSurfaceEvent, listener: (event: MouseEvent) => void): this {
+    on(event: "contextmenu" | "readonlyclick", listener: (event: MouseEvent) => void): this;
+    /**
+     * Registers a listener for `"readonlyenter"`, fired when the Enter key
+     * is pressed, with no modifier key, on the read-only surface while it
+     * is the editing host. A listener that acts on the key cancels it.
+     *
+     * @param event - Must be `"readonlyenter"`.
+     * @param listener - Invoked with the native `KeyboardEvent`.
+     * @returns This surface, for method chaining.
+     */
+    on(event: "readonlyenter", listener: (event: KeyboardEvent) => void): this;
+    /**
+     * Registers a listener for `"readonlyedit"`, fired when the read-only
+     * surface refuses an edit the browser announced; for
+     * `"unpreventableedit"`, fired when the browser announces an edit of the
+     * read-only surface that cannot be cancelled, before it makes it; for
+     * `"uncancelledinput"`, fired when the browser has changed the shown
+     * text of the read-only surface all the same; or for `"readonlypress"`,
+     * fired when the pointer is pressed over the read-only surface, before
+     * the browser changes the selection for it.
+     *
+     * @param event - `"readonlyedit"`, `"unpreventableedit"`, `"uncancelledinput"` or `"readonlypress"`.
+     * @param listener - Invoked with no payload.
+     * @returns This surface, for method chaining.
+     */
+    on(event: "readonlyedit" | "unpreventableedit" | "uncancelledinput" | "readonlypress", listener: () => void): this;
+    on(event: WysiwygSurfaceEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
         return this;
     }
 
     /**
-     * Removes a previously registered `"contextmenu"` listener.
+     * Removes a previously registered `"contextmenu"` or `"readonlyclick"`
+     * listener.
      *
-     * @param event - Must be `"contextmenu"`.
+     * @param event - `"contextmenu"` or `"readonlyclick"`.
      * @param listener - The exact callback reference to remove.
      * @returns This surface, for method chaining.
      */
-    off(event: WysiwygSurfaceEvent, listener: (event: MouseEvent) => void): this {
+    off(event: "contextmenu" | "readonlyclick", listener: (event: MouseEvent) => void): this;
+    /**
+     * Removes a previously registered `"readonlyenter"` listener.
+     *
+     * @param event - Must be `"readonlyenter"`.
+     * @param listener - The exact callback reference to remove.
+     * @returns This surface, for method chaining.
+     */
+    off(event: "readonlyenter", listener: (event: KeyboardEvent) => void): this;
+    /**
+     * Removes a previously registered `"readonlyedit"`,
+     * `"unpreventableedit"`, `"uncancelledinput"` or `"readonlypress"`
+     * listener.
+     *
+     * @param event - `"readonlyedit"`, `"unpreventableedit"`, `"uncancelledinput"` or `"readonlypress"`.
+     * @param listener - The exact callback reference to remove.
+     * @returns This surface, for method chaining.
+     */
+    off(event: "readonlyedit" | "unpreventableedit" | "uncancelledinput" | "readonlypress", listener: () => void): this;
+    off(event: WysiwygSurfaceEvent, listener: Function): this {
         this._listeners.remove(event, listener);
 
         return this;
     }
 
     /**
-     * Fans the `"contextmenu"` event out to its registered listeners.
+     * Fans an event out to its registered listeners.
      *
-     * @param event - Must be `"contextmenu"`.
-     * @param payload - The native `MouseEvent`.
+     * @param event - The event name.
+     * @param payload - The native `MouseEvent` of `"contextmenu"` and
+     *   `"readonlyclick"`, or the native `KeyboardEvent` of
+     *   `"readonlyenter"`; the other events have none.
      */
-    protected emit(event: WysiwygSurfaceEvent, payload: MouseEvent): void {
-        this._listeners.fire(event, payload);
+    protected emit(event: "contextmenu" | "readonlyclick", payload: MouseEvent): void;
+    protected emit(event: "readonlyenter", payload: KeyboardEvent): void;
+    protected emit(event: "readonlyedit" | "unpreventableedit" | "uncancelledinput" | "readonlypress"): void;
+    protected emit(event: WysiwygSurfaceEvent, payload?: MouseEvent | KeyboardEvent): void {
+        this._listeners.fire(event, ...(payload === undefined ? [] : [payload]));
     }
 
     /**
@@ -5392,6 +5584,251 @@ class WysiwygSurface extends Component {
      */
     private handleContextMenu(event: MouseEvent): void {
         this.emit("contextmenu", event);
+    }
+
+    /**
+     * `Event`-registered handler for `beforeinput`, by which the browser
+     * announces an edit to this editing host before making it: typing,
+     * Enter, a deletion, a spelling replacement, the browser's own undo and
+     * redo, its format shortcuts, a dragged selection being moved. While the
+     * surface is read-only the edit is cancelled and reported
+     * ({@link WysiwygSurface.handleEditIntent}).
+     *
+     * One kind of edit cannot be cancelled: a composition's text. It is
+     * reported like the rest, and the editor is told, through
+     * `"unpreventableedit"`, that the browser is about to change the shown
+     * text, while nothing has changed yet. The report is made here and not
+     * when the composition starts: a composition can start with no text to
+     * write (an on-screen keyboard starts one around the word a tap puts
+     * the caret in), and that is no edit.
+     *
+     * @param event - The native `beforeinput` event.
+     * @returns The disposition that cancels the edit, or nothing.
+     */
+    private handleBeforeInput(event: InputEvent): Event.ListenerResult {
+        const unpreventable = this._readOnly && !event.cancelable;
+
+        if (unpreventable) {
+            // The take-out first: the report reaches host listeners, and one that throws must not defeat it.
+            this.emit("unpreventableedit");
+            this.emit("readonlyedit");
+
+            return;
+        }
+
+        return this.handleEditIntent(event);
+    }
+
+    /**
+     * Cancels and reports an edit the browser announces to this editing
+     * host before making it: the `Event`-registered handler for `paste`,
+     * `cut` and `drop`, and what {@link WysiwygSurface.handleBeforeInput}
+     * hands a `beforeinput` on to. While the surface is read-only the edit
+     * is cancelled and reported through `"readonlyedit"`. An event that
+     * cannot be cancelled is left alone and not reported. The edit is
+     * cancelled before it is reported, so that a host listener of
+     * `"readonlyedit"` that throws cannot let it through.
+     *
+     * @param event - The native event.
+     * @returns The disposition that cancels the edit, or nothing.
+     */
+    private handleEditIntent(event: { cancelable: boolean; preventDefault(): void }): Event.ListenerResult {
+        if (!this._readOnly || !event.cancelable) {
+            return;
+        }
+
+        event.preventDefault();
+        this.emit("readonlyedit");
+
+        return { prevent: true };
+    }
+
+    /**
+     * `Event`-registered handler for `keydown`: stops the undo and redo
+     * keys of a read-only surface, and hands Enter to the editor, which
+     * follows a link the caret is in. Every other key is left to the
+     * browser, which moves the caret with it or announces the edit it would
+     * make.
+     *
+     * The browser's own undo is the page's, not the editing host's: with
+     * nothing of the surface's to undo, the key takes back the last edit
+     * made in any other field of the page and moves the focus there. An
+     * editable editor never lets it run, Lexical taking the key for its own
+     * history. The key is stopped without a report, as a read-only
+     * `CodeEditor` stops it.
+     *
+     * Enter is decided here, by the key, and not by the edit the browser
+     * would announce for it: that is a paragraph break at most places and a
+     * line break at some (beside an image inside a link), so the kind of
+     * edit does not say that Enter was pressed. The key counts where it is
+     * pressed alone, on the surface as the editing host, which is where the
+     * editor has a caret: it is reported through `"readonlyenter"`, and the
+     * editor cancels it where it follows a link. Left alone, it becomes the
+     * refused edit Enter is anywhere else. With Shift, Ctrl, Alt or Meta
+     * held it is not this key and is left to the browser. The repeats a held
+     * Enter sends are stopped, so that holding the key down neither opens a
+     * link again nor flashes for as long as it is held.
+     *
+     * @param event - The native `keydown` event.
+     * @returns The disposition that stops the key's default, or nothing.
+     */
+    private handleKeyDown(event: KeyboardEvent): Event.ListenerResult {
+        if (!this._readOnly) {
+            return;
+        }
+
+        const isEnter = event.key === "Enter";
+        const heldEnter = isEnter && event.repeat;
+        const stopped = heldEnter || isUndoOrRedoKey(event);
+
+        if (stopped) {
+            return { prevent: true };
+        }
+
+        const withModifier = event.shiftKey || event.ctrlKey || event.altKey || event.metaKey;
+        const asksToFollow = isEnter && !withModifier && !event.isComposing && this._contentEditable;
+
+        if (asksToFollow) {
+            this.emit("readonlyenter", event);
+        }
+    }
+
+    /**
+     * `Event`-registered handler for `mousedown`, a press of the pointer
+     * with any button: on a read-only surface it is reported through
+     * `"readonlypress"`. The browser changes the selection for a press after
+     * this event, so the editor can note here what was selected before it,
+     * and tell at the click that follows whether the click selected text.
+     */
+    private handlePress(): void {
+        if (this._readOnly) {
+            this.emit("readonlypress");
+        }
+    }
+
+    /**
+     * `Event`-registered handler for a `click` with the main button: on a
+     * read-only surface it is passed on through `"readonlyclick"`, for the
+     * editor to follow a link the click was on. An editable surface passes
+     * nothing on: a click there places the caret.
+     *
+     * @param event - The native `click` event.
+     */
+    private handleClick(event: MouseEvent): void {
+        if (this._readOnly) {
+            this.emit("readonlyclick", event);
+        }
+    }
+
+    /**
+     * `Event`-registered handler for `auxclick`, a click with any other
+     * button: a middle click, with which a browser opens a link in a new
+     * tab, is passed on as {@link WysiwygSurface.handleClick} passes a click
+     * on. A click with the secondary button opens the context menu and is
+     * left alone.
+     *
+     * @param event - The native `auxclick` event.
+     */
+    private handleAuxClick(event: MouseEvent): void {
+        if (event.button === MIDDLE_BUTTON) {
+            this.handleClick(event);
+        }
+    }
+
+    /**
+     * `Event`-registered handler for `input`, which the browser fires after
+     * it has changed the shown text. On a read-only surface that is an edit
+     * that could not be cancelled, so the editor is asked, through
+     * `"uncancelledinput"`, to put the view back. It is asked too where the
+     * view is out for such an edit and read-only was lifted meanwhile.
+     */
+    private handleInput(): void {
+        if (this._readOnly || this._takenOutAt !== null) {
+            this.emit("uncancelledinput");
+        }
+    }
+
+    /**
+     * Whether keyboard focus is on this surface or inside it.
+     *
+     * @returns Whether the surface holds the focus; `false` before it has an element.
+     */
+    holdsFocus(): boolean {
+        const element = this.getElement();
+        const active = DOM.source.getActiveElement();
+
+        return element !== undefined && active !== null && DOM.source.contains(element, active);
+    }
+
+    /**
+     * Renders the editor's view into this surface anew: takes the view out
+     * ({@link WysiwygSurface.takeOutView}) and puts it back
+     * ({@link WysiwygSurface.putBackView}), which has Lexical drop every
+     * element it rendered and build them from the document. Whatever the
+     * browser did to the surface's elements is gone afterwards. Where the
+     * view is out already it is put back. No-op where no view was mounted.
+     *
+     * @param editor - The Lexical editor whose view is mounted here.
+     */
+    remount(editor: LexicalEditor): void {
+        this.takeOutView(editor);
+        this.putBackView(editor);
+    }
+
+    /**
+     * Takes the editor's view out of this surface: Lexical drops every
+     * element it rendered and, with them, its mutation observer, so that
+     * nothing written into the surface from then on reaches the document.
+     * The surface's element stays, and stays the editing host. The scroll
+     * offsets are kept for {@link WysiwygSurface.putBackView}. No-op where
+     * no view is mounted, which includes a view taken out already.
+     *
+     * @param editor - The Lexical editor whose view is mounted here.
+     */
+    takeOutView(editor: LexicalEditor): void {
+        const element = this.getElement();
+        const mounted = editor.getRootElement() !== null;
+
+        if (!element || !mounted) {
+            return;
+        }
+
+        // The browser scrolls this surface itself, so its offsets are read, not taken from the cache.
+        this._takenOutAt = { top: DOM.source.getScrollTop(element), left: DOM.source.getScrollLeft(element) };
+        editor.setRootElement(null);
+    }
+
+    /**
+     * Puts back a view taken out with {@link WysiwygSurface.takeOutView}:
+     * mounts it, which empties the surface of whatever was written into it
+     * meanwhile and renders the document, with a mutation observer that has
+     * heard of none of it. The surface's scroll offsets are put back, and
+     * are from then on what `getScrollTop()` and `getScrollLeft()` return.
+     * No-op where no view was taken out.
+     *
+     * @param editor - The Lexical editor whose view was taken out.
+     */
+    putBackView(editor: LexicalEditor): void {
+        const takenOutAt = this._takenOutAt;
+
+        if (takenOutAt === null) {
+            return;
+        }
+
+        this._takenOutAt = null;
+        this.mount(editor);
+        this.setScrollTop(takenOutAt.top);
+        this.setScrollLeft(takenOutAt.left);
+    }
+
+    /**
+     * Whether the editor's view is out of this surface for a moment
+     * ({@link WysiwygSurface.takeOutView}), to be put back.
+     *
+     * @returns Whether a view was taken out and not yet put back.
+     */
+    isViewOut(): boolean {
+        return this._takenOutAt !== null;
     }
 
     /**
@@ -5557,11 +5994,28 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     private _lastSelectionState: MarkdownEditorSelectionState = NEUTRAL_SELECTION_STATE;
 
     /**
-     * Whether the host asked for an editable WYSIWYG surface
-     * ({@link MarkdownEditor.setContentEditable}). The surface is editable
-     * only while this holds and the editor is not read-only.
+     * What waits to finish putting a read-only view back after the browser
+     * changed it, or announced a change it could not be talked out of
+     * ({@link restoreView}, {@link takeOutView}): a task and an animation
+     * frame, of which the first to come does the work and calls the other
+     * off ({@link scheduleViewRestore}). `null` while none waits.
      */
-    private _contentEditable: boolean = true;
+    private _viewRestore: { task: TimerId; frame: number } | null = null;
+
+    /**
+     * What the browser had selected when the pointer was last pressed over
+     * the read-only surface, as {@link $selectionMark} marks it, for the
+     * click that follows to be judged by ({@link handleReadOnlyClick});
+     * `null` once a click has used it, and before any press.
+     */
+    private _selectionBeforePress: string | null = null;
+
+    /**
+     * The rejection wash played over the editor when an edit is refused on
+     * the WYSIWYG surface; mounted with the view. The source surface plays
+     * its `CodeEditor`'s own.
+     */
+    private readonly _flash: ReadOnlyFlash = new ReadOnlyFlash();
 
     /**
      * Constructs a Markdown editor.
@@ -5592,17 +6046,25 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         this._card = new Card();
         this.setLayoutManager(this._card);
 
-        this._wysiwyg = new WysiwygSurface(() => this.mountWysiwyg(), !(this._options.readOnly ?? false));
+        this._wysiwyg = new WysiwygSurface(() => this.mountWysiwyg(), this._options.readOnly ?? false);
         // Arrow, not a bare method reference: ListenerBag.fire (which this `on`
         // ultimately dispatches through) calls listeners bare with no `this`
         // rebinding, unlike Event.addListener's `.apply(component, …)`.
         this._wysiwyg.on("contextmenu", (event) => this.handleWysiwygContextMenu(event));
+        this._wysiwyg.on("readonlyedit", () => this.signalReadOnlyEdit());
+        this._wysiwyg.on("readonlyenter", (event) => this.handleReadOnlyEnter(event));
+        this._wysiwyg.on("readonlypress", () => this.handleReadOnlyPress());
+        this._wysiwyg.on("unpreventableedit", () => this.takeOutView());
+        this._wysiwyg.on("uncancelledinput", () => this.restoreView());
+        this._wysiwyg.on("readonlyclick", (event) => this.handleReadOnlyClick(event));
         this._codeEditor = new CodeEditor(this._options.value ?? "", {
             language:  "markdown",
             readOnly:  this._options.readOnly ?? false,
             listeners: {
                 change:          (payload) => this.handleCodeChange(payload),
                 selectionchange: () => this.updateSelectionState(),
+                // The source editor has played its own wash: only the event is passed on.
+                readonlyedit:    () => this.emit("readonlyedit"),
             },
         });
 
@@ -5714,20 +6176,335 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * so what is dimmed and what a command does cannot come apart: a command
      * whose field is `false` changes nothing and reports nothing. No command
      * applies on a read-only editor, which is refused here for all of them,
-     * before the Lexical editor is so much as built.
+     * before the Lexical editor is so much as built, and reported
+     * ({@link refuseIfReadOnly}).
      *
      * @param field - The field covering the command.
      * @returns `false` where the command would do nothing, and always while
      *   the editor is read-only.
      */
     private commandApplies(field: keyof CommandAvailability): boolean {
-        const readOnly = this.getReadOnly();
+        const refused = this.refuseIfReadOnly();
 
-        if (readOnly) {
+        if (refused) {
             return false;
         }
 
         return this.ensureEditor().read(() => $readCommandAvailability($computeWordExpansion())[field]);
+    }
+
+    /**
+     * Reports an edit refused on the WYSIWYG surface because the editor is
+     * read-only: emits `"readonlyedit"` and plays the rejection wash, the
+     * event and the cue a read-only `CodeEditor` gives. One call for each
+     * refused edit, whichever way it came: a key or another input the
+     * surface cancelled, a Lexical command the guard refused, or a command
+     * called from code.
+     */
+    private signalReadOnlyEdit(): void {
+        this.emit("readonlyedit");
+        this._flash.play();
+    }
+
+    /**
+     * `WysiwygSurface`'s `"readonlyenter"` handler: follows the link the
+     * editor's caret is in ({@link followLink}) and cancels the key, so
+     * that the browser announces no edit for it. With the caret in no link,
+     * text selected, or a link whose address is not opened, the key is left
+     * alone, and is the refused edit Enter is anywhere else. No-op before
+     * the editor is built.
+     *
+     * The caret is the editor's own, which follows the browser's, and the
+     * link is the one the selection state reports for it
+     * ({@link $linkUrlToFollowAtCaret}). The editor hears of a caret the
+     * browser has moved a moment later, so a key pressed with no gap after
+     * an arrow key is decided on the caret from before the arrow: the same
+     * link `getSelectionState().linkUrl` reports at that instant.
+     *
+     * @param event - The native `keydown` event of the Enter key.
+     */
+    private handleReadOnlyEnter(event: KeyboardEvent): void {
+        const editor = this._editor;
+        const address = editor ? editor.read($linkUrlToFollowAtCaret) : null;
+
+        if (address !== null) {
+            event.preventDefault();
+            this.followLink(address);
+        }
+    }
+
+    /**
+     * `WysiwygSurface`'s `"readonlypress"` handler: notes what the browser
+     * has selected as the pointer is pressed over the read-only surface,
+     * for the click that follows ({@link handleReadOnlyClick}). No-op before
+     * the editor is built.
+     */
+    private handleReadOnlyPress(): void {
+        const editor = this._editor;
+
+        this._selectionBeforePress = editor ? editor.read(() => $selectionMark(editor)) : null;
+    }
+
+    /**
+     * `WysiwygSurface`'s `"readonlyclick"` handler: follows the link a click
+     * or a middle click on the read-only surface was on ({@link followLink}).
+     * In a read-only editor a click on a link is the editor's alone: the
+     * click's default is cancelled whether the link is then followed or not,
+     * so the browser never follows it by itself. No-op before the editor is
+     * built.
+     *
+     * The click uses up the selection noted at its press: a click that
+     * comes with no press of its own finds none.
+     *
+     * @param event - The native `click` or `auxclick` event.
+     */
+    private handleReadOnlyClick(event: MouseEvent): void {
+        const editor = this._editor;
+        const markBeforePress = this._selectionBeforePress;
+
+        this._selectionBeforePress = null;
+
+        const address = editor ? editor.read(() => $takeLinkClick(editor, event, markBeforePress)) : null;
+
+        if (address !== null) {
+            this.followLink(address);
+        }
+    }
+
+    /**
+     * Opens a link of a read-only editor in a new tab, as the
+     * [`Markdown`](/api/component/display/classes/Markdown) viewer opens
+     * its links by default: through a temporary anchor with
+     * `target="_blank"` and `rel="noopener noreferrer"`, clicked and removed
+     * again, which is how `Table`'s export starts its download. The
+     * surface's own `<a>` cannot be used: inside an editing host a browser
+     * follows no link, and its `href` is not the address as written.
+     *
+     * @param address - The address to open: the link's own, already found
+     *   to be one that is opened from a document.
+     */
+    private followLink(address: string): void {
+        const anchor = DOM.sink.createElement("a");
+        const body = DOM.source.getBody();
+
+        DOM.sink.apply(anchor, { setAttr: { href: address, target: "_blank", rel: "noopener noreferrer" } });
+        DOM.sink.appendChild(body, anchor);
+        DOM.sink.click(anchor);
+        DOM.sink.removeChild(body, anchor);
+        DOM.sink.release(anchor);
+    }
+
+    /**
+     * The read-only test of every editing command on the WYSIWYG surface:
+     * where the editor is read-only the refusal is reported
+     * ({@link signalReadOnlyEdit}).
+     *
+     * @returns Whether the editor is read-only, so that the caller must
+     *   return without touching the document or the selection.
+     */
+    private refuseIfReadOnly(): boolean {
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) {
+            this.signalReadOnlyEdit();
+        }
+
+        return readOnly;
+    }
+
+    /**
+     * The editor whose view the read-only surface shows, for
+     * {@link takeOutView} and {@link restoreView}: the one that is mounted
+     * there, or is out of it for a moment.
+     *
+     * @returns The editor, or `null` before it is built, before its view is
+     *   mounted, and offline.
+     */
+    private editorWithView(): LexicalEditor | null {
+        const editor = this._editor;
+        const hasView = editor !== null && (editor.getRootElement() !== null || this._wysiwyg.isViewOut());
+
+        return hasView ? editor : null;
+    }
+
+    /**
+     * `WysiwygSurface`'s `"unpreventableedit"` handler: takes the editor's
+     * view out of the read-only surface before the browser makes a change
+     * that could not be cancelled (a composition's text). No-op before the
+     * editor is built, and offline.
+     *
+     * @remarks
+     * Lexical's mutation observer asks neither whether the editor is
+     * editable nor what made a change: it copies text it finds changed in
+     * the surface's elements into the document. It is told of a change in a
+     * microtask, and a browser runs microtasks after each listener of an
+     * event. So putting the shown text back once the browser reports its
+     * change ({@link restoreView}) is in time only where no listener heard
+     * of the change first, and a host's listener on the window, or one a
+     * browser extension put there, can be ahead of the framework's. Taking
+     * the view out here, while nothing has changed yet, takes the observer
+     * out with it: what the browser then writes, it writes into a surface
+     * the editor is not looking at, whichever listener hears of it first.
+     *
+     * The view is put back when the browser reports the change
+     * ({@link restoreView}), in the same task, so that the surface is never
+     * painted without it; and a task or a frame later at the latest
+     * ({@link finishViewRestore}), for a change announced and never made.
+     */
+    private takeOutView(): void {
+        const editor = this.editorWithView();
+
+        if (!editor) {
+            return;
+        }
+
+        this.scheduleViewRestore(editor);
+        this._wysiwyg.takeOutView(editor);
+    }
+
+    /**
+     * `WysiwygSurface`'s `"uncancelledinput"` handler: puts the view back to
+     * what the document holds, after the browser changed the read-only
+     * surface in a way that could not be cancelled. No-op before the editor
+     * is built, and offline.
+     *
+     * @remarks
+     * The view is rendered anew, whole. A composition does more than change
+     * a text: over a selection the browser removes elements, splits text
+     * nodes and moves them into wrappers of its own. No repair of single
+     * nodes covers every such shape, so none is attempted.
+     *
+     * For a change the browser announced, the view was taken out before it
+     * was made ({@link takeOutView}) and is put back here. A change made
+     * with no announcement finds the view in place, and it is taken out and
+     * put back here in one go. That is in time only where this is the first
+     * listener to hear of the change: see {@link takeOutView}. No key,
+     * paste, drop or composition changes the surface unannounced; a script
+     * can.
+     *
+     * The browser's selection goes with the elements it was in, and the
+     * browser sets one of its own once the event is over. So the selection
+     * Lexical holds, which is still the one from before the browser's
+     * change, is written back a task or a frame later ({@link finishViewRestore}),
+     * with the surface's scroll offsets.
+     */
+    private restoreView(): void {
+        const editor = this.editorWithView();
+
+        if (!editor) {
+            return;
+        }
+
+        this.scheduleViewRestore(editor);
+        this._wysiwyg.remount(editor);
+    }
+
+    /**
+     * Schedules the second half of a view restore
+     * ({@link finishViewRestore}) and keeps the selection for it. Call it
+     * before the view is taken out. No-op while a restore waits: that one
+     * holds the selection from before the first change of a burst, which is
+     * the one to keep.
+     *
+     * @remarks
+     * The second half is scheduled twice, as a task and for the next
+     * animation frame, and runs in whichever comes first. Either is late
+     * enough: both come after the event in which the browser changed the
+     * view, and so after the selection the browser sets at its end. The
+     * frame is there for what is seen. For that selection, at the
+     * document's start, the browser also scrolls the surface there, and a
+     * frame can be painted before a task runs: the document's start would
+     * show for the length of a frame at every refused keystroke. A frame's
+     * callbacks run before it is painted, so the offsets are back by then.
+     * The task is there for a page that paints no frames, a hidden one.
+     *
+     * @param editor - The editor whose view is about to be rendered anew.
+     */
+    private scheduleViewRestore(editor: LexicalEditor): void {
+        if (this._viewRestore !== null) {
+            return;
+        }
+
+        const selection = editor.read(() => $getSelection()?.clone() ?? null);
+        const finish = (): void => this.finishViewRestore(editor, selection);
+
+        this._viewRestore = {
+            task:  DOM.sink.setTimeout(finish, VIEW_RESTORE_DELAY_MS),
+            frame: DOM.sink.requestAnimationFrame(finish),
+        };
+    }
+
+    /**
+     * Calls off a view restore that waits ({@link scheduleViewRestore}):
+     * its task and its animation frame both. No-op where none waits.
+     */
+    private cancelViewRestore(): void {
+        const waiting = this._viewRestore;
+
+        if (waiting === null) {
+            return;
+        }
+
+        this._viewRestore = null;
+        DOM.sink.clearTimeout(waiting.task);
+        DOM.sink.cancelAnimationFrame(waiting.frame);
+    }
+
+    /**
+     * The second half of a view restore, a task or a frame after
+     * {@link takeOutView} or {@link restoreView} began it
+     * ({@link scheduleViewRestore}): puts back a view that is still out,
+     * writes the selection the editor held back to the browser, and puts
+     * the surface's scroll offsets back, which the browser moved for the
+     * selection it set itself in between.
+     *
+     * @remarks
+     * Lexical writes its selection to the browser only while it is
+     * editable, so it is made editable for the length of the one update
+     * that sets the selection, and no longer. No event is handled in
+     * between: the three calls run one after the other. The update scrolls
+     * nothing. It is skipped where the selection's nodes are gone, the host
+     * having loaded another document meanwhile, and where the surface does
+     * not hold the keyboard: a browser gives the focus to an editing host a
+     * selection is set in, and a view changed from elsewhere must not take
+     * it.
+     *
+     * While the restore waited, the editor's selection followed the one the
+     * browser set in between, and no `"selectionstate"` was emitted for it
+     * ({@link updateSelectionState}). The state is compared here, once, with
+     * the last one reported: with the selection written back it is the
+     * same, and nothing is emitted.
+     *
+     * @param editor - The editor whose view was rendered anew.
+     * @param selection - The selection it held before, or `null` for none.
+     */
+    private finishViewRestore(editor: LexicalEditor, selection: BaseSelection | null): void {
+        this._wysiwyg.putBackView(editor);
+
+        const scrollTop = this._wysiwyg.getScrollTop();
+        const scrollLeft = this._wysiwyg.getScrollLeft();
+        const holdsFocus = this._wysiwyg.holdsFocus();
+
+        // Run from the task or from the frame: the other is called off.
+        this.cancelViewRestore();
+
+        if (selection !== null && holdsFocus) {
+            editor.setEditable(true);
+
+            editor.update(() => {
+                const stillThere = (selection.getStartEndPoints() ?? []).every((point) => $getNodeByKey(point.key) !== null);
+
+                if (stillThere) {
+                    $setSelection(selection.clone());
+                }
+            }, { discrete: true, tag: [HISTORY_MERGE_TAG, SKIP_SCROLL_INTO_VIEW_TAG] });
+
+            editor.setEditable(!this.getReadOnly());
+        }
+
+        this._wysiwyg.setScrollTop(scrollTop);
+        this._wysiwyg.setScrollLeft(scrollLeft);
+        this.updateSelectionState();
     }
 
     /**
@@ -5740,10 +6517,24 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * The document, the selection and the undo history stay as they are, as
      * after {@link MarkdownEditor.copy}, which hands focus back the same way.
      *
+     * An editable editor is focused through Lexical, which writes its
+     * selection to the browser with the focus. A read-only one is focused
+     * through its surface: Lexical writes no selection while it is not
+     * editable, so the browser's selection is the only one, and the browser
+     * keeps a caret it already holds in the surface.
+     *
+     * @param preventScroll - Whether to keep the browser from scrolling a
+     *   read-only surface into view; Lexical manages its own focus scroll.
      * @returns This component, for method chaining.
      */
-    private refocusSurface(): this {
-        this.ensureEditor().focus();
+    private refocusSurface(preventScroll: boolean = false): this {
+        const readOnly = this.getReadOnly();
+
+        if (readOnly) {
+            this._wysiwyg.focus(preventScroll);
+        } else {
+            this.ensureEditor().focus();
+        }
 
         return this;
     }
@@ -6007,21 +6798,28 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Sets whether the editor rejects edits, on **both** surfaces. Caches the
      * state; when the Lexical editor exists, toggles its editable flag, so it
-     * stops acting on input; turns the WYSIWYG surface's `contenteditable`
-     * off, which is what drops the caret and stops the browser from editing
-     * the shown text itself (Lexical leaves that attribute to its host), or
-     * back to what {@link MarkdownEditor.setContentEditable} last asked for;
-     * and forwards to the source `CodeEditor`.
+     * stops acting on input; tells the WYSIWYG surface, which from then on
+     * cancels the edits the browser offers; and forwards to the source
+     * `CodeEditor`.
      *
-     * While read-only, every command that edits the document is refused
-     * and leaves the document and the selection as they are: on the WYSIWYG
-     * surface silently, on the source surface with the source editor's
-     * rejection flash. `cut()` and `paste()` are refused on both; `copy()`
-     * still copies. The `can…` fields of the selection state are then all
-     * `false`, and `"selectionstate"` fires when this call changes them.
-     * Replacing the whole document with `setValue` stays possible, as it
-     * does on a read-only `CodeEditor`: read-only guards against edits, not
-     * against the host loading another document.
+     * A read-only editor keeps its caret on both surfaces: it stays a tab
+     * stop, the keyboard and the mouse move the caret and select text, and
+     * the selection is copied as before. The selection is left as it is by
+     * this call, in both directions.
+     *
+     * While read-only, nothing changes the document: typing, Enter, a
+     * deletion, a paste, a cut, a drop, a composition and the browser's
+     * format shortcuts are refused, and so is every command that edits,
+     * called from code or from a menu. A refused edit leaves the document,
+     * the selection and the undo history as they are, fires
+     * `"readonlyedit"` and flashes the surface it was made on. The undo and
+     * redo keys do nothing, and are not reported.
+     * `cut()` and `paste()` are refused on both surfaces; `copy()` still
+     * copies. The `can…` fields of the selection state are then all `false`,
+     * and `"selectionstate"` fires when this call changes them. Replacing
+     * the whole document with `setValue` stays possible, as it does on a
+     * read-only `CodeEditor`: read-only guards against edits, not against
+     * the host loading another document.
      *
      * @param readOnly - Whether the editor should reject edits.
      * @returns This component, for method chaining.
@@ -6029,7 +6827,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     setReadOnly(readOnly: boolean): this {
         this._options.readOnly = readOnly;
         this._editor?.setEditable(!readOnly);
-        this.applyContentEditable();
+        this._wysiwyg.setReadOnly(readOnly);
         this._codeEditor.setReadOnly(readOnly);
         this.updateSelectionState();
 
@@ -6038,30 +6836,35 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
     /**
      * Moves keyboard focus into the active editing surface, placing a caret
-     * ready for typing: the Lexical contenteditable in WYSIWYG mode (building
-     * and mounting the editor if needed), or the source `CodeEditor` in
-     * `"source"` mode. A read-only editor's WYSIWYG surface is not
-     * `contenteditable`, so there it takes no keyboard focus and shows no
-     * caret; its source surface is focused as usual.
+     * there: the Lexical contenteditable in WYSIWYG mode (an editable editor
+     * is built first if it was not yet), or the source `CodeEditor` in
+     * `"source"` mode. A read-only editor takes focus and shows a caret on
+     * both surfaces, for moving through the text and selecting it.
      *
      * Overrides {@link core!Component.focus}, whose default focuses this component's
      * own host element — the `Card` wrapper — which would leave the caret out of
-     * the nested contenteditable the typing must land in. In WYSIWYG mode it
-     * defers to Lexical's own `focus`, which both focuses the root element and
-     * sets a selection so a caret appears without a click.
+     * the nested contenteditable the typing must land in. In WYSIWYG mode an
+     * editable editor defers to Lexical's own `focus`, which both focuses
+     * the root element and sets a selection so a caret appears without a
+     * click. A read-only editor's surface is focused directly: the browser
+     * keeps a caret it already holds there, and otherwise puts one at the
+     * start of the document.
      *
      * @param preventScroll - Forwarded to the source `CodeEditor` in `"source"`
-     *   mode; ignored in WYSIWYG mode, where Lexical manages its own focus scroll.
+     *   mode and to a read-only WYSIWYG surface; ignored on an editable
+     *   WYSIWYG surface, where Lexical manages its own focus scroll.
      * @returns This component, for method chaining.
      */
     focus(preventScroll: boolean = false): this {
-        if (this.getMode() === "source") {
+        const sourceMode = this.isSourceMode();
+
+        if (sourceMode) {
             this._codeEditor.focus(preventScroll);
-        } else {
-            this.ensureEditor().focus();
+
+            return this;
         }
 
-        return this;
+        return this.refocusSurface(preventScroll);
     }
 
     /**
@@ -6462,9 +7265,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (handledBySource) { return this; }
 
-        const readOnly = this.getReadOnly();
+        const refused = this.refuseIfReadOnly();
 
-        if (readOnly) { return this; }
+        if (refused) { return this; }
 
         // Unlinking has no field of its own: it declines where the selection touches a block holding text only.
         const applies = url === null ? !this.declinesInTextOnlyBlock() : this.commandApplies("canLink");
@@ -6603,6 +7406,11 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * one of its cells is copied with the whole table, which is what
      * {@link MarkdownEditor.cut} removes; the selection stays as it is.
      *
+     * A read-only editor copies as well. At a collapsed caret it copies the
+     * enclosing word without selecting it, since its selection is the
+     * browser's alone, and keyboard focus goes back to the surface as it does
+     * on an editable editor.
+     *
      * In `"source"` mode, delegates to the source editor's own `copy()`
      * instead.
      *
@@ -6618,14 +7426,25 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         }
 
         const editor = this.ensureEditor();
+        const readOnly = this.getReadOnly();
 
-        editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
+        // A read-only editor leaves the selection to the browser: the word is copied without being selected.
+        if (!readOnly) {
+            editor.update(() => { $selectEnclosingWordIfCollapsed(); }, { discrete: true });
+        }
 
         const text = editor.read(() => {
             const selection = $getSelection();
 
             if (!$isRangeSelection(selection)) {
                 return "";
+            }
+
+            // Non-null only for a caret still collapsed, which is the read-only case.
+            const expansion = $computeWordExpansion();
+
+            if (expansion !== null) {
+                return expansion.node.getTextContent().slice(expansion.start, expansion.end);
             }
 
             const isTableEdge = $isTableEdgeRange(selection);
@@ -6643,12 +7462,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             // dirty, so Lexical's reconciler skips its selection-sync step
             // entirely, which is the only place that would otherwise
             // incidentally restore focus (as it does for the collapsed-caret
-            // expansion case, which does mark it dirty). Calling focus()
-            // explicitly forces that resync unconditionally: its own
+            // expansion case, which does mark it dirty). Focusing through
+            // Lexical explicitly forces that resync unconditionally: its own
             // documented behaviour marks an already-clean selection dirty via
             // $setSelection(selection.clone()) — the same selection, not a
-            // different one — so nothing about what's selected changes.
-            this.ensureEditor().focus();
+            // different one — so nothing about what's selected changes. A
+            // read-only editor's surface is focused directly instead.
+            this.refocusSurface();
         }
 
         return this;
@@ -6662,7 +7482,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * collapsed with nothing to expand into. A selection that runs from
      * outside a table into one of its cells is cut with the whole table: the
      * clipboard gets the text that is removed. Refused in a read-only
-     * editor, on either surface: nothing is copied and nothing removed.
+     * editor, on either surface, as the cut key is on the WYSIWYG surface:
+     * nothing is copied and nothing removed, `"readonlyedit"` fires and the
+     * surface flashes.
      *
      * In `"source"` mode, delegates to the source editor's own `cut()`
      * instead, which refuses a read-only editor with its rejection flash, as
@@ -6679,9 +7501,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
             return this;
         }
 
-        const readOnly = this.getReadOnly();
+        const refused = this.refuseIfReadOnly();
 
-        if (readOnly) { return this; }
+        if (refused) { return this; }
 
         this.copy();
 
@@ -6706,7 +7528,7 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * instead, which refuses a read-only editor with its rejection flash.
      *
      * Refused in a read-only editor, on either surface: the clipboard is not
-     * read.
+     * read, `"readonlyedit"` fires and the surface flashes.
      *
      * @returns A promise resolving `true` when the clipboard was read (even if
      *   it was empty), or `false` when the read was unavailable or denied, or
@@ -6717,9 +7539,9 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
 
         if (sourceMode) { return this._codeEditor.paste(); }
 
-        const readOnly = this.getReadOnly();
+        const refused = this.refuseIfReadOnly();
 
-        if (readOnly) { return false; }
+        if (refused) { return false; }
 
         const text = await DOM.source.readClipboardText();
 
@@ -7406,6 +8228,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     on(event: "selectionstate", listener: (payload: MarkdownEditorSelectionState) => void): this;
+    /**
+     * Registers a listener for the `"readonlyedit"` event, fired when an edit
+     * is refused because the editor is read-only, on either surface: once
+     * for each refused edit. In WYSIWYG mode that is an edit the browser
+     * offered and the surface cancelled (typing, Enter, a deletion, a paste,
+     * a cut, a drop, the browser's format shortcuts), a composition at its
+     * start, and each editing command called on the editor. In `"source"`
+     * mode it is what the source `CodeEditor` reports. Tab, which moves the
+     * focus on, and the undo and redo keys, which are stopped quietly, are
+     * not reported on either surface.
+     *
+     * @param event - Must be `"readonlyedit"`.
+     * @param listener - Invoked with no payload.
+     * @returns This component, for method chaining.
+     */
+    on(event: "readonlyedit", listener: () => void): this;
     on(event: MarkdownEditorEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -7428,6 +8266,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * @returns This component, for method chaining.
      */
     off(event: "selectionstate", listener: (payload: MarkdownEditorSelectionState) => void): this;
+    /**
+     * Removes a previously registered `"readonlyedit"` listener.
+     *
+     * @param event - Must be `"readonlyedit"`.
+     * @param listener - The exact callback reference to remove.
+     * @returns This component, for method chaining.
+     */
+    off(event: "readonlyedit", listener: () => void): this;
     off(event: MarkdownEditorEvent, listener: Function): this {
         this._listeners.remove(event, listener);
 
@@ -7438,28 +8284,32 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * Fans an event out to its registered listeners.
      *
      * @param event - The event name.
-     * @param payload - The event payload (`"change"`/`"selectionstate"`).
+     * @param payload - The event payload (`"change"`/`"selectionstate"`; `"readonlyedit"` has none).
      */
     protected emit(event: "change", payload: MarkdownEditorChange): void;
     protected emit(event: "selectionstate", payload: MarkdownEditorSelectionState): void;
-    protected emit(event: MarkdownEditorEvent, payload: MarkdownEditorChange | MarkdownEditorSelectionState): void {
-        this._listeners.fire(event, payload);
+    protected emit(event: "readonlyedit"): void;
+    protected emit(event: MarkdownEditorEvent, payload?: MarkdownEditorChange | MarkdownEditorSelectionState): void {
+        this._listeners.fire(event, ...(payload ? [payload] : []));
     }
 
     /**
-     * Sets whether the WYSIWYG surface's element hosts an editable region.
-     * Read-only wins: a read-only editor's surface stays not
-     * `contenteditable` whatever is asked for here, and takes what was last
-     * asked for once {@link MarkdownEditor.setReadOnly} makes the editor
-     * editable again.
+     * Sets whether the WYSIWYG surface's element hosts an editable region
+     * (`contenteditable`), which is what gives the browser a caret, keyboard
+     * selection and a tab stop there. It is separate from
+     * {@link MarkdownEditor.setReadOnly}, in both directions: a read-only
+     * editor's surface stays `contenteditable`, so that it keeps its caret,
+     * and a `contenteditable` surface cannot make a read-only editor
+     * editable, every edit being refused all the same. Turn it off to take
+     * the caret away altogether. Turning it off also removes the surface's
+     * text-box role and its `aria-readonly` and `aria-multiline`
+     * properties, which describe an editing host.
      *
-     * @param contentEditable - Whether the element is contenteditable while
-     *   the editor is not read-only.
+     * @param contentEditable - Whether the element is contenteditable.
      * @returns This component, for method chaining.
      */
     setContentEditable(contentEditable: boolean): this {
-        this._contentEditable = contentEditable;
-        this.applyContentEditable();
+        this._wysiwyg.setContentEditable(contentEditable);
 
         return this;
     }
@@ -7467,21 +8317,12 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
     /**
      * Returns whether the WYSIWYG surface's element hosts an editable region.
      *
-     * @returns The contenteditable state: `false` on a read-only editor,
-     *   whatever {@link MarkdownEditor.setContentEditable} asked for.
+     * @returns The contenteditable state: what
+     *   {@link MarkdownEditor.setContentEditable} last set, `true` until
+     *   then, read-only or not.
      */
     getContentEditable(): boolean {
         return this._wysiwyg.getContentEditable();
-    }
-
-    /**
-     * Writes the WYSIWYG surface's `contenteditable`: on only when the host
-     * asked for an editable surface and the editor is not read-only.
-     */
-    private applyContentEditable(): void {
-        const readOnly = this.getReadOnly();
-
-        this._wysiwyg.setContentEditable(this._contentEditable && !readOnly);
     }
 
     /**
@@ -7492,6 +8333,13 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * `MarkdownEditor`.
      */
     protected destructor(): void {
+        // Before `super.destructor()` releases the wash's element handle,
+        // which a pulse's fallback timer would otherwise write to.
+        this._flash.cancel();
+
+        // And before the Lexical editor's view is taken out, which a waiting restore would write to.
+        this.cancelViewRestore();
+
         this._unregisterTableView?.();
         this._unregister?.();
         this._editor?.setRootElement(null);
@@ -7586,6 +8434,8 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
                 this.handleChange();
                 this.updateSelectionState();
             }),
+            // Last: its listeners go in front of every other one for their commands.
+            registerReadOnlyGuard(editor, () => this.getReadOnly(), () => this.signalReadOnlyEdit()),
         );
 
         this._editor = editor;
@@ -7608,6 +8458,14 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
         // document and throws without one, so it is view-time only.
         if (editor.getRootElement() && !this._unregisterTableView) {
             this._unregisterTableView = registerTableSelectionObserver(editor, true);
+
+            const host = this.getElement();
+
+            // The wash goes on the editor's own element, not into the surface:
+            // the surface is Lexical's root, which removes a child it did not create.
+            if (host) {
+                this.trackHandle(this._flash.mount(host, WYSIWYG_FLASH_Z_INDEX));
+            }
         }
     }
 
@@ -8287,12 +9145,22 @@ class MarkdownEditor extends Component<MarkdownEditorOptions> {
      * toolbar's live state is observed: the Lexical `registerUpdateListener`
      * callback (typing, a caret move, undo/redo, or a same-position format
      * toggle), the source `CodeEditor`'s own `"selectionchange"`,
-     * `handleCodeChange`, `setMode`, `setReadOnly`, and `ensureEditor` once
-     * it has built the Lexical editor. Before that build the WYSIWYG surface
-     * reports the neutral state, so nothing but a change of the read-only
-     * state emits then.
+     * `handleCodeChange`, `setMode`, `setReadOnly`, `ensureEditor` once it
+     * has built the Lexical editor, and `finishViewRestore`. Before that
+     * build the WYSIWYG surface reports the neutral state, so nothing but a
+     * change of the read-only state emits then.
+     *
+     * Nothing is emitted while a view restore waits ({@link restoreView}):
+     * the editor's selection is then, for the length of a task or a frame,
+     * the one the browser set when the view was rendered anew, and a host would see its
+     * toolbar's state flip away and back. `finishViewRestore` calls this
+     * again once the restore is done.
      */
     private updateSelectionState(): void {
+        if (this._viewRestore !== null) {
+            return;
+        }
+
         const state = this.readActiveSelectionState();
 
         if (selectionStatesEqual(state, this._lastSelectionState)) {

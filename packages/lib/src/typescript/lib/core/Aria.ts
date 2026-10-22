@@ -42,7 +42,8 @@ export type AriaRole =
     | 'slider'
     | 'switch'
     | 'list'
-    | 'listitem';
+    | 'listitem'
+    | 'textbox';
 
 /**
  * Valid values for the `aria-sort` attribute.
@@ -779,10 +780,17 @@ export class Aria {
     /**
      * Sets `aria-readonly`.
      *
-     * @param value - Whether the element is read-only.
+     * @param value - Whether the element is read-only, or `null` to remove
+     *   the attribute, leaving the element exactly as if it had never been
+     *   set.
      */
-    setReadOnly(value: boolean): this {
-        this.setAttribute("readonly", String(value));
+    setReadOnly(value: boolean | null): this {
+        if (value !== null) {
+            this.setAttribute("readonly", String(value));
+        } else {
+            this._attributes.delete("readonly");
+            this._component.applyAriaAttribute("aria-readonly", null);
+        }
 
         return this;
     }
@@ -794,6 +802,35 @@ export class Aria {
      */
     getReadOnly(): boolean | null {
         const v = this._attributes.get("readonly");
+
+        return v !== undefined ? v === "true" : null;
+    }
+
+    /**
+     * Sets `aria-multiline`.
+     *
+     * @param value - Whether the text box takes more than one line, or
+     *   `null` to remove the attribute, leaving the element exactly as if
+     *   it had never been set.
+     */
+    setMultiline(value: boolean | null): this {
+        if (value !== null) {
+            this.setAttribute("multiline", String(value));
+        } else {
+            this._attributes.delete("multiline");
+            this._component.applyAriaAttribute("aria-multiline", null);
+        }
+
+        return this;
+    }
+
+    /**
+     * Returns the current `aria-multiline` value, or null if not set.
+     *
+     * @returns The multi-line state, or null.
+     */
+    getMultiline(): boolean | null {
+        const v = this._attributes.get("multiline");
 
         return v !== undefined ? v === "true" : null;
     }

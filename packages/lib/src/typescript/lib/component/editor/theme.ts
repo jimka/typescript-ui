@@ -30,7 +30,7 @@ const REVEAL_FLASH_KEYFRAME = "ts-ui-code-editor-reveal-flash";
 
 // Long enough to register as a flash rather than a repaint, short enough that
 // it has finished by the time the eye reaches the range — the same order as
-// READONLY_FLASH_MS (300ms) in CodeEditor.ts, doubled because this animation
+// READONLY_FLASH_MS (300ms) in ReadOnlyFlash.ts, doubled because this animation
 // has to be caught rather than merely felt.
 const REVEAL_FLASH_MS = 600;
 

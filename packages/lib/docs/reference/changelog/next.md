@@ -16,7 +16,8 @@ page resets to empty.
   so `MarkdownDocumentPanel`'s toolbar edited a read-only editor. Every
   editing command is now a no-op while read-only, `cut()` and `paste()` on
   the source surface included, and the selection state's `can…` fields
-  report `false`, which greys the toolbar out. `setValue()` and `copy()`
+  report `false`, which greys the toolbar out. A refused command fires
+  `"readonlyedit"` and flashes the surface. `setValue()` and `copy()`
   still work. See [Migration](/reference/migration/next) if you edit a
   read-only editor from code.
 
@@ -467,6 +468,14 @@ page resets to empty.
   source-mode command does nothing. No consumer action is needed unless
   code relied on a caret converting a whole list.
 
+
+- **`MarkdownEditor`'s WYSIWYG surface is a multi-line text box.** While
+  it is `contenteditable` it carries `role="textbox"`,
+  `aria-multiline="true"` and `aria-readonly`, which follows the read-only
+  state: the attributes the source surface's content already carries. The
+  element had no role before. Chromium does not pass `aria-readonly` on to
+  assistive technology for an editing host, on either surface; see
+  *Read-only* in the `MarkdownEditor` docs.
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the
@@ -680,6 +689,25 @@ page resets to empty.
   the first command) now fires `"selectionstate"` once when the document
   turns `canInsertTable` or `canInsertImage` off, which is not known before.
 
+- **`MarkdownEditor` reports refused edits.** The `"readonlyedit"` event
+  fires when an edit is refused because the editor is read-only, in WYSIWYG
+  mode and in source mode, and the WYSIWYG surface flashes as `CodeEditor`
+  does. In WYSIWYG mode that is each edit the surface cancels, each editing
+  command called on the editor, and each step of a composition; in source
+  mode it is what the source `CodeEditor` reports, which had no public hook.
+  The `listeners` option takes it too.
+
+- **A read-only `MarkdownEditor` follows its links.** In WYSIWYG mode,
+  Enter with the caret in a link opens the link, and so does a click or a
+  middle click on it, in a new tab with `rel="noopener noreferrer"`, as
+  the `Markdown` viewer opens a link by default. The address is the one the link was
+  written with; one that is empty, or neither relative nor an `http:`,
+  `https:`, `mailto:`, `tel:` or `sms:` address, is not followed. A run of
+  clicks opens the link once, on its first click, and a drag over the
+  link's text opens nothing. An editable editor
+  follows no link, as before: a click there places the caret. See
+  *Following a link* in the `MarkdownEditor` docs.
+
 ### Core
 
 - **`Body.init({ strings })`, `Body.setStrings`, `Body.getStrings` and the
@@ -804,6 +832,11 @@ page resets to empty.
 - **`SmoothScroller.stop()` cancels the in-flight loop without reading.**
   For an owner that is being torn down, where `reset()` would re-read the
   live position through an element that is already gone.
+
+- **`Aria.setMultiline()` / `getMultiline()`** write and read
+  `aria-multiline`, and `AriaRole` gained `'textbox'`. `setMultiline(null)`
+  and `Aria.setReadOnly(null)` remove their attribute, as `setHidden(null)`
+  does.
 
 ### Data
 
@@ -1287,13 +1320,19 @@ page resets to empty.
   text.** `setReadOnly(true)` and the `readOnly` option stopped the editor
   acting on input but left the WYSIWYG surface `contenteditable`, so typing
   changed the text on screen while `getValue()` kept the document, and what
-  was shown no longer matched what a save would write. The surface's
-  `contenteditable` now follows the read-only state, so a read-only WYSIWYG
-  surface shows no caret and takes no keyboard focus; its text can still be
-  selected with the mouse and copied. Read-only wins over
-  `setContentEditable(true)`, which no longer makes a read-only surface
-  editable; `setReadOnly(false)` restores what `setContentEditable` last
-  asked for. No consumer action is needed.
+  was shown no longer matched what a save would write. The surface stays
+  `contenteditable`, so a read-only editor keeps its caret, its keyboard
+  navigation and selection, its tab stop and copy, as a read-only
+  `CodeEditor` does; what changed is that every edit the browser offers is
+  now cancelled (typing, Enter, a deletion, a paste, a cut, a drop, a
+  spelling replacement, the browser's format shortcuts), the undo and redo
+  keys are stopped, and text the browser writes anyway, a composition's,
+  is kept out of the document and put back on screen.
+  Ctrl/Cmd+X, which removed the selected text from the screen, is refused
+  like the rest and copies nothing. `setContentEditable` is independent of
+  read-only: it cannot make a read-only editor editable, and
+  `setContentEditable(false)` still takes the caret away. No consumer
+  action is needed.
 
 - **`MarkdownEditor` undoes a paste as one step.** A paste over a selection
   could leave no undo step of its own: when it put back the text of the

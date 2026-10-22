@@ -13,6 +13,7 @@ import { Notification } from "~/overlay/Notification.js";
 import { buildClipboardMenuItems } from "~/component/shared/buildClipboardMenuItems.js";
 import { Anchor } from "~/layout/Anchor.js";
 import { CodeEditorSearchPanel } from "~/component/editor/CodeEditorSearchPanel.js";
+import { ReadOnlyFlash } from "~/component/editor/ReadOnlyFlash.js";
 import type { CodeEditorSearchFields, CodeEditorSearchCommand } from "~/component/editor/CodeEditorSearchPanel.js";
 import {
     EditorView, keymap, drawSelection, lineNumbers, highlightActiveLine, highlightActiveLineGutter,
@@ -342,18 +343,13 @@ function hasWheelExtent(handle: Handle, e: WheelEvent): boolean {
 // ScrollStrip.arrowReserve's `+1` slop against the same rounding noise.
 const SUBPIXEL_HEIGHT_SLOP_PX = 1;
 
-/** Duration of the read-only rejection flash, in milliseconds. */
-const READONLY_FLASH_MS = 300;
-
-/** Peak opacity of the read-only rejection wash — a subtle tint that keeps the text readable. */
-const READONLY_FLASH_PEAK_OPACITY = 0.16;
-
 /**
- * Fill of the read-only rejection wash: the project's validation-error token,
- * with a light/dark-safe fallback, so the tint follows a `ThemeManager.setTheme`
- * toggle with no rebuild (the CSS variable resolves live).
+ * Stacking order of the read-only rejection wash: above CodeMirror's sticky
+ * line-number gutter (z-index 200) and its own panels (search, lint —
+ * z-index 300) so the wash covers both; `.cm-editor` forms no stacking
+ * context, so either would otherwise paint over a lower overlay.
  */
-const READONLY_FLASH_COLOR = "var(--ts-ui-validation-error-border, #dc2626)";
+const READONLY_FLASH_Z_INDEX = 400;
 
 /**
  * Stacking order for the floating search panel: above CodeMirror's own
@@ -619,12 +615,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
     /** The live CodeMirror view; `null` until mounted (or forever, offline). */
     private _view: EditorView | null = null;
 
-    /** Overlay flashed on a rejected read-only edit; `null` until mounted (or forever, offline). */
-    private _flashOverlay: Handle | null = null;
-
-    // In-flight read-only flash, cancelled on teardown so its fallback timer
-    // cannot fire against the overlay's released element handle.
-    private _flashAnimation: Animation.CancelHandle | null = null;
+    /** The wash flashed on a rejected read-only edit; mounted with the view. */
+    private readonly _flash: ReadOnlyFlash = new ReadOnlyFlash();
 
     /** Reconfigured by {@link CodeEditor.setLanguage} to swap the active grammar. */
     private readonly _langCompartment: Compartment = new Compartment();
@@ -2048,8 +2040,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
     protected destructor(): void {
         // Before `super.destructor()` releases the overlay's element handle,
         // which the flash's fallback timer would otherwise write to.
-        this._flashAnimation?.cancel();
-        this._flashAnimation = null;
+        this._flash.cancel();
 
         this._unsubscribeTheme();
 
@@ -2932,25 +2923,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * @param host - The mounted editor element the overlay fills.
      */
     private mountFlashOverlay(host: Handle): void {
-        const overlay = this.trackHandle(DOM.sink.createElement("div"));
-
-        DOM.sink.apply(overlay, {
-            style: {
-                position:      "absolute",
-                inset:         "0",
-                pointerEvents: "none",
-                // Above CodeMirror's sticky line-number gutter (z-index 200) and its
-                // own panels (search, lint — z-index 300) so the wash covers both;
-                // `.cm-editor` forms no stacking context, so either would otherwise
-                // paint over a lower overlay.
-                zIndex:        "400",
-                backgroundColor: READONLY_FLASH_COLOR,
-                opacity:       "0",
-            },
-        });
-        DOM.sink.appendChild(host, overlay);
-
-        this._flashOverlay = overlay;
+        this.trackHandle(this._flash.mount(host, READONLY_FLASH_Z_INDEX));
     }
 
     /**
@@ -3025,17 +2998,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
      * user is looking at while staying faint enough to keep the text legible.
      */
     private flashReadOnly(): void {
-        if (!this._flashOverlay) {
-            return;
-        }
-
-        this._flashAnimation?.cancel();
-        this._flashAnimation = Animation.play(this._flashOverlay, {
-            from:       { opacity: String(READONLY_FLASH_PEAK_OPACITY) },
-            to:         { opacity: "0" },
-            durationMs: READONLY_FLASH_MS,
-            properties: ["opacity"],
-        });
+        this._flash.play();
     }
 
     private buildContextMenuItems(hasSelectedText: boolean): MenuItemConfig[] {

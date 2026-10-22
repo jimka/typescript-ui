@@ -43,6 +43,7 @@ describe('Aria — boolean attributes', () => {
         ['setDisabled',        a => a.getDisabled()],
         ['setPressed',         a => a.getPressed()],
         ['setReadOnly',        a => a.getReadOnly()],
+        ['setMultiline',       a => a.getMultiline()],
     ];
     for (const [setter, getter] of cases) {
         it(`${String(setter)} round-trips and defaults null`, () => {
@@ -67,6 +68,13 @@ describe('Aria — boolean attributes', () => {
         a.setHidden(true);
         a.setHidden(null);
         expect(a.getHidden()).toBeNull();
+    });
+    it('setReadOnly(null) and setMultiline(null) return their getters to null', () => {
+        const a = aria();
+        a.setReadOnly(true).setMultiline(true);
+        a.setReadOnly(null).setMultiline(null);
+        expect(a.getReadOnly()).toBeNull();
+        expect(a.getMultiline()).toBeNull();
     });
 });
 
