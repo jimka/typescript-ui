@@ -31,6 +31,7 @@ import { $createMarkdownBlockNode, $createMarkdownColumnNode } from "~/component
 import type { MarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
 import { $createMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import type { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
+import { $createMarkdownListItemTextNode, $isMarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
 import {
     bareAutolinkState, codeInfoState, fenceAttributesState, hardBreakMarkerState, imageAttributesState, KEPT_SOURCE_WRITES_LINK,
     KEPT_SOURCE_WRITES_STYLE, keptSourceState, listLooseState, listMarkerState, NESTED_LINK_WRITES_STYLE, nestedLinkGroupState,
@@ -949,13 +950,13 @@ function $buildList(token: Tokens.List): ListNode | null {
     $setState(list, listMarkerState, authoredMarker(token));
 
     for (const item of token.items) {
-        const items = $buildListItem(item);
+        const built = $buildListItem(item);
 
-        if (items === null) {
+        if (built === null) {
             return null;
         }
 
-        list.append(...items);
+        list.append(built);
     }
 
     const keepsLooseness = !$holdsItemBlocks(list) || $listReadsLoose(list) === token.loose;
@@ -968,15 +969,15 @@ function $buildList(token: Tokens.List): ListNode | null {
 }
 
 /**
- * Tells whether an item of a list holds a block other than a nested list:
- * a list the save writes with a blank line before that block.
+ * Tells whether an item of a list holds a block other than its text and its
+ * nested lists: a list the save writes with a blank line before that block.
  *
  * @param list - The list.
  * @returns `true` when one of its items holds such a block.
  */
 function $holdsItemBlocks(list: ListNode): boolean {
     return list.getChildren().some((item) => $isElementNode(item)
-        && item.getChildren().some((child) => $isElementNode(child) && !child.isInline() && !$isListNode(child)));
+        && item.getChildren().some((child) => !$isListNode(child) && !$isMarkdownListItemTextNode(child)));
 }
 
 /**
@@ -1025,17 +1026,19 @@ function withOwnCheckbox(tokens: Token[]): Token[] {
 }
 
 /**
- * Builds one list item's nodes: an item holding an optional checkbox and the
- * item's text, then the item's blocks ({@link $buildItemBlocks}), located
- * as any container's are ({@link locateBlocks}): each run of link reference
- * definitions is one block, and text of the item no token covers (a repeated
- * definition, which `marked` drops) is a block too, a raw block.
+ * Builds one list item: its text, a node of its own holding an optional
+ * checkbox and the item's inline content, then the item's blocks
+ * ({@link $buildItemBlocks}), located as any container's are
+ * ({@link locateBlocks}): each run of link reference definitions is one
+ * block, and text of the item no token covers (a repeated definition, which
+ * `marked` drops) is a block too, a raw block. An item that opens with a
+ * block has no text node; one that holds nothing has an empty one.
  *
  * @param item - The list-item token.
- * @returns The item nodes, or `null` when a checkbox has no text after it,
- *   or when a block is one no list item can hold.
+ * @returns The item, or `null` when a checkbox has no text after it, or when
+ *   a block is one no list item can hold.
  */
-function $buildListItem(item: Tokens.ListItem): ListItemNode[] | null {
+function $buildListItem(item: Tokens.ListItem): ListItemNode | null {
     const content = withOwnCheckbox(withoutSpace(item.tokens));
     const checkbox = content[0]?.type === "checkbox" ? content.shift()! : null;
     const located = locateBlocks(item.text, content);
@@ -1053,57 +1056,51 @@ function $buildListItem(item: Tokens.ListItem): ListItemNode[] | null {
     }
 
     const listItem = $createListItemNode();
+    const itemText = $createMarkdownListItemTextNode();
+    const opensWithItemText = text !== null || located.length === 0;
 
-    $buildKeepingConstructs(listItem, [...(checkbox === null ? [] : [checkbox]), ...tokens], null, (keep) => {
-        listItem.clear();
+    if (opensWithItemText) {
+        listItem.append(itemText);
+    }
 
-        if (checkbox !== null) {
-            listItem.append($createMarkdownSourceTextNode(checkbox.raw, checkbox.raw));
-        }
+    if (text !== null) {
+        $buildKeepingConstructs(itemText, [...(checkbox === null ? [] : [checkbox]), ...tokens], null, (keep) => {
+            itemText.clear();
 
-        appendInlineTokens({ block: listItem, openLink: null, nextCellParagraph: null, keep, edges: edgeLinks(tokens) }, tokens, PLAIN);
-    });
+            if (checkbox !== null) {
+                itemText.append($createMarkdownSourceTextNode(checkbox.raw, checkbox.raw));
+            }
+
+            appendInlineTokens({ block: itemText, openLink: null, nextCellParagraph: null, keep, edges: edgeLinks(tokens) }, tokens, PLAIN);
+        });
+    }
 
     return $buildItemBlocks(listItem, blocks);
 }
 
 /**
- * Builds the blocks after a list item's text. A block goes into the item's
- * own node until the item's first nested list; each nested list opens a new
- * item node whose first child is the list (Lexical's shape for nesting),
- * which then takes the blocks up to the next nested list. A nested list that
- * cannot be built is a block like any other: a raw block of the item.
+ * Builds the blocks after a list item's text, each a child of the item, in
+ * order: a nested list is one of them. A nested list that cannot be built is
+ * a block like any other: a raw block of the item.
  *
- * @param listItem - The item's own node, its inline content already built.
+ * @param listItem - The item, its text already built.
  * @param blocks - The item's located blocks after its text.
- * @returns The item's nodes, or `null` when a block is one no list item can
- *   hold ({@link $buildItemBlock}).
+ * @returns The item, or `null` when a block is one no list item can hold
+ *   ({@link $buildItemBlock}).
  */
-function $buildItemBlocks(listItem: ListItemNode, blocks: LocatedBlock[]): ListItemNode[] | null {
-    const items: ListItemNode[] = [listItem];
-    let holder: ListItemNode = listItem;
-
+function $buildItemBlocks(listItem: ListItemNode, blocks: LocatedBlock[]): ListItemNode | null {
     for (const entry of blocks) {
         const nested = !("gap" in entry) && entry.token.type === "list" ? $buildList(entry.token as Tokens.List) : null;
-
-        if (nested !== null) {
-            holder = $createListItemNode().append(nested);
-            items.push(holder);
-
-            continue;
-        }
-
-        const block = $buildItemBlock(entry);
+        const block = nested ?? $buildItemBlock(entry);
 
         if (block === null) {
             return null;
         }
 
-        // `ListItemNode.append` would merge a paragraph's children into the item.
-        holder.splice(holder.getChildrenSize(), 0, [block]);
+        listItem.append(block);
     }
 
-    return items;
+    return listItem;
 }
 
 /**

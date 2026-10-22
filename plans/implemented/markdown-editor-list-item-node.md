@@ -1865,3 +1865,997 @@ nodes of the item, and must not expect an item node that continues another.
     list that the importer built and then gave up on; the guards under
     *Internal Structure* were added after these runs and may already close
     it.
+
+---
+
+## Implementation Notes
+
+Implemented on `feature/markdown-editor-list-item-node`, on top of
+`feature/markdown-editor-list-item-block-paste` (`7d1e58d97`), which these
+notes call "the parent". All four steps of the plan are in one code commit:
+the tree is not green between them once the commits are folded, and the
+plan's step 3 cannot be cut (see decision 5).
+
+Scratch files named below are under
+`~/.claude/projects/-home-jika-typescript-sqladmin/scratch-keep/impl/list-item-node/`
+("the scratch folder"). They are not in the repository.
+
+### Decisions, and which of them the user saw on 2026-10-10
+
+The user was not available while this plan was implemented. Each decision
+below was made by the agent that ran the work. On 2026-10-10 the user was
+shown decisions 2, 3, 4 and 8; what the user said of each is under it.
+Decisions 1, 5, 6 and 7 were not put to the user one by one: they are
+internal structure or Lexical's stock behaviour. Every entry under
+*Deviations from the plan* was made by the agent too, and stands until the
+user confirms or reverses it.
+
+**1. Two node classes.** `MarkdownListItemNode` (type `markdown-list-item`)
+holds blocks only. `MarkdownListItemTextNode` (type
+`markdown-list-item-text`, a `ParagraphNode` subclass) is an item's text and
+always its first child. Both are in
+[markdownListItemNode.ts](../../packages/lib/src/typescript/lib/component/editor/markdownListItemNode.ts).
+
+**2. Eleven pinned results change on purpose.** Each was restated in its
+test file as the plan's *Results that change* gives it.
+
+| Row | New result | Reason |
+|---|---|---|
+| K3 | `- a\n\n  > q0w2\n\n  ::: …` | A join joins text. The item's text joins the quote that ends the item before, as Backspace joins a paragraph to a quote at the top level. Its other blocks follow into that item as before. |
+| K5 | `1. a\n\n   w4w5\n\n   \| h \|…` | The same rule, for Delete at the end of an item's second paragraph. |
+| T15 | `- w0\n\n  p1w\n\n  2` | Follows from K5: the row's second step now finds the joined text `p1w2`. |
+| X7 | `- ![](u.png)` | The item stays when an image replaces everything it holds, as it does when text is typed over the same range (X3). |
+| U13 | `- a\n  - b\n\n    > q\n\n  > g\n\n  > h\n\n- d` | `b` is not in the selection. Before, Lexical counted the whole item as a selected block. |
+| M1, M2 | the item stays an item; the comment before it stays a raw block | An item that opens with a list is an item (`- - n`). Before, Lexical's shape read it as the nested list of the item before. |
+| P10 | `- a\n\n  ::: {align=center}\n  **f**\n  :::\n\n  P2bcd\n\n  - e\n\n- f` | The pasted fence goes into the outer item, where every other pasted block goes. |
+| D27, D29, D30 | `- item\n\n- head\n\n  il`, `- item\n\n- he\n\n  tail`, `- item\n\n- hex\n\n  tail` | The text after the table is a paragraph, and a table-edge removal joins nothing, as at the top level. |
+| indent of an item that holds a nested list (I1) | `- a\n  - b\n    - c\n- d` | The item keeps its nested list under it. Before, `b` and `c` became siblings. |
+| outdent of such an item (I3) | `- a\n\n- b\n  - c\n  - d\n\n  e\n\n- f` | The same. Before, `c` was wrapped in an extra item. |
+
+Rows whose expected value changed beyond these eleven are listed under
+*Rows changed beyond the eleven* below.
+
+On 2026-10-10 the user was shown the kinds of change in summary (an item
+keeps its nested list on indent and outdent; an item stays when an image
+replaces all it holds), not each row, and raised no objection.
+
+**3. A paste at an item's text still splits the list.** Rows P1 to P14 keep
+their saves (P10 excepted, above). Only a paste into a block that an item
+holds puts the pasted blocks into the item (rows Y1 to Y13). Decided by
+the user on 2026-10-10: kept for now, with no plan to change it.
+
+**4. The two carried-over choices are unchanged.** Enter at the end of an
+item's text gives the item's blocks to the new item (T3). A nested item
+moved out takes the outer item's later blocks along (U1). Accepted by the
+user on 2026-10-10. Should either be changed later, the first is
+`$splitItemAfterText`, which picks the siblings that move, and the second
+is the `tail` line of `$outdentItem`.
+
+**5. Step 3 was done as one step.** The work was committed in WIP commits
+and folded into one code commit at the end.
+
+**6. A section for the plans that follow** closes these notes.
+
+**7. Enter over a range in items of text alone keeps the parent's result**
+(decided in the fourth review). `- a\n- bc\n- z` with `bc` selected and
+Enter gives `- a\n-\n-\n- z`: Lexical leaves the emptied item and adds one,
+as in any list. The editor's own rule for Enter over a range applies only
+where blocks are in play (rows X2, Z10; Z43 and Z44 pin the plain case).
+
+**8. Backspace in an empty block after a container removes the block**
+(decided in the fourth review). After a `:::` block, after a list whose
+last item ends in a table or a `:::` block, and inside an item after a
+`:::` block of that item, an empty block is removed and the caret goes to
+the end of what stands before it, as after a table. A block that holds
+something stays, and nothing is joined (rows Z45 to Z53). Shown to the
+user on 2026-10-10; no objection.
+
+### Deviations from the plan
+
+Each entry says what the plan called for, what was done, and why. The first
+review (see *Reviews*) is the reason for several of them; those say so.
+
+**A list item can be empty.** The plan gives the item `canBeEmpty(): false`,
+so that Lexical removes the item a paste at an item's text splits off and
+then empties. With that, Lexical also removed the item whenever anything
+else took its last block: `deleteTable()` on a table that was all an item
+held removed the item and left the caret on the item before (review finding
+3), and a range across a table edge threw (the plan's open fault, below).
+The item now answers as Lexical's own `ListItemNode` does, and the one case
+the plan wanted is decided where it happens: the text's `remove` hook
+removes an item that a join leaves empty. Any other removal that empties an
+item leaves it, and `$keepItemShape` gives it an empty text that takes the
+caret. Rows Z11 to Z14, S20, S23.
+
+**An emptied text is dropped only before a paragraph.** The plan's
+normal-form rule 5 drops a text that holds nothing before any block but a
+nested list. Dropped, it left the caret in the block after it, or on the
+`:::` block or table after it: typed text went into the heading, raw block
+or first cell, or was shown and never saved (review finding 2). The text now
+stays before every block but a paragraph, and the save writes nothing for
+it, as it already did before a nested list. Before a paragraph the rule is
+the plan's: the paragraph becomes the text. On the parent, text typed after
+a deletion went into the following block too; these rows are better than
+the parent, not equal to it. Rows Z3 to Z7.
+
+**Enter in an emptied or blank text leaves the list, whatever the item
+holds, and a listener of the key's command decides it.** The plan makes
+that exit only for an item holding nothing but the text, and splits the
+item otherwise, which put one more empty item above on every Enter, with no
+way out. Now a nested item moves out one level and a top-level item is
+taken out of its list (`$liftItemOut`), its blocks with it. For Enter
+pressed twice at the end of a text, those are the parent's results. For a
+text that was emptied over a block they are not: there the parent had no
+empty line, and Enter went into the block (a pinned, documented change;
+rows Z8, Z9). One case is no empty line: Enter typed over all of a text
+that a paragraph follows. That paragraph is the item's text once the edit
+is done, so it takes the caret and nothing else changes, as on the parent.
+Rows Z8 to Z10.
+
+The plan decides the exit in the text's `insertNewAfter` hook. Lexical
+calls that hook for every split of the block, not for the key alone: each
+newline of pasted plain text, and the split before pasted blocks. A blank
+line in pasted text then ended the list or took the item's blocks out of it,
+and blocks pasted at a text holding only a space came out reversed (third
+review). The hook now always splits the item, and the exit is
+`$enterLeavesListAtBlankItemText`, a listener of
+`INSERT_PARAGRAPH_COMMAND`, which is where `@lexical/list` keeps its own
+rule for an empty item. For Enter over a range the listener removes the
+range first and then applies the rule only where blocks are in play: the
+item held some, or the removal brought some under the emptied text. Over
+items of text alone it leaves the split to Lexical (decision 7). The third
+review's version applied the rule to every range, which took a plain item
+out of its list (fourth review). Rows T1 to T5. A grid of seven plain texts at
+carets and ranges in the text of ten documents
+(`probes/zz-probe-textpaste.*`) gives the parent's save in all 350 cases.
+
+**A table inserted at the caret splits the item.** Lexical splits the
+caret's block by putting a copy of it after it. The text's `insertAfter`
+sent that copy out of the list as it sends a pasted block, so the second
+half of the text landed after the item's own blocks (review finding 1).
+Another item text is now inserted where it is put; Lexical then splits the
+item and the list around the two halves itself. Rows Z1, Z2, S22.
+
+**A paste at an emptied text is handled by the paste handler.** Lexical
+splits the caret's block for pasted blocks only when the block holds
+something. At an emptied text over a nested list it put the pasted blocks
+after everything the item held and then moved that to the item before
+(review finding 7). `$pasteBlocksIntoItemBlock` now also takes this caret:
+it splits the item after its text (`$splitItemAfterText`, which
+`insertNewAfter` shares) and then does what it does for a block of an item,
+except that the blocks leave the list, as for any paste at an item's text.
+Rows E1 to E3 give the parent's saves. The second review found the same
+defect for blocks pasted over a range that empties the text (all of the
+text selected): the handler took only a collapsed caret. It now removes
+such a range first, as Lexical's insert would, and goes on when the text is
+left empty over blocks. Rows E5 to E10 give the parent's saves, and a grid
+of 14 clipboards over ranges of the text of ten documents
+(`probes/zz-probe-rangepaste.*`) gives the parent's save in 273 of 280
+cases; the seven others are the three kinds named under the pasted list
+below.
+
+**A caret between the blocks of an item is given a block before an
+insert.** A list item is neither a block of text nor a root, and Lexical
+leaves a caret on it: ArrowLeft in the first cell of a table that opens an
+item does (seen in Chromium), and so did Backspace after a list ending in a
+table. Lexical's inserts handle such a point on the root and throw on a
+list item. `$openBlockAtItemCaret` puts an empty paragraph of the item
+there. Every command that inserts goes through one function,
+`$removeGuardedRangeForInsert`: the guards before Enter, a tab, pasted
+text and pasted nodes, and the `paste()` command (the image command has
+its own removal and ends with the same step). It removes a table-edge or
+stale-focus range, removes a range with an end on a list item or a list
+as well, and then gives the caret a block where the removal left it on an
+item. Before the fourth review the step ran before the removal and only
+for a collapsed caret, so a range whose removal left the caret between
+the blocks of an item threw in `paste()` and Shift+Enter with the range
+already gone, and sent Enter's paragraph to the end of the document. A
+range that starts on an item or a list declines Shift+Enter before
+anything is removed. Rows Z40 to Z42, T8 to T13. These results differ from
+the parent's, which had no such caret: text pasted over a range from
+after an item's text to after its table went onto the text's line there
+(`- azz`), and goes into a paragraph of the item here (`- a`, `zz`); Enter
+there made a new item, and makes a paragraph of the item here, as Enter
+at such a caret does (Z21). A tab inserted at such a caret goes into the
+new paragraph, as a tab goes into any empty paragraph; a paragraph holding
+a tab alone writes nothing (row Z54). Enter stops there, the paragraph being its result. Shift+Enter
+is declined: there is no line to break. A caret on a list between two of
+its items, which only a selection made in code can hold, is given an empty
+item the same way (rows Z35 to Z37; the parent threw there too). `$keepItemShape` also carries a
+caret that stood on an item into the paragraph its inline nodes go to (the
+list made by typing `- ` in a paragraph that opens with a link left the
+caret on the item). Rows Z21 to Z24, E4, S19, S20.
+
+**Backspace after a list that ends in a table joins nothing.** Lexical
+walks back into the list and the item, takes them for a block to join, and
+stops at the table: nothing changed and the caret was left on the item,
+where Shift+Enter and `insertImage` threw (review finding 4).
+`$backspaceAfterContainer`, a listener of the three backward deletions (a
+character, a word, a line), acts before that. A block that holds something
+stays where it is and nothing is joined. An empty block is removed and the
+caret goes to the end of the table's last cell, or of the `:::` block's
+last block, where what is typed is shown and saved: that is what the key
+does after a table (decision 8; the third review's version stopped for an
+empty block too, which left it impossible to remove). The
+same walk parks the caret on a `:::` block when one stands right before the
+caret's block, in an item and at the top level, where what is typed next is
+shown and not saved; that is the parent's behaviour too. The listener acts
+there as well (rows Z38, Z39), since it is the same cause and a paste at
+such a caret inside an item failed here where the parent's shape did not. The
+parent moved the block into the item as text (a heading or quote lost its
+type) and, after a `:::` block, left the caret on the block and lost what
+was typed next. This is a choice: the other option is the parent's move.
+Rows Z15 to Z19 and Z34 for a block that holds something, Z45 to Z52 for
+an empty one, with Z20 and Z53 as the controls.
+
+**An indent or outdent over an item and an item nested in it moves the
+nested one once.** Two parts. `MarkdownListItemNode.canIndent()` is `false`
+for an item that opens with its text, because Lexical finds the text as
+well and would move the item twice (rows I4, I5). And
+`$moveSelectedItemsOnce`, a listener of the two commands, leaves out an
+item that an item around it carries along, whether it opens with its text
+or with a block (rows Z28 to Z30, Z32, Z33). No key of the editor
+dispatches these commands over a range; a host can. Lexical also sets its
+own indent on a heading or paragraph that such a range covers, in a list or
+outside one, as on the parent; that is not changed.
+
+**An outdent removes an outer item it leaves empty.** `- - n` with
+Backspace at `n` gives `- n`; the parent gave `-\n- n`. Without it a block
+type set over a whole list of nested items left an empty item behind for
+each level. Rows Z26, Z27, S21.
+
+**A list holds items only.** `$keepItemsOnly`, in the list transform, puts
+any other child of a list into an item. Text typed with the caret on a list
+between two items was shown and never saved, on the parent too. Row Z31.
+
+**A list's looseness reads inline nodes straight in an item as one
+paragraph.** `itemBlockKinds` counted a link in such an item as a block, so
+a list made of paragraphs that hold links, or pasted from HTML with links,
+was saved loose (review finding 5). Row Z25 and two jsdom rows.
+
+**HTML: a nested list written beside its item is nested, and an item is
+exported as its own `<li>`.** The plan's conversion keeps a nested list in
+the `<li>` that holds it. HTML also writes one straight in the list between
+two items, and `@lexical/list` exports one alone in an `<li>` of its own
+after the item's; both became items of their own (`- a`, `- - b`) (review
+finding 6). Both now go to the end of the item before. The plan also says
+the item's `exportDOM` is inherited. The inherited one moves an item that
+opens with a nested list into the `<li>` before it, which is that class's
+way of writing a nested list: `- a`, `- - b` was copied as `- a` holding
+`b` (second review). `MarkdownListItemNode.exportDOM` drops that step. The
+two shapes then look alike on the way in, so the import tells them apart by
+the item before: `@lexical/list` writes an item's text straight in the
+`<li>`, this editor writes it in a `<p>`. Only after the first is a list
+alone in an `<li>` taken to be the nested list of the item before. An
+empty `<li>` before such an item counts as the first kind. jsdom rows,
+among them an export read back by a second editor.
+
+**Y4: the second half of a split block stays a block after a pasted list or
+table.** The plan pins Y4 as `- x\n\n  c\n\n  - k\n  - md\n\n- z` and its
+snippet joins the tail to the last pasted block's last descendant. With a
+table as the last pasted block that puts the tail into the table's last
+cell. Lexical's own rule at the top level is that the tail joins the last
+pasted block only when that block holds text itself.
+`$pasteBlocksIntoItemBlock` follows it, so Y4 is
+`- x\n\n  c\n\n  - k\n  - m\n\n  d\n\n- z`. Rows Y9 to Y13 are new.
+
+**A list pasted at an item's text: what the item holds follows the text
+into the last pasted item.** The plan says so, but Lexical inserts a pasted
+list as a list of its own after the caret's list, so the item holding the
+second half of the text was the first item of a third list, and
+`$moveRestBeforeItem` put its blocks before that list, at the top level; a
+nested list was left in an item of its own. A probe of an earlier reviewer
+caught it. `$moveRestBeforeItem` now takes "the item before" to be the last
+item of a list that stands right before the item's list, which also holds
+for a join across two lists of different kinds (row K5b). And
+`$normalizeList` settles a list's looseness on its own items before it
+joins the next list into it, so a list that a paste leaves with one item of
+one block is tight wherever in the text the caret stood (row Q6). One
+result of the parent changes with that: a list pasted at the very end of
+the text of a loose list's first item left the list loose there and leaves
+it tight now (row Q7), as a paste inside that text does on both (row Q8).
+Rows Q1 to Q9. A grid of 14 clipboards at 30 carets in the text of items
+that hold blocks (`probes/zz-probe-pastegrid.*`) gives the parent's save in
+410 of 420 cases; the ten others are better here (a task marker kept, an
+ordered list keeping the nested list, a table going into the outer item).
+
+**A copy takes an item together with its text.** The plan has no rule for
+`extractWithChild`. A selection from an item's text into a later block of
+the same item copied the text node without its item; pasted, it lost the
+item's blocks or threw in a table cell, and a whole single item no longer
+copied as a list. Both classes override `extractWithChild`. Rows C1 to C8.
+One result differs from the parent: a selection from an item's text into
+its own paragraph copies `list(item(text, paragraph))`, where the parent
+copied two loose blocks.
+
+**A block that leaves its lists carries no list depth.** `$setBlocksType`
+copies the old block's indent to the new one, and an item's text reports
+its list depth as its indent. `MarkdownListItemTextNode.replace` resets it.
+Row S12 and rows U9 to U14 assert it.
+
+**`exportDOM` is overridden on the text node.** The plan says it is
+inherited. The inherited one wrote `padding-inline-start` and
+`data-lexical-indent` on the `<p>` of every nested item's text, from the
+same reported indent. The override exports with the indent read as zero:
+a module-level flag, `_isExportingItemTextAsHtml`, is set for the length of
+the one synchronous `super.exportDOM` call, and `getIndent` answers `0`
+while it is set. The plan also says manual row B5 is the only check of
+`importDOM`.
+[markdown-list-item-node-html.test.ts](../../packages/lib/tests/component/markdown-list-item-node-html.test.ts)
+runs under jsdom and pins the `importDOM` shapes and the exported HTML.
+
+**`$liftItemOut` moves the selection's element points** to the paragraph
+that takes the text's children (`$movePointsBetween`; rows V16, V17, H7),
+and keeps a caret that stood on the item itself before the same block:
+with the caret before a table that opens an item, the Backspace key takes
+the table out of the list and the caret is still before it (row Z55;
+before the fourth review it was left on the item before).
+`MarkdownListItemNode.collapseAtStart` does not call `selectStart`, as the
+plan's snippet does: with the points moved it changed nothing.
+
+**`$showItemRawBlocksAsWritten` and `$blocksAfter` are deleted.** The plan
+keeps the first without its walk through continuing items, which left a
+one-line wrapper. The second only gathered the blocks of continuing item
+nodes.
+
+**`$keepNoListWithoutItem` and `$replaceEmptiedContainerAtCaret` build an
+item with a text node** and put the caret in it. The plan lists both with
+"no change".
+
+**Pasted nodes that need a parent of their kind are wrapped in it.**
+`$pastedBlocks` put list items pasted without their list (an HTML fragment
+of bare `<li>`) into an item's paragraph as they were, and the second half
+of the paragraph ended in a new item of the outer list. It now wraps them
+as Lexical's insert does. Row T7.
+
+**An item of Lexical's own class becomes one of the editor's.** Every item
+Lexical creates is of the editor's class. One parsed from a serialised node
+of type `listitem` is not, and the two item rules then undid each other
+without end (second review; no clipboard payload carries that type today).
+`$keepItemShape` replaces such an item (`$replaceByOwnItem`). Row S24.
+
+**Listeners.** The plan's aim was no list listener beside `registerList`'s
+own and the one paste handler. The branch has the paste handler
+(`registerItemBlockPaste`) and three more listeners in
+`registerListItemRules`: one function for the three backward deletions
+(`$backspaceAfterContainer`), one for Enter on an empty line and one for
+the indent and outdent commands. Each stands where Lexical's own
+routine decides, not a method of a node, as the entries above say.
+
+### Rows changed beyond the eleven
+
+**R16 (`markdown-editor-command-crashes.test.ts`), six tests.** The plan
+says R16's hand-built item is built in the new shape and its expected saves
+stay. They cannot stay. The six tests built `li("ab", list)` by hand, an
+item holding text and a nested list as its direct children, and pinned that
+a line break typed over a range there is declined. The comment in the test
+says no Markdown loads as that tree. In the new model the tree cannot exist
+at all. The same three documents, loaded from Markdown, write the break on
+the parent and on this branch alike (`probes/zz-probe-r16.*`). The tests
+now load those documents and pin the written break: `- a\\\n  ef\n\ntail`,
+`- - a\\\n    ef\n\ntail` and `- x\n  - a\\\n    ef gh`.
+
+**X4 and X5 gained a `saved` value.** They had none. A range from an item's
+text to the end of a block the item holds now leaves the item, emptied,
+with the caret in it (the plan's rule "Everything an item holds deleted"),
+where the parent removed the item when another item or block remained. X4
+saves `- k\n\n- X`, X5 `a\n\n- X\n\nz`, and the new X4b `-\n\n- z`.
+
+No other existing row's expected save or shape changed, apart from the
+shape strings restated by the plan's rules.
+
+### Results that differ from the parent and that no row pinned before
+
+The first review compared about 600 scenarios with the parent. Those that
+still differ are listed here by rule. Each now has a row, named in
+brackets, or follows from a rule above.
+
+- A join puts what the item held after its text at the end of the item
+  before, also when the text joined a nested item of that item:
+  `- a\n  - n\n- b\n\n  r`, Backspace at `b`, puts `r` under `a` (the plan's
+  rule; A1). The parent put it under `nb`.
+- A join that takes the text of a nested list's first item puts that item's
+  blocks before the nested list, in the outer item. The parent kept them in
+  the nested list as an item.
+- Forward Delete in an emptied text over a nested list removes the text and
+  leaves `- - n`, as Backspace at the nested item's start does (V13). The
+  parent nested the list under the item before.
+- A block type or the list toggle set on a nested item's text takes the
+  item out of every list by moving it out level by level first, so its own
+  nested list ends one level shallower than on the parent (`- - n` where
+  the parent wrote `- - - n`). The pinned rows U9 to U14 are unchanged.
+- An ordered item indented after an item that ends in a bullet list starts
+  a nested ordered list. The parent made it a bullet item of that list.
+- The Backspace key at the start of a code block or heading that is all an
+  item holds takes the block out of the list and leaves the caret in it.
+  The parent put the caret in a new paragraph before it.
+- A range that covers every block of an item through element points takes
+  the nested list too. The parent left the nested list and what followed.
+- Backspace at the start of a further paragraph, heading, quote or code
+  block of an item joins it to the block before (V1; the key did nothing on
+  the parent).
+- What is inserted over a range that leaves the caret between the blocks
+  of an item goes into a paragraph of the item there (Z40 to Z42, T8 to
+  T13). The parent had no such caret: pasted text went onto the line of
+  the item's text, and Enter made a new item.
+- Backspace in an empty block after a `:::` block, or after a list whose
+  last item ends in a table or a `:::` block, removes the block and puts
+  the caret at the end of what stands before it (Z45 to Z52). On the
+  parent the empty block went into the item, or the caret was left on the
+  `:::` block and what was typed next was not saved.
+
+### The load throw
+
+The plan's open fault was two documents of 6,000 in the list-edit fuzz that
+threw `Expected node … to have a parent`. The fuzz labels a record `load`
+until the first edit succeeds, so `load:throw` was the first edit throwing.
+In both documents that edit is a range deleted across a table edge.
+
+Cause. `$coverWholeTables` widens such a range to whole tables and puts
+the covered end as an element point on the block that holds the table.
+When a list item holds the table, that block is the item.
+`$removeRangeKeepingEndBlock` removes the range in two calls. The first one
+emptied the item, and Lexical's removal drops an emptied element whose
+`canBeEmpty()` is `false`, which the plan gave the item. The second call
+then asked the removed item for its parent. On the start side nothing
+threw, but the item vanished where the parent kept an empty one.
+
+Fix. The first fix kept `canBeEmpty()` and held the edge items open with a
+spare paragraph during the removal. The first review then found the same
+cause in `deleteTable()`, so the cause was removed instead: the item can be
+empty (*Deviations*, first entry), and the table-edge code has no rule for
+a list item any more. Rows D31 (seed 2207, document 376) and D32 (seed 601,
+document 1161) are the two fuzz sources. D33 to D36 cover the other edges:
+the last item, the first item, a nested item, and two tables of one item. A
+probe of 28 table-edge ranges over list items gives the parent's saves
+(`probes/zz-probe-tableedge.*`).
+
+### The sixteen workarounds
+
+All sixteen symbols of the plan's *Deleted* table are gone, with their
+registrations and imports: `registerItemTextEdits`, `ItemTextEdit`,
+`$itemWhoseTextHolds`, `$itemWhoseTextIsSelected`,
+`$removeRangeEndingInItemText`, `$putBlocksAfterCaret`,
+`registerCopiedItemParagraphs`, `copiedNodesHoldingItemParagraphs`,
+`holdsItemParagraph`, `$backspaceOutdentsNestedItem`,
+`$outdentKeepingItemBlocks`, `$prepareBlockForType`,
+`$parseKeepingItemParagraphs`, `$outdentItemKeepingBlocks`,
+`$keepOpeningParagraphAsText` and `$continuesItemBefore`. So are
+`$showItemRawBlocksAsWritten` and `$blocksAfter`. The plan's three `grep`
+checkpoints of step 12 hold.
+
+The `isBetweenItems` branch of `$replaceEmptiedContainerAtCaret` was dead
+once `$openBlockAtItemCaret` took a caret on a list: its only caller calls
+that right after. It is removed (fourth review); X12 passes through
+`$openBlockAtItemCaret`.
+
+Helpers that look like candidates and stay, each with the row that needs
+it. Each was removed or bypassed in a mutation run, and the named row
+failed.
+
+| Kept | Why | Row |
+|---|---|---|
+| `$pastedText` with `LIST_TEXT_SEPARATOR` | an item built with inline text straight in it (Lexical's HTML import builds one) is pasted into a code block inside the same update, before any transform | the row "a list item whose text stands straight in it…" in the paste file |
+| `following` in `$deleteRangeFromTextOnlyBlock` | a range can end at an element point between an item's blocks | K22 |
+| `$keepNoListWithoutItem` | a range from an element point on the root can take every item | X10, X11 |
+
+| `$keepBlocksOutOfText`, `$moveBlocksOutAfter`, `$takeBlocksOutOf` | rule 2 for text blocks, a code block and a raw block | K15 to K21 |
+
+A mutation run over about 80 single-line changes (`mutate-1.out`,
+`mutate-2.out`), made before the first review, led to the rows L6 to L10,
+K21, K22, X10 to X12, V15 to V18, H7, H8, I6, S17, S18, the numbering test
+and the classifier test. Mutations that no row caught at its end, and why
+they were left:
+
+- `$keepLoosenessAfterTyping` reading the looseness on every keystroke in
+  a block it covers: the same results, slower. That holds now; it did not
+  when this was first written. The rule then left out an item's own text
+  in a list of several items, and text typed into a blank text over a
+  block left the list tight while its save read loose (fourth review; the
+  Backspace route failed the same way on the parent). The rule now covers
+  a paragraph an item holds after its text and an item's text that blocks
+  follow. What it leaves out is the text of an item holding nothing else,
+  which cannot change what the list reads as. Within those blocks it reads
+  the list only where the answer can change: not in a loose list of
+  several items, and in a tight list only once the item holds two blocks.
+  Rows L11 to L16; each part of the condition has a mutant that fails
+  rows. The earlier third case, a list of one item, is covered by the
+  second and was removed.
+- `$keepBlocksOutOfText` and the run-edge `tidy` not registered for the
+  text node, and `$scratchBlock` giving a paragraph for a text node: each is
+  covered a second time by another rule on the same edit, as it is for a
+  paragraph.
+- The raw-block rule on the item: the raw block's own transform reaches
+  the same check in every row.
+- `$readStandardForm` not passing `inListItem` for an item's text, and two
+  importer conditions: the normal-form rules give the same tree afterwards.
+- `MarkdownListItemTextNode.collapseAtStart` returning `false`: Lexical
+  walks up to the item and calls its `collapseAtStart`, so no edit made
+  through the editor differs. The override is there so that a paragraph's
+  own answer (an empty paragraph over another block removes itself) does
+  not run; Lexical asks the caret's block only in a deletion at the start
+  of the document that no key event led to, which the headless DOM cannot
+  run. Row S25 calls the method directly.
+
+The rows added for the first review's findings were run against the code
+from before the fixes: 26 of the 31 Z rows fail there. The other five (Z14,
+Z20, Z26, Z27, Z30) pin results that held before and after. The rows added
+for the second and third reviews (E5 to E10, Z32 to Z39, T1 to T7, S24 and
+the jsdom export rows) all fail on the code from before their fixes. Of
+the rows added for the fourth review, Z40 to Z52, Z55, L11 to L14, T8
+to T10 and T13 fail at `508882a06` (22 rows). The others pin a result that
+held there too: T11, T12, Z54, L15, L16 and S25 each fail under a mutant
+named under *Reviews*; Z53 and Z56 are controls, and Q10 is a recorded
+result.
+
+### Readers of the old node type
+
+Every `$isListItemNode`, `ListItemNode` and `'listitem'` in `src/` and in
+the tests was looked at. What changed, beyond the plan's list:
+
+- `$classifyContextMenuTarget`: an item's empty text is "text", not an
+  empty line (a new test in `markdown-editor.test.ts`).
+- `$selectionLiesInListOfType` maps a text node to its item.
+- `$settleCaretIntoBlock` treats an element point on an item as a point
+  between blocks.
+- `$isBreakRuleContainer` and the line-break rules read the text node, not
+  the item. The raw-block sibling rule, the looseness rule, rule 2 and the
+  run-edge rule are each registered for `MarkdownListItemTextNode` beside
+  `ParagraphNode`.
+- The round-trip view model (`viewModel.ts`) reads an item's children as
+  its blocks. The corpus and the source-preservation file pass unchanged.
+- Clipboard JSON and `importJSON`/`exportJSON` carry the new type names. No
+  older payload can reach them (the plan's `[^type-name]`).
+
+One trap for later code: `MarkdownListItemTextNode` has the same members as
+`ParagraphNode`, so TypeScript narrows
+`$isParagraphNode(x) && !$isMarkdownListItemTextNode(x)` to `never`. Write
+the negative guard first.
+
+### Results
+
+**Checks**, all from `packages/lib` at the final code: `npm run typecheck`,
+`npm run typecheck:test` and `npm run lint` report nothing; `npx vitest
+run` passes 555 files, 15,893 tests (2 todo); `npm run docs:api` gives zero warnings; `npm run
+docs:llms:check` reports 0 unaccounted; `npm run build:lib` builds. The
+Markdown files alone: 19 files, 6,766 tests. The fuzz runs below were made at the same code,
+after the fourth review's fixes; their records are the same as in the runs
+made after the third review's.
+
+**List-edit fuzz**, 11 seeds of 1,500 documents, against the baseline
+`lif-r8/` of the parent:
+
+| Class | Baseline | This branch |
+|---|---|---|
+| `pasteList:pasteFlattenedInItemBlock` | 82 | 0 |
+| `load:*` | 11 documents | 12 documents |
+| `spacesBeforeRaw:*` | 2 | 2, the same two documents |
+| a throw | 0 | 0 |
+| any other class | 0 | 0 |
+
+14 failing documents of 16,500, against 95. The `load:*` records fail the
+load itself, before any edit. The plan allows no more than the baseline's
+six of one kind and five of the other; this run has ten and two. The
+difference is the sample, not the code: the documents a seed draws shift
+once an edit goes differently. Seven of the twelve are the baseline's own
+documents. The other five were replayed on the parent's source and fail the
+same checks there (`probes/lif-load-parent.json`), and the four of the
+baseline that this run did not draw fail the same checks here
+(`probes/lif-baseline-only-this.json`). All sixteen are the two known
+classes: a quote before an indented lazy HTML start, and the definition
+bookkeeping for a title holding a blank line.
+
+**Regression fuzzes**, 11 seeds of 3,000, with node keys masked and the
+type names mapped:
+
+| Fuzz | Baseline | This branch |
+|---|---|---|
+| paste | 47 (44 `emptyContainer`, 3 `undo`) | 47, the same records |
+| paste, strict | 47 | 47, the same records |
+| table edge | 0 | 0 |
+| table edge, strict | 0 | 0 |
+
+The same `(index, check)` pairs and the same `ran`, `skipped`, `withColumn`
+and `nothingCopied` in every seed; no record differs once keys are masked.
+
+**The seventh reviewer's fuzz and probes** (`review7-probes/`, mapped
+copies in `harness/review7-probes/`):
+
+- Fuzz, 5 seeds of 3,000: 117 failing documents, against 122. 104 are the
+  baseline's records. 13 are documents the baseline's sample did not draw;
+  each was replayed on the parent's source and fails the same way there. Of
+  the 18 baseline records this run did not draw, replayed here, six pass now
+  (pasted or joined text that was lost), ten fail as before, and two fail
+  the same check with another detail: one is the K5 join, and one is the
+  harness reading bold put around half a word as lost letters. No record is
+  a new failure.
+- `zz-r7-throw`: no throw. `zz-r7-rule1`: 12 failing of 11,500, the same
+  records as on the parent (a tab in a code block of a list item).
+  `zz-r7-probe`: all 206 steps pass its checks; 24 saves differ from the
+  parent's, each by a rule in these notes (an emptied item stays, joins, the
+  copy rule, a paste into a block of an item, bare table rows).
+
+**Keystroke cost**, measured on this branch and on the parent back to
+back, on a quiet machine (`probes/zz-probe-misc.*`, `zz-probe-perf2.*`):
+
+| | This branch | Parent |
+|---|---|---|
+| a keystroke in an item's text, in a list of 300 items that each hold a paragraph and a table | 3.9 to 4.1 ms | 3.8 ms |
+| a keystroke in a paragraph of such an item | 4.0 to 4.1 ms | 5.9 ms |
+| a keystroke in a list of 1,000 items of text alone | 2.8 to 3.2 ms | 2.0 to 2.3 ms |
+| loading the 300-item list | 1.2 s | 1.9 s |
+
+Earlier versions of these notes gave figures of about half for this branch
+against the parent. Those were measured while other test runs loaded the
+machine, with the parent measured at another time, and were wrong. Two
+things are true. A keystroke in a long list of plain items is about 0.8 ms
+slower per 1,000 items than on the parent; `getValue()` costs the same on
+both, so the cause is elsewhere and was not found (every item is one node
+more). And the looseness rule after typing, which the fourth review's B4
+widened to an item's own text, reads every item of the list; left like
+that, a keystroke in an item's text cost 6.1 ms in the 300-item list. The
+rule now reads the list only where the answer can differ from what the
+list has (`$keepLoosenessAfterTyping`, with `$itemReadsLoose` for the one
+item that changed), which is what the first two rows and the load time
+show. Reading it on every keystroke gives the same results, slower.
+
+**Browser**, Chromium against the worktree's dev server, real key presses:
+
+- B1: two tight items stand 25.2 px apart, one line; the text's `<p>` has
+  no margin.
+- B2 to B4, B6, B7: as the plan expects; one Ctrl+Z undoes each.
+- B5: an HTML fragment pasted through a paste event with `text/html` and
+  the browser's own parser. The sub-item is nested under its item and the
+  two paragraphs are two paragraphs of their item. With `importDOM`
+  switched off the sub-item became an item of its own, which confirms the
+  override is what does it.
+- B8: arrow keys and Shift+arrow move across an item's text, its paragraph
+  and the next item as in a list before this plan. A mouse drag from the
+  middle of an item's text to the middle of the next item's selects the
+  rest of the text, the item's paragraph and the start of the next item;
+  Backspace then leaves one item with the two texts joined, and one Ctrl+Z
+  brings the three blocks back.
+- Enter, Backspace and Delete at every boundary of an item holding a
+  paragraph, a code block and a nested list, each with undo; Tab and
+  Shift+Tab (the document does not change, focus moves on); a copy and
+  paste of such an item within the editor; a list pasted into an item's
+  paragraph; a list copied with Ctrl+C and pasted with Ctrl+V into the text
+  of an item that holds a nested list (the nested list stays under the item
+  the text joined; Ctrl+Z restores); the `- ` shortcut.
+- After the fourth review's fixes: Backspace twice in a one-letter
+  paragraph after a `:::` block, after a table, after a list ending in a
+  table, and in an item after its fence (the letter goes, then the empty
+  paragraph, with the caret at the end of the fence's or the cell's text;
+  typing goes there; Ctrl+Z twice brings the empty paragraph back); Enter
+  over all of the text of an item of text alone (`- a`, `-`, `- Q`, `- z`).
+  A range that starts between the blocks of an item is reachable by keys:
+  ArrowLeft in the first cell of a table that opens an item, then
+  Shift+ArrowDown, gives a range from the item into the table. It is a
+  table-edge range: Shift+Enter changes nothing, Enter and Ctrl+V remove
+  the table, and one Ctrl+Z restores it. ArrowRight at the end of the last
+  cell of a table that ends an item puts the caret after the table, where
+  Enter and typing give a paragraph of the item. No keys were found that
+  make a range with both ends between the blocks of one item.
+- After the first review's fixes: Backspace at the start of a paragraph
+  after a list ending in a table (nothing changes, the caret stays, typing
+  goes into the paragraph); Enter at the end of a text over a table, then
+  Enter again (an empty text line above the table, then the item leaves the
+  list); ArrowLeft in the first cell of a table that opens an item (the
+  caret stands before the table), then Shift+Enter (nothing) and typing
+  (the item's text); `- ` typed at the start of a paragraph that opens with
+  a link (the caret stays before the link, in the item's text).
+- The copied HTML of a nested list carries no indent styling.
+- No console error. One Lexical warning was seen once and not again
+  ("an editor update ran while a read-only context was on the stack", from
+  a DOM event during a commit, when the editor had just been focused by
+  script).
+
+**Demo.** No demo change: the MD Editor demo already edits lists, and this
+plan adds no command or option.
+
+### Seen along the way
+
+Not changed here; each is the same on the parent unless it says otherwise.
+
+- Bare table rows pasted at an item's text (a clipboard that holds rows
+  without their table, which a range selection across cells copies in the
+  headless harness) drop the rows and the text after the caret. On this
+  branch the item's other blocks survive and follow the list; on the parent
+  they were lost too. The plan lists the paste of table cells into an
+  item's text as a non-goal, owned by
+  `markdown-editor-table-cells-paste-empty-column`.
+- A list or a table pasted at the end of a block leaves an empty paragraph
+  after it, in an item as at the top level.
+- Enter in a further paragraph of an item adds a paragraph to the item,
+  also in an empty one: no key ends the item from there.
+- An item that a load builds with a nested list first (`- - n`, or `-` over
+  an indented list) has no text line to put the caret in. This is the
+  plan's shape for it. The parent built an empty line there. Once an item's
+  text is deleted in the editor, its empty line stays.
+- Text put straight into a `:::` block is shown and not saved. Backspace
+  right after such a block left the caret on it (closed here, rows Z38 and
+  Z39); a selection made in code can still put it there.
+- Blocks pasted at an item's text whose last block is a table or a code
+  block put the text after the caret into that block (`- ab|cd` with a
+  paragraph and a table pasted ends `| ccd |`). The item's text merges into
+  a block when it is empty, as Lexical's list item does, and Lexical takes
+  that to mean the last pasted block as well. A paste into a block of an
+  item does not do this (Y4).
+- HTML in which a nested list and a paragraph share an `<li>` after the
+  item they belong to is read as an item of its own.
+- `INLINE_RUN_WRAPPER_TYPE` in `markdownListItemNode.ts` names the type of
+  a node Lexical uses inside its HTML import (`artificial`). The jsdom rows
+  for nested lists fail if a Lexical upgrade renames it.
+- `toggleLink()` followed by any command is one undo step, in a list and
+  outside one.
+- The jsdom file builds its trees with the HTML conversions and the rules,
+  not through a paste into a whole editor. A `MarkdownEditor` runs under
+  jsdom with `$insertGeneratedNodes` (the third reviewer ran about 290 HTML
+  pastes that way with no failure), so rows of that kind can be written.
+- A tab in a code block of a list item is written as a tab and loaded as
+  four spaces (twelve records of the seventh reviewer's rule-1 probe).
+- Backspace in the first cell of a table that opens an item takes the item
+  out of its list.
+- When a paste splits a list, whether the pieces keep the list's looseness
+  depends on the item: a paste into the first item of a loose list leaves
+  the list tight, a paste into a later item leaves it loose (rows Q7 to
+  Q9).
+- A task item whose text is split by an inserted table loses its marker in
+  the second half.
+- Enter over a range from before a table that opens an item into the table
+  (ArrowLeft, then Shift+ArrowDown) removes the table and adds no line: the
+  new empty line is an emptied item text over a paragraph, which the
+  normal form drops.
+- A block type set while one end of the selection is an element point on a
+  list item or a list (a selection only code can make) gives the new block
+  an indent, which the save writes as a space the load does not read back
+  (nine scenarios of the fourth reviewer's grid, the same on the parent).
+- A join that takes away the heading a list's first item opens with leaves
+  what the item held after it in the list (`p\n\n- # h\n\n  q`, Delete at
+  `p`'s end, gives `ph\n\n- q`), where a first item that opens with text
+  sends those blocks out with the text (V8). The heading is Lexical's node,
+  so no hook of the editor's sees it go.
+
+### Reviews
+
+**First review.** Eight blocking findings, seven of them defects no row
+covered: a table inserted in an item's text; rule 5 dropping the text from
+under the caret; `deleteTable()` removing the item; the caret left on an
+item after Backspace behind a table; a list with links made loose; HTML
+nested lists written beside their item; a paste at an emptied text. Each is
+fixed at its cause and has rows; the entries under *Deviations* say how.
+The eighth was these notes: the result lines were not filled in. Its
+advisory findings are fixed too: the unpinned differences from the parent
+are listed above; an indent over an item and its nested item; the export
+flag is named as the other module-level state is and described; text put
+straight in a list; a stale comment and a stray blank line.
+
+The reviewer's scenarios, with the parent's output for each, are kept in
+`review1/` of the scratch folder and were run again after the fixes. Of 598
+scenarios, those whose save still differs from the parent's were each read
+and fall under a rule in these notes.
+
+**Decided by the user on 2026-10-10, as a follow-up plan: a range that
+ends in a later block of another item.**
+`- ab\n- cd\n\n  pq\n  - nn\n\n  rr\n- z` with Backspace over `ab`@1
+to `pq`@1 gives `- aq\n\n- - nn\n\n  rr\n\n- z`: the second item loses its
+text and its first block and keeps the rest, in an item with no text. The
+same range ending in that item's text moves the rest into the item before
+(the join rule). Lexical removes a text that a range covers whole without
+calling its `remove`, so the hook never sees it. Making the two agree
+means a rule for such a range in the editor's range removal. It is not
+changed here; the third review asked for a decision. The user chose a
+follow-up plan, `markdown-editor-cross-item-range-removal`
+(`plans/markdown-editor-cross-item-range-removal.md` on `master`).
+
+**Second review.** Two blocking findings: blocks pasted over a range that
+empties an item's text put the item's other blocks in the wrong place, and
+the copied HTML of an item that opens with a nested list merged it into
+the item before. Both are fixed and have rows (E5 to E10; the jsdom export
+rows). Its advisory findings: the item rules are total now (S24); the
+indent rule covers an item that opens with a block (Z32, Z33); the
+Backspace stop covers a deleted word and line (Z34); a caret on a list is
+given an item (Z35 to Z37); four long functions were split
+(`$insertPastedBlocksAt`, `$wrapInlineRuns`, `$splitListAfter`,
+`$itemBlocksCarriedAlong`). Three are left as they are and recorded: the
+looseness of a list a paste splits (rows Q7 to Q9), the join that takes a
+first item's heading (*Seen along the way*), and the export flag, which is
+state of another kind than the memo caches beside it; `getIndent` must
+report the item's depth for Lexical's outdent, and must not for its HTML
+export, and the flag is the smallest way to say so.
+
+**Third review, the last the audit allows.** Two blocking findings: the
+Enter rule in the split hook (above), and `paste()` throwing with the caret
+between the blocks of an item. Both are fixed and have rows (T1 to T6). Of
+its advisory findings, the stop after a `:::` block, the wrapping of bare
+pasted items, a stale count and a stale comment are fixed; the range that
+ends in a later block of another item was left for the user; the others are
+under *Seen along the way*. The audit's limit of three rounds was reached
+with blocking findings in the third, so the plan was not closed then, and
+a fourth review of the result was run from outside this audit.
+
+**Audit: the fourth review.** It read the branch at `508882a06`, ran about
+6,000 scenarios against the parent and a set of mutations, and found the
+node model sound: no reader of the old node type, undo and redo clean. Five
+findings were blocking and six advisory, none structural:
+
+- B1. A range whose removal leaves the caret between the blocks of an item
+  threw in `paste()` and Shift+Enter with the range already removed, and
+  sent Enter's paragraph and typed text to the end of the document. Fixed
+  in the one function every insert goes through
+  (`$removeGuardedRangeForInsert`); rows Z40 to Z42, T8 to T13.
+- B2. The Backspace stop also stopped for an empty block, which could then
+  not be removed. An empty block is now removed (decision 8); rows Z45 to
+  Z53.
+- B3. Enter over a range in items of text alone took the item out of its
+  list. It keeps the parent's result now (decision 7); rows Z43, Z44.
+- B4. Text typed into a blank item text over a block left the list tight
+  while its save read loose. The looseness rule now covers an item's text
+  that blocks follow; rows L11 to L16.
+- B5. Two guards had no row (pasted text and a tab at a caret on an item;
+  rows T11, T12, Z54), and one branch was dead and is removed (the
+  `isBetweenItems` branch).
+- Advisory: a sentence about the parent's results is corrected; a caret on
+  an item is carried with a lifted item (Z55); the Backspace listener is
+  renamed and its description names all three places; a tab at a caret on
+  an item is pinned (Z54); a list of nested items pasted in the middle of
+  a text is recorded with a row (Q10: the text after the caret joins the
+  deepest pasted item, the item's blocks follow the last top-level one;
+  the order is kept and nothing is lost).
+
+**These fixes were verified against the fourth reviewer's own scenarios
+and mutations, and were not read by a further reviewer.** The plan is
+closed by decision after this pass.
+
+*Scenarios.* Every scenario file of the fourth review and of the three
+earlier ones was run again on the final code and compared with the saved
+outputs from `508882a06` (`review4/delta.py`). Saves or failed checks
+differ in 234 steps, all of them intended:
+
+| File | Changed steps | What changed |
+|---|---|---|
+| `r4` (a caret or a range end on an item or a list) | 138 | Only ranges, with Enter, Shift+Enter, `paste()`, pasted text and pasted nodes: no throw (49 before), nothing half done; what is inserted goes into a paragraph of the item where the range was; Shift+Enter over a range that starts on an item or a list changes nothing. 27 steps now give the parent's save. |
+| `r3` (an empty block after a container) | 45 | The empty block is removed by Backspace and the text typed next goes to the end of the table's last cell or the fence's last block. |
+| `r2` (backward deletions after a container) | 26 | The same, after a top-level `:::` block. |
+| `r1` (Enter on an empty line and over ranges) | 10 | Nine give the parent's save now (ranges over items of text alone); one is the looseness of B4. |
+| `r9` (the review's repros) | 9 | The findings themselves. |
+| `r6` (looseness after typing) | 6 | The list is saved loose. |
+| `r5`, `r8`, `r10`, `h7`, and the three earlier reviews' eleven files | 0 | — |
+
+The checks that still fail in those files are the harness's own (Lexical's
+`selection.modify` needs a browser), a document that loads as a raw block,
+and the nine block-type scenarios under *Seen along the way*, each the
+same on the parent.
+
+*Mutations.* The reviewer's script was run again with its snippets brought
+up to the changed code (`review4/mutate5.py`, results in `mutate5.out`).
+Of the five mutants that failed no row at `508882a06`:
+
+- the looseness rule read on every keystroke: still fails nothing, and is
+  declared as such above with its reason. Each part of the rule's
+  condition now has a mutant that fails rows of the L family;
+- the pasted-text guard without its open-block step: fails T11 and T12,
+  and without its range step T13;
+- the tab guard without it: fails Z54;
+- the text's `collapseAtStart` answering `false`: fails S25;
+- the `isBetweenItems` branch: removed with the code.
+
+Seventy-one mutants apply to the final code; 70 fail at least one row, and
+the one that does not is the first above. Ten of the reviewer's snippets no
+longer exist and are replaced by mutants of the code that took their
+place.
+
+### For the plans that follow
+
+The plans that are implemented after this one were written against
+`ListItemNode`. What they must use instead:
+
+**The shape.** A list holds `MarkdownListItemNode`s only
+(`$isListItemNode` and `$isMarkdownListItemNode` both hold). An item holds
+blocks only. Its text, when it has one, is its first child, a
+`MarkdownListItemTextNode` (`$isMarkdownListItemTextNode`; `$isParagraphNode`
+holds for it too, and `getType()` is `markdown-list-item-text`). A nested
+list is a child of the item it belongs to. No item node continues another:
+`- a\n  - b` is `item(text("a"), list(item(text("b"))))`. An item that a
+load builds opening with a block has no text node. An empty item is
+`item(text())`. An empty text can also stand before any block but a
+paragraph (`item(text(), heading)`): it is the line to type the item's text
+in, and the save writes nothing for it.
+
+**Building one.** `$createListItemNode()` gives the editor's class.
+`$createMarkdownListItemTextNode()` gives a text. `item.append(...)` keeps
+blocks as blocks. An item whose last block is removed stays, and gets an
+empty text at the end of the update.
+
+**The operations**, all exported from `markdownListItemNode.ts`:
+`$outdentItem(item)` (one level out; the later items of its list and the
+outer item's later blocks move into it), `$indentItem(item)`,
+`$liftItemOut(item)` (out of every list: it outdents to the top first, so a
+nested list the item keeps ends one level under a top-level item),
+`$splitItemAfterText(item, text)` (a new item after it takes a new text and
+the blocks), `$movePointsBetween(from, to)` and
+`$removePlainly(node, preserveEmptyParent)` (a removal that skips the
+item's and the text's own `remove`).
+
+**The hooks Lexical calls.** A split of the text, Backspace, an indent, a
+block type, a join and a paste at an item's text are decided by methods of
+the two classes (`insertNewAfter`, `collapseAtStart`, `setIndent`, `replace`,
+`remove`, `insertAfter`, `canIndent`, `extractWithChild`). The text's
+`remove` moves what the item holds after the text to the item before, or to
+the last item of a list right before the item's list, and removes an item a
+join leaves empty. `insertNewAfter` always splits the item; what the Enter
+key does on an empty line is `$enterLeavesListAtBlankItemText`.
+
+**A caret on an item.** An element point on a list item, between its
+blocks, is a state the editor can be in (beside a table). A command that
+inserts at the selection calls `$removeGuardedRangeForInsert(selection)`
+first, which removes a range that could leave the caret there and then
+gives the caret a block (`$openBlockAtItemCaret`; it takes a caret on a
+list too), or
+goes through one of the guards in `registerRangeGuards`, which do. A
+removal that can leave the caret between blocks calls
+`$settleCaretIntoBlock`.
+
+**Transforms.** `registerNodeTransform(ParagraphNode, …)` does not run for
+an item's text. Register the same function for `MarkdownListItemTextNode`.
+A transform registered for `ListItemNode` runs for the editor's item class.
+
+**Gone.** `registerItemTextEdits`, `registerCopiedItemParagraphs`,
+`$removeRangeEndingInItemText`, `$putBlocksAfterCaret`,
+`$prepareBlockForType`, `$backspaceOutdentsNestedItem`,
+`$outdentKeepingItemBlocks`, `$outdentItemKeepingBlocks`,
+`$parseKeepingItemParagraphs` (use Lexical's `$parseSerializedNode`),
+`$keepOpeningParagraphAsText`, `$continuesItemBefore`, `$blocksAfter`,
+`$showItemRawBlocksAsWritten` and the view model's `editorItemBlocks`.
+
+**Per plan**, with the plan's addendum:
+
+- `markdown-editor-table-cells-paste-empty-column`: register its handler
+  before `registerItemBlockPaste`, which is registered right after
+  `registerColumnPaste` in `buildEditor`. The caret's block in a list item
+  is the text node. Measure its list-item rows again. A table pasted into a
+  paragraph of an item is a block of that item (Y5). Bare rows at an item's
+  text: see *Seen along the way*.
+- `markdown-editor-paste-undo-merge`: the second update that
+  `registerItemTextEdits` queued behind a paste is gone. The three `undo`
+  records of the paste fuzz are still there on this branch's final run.
+- `markdown-list-toggle-task-item-parity`: rewrite its WYSIWYG helpers on
+  `$liftItemOut`, `$outdentItem` and the text node.
+  `$convertListOfEmptyItem` in `MarkdownEditor.ts` goes when its route
+  replaces `$insertList`. `$selectionLiesInListOfType` already maps a text
+  node to its item.
+- `markdown-editor-raw-block-range-edits`: measure E20 and E21 again; the
+  join goes through the text node's `remove`.
+- `markdown-editor-table-command-fixes`: `$holdsNoCaret` tests
+  `$isListItemNode(node)`. `deleteTable()` on a table that is all an item
+  holds leaves the item with an empty text (Z11 to Z13); the table-edge
+  removal has no code for list items. Measure R43 again.
+- `markdown-editor-link-format-command-fixes`: rows in a list item run on
+  the text node.
+- `markdown-editor-readonly-keyboard-selection`: `registerItemBlockPaste`
+  listens to `SELECTION_INSERT_CLIPBOARD_NODES_COMMAND` at
+  `COMMAND_PRIORITY_HIGH`, and `registerListItemRules` to the
+  three delete commands at `COMMAND_PRIORITY_LOW` (`$backspaceAfterContainer`,
+  which removes an empty block) and to `INSERT_PARAGRAPH_COMMAND` and the
+  indent and outdent commands at `COMMAND_PRIORITY_HIGH`. All must stay behind the
+  read-only guard.
+
+**Tests.** Shape strings read `markdown-list-item(markdown-list-item-text("a"))`.
+A caret in an empty item is `markdown-list-item-text@0`. `TEXT_ONLY_BLOCKS`
+in the edits file includes the text type. The jsdom file is the place for a
+row that needs an HTML parser.
+
+**Fuzz baselines** for the next plan, in the scratch folder: `lif/`
+(list-edit, 11 × 1,500), `fuzz/` (paste, paste strict, table edge, table
+edge strict, 11 × 3,000) and `r7/` (the seventh reviewer's, 5 × 3,000). The
+mapped harness copies are in `harness/`; `runlif.sh`, `runfuzz.sh`,
+`runr7.sh` and `runall.sh` copy them into `tests/component/`, run them one
+seed at a time and delete them again. Read the results with `showlif.py`,
+`cmpfuzz-masked.py` and `showr7.py`. Records carry the new type names, so a
+later comparison against these baselines needs no mapping. The first
+review's 600 scenarios are in `review1/` (`run.sh` runs one file on the
+worktree; `cmp.py` compares it with the saved parent output). The fourth
+review's 8,000 are in `review4/`, with its README: `runall4.sh` reruns
+them on an archive of the branch tip, `delta.py` compares two sets of
+outputs, and `mutate5.py` runs the mutations. A later plan that changes
+how a list item is edited can run both sets and read what changed.

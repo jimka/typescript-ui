@@ -3079,12 +3079,28 @@ describe('$classifyContextMenuTarget', () => {
 
         const result = lexicalOf(editor).read(() => {
             const outerList = $getRoot().getFirstChild() as ElementNode;
-            const outerSecondItem = outerList.getChildAtIndex(1) as ElementNode;
-            const innerList = outerSecondItem.getFirstChild() as ElementNode;
+            const outerItem = outerList.getFirstChild() as ElementNode;
+            // The outer item holds its text, then the nested list; an item's text is a node of its own.
+            const innerList = outerItem.getChildAtIndex(1) as ElementNode;
             const innerFirstItem = innerList.getFirstChild() as ElementNode;
-            const textNode = innerFirstItem.getFirstChild() as LexicalNode;
+            const textNode = (innerFirstItem.getFirstChild() as ElementNode).getFirstChild() as LexicalNode;
 
             return $classifyContextMenuTarget(textNode);
+        });
+
+        expect(result.kind).toBe('text');
+        expect((result as { hasEnclosingBlock?: boolean }).hasEnclosingBlock).toBe(true);
+    });
+
+    it('classifies the empty text of a list item as "text", as a list item\'s text is: only a paragraph of its own is an empty line', () => {
+        const editor = new MarkdownEditor();
+        editor.setValue('- one\n-\n- three');
+
+        const result = lexicalOf(editor).read(() => {
+            const list = $getRoot().getFirstChild() as ElementNode;
+            const emptyItem = list.getChildAtIndex(1) as ElementNode;
+
+            return $classifyContextMenuTarget(emptyItem.getFirstChild() as LexicalNode);
         });
 
         expect(result.kind).toBe('text');
@@ -3827,8 +3843,8 @@ describe('MarkdownEditor insertParagraphBeforeBlock / insertParagraphAfterBlock'
 
         lexicalOf(editor).update(() => {
             const outerList = $getRoot().getFirstChild() as ElementNode;
-            const outerSecondItem = outerList.getChildAtIndex(1) as ElementNode;
-            const innerList = outerSecondItem.getFirstChild() as ElementNode;
+            const outerItem = outerList.getFirstChild() as ElementNode;
+            const innerList = outerItem.getChildAtIndex(1) as ElementNode;
             const innerFirstItem = innerList.getFirstChild() as ElementNode;
 
             innerFirstItem.selectEnd();
@@ -3840,14 +3856,14 @@ describe('MarkdownEditor insertParagraphBeforeBlock / insertParagraphAfterBlock'
         // the outer item, beside the inner list, not after the outer list.
         expect(childTypes(editor)).toEqual(['list']);
 
-        const outerSecondItemChildTypes = lexicalOf(editor).read(() => {
+        const outerItemChildTypes = lexicalOf(editor).read(() => {
             const outerList = $getRoot().getFirstChild() as ElementNode;
-            const outerSecondItem = outerList.getChildAtIndex(1) as ElementNode;
+            const outerItem = outerList.getFirstChild() as ElementNode;
 
-            return outerSecondItem.getChildren().map((node) => node.getType());
+            return outerItem.getChildren().map((node) => node.getType());
         });
 
-        expect(outerSecondItemChildTypes).toEqual(['list', 'paragraph']);
+        expect(outerItemChildTypes).toEqual(['markdown-list-item-text', 'list', 'paragraph']);
     });
 
     it('both methods insert next to the whole table, never inside it, regardless of which cell the caret was in', () => {

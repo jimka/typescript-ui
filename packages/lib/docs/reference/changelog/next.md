@@ -1351,10 +1351,8 @@ page resets to empty.
   start, a block type or the list toggle set on it) takes along the blocks the
   outer item holds after that list, which Lexical dropped; a code block made
   of an item takes the item's text and leaves its blocks after it; and
-  deleting everything a list's only item holds leaves an empty item. Blocks
-  pasted into a block that a list item holds (a further paragraph, a heading
-  or a quote) still go in as text on that block's line, as Lexical inserts
-  them. Repeated link reference definitions a blank line apart are now a
+  deleting everything a list's only item holds leaves an empty item.
+  Repeated link reference definitions a blank line apart are now a
   raw block each, as first definitions are, and a blank line typed between two
   definition lines splits their block the same way. No consumer action is
   needed.
@@ -1370,6 +1368,37 @@ page resets to empty.
   `- ---`, which Markdown reads as one thematic break that ends the list.
   The marker is now written on a line of its own, with the break under it.
   No consumer action is needed.
+
+- **`MarkdownEditor` edits a list item that holds blocks as one item.** The
+  editor's list items are now nodes of its own, which hold blocks: the item's
+  text, then paragraphs, headings, quotes, tables, fences and nested lists in
+  any order. Blocks pasted into a paragraph, heading or quote of a list item
+  become blocks of the item, where they were run together on one line; the
+  text after the caret joins the last pasted block when that is a block of
+  text, and stays a paragraph after a pasted list or table, as at the top
+  level. Backspace at the start of an item's second paragraph joins it to the
+  item's text, where the key did nothing. Joining an item between two items
+  that hold nested lists keeps the blocks after the second list, which were
+  lost, and moving an item out of a nested list that an edit built keeps the
+  outer item's text. An item that is indented keeps its nested list under it.
+  A list pasted from a web page keeps the paragraphs its items hold. Joining
+  an item to the block before it now joins the two texts on one line also
+  when that block is a quote or a further paragraph of an item. A copy that
+  reaches from an item's text into a later block of the same item copies the
+  item, holding both. Deleting everything an item holds leaves that item,
+  empty, with the caret in it, also when the list holds other items, where
+  the item was removed and the caret moved to the next block. Text typed
+  after all of an item's text is deleted is the item's text also when a
+  heading, a table, a code block or a raw block follows, where it went into
+  that block. Backspace at the start of a block after a list whose last
+  item ends in a table joins nothing, as after a table outside a list,
+  where the block was moved into the item as text; after a `:::` block it
+  joins nothing either, where the caret was left on the `:::` block and
+  what was typed next was not saved. An empty block in those places is
+  removed, the caret going to the end of the table's last cell or of the
+  `:::` block's last block, as after a table. A list pasted from a web
+  page whose nested lists stand beside their items keeps them nested. No
+  consumer action is needed.
 
 ### Core
 

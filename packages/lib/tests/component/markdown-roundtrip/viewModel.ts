@@ -646,57 +646,14 @@ function editorBlock(node: LexicalNode): Block {
 }
 
 /**
- * Projects a list's items. Lexical stores a nested list as its own item, whose first child is the list; that item's
- * blocks join the item before it.
+ * Projects a list's items: each item's children are its blocks, in order — its text, a paragraph of the model, and
+ * every block after it, a nested list among them.
  *
  * @param list - The list node.
  * @returns One block list per item.
  */
 function editorListItems(list: ListNode): Block[][] {
-    const items: Block[][] = [];
-
-    for (const item of list.getChildren().filter($isListItemNode)) {
-        const children = item.getChildren();
-        const blocks = editorItemBlocks(children);
-
-        if ($isListNode(children[0]) && items.length > 0) {
-            items[items.length - 1]!.push(...blocks);
-        } else {
-            items.push(blocks);
-        }
-    }
-
-    return items;
-}
-
-/**
- * Projects one list item's children onto its blocks, in order: each run of inline children is a paragraph, each block
- * child (a nested list, or a block a paste put there) its own block.
- *
- * @param children - The list-item node's children.
- * @returns The item's visible blocks.
- */
-function editorItemBlocks(children: LexicalNode[]): Block[] {
-    const blocks: Block[] = [];
-    let inline: LexicalNode[] = [];
-
-    const flush = (): void => {
-        blocks.push({ kind: 'paragraph', runs: editorRuns(inline) });
-        inline = [];
-    };
-
-    for (const child of children) {
-        if ($isElementNode(child) && !child.isInline()) {
-            flush();
-            blocks.push(...editorBlocks([child]));
-        } else {
-            inline.push(child);
-        }
-    }
-
-    flush();
-
-    return visibleBlocks(blocks);
+    return list.getChildren().filter($isListItemNode).map((item) => editorBlocks(item.getChildren()));
 }
 
 /**

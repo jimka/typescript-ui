@@ -21,6 +21,7 @@ import {
 import { $createMarkdownRawBlockNode, $createMarkdownSourceTextNode } from '~/component/editor/markdownSourceNodes';
 import { $createMarkdownBlockNode, $createMarkdownColumnNode } from '~/component/editor/markdownBlockNode';
 import { $createMarkdownImageNode } from '~/component/editor/markdownImageNode';
+import { $createMarkdownListItemTextNode } from '~/component/editor/markdownListItemNode';
 import type { MarkdownSpanStyle } from '~/component/display/markdownAttributes';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
@@ -144,18 +145,26 @@ function br(marker?: string): LexicalNode {
 }
 
 /**
- * A list of items; an array item is a nested list of the same type (`start` 1).
+ * A list of items. A string is an item whose text node holds that text (nothing, for `''`); a list is a nested
+ * list of the item before it, or, as the first entry, of an item that holds nothing else.
  *
  * @param type - The list type.
  * @param start - The first item's number.
- * @param items - Each item's text, or a nested list's items.
+ * @param items - Each item's text, or a nested list.
  * @returns The list node.
  */
 function list(type: 'bullet' | 'number', start: number, items: Array<string | ListNode>): ListNode {
     const node = $createListNode(type, start);
 
     for (const item of items) {
-        node.append(fill($createListItemNode(), [item]));
+        const previous = node.getLastChild();
+        const isNested = typeof item !== 'string' && $isElementNode(previous);
+
+        if (isNested) {
+            previous.append(item);
+        } else {
+            node.append($createListItemNode().append(typeof item === 'string' ? fill($createMarkdownListItemTextNode(), item === '' ? [] : [item]) : item));
+        }
     }
 
     return node;
@@ -949,27 +958,20 @@ describe('$serializeMarkdown — mark changes inside a word', () => {
 
 describe('$serializeMarkdown — whole-stack review fixes', () => {
     /**
-     * A list item holding the given children as they are, block nodes included.
+     * A list item holding the given children: the strings and inline nodes it opens with in its text node, each
+     * block after them as it is. An item given nothing, or a block first, has no text node.
      *
      * @param children - The item's children; a string is a plain text node.
      * @returns The list item.
      */
     function item(...children: Array<LexicalNode | string>): ListItemNode {
-        const node = $createListItemNode();
+        const nodes = children.map((entry) => (typeof entry === 'string' ? $createTextNode(entry) : entry));
+        const firstBlock = nodes.findIndex((node) => $isElementNode(node) && !node.isInline());
+        const inline = firstBlock === -1 ? nodes : nodes.slice(0, firstBlock);
+        const blocks = firstBlock === -1 ? [] : nodes.slice(firstBlock);
+        const opening = inline.length === 0 ? [] : [$createMarkdownListItemTextNode().append(...inline)];
 
-        // `ListItemNode.append` merges a paragraph's children into the item; inserting after the previous child keeps
-        // the paragraph a block, as a command inserting it does.
-        for (const child of children.map((entry) => (typeof entry === 'string' ? $createTextNode(entry) : entry))) {
-            const last = node.getLastChild();
-
-            if (last === null) {
-                node.append(child);
-            } else {
-                last.insertAfter(child);
-            }
-        }
-
-        return node;
+        return $createListItemNode().append(...opening, ...blocks);
     }
 
     /**
@@ -1084,7 +1086,7 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
 
         it('an item holding only an empty link is empty too', () => {
             expect(serialize(() => [$createListNode('bullet').append(
-                item('a'), item($createListNode('bullet').append(item($createLinkNode('/u')))),
+                item('a', $createListNode('bullet').append(item($createLinkNode('/u')))),
             )])).toBe('- a\n  *');
         });
 
@@ -1094,10 +1096,30 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
         });
     });
 
+    describe('a list standing in a table cell, before the editor turns it into the cell\'s paragraphs, is written one line an item block', () => {
+        it('an item\'s text and its paragraph are a line each, and an item holding nothing gives none', () => {
+            const editor = new MarkdownEditor();
+            let saved = '';
+
+            editor.setValue('');
+            // Serialized in the update that builds it, before any transform runs.
+            lexicalOf(editor).update(() => {
+                const items = $createListNode('bullet').append(item(), item('a', p('b')), $createListItemNode().append($createMarkdownListItemTextNode()));
+                const row = (cells: TableCellNode[]): LexicalNode => $createTableRowNode().append(...cells);
+                const body = $createTableCellNode(TableCellHeaderStates.NO_STATUS).append(items);
+
+                $getRoot().clear().append($createTableNode().append(row([cell(true, 'h')]), row([body])));
+                saved = $serializeMarkdown();
+            }, { discrete: true });
+
+            expect(saved).toBe('| h |\n| --- |\n| a\\n\\nb |');
+        });
+    });
+
     describe('F6: a list item holding blocks writes each as a block of the item', () => {
         it('a paragraph after a nested list stays in the item, after a blank line', () => {
             const output = serialize(() => [$createListNode('bullet').append(
-                item('a'), item(list('number', 1, ['b']), p('X')),
+                item('a', list('number', 1, ['b']), p('X')),
             )]);
 
             // The block after the nested list makes the list loose, which the editor's looseness then
@@ -1175,7 +1197,7 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
             ['S2: a raw --- opening the first item of a - list stands under a bare marker',
                 () => bullets(item(raw('---')), item('b')), '-\n  ---\n- b'],
             ['S3: a raw --- opening a - list nested under text switches that list to *',
-                () => bullets(item('a'), item(bullets(item(raw('---')), item('b')))), '- a\n  * ---\n  * b'],
+                () => bullets(item('a', bullets(item(raw('---')), item('b')))), '- a\n  * ---\n  * b'],
             ['S4: a raw *** in a - list stays on the marker\'s line (control)',
                 () => bullets(item('a'), item(raw('***')), item('b')), '- a\n- ***\n- b'],
             ['S5: a raw - - - opening an item of a - list stands under a bare marker',
@@ -1185,11 +1207,11 @@ describe('$serializeMarkdown — whole-stack review fixes', () => {
             ['S7: a raw --- in an ordered list stays on the marker\'s line (control)',
                 () => $createListNode('number', 1).append(item('a'), item(raw('---'))), '1. a\n2. ---'],
             ['S8: a raw --- opening a later item of a nested - list stands under a bare marker',
-                () => bullets(item('a'), item(bullets(item('x'), item(raw('---'))))), '- a\n  - x\n  -\n    ---'],
+                () => bullets(item('a', bullets(item('x'), item(raw('---'))))), '- a\n  - x\n  -\n    ---'],
             ['S9: a raw *** opening an item of a * list stands under a bare marker',
                 () => stars(item('a'), item(raw('***'))), '* a\n*\n  ***'],
             ['S10: a raw *** opening a * list nested under text stands under a bare *, which underlines nothing',
-                () => bullets(item('a'), item(stars(item(raw('***')), item('b')))), '- a\n  *\n    ***\n  * b'],
+                () => bullets(item('a', stars(item(raw('***')), item('b')))), '- a\n  *\n    ***\n  * b'],
         ])('%s', (_name, build, expected) => {
             const output = serialize(() => [build()]);
 

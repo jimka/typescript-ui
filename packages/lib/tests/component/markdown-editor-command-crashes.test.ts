@@ -611,82 +611,36 @@ describe('a range from a block start into a later block\'s word is removed witho
             });
         }
 
-        // Lexical joins the end's block onto the start's own block only where both hang off the place their
-        // paths fork, and the start's is the first there to hold inline content. A list item holding text and a
-        // nested list — which a removal that joins a later block onto such an item leaves — is where they do
-        // not, so nothing follows the caret and the break is declined. Built by hand: no Markdown loads as one.
-        describe('where the end\'s block does not join the start\'s own, in a list item holding text and a list', () => {
-            /**
-             * A bulleted list of one item holding `children`.
-             *
-             * @param children - The item's children.
-             * @returns The list.
-             */
-            function $listOf(...children: LexicalNode[]): ListNode {
-                return $createListNode('bullet').append($createListItemNode().append(...children));
-            }
-
-            const shapes: Array<[string, () => LexicalNode[], TextPoint, TextPoint]> = [
-                [
-                    'the end\'s item is inside the start\'s, which leaves no side of the start\'s to join from',
-                    () => [$listOf($createTextNode('ab'), $listOf($createTextNode('cdef'))), $createParagraphNode().append($createTextNode('tail'))],
-                    ['ab', 1], ['cdef', 2],
-                ],
-                [
-                    'the start\'s item is inside the end\'s, whose own text the range never enters from outside',
-                    () => [$listOf($listOf($createTextNode('ab')), $createTextNode('cdef')), $createParagraphNode().append($createTextNode('tail'))],
-                    ['ab', 1], ['cdef', 2],
-                ],
-                [
-                    'the item around the start\'s takes the end\'s rest at its own end, away from the caret',
-                    () => [$listOf($createTextNode('x'), $listOf($createTextNode('ab'))), $createParagraphNode().append($createTextNode('cdef gh'))],
-                    ['ab', 1], ['cdef gh', 2],
-                ],
+        // Lexical joins the end's block onto the start's own block where both hang off the place their paths fork
+        // and the start's is the first there to hold inline content. In a list that is always so: a list item
+        // holds blocks only, its text among them, so no block around the start's own takes the end's rest away
+        // from the caret. The rest then follows the caret, and the break is written.
+        describe('in a list item holding text and a nested list the end\'s rest joins at the caret, so the break is written', () => {
+            const written: Array<[string, string, TextPoint, TextPoint, string]> = [
+                ['the end\'s item is inside the start\'s', '- ab\n  - cdef\n\ntail', ['ab', 1], ['cdef', 2], '- a\\\n  ef\n\ntail'],
+                ['the start\'s item is inside the end\'s', '- - ab\n\n  cdef\n\ntail', ['ab', 1], ['cdef', 2], '- - a\\\n    ef\n\ntail'],
+                ['an item around the start\'s holds text of its own', '- x\n  - ab\n\ncdef gh', ['ab', 1], ['cdef gh', 2], '- x\n  - a\\\n    ef gh'],
             ];
 
-            /**
-             * An editor whose document is `build`'s nodes, with the range from `anchor` to `focus` selected.
-             *
-             * @param build - Makes the root's children.
-             * @param anchor - The anchor's text node text and offset.
-             * @param focus - The focus's text node text and offset.
-             * @returns The editor.
-             */
-            function built(build: () => LexicalNode[], anchor: TextPoint, focus: TextPoint): MarkdownEditor {
-                const editor = load('x');
-
-                lexicalOf(editor).update(() => {
-                    $getRoot().clear().append(...build());
-                }, { discrete: true });
-                selectText(editor, anchor, focus);
-
-                return editor;
-            }
-
-            for (const [name, build, anchor, focus] of shapes) {
+            for (const [name, source, anchor, focus, saved] of written) {
                 it(name, () => {
-                    const editor = built(build, anchor, focus);
-                    const before = rootChildren(editor);
-                    const range = rangeOf(editor);
+                    const editor = load(source);
 
+                    selectText(editor, anchor, focus);
                     lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
 
-                    expect(rootChildren(editor)).toEqual(before);
-                    expect(rangeOf(editor)).toBe(range);
+                    expect(editor.getValue()).toBe(saved);
+                    expect(editorSurfaceModel(editor)).toEqual(viewerModel(saved).blocks);
                 });
 
-                it(`${name}: the break is declined at the caret the removal leaves (control)`, () => {
-                    const editor = built(build, anchor, focus);
+                it(`${name}: the break is written at the caret the removal leaves too (control)`, () => {
+                    const editor = load(source);
 
+                    selectText(editor, anchor, focus);
                     lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, false);
-
-                    const removed = rootChildren(editor);
-
-                    expect(removed).not.toEqual(rootChildren(built(build, anchor, focus)));
-
                     lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
 
-                    expect(rootChildren(editor)).toEqual(removed);
+                    expect(editor.getValue()).toBe(saved);
                 });
             }
         });

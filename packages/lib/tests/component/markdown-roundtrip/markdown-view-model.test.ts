@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { $createParagraphNode, $createTextNode, $getRoot } from 'lexical';
-import type { LexicalEditor } from 'lexical';
+import type { LexicalEditor, LexicalNode } from 'lexical';
 import { $createListItemNode, $createListNode } from '@lexical/list';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
+import { $createMarkdownListItemTextNode } from '~/component/editor/markdownListItemNode';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -324,9 +325,10 @@ describe('editor surface projection', () => {
         const lexical = (editor as unknown as { _editor: LexicalEditor })._editor;
 
         lexical.update(() => {
-            const nested = $createListNode('bullet').append($createListItemNode().append($createTextNode('n')));
-            const holder = $createListItemNode().append(nested, $createParagraphNode().append($createTextNode('after')));
-            const list = $createListNode('bullet').append($createListItemNode().append($createTextNode('a')), holder);
+            const itemText = (text: string): LexicalNode => $createMarkdownListItemTextNode().append($createTextNode(text));
+            const nested = $createListNode('bullet').append($createListItemNode().append(itemText('n')));
+            const item = $createListItemNode().append(itemText('a'), nested, $createParagraphNode().append($createTextNode('after')));
+            const list = $createListNode('bullet').append(item);
 
             $getRoot().clear().append(list);
         }, { discrete: true });

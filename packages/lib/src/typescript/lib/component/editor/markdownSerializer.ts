@@ -27,6 +27,7 @@ import type { MdBlockToken } from "~/component/display/markdownExtensions.js";
 import type { MdTableToken } from "~/component/display/markdownTableExtension.js";
 import { $isMarkdownBlockNode, $isMarkdownColumnNode } from "~/component/editor/markdownBlockNode.js";
 import type { MarkdownBlockNode } from "~/component/editor/markdownBlockNode.js";
+import { $isMarkdownListItemTextNode } from "~/component/editor/markdownListItemNode.js";
 import { $isMarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import type { MarkdownImageNode } from "~/component/editor/markdownImageNode.js";
 import {
@@ -432,7 +433,7 @@ interface ItemBlock {
     readonly markdown: string;
     /** Whether it is a nested list, written right under the item's text or the list before it. */
     readonly isList: boolean;
-    /** Whether it is text: the item's inline content, or a paragraph. */
+    /** Whether it is text: the item's text, or a further paragraph. */
     readonly isText: boolean;
     /** Whether it is a raw block, written as it was loaded. */
     readonly isRaw?: boolean;
@@ -884,7 +885,7 @@ export function $readStandardForm(
 ): StandardFormReading {
     const cell = $isTableCellNode(container);
     const heading = $isHeadingNode(container) ? container : null;
-    const base = cell ? TABLE_CELL : heading !== null ? headingContext(heading) : $isListItemNode(container) ? { ...MULTI_LINE, inListItem: true } : MULTI_LINE;
+    const base = cell ? TABLE_CELL : heading !== null ? headingContext(heading) : $isMarkdownListItemTextNode(container) ? { ...MULTI_LINE, inListItem: true } : MULTI_LINE;
     const context: InlineContext = { ...base, definitions };
     const reading: InlineContext = { ...context, readsWhitespace: true };
     const intended: string[] = [];
@@ -942,26 +943,7 @@ function inlineRuns(node: LexicalNode, inTableCell: boolean): Array<[LexicalNode
         return [[node.getChildren(), inTableCell ? TABLE_CELL : $isHeadingNode(node) ? headingContext(node) : MULTI_LINE]];
     }
 
-    if (!$isListItemNode(node)) {
-        return node.getChildren().flatMap((child) => inlineRuns(child, inTableCell || $isTableCellNode(node)));
-    }
-
-    const runs: Array<[LexicalNode[], InlineContext]> = [];
-    let inline: LexicalNode[] = [];
-    const context = inTableCell ? TABLE_CELL : MULTI_LINE;
-
-    for (const child of node.getChildren()) {
-        if (!$isElementNode(child) || child.isInline()) {
-            inline.push(child);
-
-            continue;
-        }
-
-        runs.push([inline, context], ...inlineRuns(child, inTableCell));
-        inline = [];
-    }
-
-    return [...runs, [inline, context]];
+    return node.getChildren().flatMap((child) => inlineRuns(child, inTableCell || $isTableCellNode(node)));
 }
 
 /**
@@ -1092,24 +1074,38 @@ export function $writtenListMarker(list: ListNode): string {
  * @returns `true` when the save reads as a loose list.
  */
 export function $listReadsLoose(list: ListNode): boolean {
-    const items: Array<Array<"list" | "text" | "block">> = [];
+    const items = list.getChildren().filter($isListItemNode).map(itemBlockKinds);
+    const isMadeLoose = items.some(blocksReadLoose);
 
-    for (const item of list.getChildren().filter($isListItemNode)) {
-        const continues = $continuesItemBefore(item) && items.length > 0;
-        const blocks = continues ? items[items.length - 1]! : [];
-
-        blocks.push(...itemBlockKinds(item));
-
-        if (!continues) {
-            items.push(blocks);
-        }
-    }
-
-    if (items.some((blocks) => blocks.slice(1).some((kind) => kind !== "list") || (blocks[0] === "block" && blocks.length > 1))) {
+    if (isMadeLoose) {
         return true;
     }
 
     return $getState(list, listLooseState) && (items.length > 1 || (items[0]?.length ?? 0) > 1);
+}
+
+/**
+ * Tells whether a list item alone makes its list read loose, whatever the
+ * list's looseness ({@link $listReadsLoose}). Must run inside an
+ * `editor.read` or `editor.update`.
+ *
+ * @param item - The list item.
+ * @returns `true` when the item's blocks need a blank line between them.
+ */
+export function $itemReadsLoose(item: ListItemNode): boolean {
+    return blocksReadLoose(itemBlockKinds(item));
+}
+
+/**
+ * Tells whether the blocks of one list item need a blank line between them:
+ * a block that is not a nested list after the first, or a nested list after
+ * a first block that is not text.
+ *
+ * @param blocks - The kinds of the item's blocks ({@link itemBlockKinds}).
+ * @returns `true` when they do.
+ */
+function blocksReadLoose(blocks: ReadonlyArray<"list" | "text" | "block">): boolean {
+    return blocks.slice(1).some((kind) => kind !== "list") || (blocks[0] === "block" && blocks.length > 1);
 }
 
 /**
@@ -1865,53 +1861,16 @@ function $standsInColumn(node: LexicalNode): boolean {
 
 /**
  * Tells whether a block after a node, in the container the save writes it
- * in, writes something. Must run inside an `editor.read` or `editor.update`.
+ * in, writes something: one of its later siblings, which for a block of a
+ * list item are the item's later blocks, its nested lists among them. Must
+ * run inside an `editor.read` or `editor.update`.
  *
  * @param node - The node.
  * @param definitions - The saved document's link reference definitions, or `null`.
  * @returns `true` when a later block of its container writes Markdown.
  */
 function $writesBlockAfter(node: LexicalNode, definitions: Links | null): boolean {
-    return $blocksAfter(node).some((block) => serializeBlock(block, definitions) !== "");
-}
-
-/**
- * The blocks a save writes after a node in the same container: its later
- * siblings and, for a block of a list item, the blocks of the item nodes
- * that continue that item — each an item node whose first child is a nested
- * list, which {@link serializeList} writes as part of the item before it.
- *
- * @param node - The node.
- * @returns The later blocks, in document order.
- */
-function $blocksAfter(node: LexicalNode): LexicalNode[] {
-    const parent = node.getParent();
-    const blocks = node.getNextSiblings();
-    const items = $isListItemNode(parent) ? parent.getNextSiblings() : [];
-
-    for (const item of items) {
-        if (!$continuesItemBefore(item)) {
-            break;
-        }
-
-        blocks.push(...item.getChildren());
-    }
-
-    return blocks;
-}
-
-/**
- * Tells whether a node of a list is an item node whose first child is a
- * list: Lexical's shape for a nested list. Such a node is no item of its
- * own. It takes no marker and no number, and its blocks — the nested list
- * and whatever follows it — belong to the item before it, when there is
- * one. Must run inside an `editor.read` or `editor.update`.
- *
- * @param item - A child of a list, or `null` for none.
- * @returns `true` for an item node opening with a nested list.
- */
-export function $continuesItemBefore(item: LexicalNode | null): item is ListItemNode {
-    return $isListItemNode(item) && $isListNode(item.getFirstChild());
+    return node.getNextSiblings().some((block) => serializeBlock(block, definitions) !== "");
 }
 
 /**
@@ -2058,10 +2017,10 @@ function indentLines(markdown: string, indent: string): string[] {
 }
 
 /**
- * Serializes a list with its authored marker. An item whose first child is a
- * list — Lexical's shape for a nested list, which it numbers and shows as
- * part of the item before it — adds its blocks to that item, indented by its
- * marker width plus one. A loose list separates its items with a blank line.
+ * Serializes a list with its authored marker: each item's blocks
+ * ({@link serializeItemBlocks}) under its marker, a nested list among them indented
+ * by the marker's width plus one. A loose list separates its items with a
+ * blank line.
  *
  * @param list - The list.
  * @param definitions - The saved document's link reference definitions, or `null`.
@@ -2074,19 +2033,7 @@ function indentLines(markdown: string, indent: string): string[] {
  * @returns One line or more per item, joined by newlines.
  */
 function serializeList(list: ListNode, definitions: Links | null, underText = false, marker?: string): string {
-    const items: ItemBlock[][] = [];
-
-    for (const item of list.getChildren().filter($isListItemNode)) {
-        const continues = $continuesItemBefore(item) && items.length > 0;
-        const blocks = continues ? items[items.length - 1]! : [];
-
-        appendItemBlocks(item, blocks, definitions);
-
-        if (!continues) {
-            items.push(blocks);
-        }
-    }
-
+    const items = list.getChildren().filter($isListItemNode).map((item) => serializeItemBlocks(item, definitions));
     const loose = $getState(list, listLooseState);
     const opening = items[0]?.[0];
     const plainMarker = listMarkerWriter(list, false, marker)(0);
@@ -2108,16 +2055,16 @@ function serializeList(list: ListNode, definitions: Links | null, underText = fa
 }
 
 /**
- * Appends a list item's blocks: each run of inline children as one block, and
- * each block child (a paragraph, a nested list, or any other block a command
- * put there) as its own. Empty blocks are dropped.
+ * Writes a list item's blocks, one per child of the item: its text
+ * (`MarkdownListItemTextNode`), a further paragraph, a nested list, or any
+ * other block. Empty blocks are dropped.
  *
  * @param item - The list item.
- * @param blocks - The blocks of the item it belongs to. Extended in place.
  * @param definitions - The saved document's link reference definitions, or `null`.
+ * @returns The item's blocks, in order.
  */
-function appendItemBlocks(item: ListItemNode, blocks: ItemBlock[], definitions: Links | null): void {
-    let inline: LexicalNode[] = [];
+function serializeItemBlocks(item: ListItemNode, definitions: Links | null): ItemBlock[] {
+    const blocks: ItemBlock[] = [];
 
     const push = (markdown: string, isList: boolean, isText: boolean, more?: Pick<ItemBlock, "marker" | "withMarker" | "isRaw" | "continuesText">): void => {
         if (markdown !== "") {
@@ -2125,20 +2072,7 @@ function appendItemBlocks(item: ListItemNode, blocks: ItemBlock[], definitions: 
         }
     };
 
-    const flushInline = (): void => {
-        push(serializeInlineNodes(inline, { ...MULTI_LINE, definitions, inListItem: true }), false, true);
-        inline = [];
-    };
-
     for (const child of item.getChildren()) {
-        if (!$isElementNode(child) || child.isInline()) {
-            inline.push(child);
-
-            continue;
-        }
-
-        flushInline();
-
         if ($isListNode(child)) {
             const previous = blocks[blocks.length - 1];
             // A list of bare markers under text reads as more lines of that text, so a list after it is under text too.
@@ -2150,6 +2084,8 @@ function appendItemBlocks(item: ListItemNode, blocks: ItemBlock[], definitions: 
                 withMarker:    (marker) => serializeList(child, definitions, underText, marker),
                 continuesText: underText && markdown.split("\n").every((line) => BARE_LIST_MARKER_LINE.test(line)),
             });
+        } else if ($isMarkdownListItemTextNode(child)) {
+            push(serializeInline(child, { ...MULTI_LINE, definitions, inListItem: true }), false, true);
         } else if ($isParagraphNode(child)) {
             push(serializeInline(child, { ...MULTI_LINE, definitions, inItemParagraph: true }), false, true);
         } else {
@@ -2157,38 +2093,37 @@ function appendItemBlocks(item: ListItemNode, blocks: ItemBlock[], definitions: 
         }
     }
 
-    flushInline();
+    return blocks;
 }
 
 /**
- * The kinds of the blocks {@link appendItemBlocks} writes for a list item,
- * in order — each run of inline content holding something visible, and each
- * block child that writes something — without writing them.
+ * The kinds of the blocks {@link serializeItemBlocks} writes for a list item, in
+ * order — each child that writes something — without writing them.
  *
  * @param item - The list item.
- * @returns `"list"` for a nested list, `"text"` for inline content or a
+ * @returns `"list"` for a nested list, `"text"` for the item's text or a
  *   paragraph, `"block"` for anything else.
  */
 function itemBlockKinds(item: ListItemNode): Array<"list" | "text" | "block"> {
     const kinds: Array<"list" | "text" | "block"> = [];
-    let inline: LexicalNode[] = [];
-
-    const flushInline = (): void => {
-        if (holdsInlineContent(inline)) {
-            kinds.push("text");
-        }
-
-        inline = [];
-    };
+    let isInRun = false;
 
     for (const child of item.getChildren()) {
-        if (!$isElementNode(child) || child.isInline()) {
-            inline.push(child);
+        const isInline = !$isElementNode(child) || child.isInline();
+
+        if (isInline) {
+            // Inline nodes straight in an item, as Lexical's list code and its HTML import put them, before the
+            // item is brought to its shape: each run of them is the one paragraph that shape makes of it.
+            if (!isInRun) {
+                kinds.push("text");
+            }
+
+            isInRun = true;
 
             continue;
         }
 
-        flushInline();
+        isInRun = false;
 
         const writes = $isListNode(child) ? child.getChildrenSize() > 0 : $writesSomething(child);
 
@@ -2196,8 +2131,6 @@ function itemBlockKinds(item: ListItemNode): Array<"list" | "text" | "block"> {
             kinds.push($isListNode(child) ? "list" : $isParagraphNode(child) ? "text" : "block");
         }
     }
-
-    flushInline();
 
     return kinds;
 }
@@ -2559,13 +2492,11 @@ function serializeCellChild(child: LexicalNode, definitions: Links | null): stri
         return serializeInlineNodes($isElementNode(child) ? child.getChildren() : [child], { ...TABLE_CELL, definitions });
     }
 
-    return child.getChildren().filter($isListItemNode).flatMap((item) => {
-        const children = item.getChildren();
-        const inline = children.filter((node) => !$isListNode(node));
-        const lines = inline.length > 0 ? [serializeInlineNodes(inline, { ...TABLE_CELL, definitions })] : [];
-
-        return [...lines, ...children.filter($isListNode).map((list) => serializeCellChild(list, definitions))];
-    }).join(CELL_PARAGRAPH_BREAK);
+    // An item's empty text gives no line, as an item holding nothing gives none.
+    return child.getChildren().filter($isListItemNode)
+        .flatMap((item) => item.getChildren().filter((block) => !($isMarkdownListItemTextNode(block) && block.isEmpty())))
+        .map((block) => serializeCellChild(block, definitions))
+        .join(CELL_PARAGRAPH_BREAK);
 }
 
 /**
