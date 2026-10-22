@@ -22,7 +22,7 @@ import { Markdown } from '@jimka/typescript-ui/component/display';
 panel.addComponent(Markdown('# Title\n\nSome **bold** text with a [link](https://example.com).'));
 ```
 
-`marked` is a runtime dependency of the library, installed transitively when you install `@jimka/typescript-ui`.
+`marked` is a runtime dependency of the library, installed transitively when you install `@jimka/typescript-ui`. The library declares one exact version of it, because a patch release of `marked` can change how a document reads. An application that uses `marked` itself at another version gets its own copy beside the library's.
 
 ## Construction
 

@@ -476,6 +476,20 @@ page resets to empty.
   element had no role before. Chromium does not pass `aria-readonly` on to
   assistive technology for an editing host, on either surface; see
   *Read-only* in the `MarkdownEditor` docs.
+
+- **`marked` is pinned to exactly 18.0.10.** The library declared
+  `^18.0.5`, so a fresh install resolved the newest 18.x, and an
+  application with an older lockfile kept an older one. `marked`'s patch
+  releases change how a document reads, so the same document could read
+  differently in two applications: of the eleven versions the range
+  admitted, the library's Markdown tests pass on two. The library now
+  declares a version it is tested on. Two readings change from 18.0.9,
+  both to what CommonMark specifies: a code fence alone on a paragraph's
+  last line (`foo` then ```` ``` ````) ends the paragraph and opens an
+  empty code block, and emphasis followed by a backslash and an emoji
+  (`*a*\🙂`) holds only its text, with the backslash shown. No consumer
+  action is needed; an application that depends on `marked` itself at
+  another version gets a second copy beside the library's.
 ### Overlay
 
 - **A non-modal `Drawer` now stacks below windows, and a modal one in the

@@ -369,6 +369,15 @@ describe('Markdown emphasis', () => {
         expect(childTagsOf('p')).toContain('EM');
         expect(textWrites()).toContain('i');
     });
+
+    // A backslash before a character that is not ASCII punctuation is text (CommonMark 13). An emoji after the
+    // closing `*` leaves that `*` a closing delimiter.
+    it('EM1: emphasis before an escaped emoji holds only its text, and the backslash stays text after it', () => {
+        new Markdown('*a*\\🙂').getElement(true);
+
+        expect(childTagsOf('p')).toContain('EM');
+        expect(textWrites()).toEqual(['a', '\\🙂']);
+    });
 });
 
 describe('Markdown strikethrough', () => {
@@ -719,6 +728,14 @@ describe('Markdown fenced code block', () => {
         new Markdown('```js\nconst a = 1;\n```').getElement(true);
 
         expect(classWrites()).toContainEqual(['ts-ui-md-code-host']);
+    });
+
+    // A code fence interrupts a paragraph (CommonMark 140), and an unclosed one runs to the end of the document (CommonMark 126).
+    it.each(['```', '~~~'])('CF1: a %s fence alone on a paragraph\'s last line ends the paragraph and opens an empty code block', (fence) => {
+        new Markdown(`foo\n${fence}`).getElement(true);
+
+        expect(createdTags()).toEqual(expect.arrayContaining(['p', 'pre']));
+        expect(textWrites()).toEqual(['foo', '']);
     });
 });
 
