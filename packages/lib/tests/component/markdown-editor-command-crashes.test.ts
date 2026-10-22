@@ -8,7 +8,7 @@ vi.mock('@lexical/clipboard', async (importOriginal) => ({
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
-    $createParagraphNode, $createRangeSelection, $createTextNode, $getRoot, $getSelection, $isRangeSelection, $isTextNode,
+    $createParagraphNode, $createRangeSelection, $createTextNode, $getRoot, $getSelection, $isElementNode, $isRangeSelection, $isTextNode,
     $setSelection, CONTROLLED_TEXT_INSERTION_COMMAND, CUT_COMMAND, DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, INSERT_LINE_BREAK_COMMAND,
     INSERT_PARAGRAPH_COMMAND, INSERT_TAB_COMMAND, INTERNAL_$isBlock, KEY_ENTER_COMMAND, PASTE_COMMAND, REMOVE_TEXT_COMMAND,
     SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, UNDO_COMMAND, createEditor, DELETE_LINE_COMMAND,
@@ -21,7 +21,9 @@ import { $insertGeneratedNodes, copyToClipboard } from '@lexical/clipboard';
 import type { TableCellNode } from '@lexical/table';
 import { $dfs } from '@lexical/utils';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
+import { lexMarkdown } from '~/component/display/markdownExtensions';
 import { $isMarkdownBlockNode } from '~/component/editor/markdownBlockNode';
+import { $isMarkdownRawBlockNode } from '~/component/editor/markdownSourceNodes';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -2650,7 +2652,7 @@ function undo(editor: MarkdownEditor): void {
 
 describe('a join into a code block or raw block writes what the joined block held (J rows)', () => {
     /** Range rows: the source, where the range starts, where it ends, and the save. */
-    const JOIN_ROWS: Array<[string, string, TextPoint, TextPoint, string]> = [
+    const JOIN_ROWS: Array<[string, string, TextPoint, TextPoint, string, shown?: string[]]> = [
         ['J1', CODE + '### +alpha', ['code', 4], ['+alpha', 0], '```\ncode+alpha\n```'],
         ['J2', CODE + '### alpha \\#', ['code', 4], ['alpha #', 0], '```\ncodealpha \\#\n```'],
         ['J3', CODE + '### x # y', ['code', 4], ['x # y', 2], '```\ncode# y\n```'],
@@ -2671,9 +2673,12 @@ describe('a join into a code block or raw block writes what the joined block hel
         ['K4', RAW + '### alpha \\#', ['</div>', 6], ['alpha #', 0], '<div>\nraw\n</div>alpha #'],
         // Regression row (passes on the base): a soft line break before the rest: the rest opens a line, as after a hard break (J12).
         ['J40', CODE + 'x\n\\+ y', ['code', 4], ['+ y', 0], '```\ncode\\+ y\n```'],
+        // The shown paragraph keeps the one space the rest opened with, which the save drops (`\# y`), so a reload shows `# y`: the
+        // importer keeps the leading space of a paragraph's first line, whoever wrote it (a document that opens with ` \# y` shows
+        // the same), and is a known issue of its own. The rows pin what is shown.
         // Regression row (passes on the base): whitespace the rest opens a raw block's line with is indentation, not text the first
         // character follows.
-        ['K5', '***\n\nx # y', ['***', 0], ['x # y', 1], '\\# y'],
+        ['K5', '***\n\nx # y', ['***', 0], ['x # y', 1], '\\# y', ['paragraph: # y']],
         // Regression rows (pass on the base): a rest joined right after a raw quote's or list's container markers or a
         // continuation line's indentation opens a line there, so its line-start escape stays.
         ['K14', '- a\n  > q\n\n\\> x', ['- a', 2], ['> x', 0], '- \\> x'],
@@ -2686,9 +2691,36 @@ describe('a join into a code block or raw block writes what the joined block hel
         // Regression row (passes on the base): a code block holds plain text, so a no-break space at the rest's start is the
         // character, not `&nbsp;`.
         ['J41', CODE + '### &nbsp;alpha', ['code', 4], ['\u00a0alpha', 0], '```\ncode\u00a0alpha\n```'],
+        // A nested item the selection empties stays an item: its bare `-` under the item above would read as a heading's underline,
+        // so it is written `*`, as the save writes an empty item under text. A top-level item and an item in a quote keep the `-`.
+        ['an emptied nested item stays an item', '- a\n  - b\n    > q\n  - c\n\nafter', ['  - b', 4], ['after', 5], '- a\n  *'],
+        ['an emptied nested item from right after its dash', '- a\n  - b\n    > q\n  - c\n\nafter', ['  - b', 3], ['after', 5], '- a\n  *'],
+        ['an emptied item under a continuation line', '- a\n  b\n  - c\n    > q\n\nafter', ['  - c', 4], ['after', 5], '- a\n  b\n  *'],
+        ['an emptied item and a rest of spaces', '- a\n  - b\n    > q\n\nc  \n', ['  - b', 4], ['c  ', 1], '- a\n  *\n'],
+        ['an emptied top-level item keeps its dash', '- a\n- b\n  > q\n\nafter', ['- b', 2], ['after', 5], '- a\n-'],
+        ['an emptied item in a quote keeps its dash', '> a\n> - b\n>   > q\n\nafter', ['- b', 2], ['after', 5], '> a\n>\n> -'],
+        // The whitespace a rest opens a raw block's line with is kept only as far as the line still reads as the rest's own text.
+        ['a tab a rest opens a line with', '***\n\nx\t# y', ['***', 0], ['x\t# y', 1], '\\# y', ['paragraph: # y']],
+        ['four spaces a rest opens a line with', '***\n\nx    # y', ['***', 0], ['x    # y', 1], '\\# y', ['paragraph: # y']],
+        ['two tabs a rest opens a line with', '***\n\nx\t\tyy', ['***', 0], ['x\t\tyy', 1], 'yy', ['paragraph: yy']],
+        ['spaces after a list marker', '- a\n  > q\n\nx    y', ['- a', 2], ['x    y', 1], '- y'],
+        ['a space completing a bare star', '***\n\nx\t# y', ['***', 1], ['x\t# y', 1], '* \\# y'],
+        ['spaces completing a bare dash', '- a\n  > q\n  > r\n\nx    # y', ['- a', 1], ['x    # y', 1], '- \\# y'],
+        ['a tab completing a bare dash', '- a\n  - b\n    > q\n  - c\n\nx  \t- y', ['  - b', 3], ['x  \t- y', 1], '- a\n  - \\- y'],
+        ['four spaces a later HTML block\'s line opens with', '***\n\n<div>\n    y\n</div>', ['***', 0], ['    y', 0], 'y\n\n</div>'],
+        ['a heading marker a later HTML block\'s line opens with', '***\n\n<div>\n# y\n</div>', ['***', 0], ['# y', 0], '\\# y\n\n</div>'],
+        ['a later line of an HTML block that reads as a heading is left as it was', '***\n\n<div>\ny\n# z\n</div>', ['***', 0], ['y', 0], 'y\n\n# z\n\n</div>', ['paragraph:y', 'heading:z', 'markdown-raw-block:</div>']],
+        ['a later line of an HTML block that underlines the first line is left as it was', '***\n\n<div>\nx\n---\n</div>', ['***', 0], ['x', 0], '## x\n\n</div>', ['heading:x', 'markdown-raw-block:</div>']],
+        ['a later line of a code block that reads as a heading is left as it was', '***\n\n```\nx\n# y\n```', ['***', 0], ['x\n# y', 0], 'x\n\n# y', ['paragraph:x', 'heading:y']],
+        ['emphasis on the first line of an HTML block keeps its asterisks', '***\n\n<div>\n*y*\n# z\n</div>', ['***', 0], ['*y*', 0], '*y*\n\n# z\n\n</div>', ['paragraph:y', 'heading:z', 'markdown-raw-block:</div>']],
+        ['an emptied nested item before a later HTML block\'s line end', '- a\n  - b\n    > q\n  - c\n\n<div>\n    y\n</div>', ['  - b', 4], ['    y', 5], '- a\n  *\n\n</div>'],
+        ['a heading marker joined after a bare list marker is escaped', '- a\n  - b\n    > q\n  - c\n\n<div>\n# y\n</div>', ['  - b', 4], ['# y', 0], '- a\n  - \\# y\n\n</div>'],
+        ['a fence an HTML block line opens with is escaped', '***\n\n<div>\n```\nq\n</div>', ['***', 0], ['```', 0], '\\```\nq\n\n</div>', ['paragraph:``` q', 'markdown-raw-block:</div>']],
+        ['a list number an HTML block line opens with is left as it was', '***\n\n<div>\n1. y\n</div>', ['***', 0], ['1. y', 0], '1. y\n\n</div>', ['list:y', 'markdown-raw-block:</div>']],
+        ['a tab at an HTML block\'s line start', '<div>\nraw\n</div>\n\nx\t# y', ['raw', 0], ['x\t# y', 1], '<div>\n \\# y'],
     ];
 
-    it.each(JOIN_ROWS)('%s: Delete over the range, either way round', (_row, source, start, end, saved) => {
+    it.each(JOIN_ROWS)('%s: Delete over the range, either way round', (_row, source, start, end, saved, shown) => {
         for (const [anchor, focus] of [[start, end], [end, start]] as const) {
             const editor = load(source);
 
@@ -2696,6 +2728,10 @@ describe('a join into a code block or raw block writes what the joined block hel
             lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
 
             expect(editor.getValue()).toBe(saved);
+
+            if (shown !== undefined) {
+                expect(lexicalOf(editor).read(() => $getRoot().getChildren().map((child) => `${child.getType()}:${child.getTextContent()}`))).toEqual(shown);
+            }
         }
     });
 
@@ -2719,6 +2755,13 @@ describe('a join into a code block or raw block writes what the joined block hel
         ['J27', 'typing', CODE + '\\+ alpha', ['code', 4], ['+ alpha', 0], '```\ncodeZ\\+ alpha\n```'],
         ['J28', 'typing', CODE + '### alpha \\#', ['code', 4], ['alpha #', 0], '```\ncodeZalpha \\#\n```'],
         ['J29', 'typing', RAW + 'a * b', ['</div>', 6], ['a * b', 0], '<div>\nraw\n</div>Za \\* b'],
+        ['typing over an emptied nested item', 'typing', '- a\n  - b\n    > q\n  - c\n\nafter', ['  - b', 4], ['after', 5], '- a\n  * Z'],
+        ['typing over four spaces a later HTML block\'s line opens with', 'typing', '***\n\n<div>\n    y\n</div>', ['***', 0], ['    y', 0], 'Z y\n\n</div>'],
+        ['typing over a heading marker a later HTML block\'s line opens with', 'typing', '***\n\n<div>\n# y\n</div>', ['***', 0], ['# y', 0], 'Z# y\n\n</div>'],
+        ['typing over four spaces a later code block\'s line opens with', 'typing', '***\n\n```\n    y\n```', ['***', 0], ['    y', 0], 'Z y'],
+        ['typing over a heading marker a later code block\'s line opens with', 'typing', '***\n\n```\n# y\n```', ['***', 0], ['# y', 0], 'Z# y'],
+        ['typing over a tab a rest opens a line with', 'typing', '***\n\nx\t# y', ['***', 0], ['x\t# y', 1], 'Z # y'],
+        ['typing from a thematic break into a list item', 'typing', '***\n\n- x # y', ['***', 0], ['x # y', 1], 'Z # y'],
     ];
 
     it.each(ROUTE_ROWS)('%s: %s over the range writes what Delete writes, either way round', (_row, routeName, source, start, end, saved) => {
@@ -2813,4 +2856,203 @@ describe('a join into a code block or raw block writes what the joined block hel
 
         expect(editor.getValue()).toBe(loaded);
     });
+});
+
+describe('a removal out of a raw block makes no heading or code block of what is left', () => {
+    /** Raw blocks a removal can start in: lists holding a quote, a thematic break, an HTML block, a quote holding a list. */
+    const RAW_BLOCKS = [
+        '- a\n  - b\n    > q\n  - c', '- a\n  b\n  - c\n    > q', '1. a\n   - b\n     > q', '- a\n  > q\n  > r', '***', '<div>\nw\n</div>', '> a\n> - b\n>   > q',
+    ];
+
+    /**
+     * Later blocks whose text holds whitespace and block markers a joined rest can open a line with: paragraphs, raw HTML blocks
+     * and code blocks, indented and fenced.
+     */
+    const LATER_BLOCKS = [
+        'after', 'x\t# y', 'x    # y', 'x  \t- y', 'x - y', '- x\t# y', '> x\t# y', 'x\t\tyy', '<div>\n    y\n</div>', '<div>\n# y\n</div>', '<div>\n\t- y\n</div>',
+        '```\n    y\n```', '```\n# y\n```', '    x\n    # y', '```\nx\n    y\n# z\n```',
+    ];
+
+    // Vitest's default per-test timeout is 5s. One raw block loads some thousand editors, about two seconds of work per
+    // hundred of them and several times that with the whole suite running beside it.
+    const SWEEP_TIMEOUT_MS = 60_000;
+
+    /** The block types the sweep watches for, among the tokens of a Markdown text at any depth. */
+    const WATCHED_TYPES = ['heading', 'code', 'hr'];
+
+    /**
+     * How many blocks of each watched type a Markdown text holds, read as the viewer's lexer reads it, inside list items and quotes too.
+     *
+     * @param markdown - The Markdown.
+     * @returns The count of each type.
+     */
+    function watchedCountsOf(markdown: string): Record<string, number> {
+        const found: Record<string, number> = { heading: 0, code: 0, hr: 0 };
+        const visit = (tokens: ReadonlyArray<{ type: string; tokens?: unknown[]; items?: unknown[] }>): void => {
+            for (const token of tokens) {
+                if (WATCHED_TYPES.includes(token.type)) {
+                    found[token.type]! += 1;
+                }
+
+                visit((token.items ?? []) as never);
+
+                if (token.type === 'blockquote' || token.type === 'list_item') {
+                    visit((token.tokens ?? []) as never);
+                }
+            }
+        };
+
+        visit(lexMarkdown(markdown) as never);
+
+        return found;
+    }
+
+    /** What the sweep knows of a text node: its size, where its block's text holds it, and what holds it. */
+    interface SweepNode {
+        readonly size:         number;
+        /** The text of the node's top-level block. */
+        readonly blockText:    string;
+        /** Where the node's text starts in `blockText`. */
+        readonly start:        number;
+        /** Whether a raw block holds the node. */
+        readonly isRaw:        boolean;
+        /** Whether a code block holds the node. */
+        readonly isCode:       boolean;
+        /** Whether the node lies in the document's first block. */
+        readonly isFirstBlock: boolean;
+    }
+
+    /**
+     * Where every text node of the loaded document stands in document order, and what holds it.
+     *
+     * @param editor - The editor.
+     * @returns The text nodes.
+     */
+    function textNodesOf(editor: MarkdownEditor): SweepNode[] {
+        return lexicalOf(editor).read(() => {
+            const first = $getRoot().getFirstChild();
+
+            return $getRoot().getChildren().flatMap((top) => {
+                let at = 0;
+                const found: SweepNode[] = [];
+
+                for (const { node } of $dfs(top)) {
+                    if ($isElementNode(node) && !node.isInline()) {
+                        continue;
+                    }
+
+                    if ($isTextNode(node)) {
+                        found.push({
+                            size:         node.getTextContentSize(),
+                            blockText:    top.getTextContent(),
+                            start:        at,
+                            isRaw:        $findMatchingParent(node, $isMarkdownRawBlockNode) !== null,
+                            isCode:       $findMatchingParent(node, (parent) => parent.getType() === 'code') !== null,
+                            isFirstBlock: top.is(first),
+                        });
+                    }
+
+                    if (!$isElementNode(node)) {
+                        at += node.getTextContentSize();
+                    }
+                }
+
+                return found;
+            });
+        });
+    }
+
+    /**
+     * The headings and code blocks that the lines after the first line of what a selection leaves of a later raw or code block read
+     * as on their own. Those lines were literal text where they stood; once the selection has cut away the line that opened their
+     * block they read as the Markdown they look like, which is what an edit inside one raw block does as well, and is not what the
+     * sweep guards: it allows these, and still checks that the first line, which meets the joint, makes none.
+     *
+     * @param to - The node the selection ends in.
+     * @param offset - The offset in it.
+     * @returns The counts the later lines hold; zero for a later block that holds Markdown.
+     */
+    function laterLinesCounts(to: SweepNode, offset: number): Record<string, number> {
+        if (!to.isRaw && !to.isCode) {
+            return { heading: 0, code: 0, hr: 0 };
+        }
+
+        const rest = to.blockText.slice(to.start + offset);
+
+        return watchedCountsOf(rest.includes('\n') ? rest.slice(rest.indexOf('\n') + 1) : '');
+    }
+
+    /**
+     * Selects between two text nodes found by their order in the document.
+     *
+     * @param editor - The editor.
+     * @param anchor - The anchor's text node index and offset.
+     * @param focus - The focus's text node index and offset.
+     */
+    function selectByIndex(editor: MarkdownEditor, anchor: [number, number], focus: [number, number]): void {
+        lexicalOf(editor).update(() => {
+            const texts = $dfs().map(({ node }) => node).filter((node) => $isTextNode(node));
+            const selection = $createRangeSelection();
+
+            selection.anchor.set(texts[anchor[0]]!.getKey(), anchor[1], 'text');
+            selection.focus.set(texts[focus[0]]!.getKey(), focus[1], 'text');
+            $setSelection(selection);
+        }, { discrete: true });
+    }
+
+    it.each(RAW_BLOCKS.map((raw) => [raw] as const))('Delete over any range from %j into a later block leaves no new heading or code block', (raw) => {
+        const offenders: string[] = [];
+        const ends = { raw: 0, code: 0 };
+
+        for (const later of LATER_BLOCKS) {
+            const source = `${raw}\n\n${later}`;
+            const nodes = textNodesOf(load(source));
+            const sourceCounts = watchedCountsOf(source);
+
+            if (!nodes.some((node) => node.isRaw && node.isFirstBlock)) {
+                continue;
+            }
+
+            nodes.forEach((from, fromIndex) => {
+                if (!from.isRaw || !from.isFirstBlock) {
+                    return;
+                }
+
+                nodes.forEach((to, toIndex) => {
+                    if (to.isFirstBlock) {
+                        return;
+                    }
+
+                    for (let fromOffset = 0; fromOffset <= from.size; fromOffset++) {
+                        for (let toOffset = 0; toOffset <= to.size; toOffset++) {
+                            ends.raw += to.isRaw ? 1 : 0;
+                            ends.code += to.isCode ? 1 : 0;
+
+                            const editor = load(source);
+
+                            selectByIndex(editor, [fromIndex, fromOffset], [toIndex, toOffset]);
+                            lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+
+                            const saved = editor.getValue();
+                            const counts = watchedCountsOf(saved);
+                            const allowed = laterLinesCounts(to, toOffset);
+                            const made = WATCHED_TYPES.filter((type) => counts[type]! > sourceCounts[type]! + allowed[type]!);
+
+                            if (made.length > 0) {
+                                offenders.push(`${JSON.stringify(source)} text ${fromIndex}@${fromOffset} to text ${toIndex}@${toOffset} saved ${JSON.stringify(saved)} (${made.join(', ')})`);
+                            }
+
+                            // The sweep builds some thousand editors; releasing each keeps the memory of the run flat.
+                            editor.dispose();
+                        }
+                    }
+                });
+            });
+        }
+
+        expect(offenders).toEqual([]);
+        // The sweep must reach the ends inside later raw blocks and later code blocks, or it guards nothing there.
+        expect(ends.raw).toBeGreaterThan(0);
+        expect(ends.code).toBeGreaterThan(0);
+    }, SWEEP_TIMEOUT_MS);
 });

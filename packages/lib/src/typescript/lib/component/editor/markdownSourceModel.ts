@@ -10,8 +10,8 @@ import { locateTopLevelBlocks } from "~/component/editor/markdownImporter.js";
 import type { TopLevelBlock } from "~/component/editor/markdownImporter.js";
 import type { WrittenBlockPlace } from "~/component/editor/markdownSerializer.js";
 import type { MarkdownSourceMap } from "~/component/editor/markdownSourceMap.js";
-import { $placeOfSourceOffset, $sourceOffsetOfPoint } from "~/component/editor/markdownSourcePlaces.js";
-import type { SourcePlace } from "~/component/editor/markdownSourcePlaces.js";
+import { $blockBesideLine, $placeOfSourceOffset, $sourceOffsetOfPoint, $standsBetweenBlocksIn } from "~/component/editor/markdownSourcePlaces.js";
+import type { BetweenBlocksPlace, SourcePlace } from "~/component/editor/markdownSourcePlaces.js";
 
 /**
  * What a source-mode command imports: a stretch of the document, with the
@@ -207,16 +207,17 @@ function soleEmptyElement(block: ElementNode): ElementNode | null {
  * @param text - The imported text.
  * @param spans - The blocks' spans.
  * @param offset - The offset.
+ * @param betweenBlocks - What an offset on a blank line between the blocks of a container takes.
  * @returns The place, or `null` when no block holds the offset or the block has no place there.
  */
-function $placeInSpans(text: string, spans: readonly LoadedBlockSpan[], offset: number): SourcePlace | null {
+function $placeInSpans(text: string, spans: readonly LoadedBlockSpan[], offset: number, betweenBlocks: BetweenBlocksPlace): SourcePlace | null {
     const span = spanHolding(spans, offset);
 
     if (span === undefined) {
         return null;
     }
 
-    const place = $placeOfSourceOffset(text, offset, span.block, span.start, span.end);
+    const place = $placeOfSourceOffset(text, offset, span.block, span.start, span.end, betweenBlocks);
 
     if (place !== null || !$isElementNode(span.block)) {
         return place;
@@ -263,15 +264,16 @@ function $placeAfterLastBlock(text: string, spans: readonly LoadedBlockSpan[], o
  * @param text - The imported text.
  * @param start - Where the first block starts.
  * @param offset - The offset.
+ * @param betweenBlocks - What an offset on a blank line between the blocks of a container takes.
  * @returns The place, or `null` when no block places it.
  */
-function $placeInUnpairedBlocks(text: string, start: number, offset: number): SourcePlace | null {
+function $placeInUnpairedBlocks(text: string, start: number, offset: number, betweenBlocks: BetweenBlocksPlace): SourcePlace | null {
     if (offset < start) {
         return null;
     }
 
     for (const child of $getRoot().getChildren()) {
-        const place = $isElementNode(child) ? $placeOfSourceOffset(text, offset, child, start, text.length) : null;
+        const place = $isElementNode(child) ? $placeOfSourceOffset(text, offset, child, start, text.length, betweenBlocks) : null;
         const reach = place === null
             ? null
             : $sourceOffsetOfPoint(text, child, start, text.length, { node: child, offset: (child as ElementNode).getChildrenSize(), type: "element" });
@@ -308,12 +310,50 @@ function movedInward(spans: readonly LoadedBlockSpan[], from: number, to: number
 }
 
 /**
+ * Moves an end of a range that stands on a line between the blocks of a
+ * container, at the container's edge, on across it to the next top-level
+ * block's start (a range's start) or the previous one's end (a range's end).
+ * An end at the edge has no block of the container to move inward to, as an
+ * end between two top-level blocks moves to the block beside it
+ * ({@link movedInward}). Inside the container such an end is placed by
+ * {@link $placeOfSourceOffset}, and this is asked only where that finds no
+ * place.
+ *
+ * @param text - The imported text.
+ * @param spans - The blocks' spans.
+ * @param offset - The end's offset.
+ * @param side - `"next"` for a range's start, `"previous"` for its end.
+ * @returns The offset to place the end at: in a block of the container that shows nothing (an empty list item, a table row beside a delimiter row), since the container then has a block on that side; in the block beside the container; `"stay"` where a column of a fence holds nothing, whose place is not worked out yet; or `null` when the offset stands on no such line or no block lies beside the container.
+ */
+function movedAcrossEdge(text: string, spans: readonly LoadedBlockSpan[], offset: number, side: "next" | "previous"): number | "stay" | null {
+    const span = spanHolding(spans, offset);
+
+    if (span === undefined || !$standsBetweenBlocksIn(text, offset, span.block, span.start, span.end)) {
+        return null;
+    }
+
+    const inside = $blockBesideLine(text, offset, span.block, span.start, span.end, side);
+
+    if (inside !== null) {
+        return inside === "empty-column" ? "stay" : inside;
+    }
+
+    const index = spans.indexOf(span);
+
+    return side === "next" ? spans[index + 1]?.start ?? null : spans[index - 1]?.end ?? null;
+}
+
+/**
  * Selects, in the tree an import of `text` just built, the range a source
  * selection `from`–`to` covers, and may add one block to the tree to do it.
  *
  * - An end that stands between blocks moves inward (the start to the next
  *   block, the end to the previous one); a collapsed caret between blocks, or
  *   before the first, has no place.
+ * - A collapsed caret on a blank line between the blocks of a list, list
+ *   item, quote or `:::` column has no place either; a range end there moves
+ *   inward, as between top-level blocks, and across the container's edge to
+ *   the block beside it where the container has no block on that side.
  * - A caret in a block that shows nothing (an empty heading, item, quote or
  *   code block; a text of blank lines alone) stands in the empty element of
  *   that block, when it has just one; a block with several (three empty
@@ -341,19 +381,32 @@ export function $selectSourceRange(text: string, sourceMap: MarkdownSourceMap, f
         return false;
     }
 
-    const placeOf = (offset: number): SourcePlace | null => {
+    const placeOf = (offset: number, betweenBlocks: BetweenBlocksPlace): SourcePlace | null => {
         if (spans === null) {
-            return $placeInUnpairedBlocks(text, sourceMap.latest.prefix.length, offset);
+            return $placeInUnpairedBlocks(text, sourceMap.latest.prefix.length, offset, betweenBlocks);
         }
 
-        const inBlock = $placeInSpans(text, spans, offset);
+        const inBlock = $placeInSpans(text, spans, offset, betweenBlocks);
         const isCaret = from === to && inBlock === null;
 
         return isCaret ? $placeAfterLastBlock(text, spans, offset) : inBlock;
     };
 
-    const anchor = placeOf(range.from);
-    const focus = from === to ? anchor : placeOf(range.to);
+    let anchor = placeOf(range.from, from === to ? "none" : "next");
+    let focus = from === to ? anchor : placeOf(range.to, "previous");
+
+    // An end on a line between a container's blocks with no block of the container on its inward side goes on across the edge.
+    if (spans !== null && from !== to) {
+        const start = anchor === null ? movedAcrossEdge(text, spans, range.from, "next") : null;
+        const end = focus === null ? movedAcrossEdge(text, spans, range.to, "previous") : null;
+
+        if (start === "stay" || end === "stay" || (start ?? range.from) > (end ?? range.to)) {
+            return false;
+        }
+
+        anchor = start === null ? anchor : placeOf(start, "next");
+        focus = end === null ? focus : placeOf(end, "previous");
+    }
 
     if (anchor === null || focus === null) {
         return false;

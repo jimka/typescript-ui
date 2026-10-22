@@ -14,6 +14,8 @@ import { $serializeMarkdownWithPlaces } from '~/component/editor/markdownSeriali
 import type { MarkdownSourceMap } from '~/component/editor/markdownSourceMap';
 import { $selectSourceRange, $sourceRangeOfSelection, smallestEdit, sourceWindow, wholeDocumentWindow } from '~/component/editor/markdownSourceModel';
 import { $isMarkdownRawBlockNode } from '~/component/editor/markdownSourceNodes';
+import { analyzeMarkdownSource } from '~/component/editor/markdownSourceTokens';
+import type { SourceBlockNode } from '~/component/editor/markdownSourceTokens';
 import { locateTopLevelBlocks } from '~/component/editor/markdownImporter';
 import { prefixTabLines } from '~/component/display/markdownTabs';
 import { DOM } from '~/core/DOM';
@@ -341,6 +343,22 @@ const HAND_WRITTEN: readonly DifferentialDocument[] = [
     { name: 'tab nested item', source: '- a\n\t- b c\n' },
     { name: 'merged cell', source: '| a | b | c |\n| --- | --- | --- |\n| x | << | y z |\n' },
     { name: 'character reference', source: 'a &#35; b and more\n' },
+    // An image or a line break ends or starts a block with a unit that is no text: a range end on the blank line beside it.
+    { name: 'loose list of image items', source: '- ![i](u)\n\n- b\n\n- ![j](v)\n' },
+    { name: 'loose list, text then image', source: '- a ![i](u)\n\n- b\n' },
+    { name: 'quote with an image', source: '> ![i](u)\n>\n> b\n>\n> ![j](v)\n' },
+    { name: 'column with an image', source: '::: columns\n![i](u)\n\nb\n|||\nc\n:::\n' },
+    { name: 'item with an image block', source: '- a\n\n  ![i](u)\n\n- b\n' },
+    // A container's first and last blank line: an end there has no block of the container on its outer side.
+    { name: 'quote with blank first and last lines', source: 'b\n\n>\n> a\n>\n\nc\n' },
+    { name: 'loose list ending in a blank line', source: 'b\n\n- a\n\n\nc\n' },
+    { name: 'tables with a header only', source: 'b\n\n| a |\n| - |\n\nc\n\n| d |\n| - |\n' },
+    // Empty blocks beside a container's blank line: an end there belongs in the empty block, not beyond the container.
+    { name: 'loose lists with empty items at the edges', source: 'x\n\n-\n\n- a\n\n-\n\nc\n' },
+    { name: 'empty quotes among quotes', source: 'x\n\n>\n>\n> a\n>\n>\n\ny\n' },
+    { name: 'tables with empty cells', source: 'x\n\n| |\n| - |\n| |\n\ny\n\n| a |\n| - |\n| |\n' },
+    { name: 'columns holding nothing', source: 'x\n\n::: columns\n|||\n:::\n\ny\n\n::: columns\na\n|||\n:::\n' },
+    { name: 'item with a hard break', source: '- a\\\n\n- b\\\n' },
 ];
 
 /**
@@ -483,6 +501,49 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         ['5.24', '> - one\n> - two', 5, 5, 'numbered', '> 1. one\n>\n> - two', null],
         ['5.32', '> a\n>\n> b', 9, 9, 'quote', '> a\n\nb', null],
         ['5.33', '> a\n>\n> b', 2, 2, 'h2', '> ## a\n>\n> b', null],
+        // A blank line between the blocks of a container names no block: a range end there moves inward, as between top-level blocks.
+        ['a range ending on a loose list\'s blank line moves inward, bold', '- a\n\n- b', 2, 4, 'bold', '- **a**\n\n- b', at(4, 5)],
+        ['a range ending on a loose list\'s blank line moves inward, heading', '- a\n\n- b', 2, 4, 'h2', '## a\n\n- b', at(3, 4)],
+        ['a range starting on a loose list\'s blank line', '- a\n\n- b', 4, 8, 'bold', '- a\n\n- **b**', at(9, 10)],
+        ['a range ending on a quote\'s blank line', '> a\n>\n> b', 1, 4, 'h2', '> ## a\n>\n> b', at(5, 6)],
+        ['the start of the next item\'s line acts on it', '- a\n\n- b', 5, 5, 'h2', '- a\n\n## b', at(8)],
+        ['a range ending on a column separator line moves inward', '::: columns\na\n|||\nc\n:::', 12, 15, 'bold', '::: columns\n**a**\n|||\nc\n:::', null],
+        ['a range starting on a column separator line moves inward', '::: columns\na\n|||\nc\n:::', 15, 20, 'bold', '::: columns\na\n|||\n**c**\n:::', null],
+        ['a range ending on a delimiter row moves inward', '| a | b |\n| - | - |\n| 1 | 2 |', 2, 13, 'bold', '| **a** | **b** |\n| - | - |\n| 1 | 2 |', null],
+        ["a range starting on a quote's last blank line goes on to the next block, bold", '> a\n>\n\nb', 4, 8, 'bold', '> a\n>\n\n**b**', null],
+        ["a range starting on a quote's last blank line goes on to the next block, heading", '> a\n>\n\nb', 4, 8, 'h2', '> a\n>\n\n## b', null],
+        ["a range ending on a quote's first blank line goes back to the previous block, bold", 'b\n\n>\n> a', 0, 4, 'bold', '**b**\n\n>\n> a', null],
+        ["a range ending on a quote's first blank line goes back to the previous block, heading", 'b\n\n>\n> a', 0, 4, 'h2', '## b\n\n>\n> a', null],
+        ["a range starting on a body-less table's delimiter row goes on to the next block", '| a |\n| - |\n\nb', 8, 14, 'bold', '| a |\n| - |\n\n**b**', null],
+        ["a range ending on a body-less table's delimiter row stays in the header", 'x\n\n| a |\n| - |', 0, 11, 'bold', '**x**\n\n| **a** |\n| - |', null],
+        ["a range ending on a quote's last blank line stays in the quote", 'x\n\n> a\n>', 0, 7, 'bold', '**x**\n\n> **a**', null],
+        ["a range starting on a quote's first blank line starts in the quote", '>\n> a\n\nb', 0, 8, 'bold', '> **a**\n\n**b**', null],
+        ["a range starting on a list's last blank line goes on to the next block", '- a\n\n\nb', 4, 7, 'bold', '- a\n\n**b**', null],
+        ["a range inside one blank line at a container's edge does nothing", '> a\n>\n\nb', 4, 5, 'bold', '> a\n>\n\nb', null],
+        ['a range ending on a column fence\'s opening line moves back', 'x\n\n::: columns\na\n|||\nc\n:::', 0, 7, 'bold', '**x**\n\n::: columns\na\n|||\nc\n:::', null],
+        ['a range starting on a column fence\'s closing line moves on', '::: columns\na\n|||\nc\n:::\n\nx', 21, 28, 'bold', '::: columns\na\n|||\nc\n:::\n\n**x**', null],
+        ['a range starting on a blank line before an empty item takes the item, heading', '- a\n\n-\n\nb', 4, 9, 'h2', '- a\n\n##\n\n## b', null],
+        ['a range starting on a blank line before an empty item takes the item, quote', '- a\n\n-\n\nb', 4, 9, 'quote', '- a\n\n> b', null],
+        ['a range ending on a blank line after an empty item takes the item, heading', 'x\n\n-\n\n- b', 0, 5, 'h2', '## x\n\n##\n\n- b', null],
+        ['a range ending on a blank line after an empty item takes the item, quote', 'x\n\n-\n\n- b', 0, 5, 'quote', '> x\n\n- b', null],
+        ['a range starting on a delimiter row before an empty body row takes the row', '| a |\n| - |\n| |\n\ny', 8, 15, 'bold', '| a |\n| - |\n| |\n\ny', null],
+        ['a range ending on a delimiter row after an empty header row takes the row', 'y\n\n| |\n| - |\n| b |', 0, 11, 'bold', '**y**\n\n| |\n| - |\n| b |', null],
+        ['a range starting on a separator line before a column that holds nothing bolds what follows the fence', '::: columns\na\n|||\n:::\n\nb', 14, 25, 'bold', '::: columns\na\n|||\n:::\n\n**b**', null],
+        ['a range ending on a separator line after a column that holds nothing bolds what precedes the fence', 'b\n\n::: columns\n|||\nc\n:::', 0, 16, 'bold', '**b**\n\n::: columns\n|||\nc\n:::', null],
+        ['a range ending on a separator line after an empty column does nothing', 'b\n\n::: columns\n|||\n:::', 0, 16, 'h2', 'b\n\n::: columns\n|||\n:::', null],
+        ['a range starting on a separator line before an empty column does nothing', '::: columns\n|||\n:::\n\nb', 12, 23, 'h2', '::: columns\n|||\n:::\n\nb', null],
+        // A code block's empty line is the code block's, not a blank line between blocks.
+        ['a code block\'s empty line in a quote is the code block\'s', '> ```\n> a\n>\n> ```', 10, 10, 'h2', '> ## a', at(6)],
+        ['a range ending on a blank line after an image item, heading', '- ![i](u)\n\n- b', 2, 10, 'h2', '## ![i](u)\n\n- b', null],
+        ['the same, a list toggle', '- ![i](u)\n\n- b', 2, 10, 'bulleted', '![i](u)\n\n- b', null],
+        ['the same, a quote', '- ![i](u)\n\n- b', 2, 10, 'quote', '> ![i](u)\n\n- b', null],
+        ['a range ending on a blank line after text and an image', '- a ![i](u)\n\n- b', 2, 12, 'h2', '## a ![i](u)\n\n- b', null],
+        ['a range ending on a quote\'s blank line after an image', '> ![i](u)\n>\n> b', 2, 10, 'h2', '> ## ![i](u)\n>\n> b', null],
+        ['a range ending on a column\'s blank line after an image', '::: columns\n![i](u)\n\nb\n|||\nc\n:::', 12, 20, 'h2', '::: columns\n## ![i](u)\n\nb\n|||\nc\n:::', null],
+        ['a range ending on an item\'s blank line after an image block, bold', '- a\n\n  ![i](u)\n\n- b', 2, 15, 'bold', '- **a**\n\n  ![i](u)\n\n- b', null],
+        ['a range starting on a blank line before an image item', '- a\n\n- ![i](u)', 4, 13, 'h2', '- a\n\n## ![i](u)', null],
+        ['a range ending on a top-level blank line after an image', '![i](u)\n\nb', 0, 8, 'h2', '## ![i](u)\n\nb', null],
+        ['a code block\'s empty line in an item is the code block\'s', '- a\n\n  ```\n  x\n\n  y\n  ```', 15, 15, 'h2', '- a\n\n  x\\\n  \\\n  y\n  ---', at(16)],
     ];
 
     it.each(ROWS.map((row) => [`${row[0]} ${row[4]}`, row] as const))('%s: gives the text, and the caret where the WYSIWYG command leaves it', (_title, [, doc, from, to, command, text, caret]) => {
@@ -521,6 +582,46 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         run.editor.dispose();
     });
 
+    // Vitest's default per-test timeout is 5s. The sweep builds an editor for each of 20 commands at each of 24 offsets.
+    const FREEZE_SWEEP_TIMEOUT_MS = 60_000;
+
+    // The document opens with newlines, the shape a line-start helper once looped on for good. Every command ends at once, and
+    // the caret in the raw HTML block of the list item changes nothing.
+    it('every source-mode command ends at once at every offset of a document that opens with newlines', () => {
+        const doc = '\n\n 1.\t</pre>\n \t  >\t#\th\n';
+        // The bound of row 5.21 above: a command that once looped for good takes tens of milliseconds, never a second.
+        const FREEZE_BOUND_MS = 1_000;
+        const commands: Array<[string, (editor: MarkdownEditor) => unknown]> = [
+            ...Object.entries(COMMANDS),
+            ['insertTable', (editor) => editor.insertTable(2, 2)],
+            ['insertParagraphBeforeBlock', (editor) => editor.insertParagraphBeforeBlock()],
+            ['insertParagraphAfterBlock', (editor) => editor.insertParagraphAfterBlock()],
+        ];
+
+        const slow: string[] = [];
+        const changed: string[] = [];
+
+        for (const [name, command] of commands) {
+            for (let at = 0; at <= doc.length; at++) {
+                const started = performance.now();
+                const run = runInSource(doc, { from: at, to: at }, command);
+
+                if (performance.now() - started >= FREEZE_BOUND_MS) {
+                    slow.push(`${name}@${at}`);
+                }
+
+                if (at === 7 && name in COMMANDS && run.text !== doc) {
+                    changed.push(name);
+                }
+
+                run.editor.dispose();
+            }
+        }
+
+        expect(slow).toEqual([]);
+        expect(changed).toEqual([]);
+    }, FREEZE_SWEEP_TIMEOUT_MS);
+
     it('5.22: one replacement, as the smallest edit between the two texts', () => {
         const run = runInSource('hello world', { from: 8, to: 8 }, COMMANDS.bold!);
 
@@ -542,6 +643,24 @@ describe('the pass: a source-mode command runs the WYSIWYG command on the Markdo
         ['5.28', '```\ncode\n```', 6, 6, ['bold'], 'the WYSIWYG command declines in a code block'],
         ['5.29', 'hello world', 0, 11, ['paragraph'], 'the WYSIWYG command changes nothing'],
         ['5.31', '> a\n\t- -\nb', 3, 3, ['bold'], 'the walk does not find the source there'],
+        // A blank line between the blocks of a container names no block, as between top-level blocks.
+        ['the blank line of a loose list', '- a\n\n- b', 4, 4, ['h2', 'bold', 'bulleted', 'image'], 'the blank line of a loose list'],
+        ['the blank line of a loose numbered list', '1. a\n\n2. b', 5, 5, ['h2'], 'the blank line of a loose numbered list'],
+        ['a line of spaces between items', '- a\n  \n- b', 5, 5, ['h2'], 'a line of spaces between items'],
+        ['the blank line between a list item\'s blocks', '- a\n\n  b', 4, 4, ['h2', 'image'], 'the blank line between a list item\'s blocks'],
+        ['a quote\'s line between its blocks, caret at the line\'s start', '> a\n>\n> b', 4, 4, ['h2', 'bold', 'quote'], 'a quote\'s line between its blocks'],
+        ['a quote\'s line between its blocks, caret at the line\'s end', '> a\n>\n> b', 5, 5, ['h2', 'bold', 'quote'], 'a quote\'s line between its blocks'],
+        ['a quote\'s empty last line', '> a\n>', 4, 4, ['h2'], 'a quote\'s empty last line'],
+        ['a quote\'s empty first line', '>\n> a', 1, 1, ['h2'], 'a quote\'s empty first line'],
+        ['a list in a quote, between its items', '> - a\n>\n> - b', 6, 6, ['h2'], 'a list in a quote, between its items'],
+        ['the blank line between a column\'s blocks', '::: columns\na\n\nb\n|||\nc\n:::', 14, 14, ['h2', 'bold'], 'the blank line between a column\'s blocks'],
+        ['the separator line between a column\'s blocks', '::: columns\na\n|||\nc\n:::', 15, 15, ['h2', 'bold'], 'a `|||` line names no block'],
+        ['a column fence\'s opening line', '::: columns\na\n|||\nc\n:::', 5, 5, ['h2', 'bold'], 'a fence line names no block'],
+        ['a column fence\'s closing line', '::: columns\na\n|||\nc\n:::', 21, 21, ['h2', 'bold'], 'a fence line names no block'],
+        ['a table\'s delimiter row', '| a | b |\n| - | - |\n| 1 | 2 |', 13, 13, ['h2', 'bold'], 'a delimiter row names no block'],
+        ['the blank line before an empty item', '- a\n\n-', 4, 4, ['h2'], 'the blank line before an empty item'],
+        ['the blank line before a code block in an item', '- a\n\n  ```\n  x\n  ```\n\n- b', 4, 4, ['h2'], 'the blank line before a code block in an item'],
+        ['the blank line after a code block in an item', '- a\n\n  ```\n  x\n  ```\n\n- b', 21, 21, ['h2'], 'the blank line after a code block in an item'],
     ];
 
     it.each(DECLINES.flatMap(([id, doc, from, to, commands, why]) => commands.map((command) => [`${id} ${command}`, doc, from, to, command, why] as const)))(
@@ -879,6 +998,28 @@ function carets(source: string): number[] {
     return [...new Set(offsets)];
 }
 
+/**
+ * Whether a caret stands on a blank line inside a top-level block, between the blocks of a container: the line holds
+ * only spaces, tabs and `>`, a top-level block holds the caret, and no block of the viewer's reading that holds no other
+ * block has its source on the line.
+ *
+ * @param doc - The document.
+ * @param at - The caret.
+ * @returns Whether it does.
+ */
+function standsOnBlankLineInsideBlock(doc: string, at: number): boolean {
+    const lineStart = at <= 0 ? 0 : doc.lastIndexOf('\n', at - 1) + 1;
+    const newline = doc.indexOf('\n', at);
+    const line = doc.slice(lineStart, newline === -1 ? doc.length : newline);
+    const inTopLevel = locateTopLevelBlocks(doc).blocks.some((block) => block.start <= at && at <= block.end);
+    const lineOf = (offset: number): number => (offset <= 0 ? 0 : doc.lastIndexOf('\n', offset - 1) + 1);
+    const leaves = (nodes: readonly SourceBlockNode[]): SourceBlockNode[] => nodes.flatMap((node) => (node.children.length === 0 ? [node] : leaves(node.children)));
+    const onLeaf = leaves(analyzeMarkdownSource(doc).tree).some((leaf) => leaf.start === -1
+        || (lineOf(leaf.start) <= lineStart && lineStart <= lineOf(Math.max(leaf.start, leaf.end - 1))));
+
+    return /^[ \t>]*$/.test(line) && inTopLevel && !onLeaf;
+}
+
 /** The differential runs in this many parts, each a test of its own, so that each part's editors are released before the next. */
 const DIFFERENTIAL_PARTS = 8;
 
@@ -886,7 +1027,7 @@ describe('the corpus differential', () => {
     it.each(Array.from({ length: DIFFERENTIAL_PARTS }, (_, part) => part))('9: part %i: every source-mode command gives what the WYSIWYG command gives at the same selection, but for the declines', (part) => {
         const documents = [...CORPUS, ...HAND_WRITTEN, ...EDGE_DOCUMENTS].map((entry, index) => ({ entry, index })).filter(({ index }) => index % DIFFERENTIAL_PARTS === part);
         const differences: string[] = [];
-        const counts = { compared: 0, declined: 0, unplaced: 0, gaps: 0, ambiguous: 0, shown: 0, blank: 0 };
+        const counts = { compared: 0, declined: 0, unplaced: 0, gaps: 0, ambiguous: 0, shown: 0, blank: 0, innerBlank: 0 };
 
         documents.forEach(({ entry, index: d }) => {
             const source = entry.source.replace(/\r\n?/g, '\n');
@@ -900,6 +1041,20 @@ describe('the corpus differential', () => {
                 selections.push({ from: middles[i]!, to: middles[i + 1]! });
             }
 
+            // A range with an end on a blank line inside a container, from the line before it or to the line after it.
+            offsets.filter((at) => !isEdge && standsOnBlankLineInsideBlock(source, at)).forEach((at) => {
+                const before = middles.findLast((middle) => middle < at);
+                const after = middles.find((middle) => middle > at);
+
+                if (before !== undefined) {
+                    selections.push({ from: before, to: at });
+                }
+
+                if (after !== undefined) {
+                    selections.push({ from: at, to: after });
+                }
+            });
+
             selections.forEach((selection, k) => {
                 const names = [BLOCK_COMMANDS[(d + k) % BLOCK_COMMANDS.length]!, INLINE_COMMANDS[(d + k) % INLINE_COMMANDS.length]!];
 
@@ -910,6 +1065,17 @@ describe('the corpus differential', () => {
                     const run = runInSource(source, selection, COMMANDS[name]!);
 
                     try {
+                        // A caret on a blank line between the blocks of a container names no block: the command does nothing.
+                        if (selection.from === selection.to && standsOnBlankLineInsideBlock(source, selection.from)) {
+                            counts.innerBlank += 1;
+
+                            if (run.text !== source || run.replaced.length !== 0) {
+                                differences.push(`${where}: acted on a blank line between the blocks of a container`);
+                            }
+
+                            continue;
+                        }
+
                         // A mark at a line's start can end the container it stands in (a fence's content in an item), so only a caret
                         // that no top-level block holds is on blank lines between or before blocks.
                         const isOnBlankLines = shown.blankWhere !== null && !topLevel.some((block) => block.start <= selection.from && selection.from <= block.end);

@@ -584,13 +584,16 @@ page resets to empty.
   editor's own form, as a WYSIWYG edit does. A command on text the WYSIWYG
   surface keeps as a raw Markdown block does nothing, where source mode converted some of those lines before
   (`> - one`). A command also does nothing with the caret on several empty
-  items, rows, cells or columns of one block (`-` / `-` / `-`), on the blank
-  lines between blocks or before the first block, and where the editor does
-  not find the source of what a block shows beside the selection (the cases
-  the component page lists). A read-only editor refuses every source-mode
-  command that edits text, `insertTable` and the two paragraph inserts
-  included, with `"readonlyedit"` up front, also where the command would
-  have done nothing. No consumer action is needed.
+  items, rows, cells or columns of one block (`-` / `-` / `-`), on a blank
+  line between blocks — also between the items of a list, the blocks of a
+  list item or a quote, and the blocks of a `:::` column — on a `:::`
+  fence's opening, `|||` and closing lines, on a table's delimiter row, or
+  before the first block, and where the editor does not find the source of
+  what a block shows beside the selection (the cases the component page
+  lists). A read-only editor refuses every source-mode command that edits
+  text, `insertTable` and the two paragraph inserts included, with
+  `"readonlyedit"` up front, also where the command would have done
+  nothing. No consumer action is needed.
 
 - **`MarkdownEditor` keeps the unedited parts of an edited block as
   written.** An edit in a list, table, fenced code block or `:::` fence
@@ -745,11 +748,11 @@ page resets to empty.
   converted paragraph is set apart from its neighbours rather than joining
   them, so toggling a list off makes each item its own paragraph; and
   `insertTable` goes above the whole block holding the caret instead of
-  splitting an HTML block or a table. The other eleven
-  commands — `setBlockAlignment`, `setColumnCount`, and the nine
-  table-structure commands — still no-op in `"source"` mode; each needs its own
-  design (a `:::` fence rewrite or a parsed pipe grid) and is left for a
-  follow-up. `getSelectionState()` and `"selectionstate"` are mode-aware too:
+  splitting an HTML block or a table, and does nothing on a blank line
+  inside a list or a quote. The other eleven commands — `setBlockAlignment`,
+  `setColumnCount`, and the nine table-structure commands — still no-op in
+  `"source"` mode; each needs its own design (a `:::` fence rewrite or a
+  parsed pipe grid) and is left for a follow-up. `getSelectionState()` and `"selectionstate"` are mode-aware too:
   in `"source"` mode the five format flags, `hasSelectedText`, and `linkUrl`
   are derived from the raw text, while `inTable`, `tableColumnAlignment`,
   `blockAlignment`, and `columnCount` report the fields that mode has no
@@ -1933,6 +1936,27 @@ page resets to empty.
   that runs from such a block's very start into a table is not judged so: it
   is removed with the table and no break is added. No consumer
   action is needed.
+
+- **`MarkdownEditor`: a selection removed from a raw Markdown block into a
+  later block no longer makes a heading or code block at the joint.**
+  Deleting from the
+  start of a nested item's text in a raw list (`- a`, `  - b`, `    > q`,
+  `  - c`) to the end of a later paragraph left the item's `-` alone under
+  `a`, where it reads as a heading's underline, and saved `- ## a`; the
+  item now stays, empty, saved `- a` and `  *`. The spaces or tab that the
+  rest of the later block started with stayed in front of it where it
+  opened a line of the raw block, so `x`, a tab and `# y` joined at a
+  thematic break's start became a code block holding `\# y`, and four
+  spaces after a list marker made the item's text code; they are now kept
+  only as far as the line still reads as that text. Typing, a paste and the
+  other edits over such a selection give the same, as they remove it as
+  Delete does first. A later HTML block or code block joined at such a line
+  start keeps its lines as they are, but for the first: its leading
+  whitespace is kept only as far as the line still reads as its text, and a
+  first character that would make a heading or a code block (`# y`, a
+  fence) gets a backslash. The later lines of such a block, and a later
+  raw Markdown block such as a list, join as before. No consumer action is
+  needed.
 
 - **A raw Markdown block left holding nothing shows as an empty paragraph.**
   Deleting all that a raw block holds, or a selection from its start on into
