@@ -9,7 +9,9 @@
 // external packages imported statically for their code,
 // `@codemirror/language`, `@codemirror/state` and `@codemirror/view`, are
 // ones `CodeEditor` itself imports, so they are in that chunk already; the
-// other static imports are this library's own modules, or types.
+// other static imports are this library's own modules, or types. Two of those
+// modules, `markdownSourceTags.ts` and `markdownSourceSyntax.ts`, import
+// `@lezer/highlight`, which `theme.ts` (and so `CodeEditor`) imports too.
 
 import type { styleTags as highlightStyleTags, tags as highlightTags } from "@lezer/highlight";
 import { syntaxTree } from "@codemirror/language";
@@ -28,6 +30,10 @@ import type { SyntaxNode } from "~/component/editor/markdownTabStopCommands.js";
 import { MARKDOWN_TAB_STOPS, readQuoteContinuationTabs } from "~/component/editor/markdownTabStops.js";
 import type { BlockParser, MarkdownConfig } from "~/component/editor/markdownTabStops.js";
 import { collectSyntaxErrors } from "~/component/editor/syntaxDiagnostics.js";
+import { MARKDOWN_SOURCE_TAGS } from "~/component/editor/markdownSourceTags.js";
+import {
+    MARKDOWN_ATTRIBUTE_GROUPS, MARKDOWN_FENCE_FOLD, MARKDOWN_FENCE_LINES, MARKDOWN_SOURCE_RETAGS, MARKDOWN_STRIKETHROUGH, MARKDOWN_TABLES, MARKDOWN_UNDERLINE,
+} from "~/component/editor/markdownSourceSyntax.js";
 
 /** Loads the babel + estree plugins Prettier's `babel-ts` and `json` parsers need. */
 async function loadBabelPlugins() {
@@ -513,10 +519,10 @@ class TaskLeafParser implements LeafParser {
 
 /**
  * Lezer's own `TaskList` extension with two changes: the leaf test is
- * {@link TASK_MARKER_LEAF}, the viewer's, and the `TaskMarker` node is styled
- * `processingInstruction`, the tag of a list's marker, so the editor theme
- * mutes `[ ]` and `[x]` as it mutes `-`. Built here, from the `tags` the
- * caller imports, so this module still loads no grammar package.
+ * {@link TASK_MARKER_LEAF}, the viewer's, and the `TaskMarker` node takes
+ * the block-mark tag of a list's marker, so the editor theme colours `[ ]`
+ * and `[x]` as it colours `-`. Built here, from the `tags` the caller
+ * imports, so this module still loads no grammar package.
  *
  * @param tags - The `tags` of `@lezer/highlight`.
  * @returns The extension.
@@ -525,7 +531,7 @@ function taskMarkerExtension(tags: typeof highlightTags): MarkdownConfig {
     return {
         defineNodes: [
             { name: "Task", block: true, style: tags.list },
-            { name: "TaskMarker", style: tags.processingInstruction },
+            { name: "TaskMarker", style: MARKDOWN_SOURCE_TAGS.blockMark },
         ],
         parseBlock: [
             {
@@ -555,9 +561,9 @@ function taskMarkerExtension(tags: typeof highlightTags): MarkdownConfig {
 /**
  * Tags a link title — `"t"` in `[text](url "t")` and in a link reference
  * definition — `content`, which the editor theme leaves unstyled, in place of
- * lezer's `string`, so a title is drawn in the text colour. A title inside a
- * link is already text-coloured by the theme's link rule; this reaches the
- * title of a definition, which is not inside a link. Built from the caller's
+ * lezer's `string`, so a title is drawn in the text colour. The theme has no
+ * link rule any more, so this retag is what keeps every title, in a link or in
+ * a definition, out of the shared string green. Built from the caller's
  * imports, so this module still loads no grammar package.
  *
  * @param tags - The `tags` of `@lezer/highlight`.
@@ -584,13 +590,20 @@ registerLanguage({
             import("@codemirror/language"),
         ]);
 
+        const { styleTags, tags } = await import("@lezer/highlight");
+
         // dialect "noMatch" mirrors markdown()'s own default HTML language
         // (tag matching off); html({ autoCloseTags: false }).support keeps its
         // tag completion and the nested <script>/<style> support.
         const literalHtml = new LanguageSupport(
             htmlLanguage.configure({
                 dialect: "noMatch",
-                props:   [indentNodeProp.add({ "Document Element OpenTag CloseTag SelfClosingTag": indentInsideMarkdownHtml })],
+                props:   [
+                    indentNodeProp.add({ "Document Element OpenTag CloseTag SelfClosingTag": indentInsideMarkdownHtml }),
+                    // Draws all the HTML mounted in a Markdown HTML block, tag or comment in the HTML colour, and
+                    // stops the highlighter before the nested JavaScript and CSS: `!` ends the walk at this node.
+                    styleTags({ "Document!": MARKDOWN_SOURCE_TAGS.html }),
+                ],
             }),
             html({ autoCloseTags: false }).support,
         );
@@ -599,9 +612,13 @@ registerLanguage({
         // stops; the stock parser does not (see markdownTabStops.ts). The
         // parser markdown() configured here is this language's own, so the
         // second call changes no other language.
-        const { styleTags, tags } = await import("@lezer/highlight");
         const support = markdown({
-            htmlTagLanguage: literalHtml, extensions: [MARKDOWN_TAB_STOPS, taskMarkerExtension(tags), linkTitleTagExtension(tags, styleTags)], addKeymap: false,
+            htmlTagLanguage: literalHtml,
+            extensions:      [
+                MARKDOWN_TAB_STOPS, taskMarkerExtension(tags), linkTitleTagExtension(tags, styleTags), MARKDOWN_SOURCE_RETAGS,
+                MARKDOWN_STRIKETHROUGH, MARKDOWN_UNDERLINE, MARKDOWN_ATTRIBUTE_GROUPS, MARKDOWN_FENCE_LINES, MARKDOWN_TABLES,
+            ],
+            addKeymap:       false,
         });
 
         readQuoteContinuationTabs(support.language.parser);
@@ -619,7 +636,7 @@ registerLanguage({
             { key: "Backspace", run: atMarkdownTabStops(deleteMarkupBackward) },
         ]);
 
-        return [Prec.high(markdownKeys), support];
+        return [Prec.high(markdownKeys), support, MARKDOWN_FENCE_FOLD];
     },
     loadFormatter: async () => formatWithPrettier("markdown", async () => [await import("prettier/plugins/markdown")]),
 });
