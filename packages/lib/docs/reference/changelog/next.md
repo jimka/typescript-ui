@@ -1822,6 +1822,21 @@ page resets to empty.
   heading that ends in an escaped `#` (`# alpha \#`) now gives
   `alpha \#`, as in source mode, where it gave `alpha #`.
 
+- **`MarkdownEditor` writes a joined block's text with the escapes the
+  place it joins needs.** Into a code block, the rest of a block joins as
+  that block's own save holds it, as source mode does: deleting from a
+  code block into a heading wrote `\+alpha` for `### +alpha`, and a rest
+  starting mid-line got the escapes a line start needs (`a # b` from after
+  `a ` gave `\# b`); a paragraph keeps `a * b` as written (it gave
+  `a \* b`), and a no-break space is the character itself, not `&nbsp;`.
+  Into a raw block, the rest keeps every escape, escaped for where it
+  lands: mid-line it has no line-start escape (Backspace at a paragraph
+  after a raw block gives `</div>+alpha`, where it gave `</div>\+alpha`),
+  right after a raw quote's or list's marker it keeps them, and a leading
+  `>` is escaped when it would close a tag the raw block left open. Backspace
+  and Delete between a code block or raw block and a heading, quote or list
+  item's text now join it the same way. No consumer action is needed.
+
 - **`MarkdownEditor` no longer throws on Tab, or on a paste or drop, over
   a selection that starts just before a list.** A selection from the very
   start of a document that opens with a list (as code can set one) made

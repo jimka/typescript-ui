@@ -477,6 +477,15 @@ interface InlineContext {
     /** `marked` trims each line's edges of the content (a setext heading's lines), as it does a single-line block's. */
     readonly trimsLineEdges?: boolean;
     /**
+     * The character the content's first line follows, for content written
+     * after text already on that line (a raw block's or code block's line it
+     * joins). That line is escaped against it and takes no escape a line's
+     * start needs: no block starter, HTML block start, link reference
+     * definition or task checkbox opens there. Absent when the content opens
+     * its line.
+     */
+    readonly continuesAfter?: string;
+    /**
      * The saved document's link reference definitions, as the viewer resolves
      * them; `null` when the document holds no reference link to resolve.
      */
@@ -1006,35 +1015,88 @@ export function $serializeBlock(node: LexicalNode): string {
  * Every escape is written: the Markdown joins text already there.
  *
  * @param nodes - The inline nodes.
+ * @param before - The character the nodes follow on their first line; `""` (the default) or `"\n"` where they open a line.
  * @returns Their Markdown, lines separated by `\n`.
  */
-export function $serializeInlineNodes(nodes: LexicalNode[]): string {
-    return serializeInlineNodes(nodes, { ...MULTI_LINE, definitions: $collectDefinitions(), joinsMarkdown: true, joinsIntoRawBlock: true });
+export function $serializeInlineNodes(nodes: LexicalNode[], before: string = ""): string {
+    const context: InlineContext = {
+        ...MULTI_LINE, definitions: $collectDefinitions(), joinsMarkdown: true, joinsIntoRawBlock: true, continuesAfter: continuationOf(before),
+    };
+
+    return serializeInlineNodes(nodes, context);
+}
+
+/**
+ * The character a first line continues after, as {@link InlineContext.continuesAfter} takes it.
+ *
+ * @param before - The character before the content on its line; `""` or `"\n"` where the content opens its line.
+ * @returns The character, or `undefined` at a line's start.
+ */
+function continuationOf(before: string): string | undefined {
+    const opensLine = before === "" || before === "\n";
+
+    return opensLine ? undefined : before;
 }
 
 /**
  * Serializes a block's inline content as the block's own save writes it —
- * the Markdown a code block holds for a block converted to one. A heading's
- * content is written as the heading's save writes it, without its `#`s or
- * underline: an ATX heading's line, with no escape a paragraph's line start
- * needs (`+alpha`, not `\+alpha`) and its trailing `#` run escaped
- * (`alpha \#`), or the lines of its setext form. A paragraph's or quote's
- * content is its lines, a list item's text its lines with a task marker as
- * written. Must run inside an `editor.read` or `editor.update`.
+ * the Markdown a code block holds for a block converted to one.
+ * See {@link $serializeRestOfBlock}.
  *
  * @param block - A paragraph, heading, quote or list item's text.
  * @returns Its content's Markdown, lines separated by `\n`.
  */
 export function $serializeBlockContent(block: ElementNode): string {
+    return $writeRestOfBlock(block, block.getChildren(), "", false);
+}
+
+/**
+ * Serializes the rest of a block from a point as the block's own save
+ * writes it — the Markdown a code block holds for a block, or the rest of
+ * one, that joins it. A heading's content is written as the heading's save
+ * writes it, without its `#`s or underline: an ATX heading's line, with no
+ * escape a paragraph's line start needs (`+alpha`, not `\+alpha`) and its
+ * trailing `#` run escaped (`alpha \#`), or the lines of its setext form. A
+ * paragraph's or quote's content is its lines, a list item's text its lines
+ * with a task marker as written. Only the first line of a rest that
+ * continues a line (`before` neither `""` nor `"\n"`) leaves out a line
+ * start's escapes. The text is written for a code block or raw block, which
+ * holds no line edge of its own: a no-break space at its edge is the
+ * character itself, not the `&nbsp;` the block's own save writes there.
+ * Must run inside an `editor.read` or `editor.update`.
+ *
+ * @param block - A paragraph, heading, quote or list item's text.
+ * @param nodes - The rest of the block, or all of it: the nodes to write.
+ * @param before - The character before the nodes in the block; `""` or `"\n"` where they open a line.
+ * @returns Their Markdown, lines separated by `\n`.
+ */
+export function $serializeRestOfBlock(block: ElementNode, nodes: LexicalNode[], before: string): string {
+    return $writeRestOfBlock(block, nodes, before, true);
+}
+
+/**
+ * Writes the rest of a block as {@link $serializeRestOfBlock} does.
+ *
+ * @param block - A paragraph, heading, quote or list item's text.
+ * @param nodes - The nodes to write.
+ * @param before - The character before the nodes in the block.
+ * @param joinsIntoRawBlock - Whether the text is joined into a raw block or code block, which holds no line edge of its own
+ *   ({@link InlineContext.joinsIntoRawBlock}): a no-break space at its edge is written as the character, not `&nbsp;`.
+ * @returns Their Markdown.
+ */
+function $writeRestOfBlock(block: ElementNode, nodes: LexicalNode[], before: string, joinsIntoRawBlock: boolean): string {
     const definitions = $collectDefinitions();
 
     if ($isHeadingNode(block)) {
-        const written = writtenHeadingContent(block, definitions);
-
-        return written.content;
+        return writtenHeadingLines(nodes, Number(block.getTag().slice(1)), definitions, before, joinsIntoRawBlock).content;
     }
 
-    return serializeInline(block, { ...MULTI_LINE, definitions, inListItem: $isMarkdownListItemTextNode(block) });
+    const context: InlineContext = {
+        ...MULTI_LINE, definitions, inListItem: $isMarkdownListItemTextNode(block), continuesAfter: continuationOf(before),
+        ...(joinsIntoRawBlock ? { joinsIntoRawBlock } : {}),
+    };
+
+    return serializeInlineNodes(nodes, context);
 }
 
 /**
@@ -2419,20 +2481,62 @@ function serializeHeading(node: HeadingNode, definitions: Links | null): string 
  * @returns The content, and whether it is written setext.
  */
 function writtenHeadingContent(node: HeadingNode, definitions: Links | null): { content: string; setext: boolean } {
-    const level = Number(node.getTag().slice(1));
+    return writtenHeadingLines(node.getChildren(), Number(node.getTag().slice(1)), definitions, "", false);
+}
+
+/**
+ * The content of a heading, or the rest of one from a point, written as
+ * {@link writtenHeadingContent} writes it.
+ *
+ * @param nodes - The heading's children, or the ones after the point.
+ * @param level - The heading's level.
+ * @param definitions - The saved document's link reference definitions, or `null`.
+ * @param before - The character before the nodes in the heading; `""` or `"\n"` where they open a line.
+ * @param joinsIntoRawBlock - Whether the text is joined into a raw block or code block ({@link InlineContext.joinsIntoRawBlock}).
+ * @returns The content, and whether it is written setext.
+ */
+function writtenHeadingLines(
+    nodes: LexicalNode[], level: number, definitions: Links | null, before: string, joinsIntoRawBlock: boolean,
+): { content: string; setext: boolean } {
+    const continuesAfter = continuationOf(before);
+    const joined = joinsIntoRawBlock ? { joinsIntoRawBlock } : {};
 
     if (level <= SETEXT_MAX_LEVEL) {
         // The underline is Markdown the lean rules do not see: `|` over `---` is a table.
-        const lines = serializeInline(node, { ...MULTI_LINE, definitions, joinsMarkdown: true, trimsLineEdges: true });
+        const lines = serializeInlineNodes(
+            nodes, { ...MULTI_LINE, definitions, joinsMarkdown: true, trimsLineEdges: true, continuesAfter, ...joined },
+        );
 
-        if (lines.includes("\n") && !lines.split("\n").some((line) => SETEXT_INTERRUPTING_LINE.test(line))) {
+        const isMultiLine = lines.includes("\n") || before === "\n";
+        const isInterrupted = lines.split("\n").some((line) => SETEXT_INTERRUPTING_LINE.test(line));
+
+        if (isMultiLine && !isInterrupted) {
             return { content: lines, setext: true };
         }
     }
 
-    const content = serializeInline(node, { ...HEADING_LINE, definitions }).replace(/(^|[ \t])(#+)$/, "$1\\$2");
+    const line = serializeInlineNodes(nodes, { ...HEADING_LINE, definitions, continuesAfter, ...joined });
 
-    return { content, setext: false };
+    return { content: escapeClosingHashes(line, before), setext: false };
+}
+
+/**
+ * Escapes the `#` run an ATX heading's line ends with, which would
+ * otherwise read as the heading's closing sequence: a run after a space or
+ * a tab, or one that is the whole line — when the line opens there.
+ *
+ * @param line - The heading's line, or the rest of it from a point.
+ * @param before - The character before the line's text; `""` or `"\n"` at the heading's start.
+ * @returns The line, its closing run escaped.
+ */
+function escapeClosingHashes(line: string, before: string): string {
+    const runMayOpen = before === "" || /^[ \t\n]$/.test(before);
+
+    return line.replace(/(^|[ \t])(#+)$/, (match: string, space: string, hashes: string) => {
+        const isClosing = space !== "" || runMayOpen;
+
+        return isClosing ? space + "\\" + hashes : match;
+    });
 }
 
 /**
@@ -3192,7 +3296,9 @@ function leanOrFull(pieces: Piece[], context: InlineContext, choices: AssemblyCh
     }
 
     const full = assembleLines(pieces, context, choices);
-    const alike = leanReadsAsFull(lean, full, context);
+    // A first line that continues a line is read after the character it follows.
+    const prefix = context.continuesAfter ?? "";
+    const alike = leanReadsAsFull(prefix + lean, prefix + full, context);
 
     return alike ? lean : full;
 }
@@ -5416,10 +5522,12 @@ function assembleLines(
         )),
         choices.switched,
     );
-    let written = false;
+    // A first line that continues a line opens no block: no definition or task checkbox starts there.
+    const continues = context.continuesAfter !== undefined;
+    let written = continues;
 
     lineContents.forEach((pieces, index) => {
-        lineContents[index] = strayTaskMarkersAsText(pieces, context.inListItem === true && index === 0);
+        lineContents[index] = strayTaskMarkersAsText(pieces, context.inListItem === true && index === 0 && !continues);
     });
 
     const block = context.lean === true ? leanBlock(lineContents) : null;
@@ -5427,10 +5535,12 @@ function assembleLines(
     return lines.map((line, index) => {
         const lean = block === null ? null : {
             pairable: block.pairable, grouped: block.grouped[index]!, continuation: index > 0,
-            afterMarker: context.inListItem === true && index === 0, drops,
+            afterMarker: context.inListItem === true && index === 0 && !continues, drops,
         };
 
-        const content = escapeHtmlBlockStart(renderLine(lineContents[index]!, context, !written, lean), lineContents[index]!, index === 0, context);
+        const continuing = continues && index === 0;
+        const rendered = renderLine(lineContents[index]!, context, !written, lean, continuing ? context.continuesAfter! : null);
+        const content = continuing ? rendered : escapeHtmlBlockStart(rendered, lineContents[index]!, index === 0, context);
 
         written ||= content !== "";
 
@@ -5787,9 +5897,12 @@ function strayTaskMarkersAsText(pieces: LinePiece[], itemFirstLine: boolean): Li
  * @param startsBlock - Whether nothing of the block has been written before
  *   this line, so it is where a link reference definition could start.
  * @param lean - What the lean rules know beyond the line, for a lean writing; `null` for every escape.
+ * @param continuesAfter - The character the line follows, when it continues a line; `null` when it opens one.
  * @returns The line.
  */
-function renderLine(pieces: LinePiece[], context: InlineContext, startsBlock: boolean, lean: LeanLine | null = null): string {
+function renderLine(
+    pieces: LinePiece[], context: InlineContext, startsBlock: boolean, lean: LeanLine | null = null, continuesAfter: string | null = null,
+): string {
     const rendered = pieces.map((piece, index) => {
         if (piece.kind === "reference" || piece.kind === "source") {
             return piece.shortcut === true && joinsShortcut(pieces, index, startsBlock, context) ? piece.text + "[]" : piece.text;
@@ -5803,7 +5916,7 @@ function renderLine(pieces: LinePiece[], context: InlineContext, startsBlock: bo
 
         // A reference's closing `]` is never read as a link's or span's
         // opening bracket, so it is no reason to escape a `(` or `{` after it.
-        const before = previous === undefined ? "\n" : previous.kind === "reference" ? "" : previous.text.slice(-1);
+        const before = previous === undefined ? continuesAfter ?? "\n" : previous.kind === "reference" ? "" : previous.text.slice(-1);
         const after = pieces[index + 1]?.text[0] ?? "\n";
 
         const leanText = lean === null ? null : { pairable: lean.pairable, grouped: lean.grouped[index] === true, drops: lean.drops };
@@ -5811,7 +5924,9 @@ function renderLine(pieces: LinePiece[], context: InlineContext, startsBlock: bo
         return escapeText(piece.text, before, after, context, leanText);
     }).join("");
 
-    return !context.singleLine && pieces[0]?.kind === "text" ? escapeLineStart(rendered, lean) : rendered;
+    const opensLine = continuesAfter === null;
+
+    return !context.singleLine && opensLine && pieces[0]?.kind === "text" ? escapeLineStart(rendered, lean) : rendered;
 }
 
 /** What the lean rules know beyond one line: read off the whole block by {@link leanBlock}. */

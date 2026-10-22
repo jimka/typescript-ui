@@ -11,7 +11,7 @@ import {
     $createParagraphNode, $createRangeSelection, $createTextNode, $getRoot, $getSelection, $isRangeSelection, $isTextNode,
     $setSelection, CONTROLLED_TEXT_INSERTION_COMMAND, CUT_COMMAND, DELETE_CHARACTER_COMMAND, DELETE_WORD_COMMAND, INSERT_LINE_BREAK_COMMAND,
     INSERT_PARAGRAPH_COMMAND, INSERT_TAB_COMMAND, INTERNAL_$isBlock, KEY_ENTER_COMMAND, PASTE_COMMAND, REMOVE_TEXT_COMMAND,
-    SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, UNDO_COMMAND, createEditor,
+    SELECTION_INSERT_CLIPBOARD_NODES_COMMAND, UNDO_COMMAND, createEditor, DELETE_LINE_COMMAND,
     COMPOSITION_START_COMMAND, COMPOSITION_END_TAG, $setCompositionKey, $findMatchingParent, CAN_UNDO_COMMAND, COMMAND_PRIORITY_LOW,
 } from 'lexical';
 import type { ElementNode, Klass, LexicalCommand, LexicalEditor, LexicalNode, PointType, RangeSelection, TextNode } from 'lexical';
@@ -870,13 +870,13 @@ describe('a range from a block start into a later block\'s word is removed witho
         expect(editor.getValue()).toBe('<div>a \\* b');
     });
 
-    it('R16: deleting from a code block\'s start into a later block joins the rest with every escape', () => {
+    it('R16: deleting from a code block\'s start into a later block joins the rest as that block saves it', () => {
         const editor = load('```\ncode\n```\n\nefgh a * b **c** kl');
 
         selectText(editor, ['code', 0], ['efgh a * b ', 3]);
         lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
 
-        expect(editor.getValue()).toBe('```\nh a \\* b **c** kl\n```');
+        expect(editor.getValue()).toBe('```\nh a * b **c** kl\n```');
     });
 
     it('R10: a native cut of a range keeping part of the start block is Lexical\'s own', async () => {
@@ -2463,5 +2463,231 @@ describe('upstream canaries: the Lexical bugs the guards work around still repro
 
         expect(errors).toEqual([]);
         expect(composesInLink).toBe(true);
+    });
+});
+
+/** A code block holding `code`, then a blank line. */
+const CODE = '```\ncode\n```\n\n';
+
+/** A raw HTML block, then a blank line. */
+const RAW = '<div>\nraw\n</div>\n\n';
+
+/**
+ * Stubs the event classes `registerRichText`'s paste handler tells apart by
+ * name, and builds a plain-text paste event.
+ *
+ * @param text - The pasted text.
+ * @returns The event.
+ */
+function plainTextPaste(text: string): ClipboardEvent {
+    vi.stubGlobal('ClipboardEvent', class ClipboardEvent {});
+    vi.stubGlobal('DragEvent', class DragEvent {});
+    vi.stubGlobal('InputEvent', class InputEvent {});
+    vi.stubGlobal('KeyboardEvent', class KeyboardEvent {});
+
+    return Object.assign(new ClipboardEvent('paste'), {
+        clipboardData: { types: ['text/plain'], files: [], getData: (type: string) => (type === 'text/plain' ? text : '') },
+        preventDefault: () => {},
+    });
+}
+
+/** An input at the selection, as a route a range can be replaced through. */
+const JOIN_ROUTES: Record<string, (editor: MarkdownEditor) => void> = {
+    'typing': (editor) => { lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'Z'); },
+    'plain-text paste': (editor) => {
+        const event = plainTextPaste('Z');
+
+        lexicalOf(editor).update(() => { lexicalOf(editor).dispatchCommand(PASTE_COMMAND, event); }, { discrete: true });
+    },
+    'Enter': (editor) => { lexicalOf(editor).dispatchCommand(KEY_ENTER_COMMAND, null); },
+    'Shift+Enter': (editor) => { lexicalOf(editor).dispatchCommand(INSERT_LINE_BREAK_COMMAND, false); },
+    'Tab': (editor) => { lexicalOf(editor).dispatchCommand(INSERT_TAB_COMMAND, undefined); },
+};
+
+/**
+ * Undoes one history step. The history reports its state to a listener of
+ * `CAN_UNDO_COMMAND` only once something listens for it, as the I rows do.
+ *
+ * @param editor - The editor.
+ */
+function undo(editor: MarkdownEditor): void {
+    const lexical = lexicalOf(editor);
+    let canUndo = false;
+    const stopWatching = lexical.registerCommand(CAN_UNDO_COMMAND, (can) => { canUndo = can; return false; }, COMMAND_PRIORITY_LOW);
+
+    lexical.dispatchCommand(UNDO_COMMAND, undefined);
+    stopWatching();
+    expect(canUndo, 'one undo is all there was').toBe(false);
+}
+
+describe('a join into a code block or raw block writes what the joined block held (J rows)', () => {
+    /** Range rows: the source, where the range starts, where it ends, and the save. */
+    const JOIN_ROWS: Array<[string, string, TextPoint, TextPoint, string]> = [
+        ['J1', CODE + '### +alpha', ['code', 4], ['+alpha', 0], '```\ncode+alpha\n```'],
+        ['J2', CODE + '### alpha \\#', ['code', 4], ['alpha #', 0], '```\ncodealpha \\#\n```'],
+        ['J3', CODE + '### x # y', ['code', 4], ['x # y', 2], '```\ncode# y\n```'],
+        ['J4', CODE + '+alpha', ['code', 4], ['+alpha', 0], '```\ncode+alpha\n```'],
+        ['J5', CODE + '\\+ alpha', ['code', 4], ['+ alpha', 0], '```\ncode\\+ alpha\n```'],
+        ['J6', CODE + 'a # b', ['code', 4], ['a # b', 2], '```\ncode# b\n```'],
+        ['J7', CODE + 'a * b', ['code', 4], ['a * b', 0], '```\ncodea * b\n```'],
+        ['J8', CODE + 'snake_case_x', ['code', 4], ['snake_case_x', 5], '```\ncode_case_x\n```'],
+        ['J9', CODE + '> \\- alpha', ['code', 4], ['- alpha', 0], '```\ncode\\- alpha\n```'],
+        ['J10', CODE + '- +alpha', ['code', 4], ['+alpha', 0], '```\ncode+alpha\n```'],
+        ['J11', CODE + '- \\[ \\] x', ['code', 4], ['[ ] x', 0], '```\ncode\\[ \\] x\n```'],
+        ['J12', CODE + 'x\\\n\\- y', ['code', 4], ['- y', 0], '```\ncode\\- y\n```'],
+        ['J13', CODE + '+a\nb\n===', ['code', 4], ['+a', 0], '```\ncode\\+a\nb\n```'],
+        ['J14', CODE + '> a\n> +b', ['code', 4], ['a', 0], '```\ncodea\n+b\n```'],
+        ['K1', RAW + '### +alpha', ['</div>', 6], ['+alpha', 0], '<div>\nraw\n</div>+alpha'],
+        ['K2', RAW + 'a * b', ['</div>', 6], ['a * b', 0], '<div>\nraw\n</div>a \\* b'],
+        ['K3', RAW + 'a # b', ['</div>', 6], ['a # b', 2], '<div>\nraw\n</div># b'],
+        ['K4', RAW + '### alpha \\#', ['</div>', 6], ['alpha #', 0], '<div>\nraw\n</div>alpha #'],
+        // Regression row (passes on the base): a soft line break before the rest: the rest opens a line, as after a hard break (J12).
+        ['J40', CODE + 'x\n\\+ y', ['code', 4], ['+ y', 0], '```\ncode\\+ y\n```'],
+        // Regression row (passes on the base): whitespace the rest opens a raw block's line with is indentation, not text the first
+        // character follows.
+        ['K5', '***\n\nx # y', ['***', 0], ['x # y', 1], '\\# y'],
+        // Regression rows (pass on the base): a rest joined right after a raw quote's or list's container markers or a
+        // continuation line's indentation opens a line there, so its line-start escape stays.
+        ['K10', '> q1\n>\n> q2\n\n\\+ alpha', ['> q1', 2], ['+ alpha', 0], '> \\+ alpha'],
+        ['K11', '> q1\n>\n> q2\n\n\\# x', ['> q1', 2], ['# x', 0], '> \\# x'],
+        ['K12', '> q1\n>\n> q2\n\n\\---', ['> q1', 2], ['---', 0], '> \\---'],
+        ['K13', '> q1\n>\n> q2\n\n\\+ alpha', ['> q1', 1], ['+ alpha', 0], '> \\+ alpha'],
+        ['K14', '- a\n  > q\n\n\\> x', ['- a', 2], ['> x', 0], '- \\> x'],
+        ['K15', '- a\n  > q\n\n\\# x', ['  > q', 2], ['# x', 0], '- a\n  \\# x'],
+        // An inline tag can span lines: a `>` that opens the rest closes a `<` opened on an earlier line of the raw block.
+        ['K16', '> a <b\n> c w\n>\n> q2\n\nab>cd', ['> c w', 3], ['ab>cd', 2], '> a \\<b\n> c>cd'],
+        ['K17', '> a <b\n> c="d" w\n>\n> q2\n\nab>cd', ['> c="d" w', 7], ['ab>cd', 2], '> a \\<b\n> c="d">cd'],
+        // With no `<` left open, a leading `>` stays bare mid-line.
+        ['K18', RAW + '\\> q', ['</div>', 6], ['> q', 0], '<div>\nraw\n</div>> q'],
+        // Regression row (passes on the base): a code block holds plain text, so a no-break space at the rest's start is the
+        // character, not `&nbsp;`.
+        ['J41', CODE + '### &nbsp;alpha', ['code', 4], ['\u00a0alpha', 0], '```\ncode\u00a0alpha\n```'],
+    ];
+
+    it.each(JOIN_ROWS)('%s: Delete over the range, either way round', (_row, source, start, end, saved) => {
+        for (const [anchor, focus] of [[start, end], [end, start]] as const) {
+            const editor = load(source);
+
+            selectText(editor, anchor, focus);
+            lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+
+            expect(editor.getValue()).toBe(saved);
+        }
+    });
+
+    /** Delete over the range, then `input` at the caret that leaves: what a route must equal. */
+    function deleteThen(source: string, start: TextPoint, end: TextPoint, input: (editor: MarkdownEditor) => void): MarkdownEditor {
+        const editor = load(source);
+
+        selectText(editor, start, end);
+        lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+        input(editor);
+
+        return editor;
+    }
+
+    const ROUTE_ROWS: Array<[string, string, string, TextPoint, TextPoint, string]> = [
+        ['J20', 'typing', CODE + '### +alpha', ['code', 4], ['+alpha', 0], '```\ncodeZ+alpha\n```'],
+        ['J21', 'plain-text paste', CODE + '### +alpha', ['code', 4], ['+alpha', 0], '```\ncodeZ+alpha\n```'],
+        ['J22', 'Enter', CODE + '### +alpha', ['code', 4], ['+alpha', 0], '```\ncode\n+alpha\n```'],
+        ['J23', 'Shift+Enter', CODE + '### +alpha', ['code', 4], ['+alpha', 0], '```\ncode\n+alpha\n```'],
+        ['J24', 'Tab', CODE + '### +alpha', ['code', 4], ['+alpha', 0], '```\ncode\t+alpha\n```'],
+        ['J27', 'typing', CODE + '\\+ alpha', ['code', 4], ['+ alpha', 0], '```\ncodeZ\\+ alpha\n```'],
+        ['J28', 'typing', CODE + '### alpha \\#', ['code', 4], ['alpha #', 0], '```\ncodeZalpha \\#\n```'],
+        ['J29', 'typing', RAW + 'a * b', ['</div>', 6], ['a * b', 0], '<div>\nraw\n</div>Za \\* b'],
+    ];
+
+    it.each(ROUTE_ROWS)('%s: %s over the range writes what Delete writes, either way round', (_row, routeName, source, start, end, saved) => {
+        const route = JOIN_ROUTES[routeName]!;
+
+        for (const [anchor, focus] of [[start, end], [end, start]] as const) {
+            const editor = load(source);
+
+            selectText(editor, anchor, focus);
+            route(editor);
+
+            const expected = deleteThen(source, start, end, route);
+
+            expect(editor.getValue()).toBe(saved);
+            expect(editor.getValue()).toBe(expected.getValue());
+            expect(rangeOf(editor)).toBe(rangeOf(expected));
+        }
+    });
+
+    // A source the heading writes with an escape (`alpha \#`), which Lexical's own merge would move in without it.
+    it.each([
+        ['J25', DELETE_WORD_COMMAND, true],
+        ['J25 (line)', DELETE_LINE_COMMAND, true],
+        ['J25 (text)', REMOVE_TEXT_COMMAND, undefined],
+    ] as const)('%s: a delete over the range written as Delete writes it', (_row, command, payload) => {
+        const editor = load(CODE + '### alpha \\#');
+        const deleted = load(CODE + '### alpha \\#');
+
+        selectText(editor, ['code', 4], ['alpha #', 0]);
+        lexicalOf(editor).dispatchCommand(command as never, payload as never);
+        selectText(deleted, ['code', 4], ['alpha #', 0]);
+        lexicalOf(deleted).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+
+        expect(editor.getValue()).toBe(deleted.getValue());
+        expect(editor.getValue()).toBe('```\ncodealpha \\#\n```');
+    });
+
+    it('J26: a cut of the range', async () => {
+        const editor = load(CODE + '### +alpha');
+
+        selectText(editor, ['code', 4], ['+alpha', 0]);
+        lexicalOf(editor).dispatchCommand(CUT_COMMAND, null);
+
+        await vi.waitFor(() => expect(editor.getValue()).toBe('```\ncode+alpha\n```'));
+    });
+
+    const CARET_ROWS: Array<[string, string, TextPoint, boolean, string, string | null]> = [
+        ['J30', CODE + '### alpha \\#', ['alpha #', 0], true, '```\ncodealpha \\#\n```', '"codealpha \\\\#"@4 -> "codealpha \\\\#"@4'],
+        ['J31', CODE + '### alpha \\#', ['code', 4], false, '```\ncodealpha \\#\n```', '"codealpha \\\\#"@4 -> "codealpha \\\\#"@4'],
+        ['J32', CODE + '> \\- alpha', ['- alpha', 0], true, '```\ncode\\- alpha\n```', null],
+        ['J33', CODE + '- \\[ \\] x\n\n  para\n- two', ['[ ] x', 0], true, '```\ncode\\[ \\] x\n```\n\npara\n\n- two', null],
+        ['J34', CODE + '1. \\[ \\] x\n2. two', ['code', 4], false, '```\ncode\\[ \\] x\n```\n\n1. two', null],
+        ['K6', RAW + '+alpha', ['+alpha', 0], true, '<div>\nraw\n</div>+alpha', null],
+        ['K7', '> q1\n>\n> q2 <i\n\n\\>cd', ['>cd', 0], true, '> q1\n>\n> q2 <i\\>cd', null],
+        ['J35', CODE + '+alpha', ['+alpha', 0], true, '```\ncode+alpha\n```', '"code+alpha"@4 -> "code+alpha"@4'],
+        ['J36', 'para\n\n- +alpha', ['+alpha', 0], true, 'para+alpha', null],
+    ];
+
+    it.each(CARET_ROWS)('%s: Backspace or Delete at the boundary', (_row, source, caret, isBackward, saved, after) => {
+        const editor = load(source);
+
+        selectText(editor, caret, caret);
+        lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, isBackward);
+
+        expect(editor.getValue()).toBe(saved);
+
+        if (after !== null) {
+            expect(rangeOf(editor)).toBe(after);
+        }
+    });
+
+    it('J37: one undo undoes the Backspace join', () => {
+        const editor = load(CODE + '### +alpha');
+        const loaded = editor.getValue();
+
+        selectText(editor, ['+alpha', 0], ['+alpha', 0]);
+        lexicalOf(editor).dispatchCommand(DELETE_CHARACTER_COMMAND, true);
+        // Reading the value settles the join's update, which an undo then undoes as one step.
+        expect(editor.getValue()).toBe('```\ncode+alpha\n```');
+        undo(editor);
+
+        expect(editor.getValue()).toBe(loaded);
+    });
+
+    it('J38: one undo undoes the typed join', () => {
+        const editor = load(CODE + '### +alpha');
+        const loaded = editor.getValue();
+
+        selectText(editor, ['code', 4], ['+alpha', 0]);
+        lexicalOf(editor).dispatchCommand(CONTROLLED_TEXT_INSERTION_COMMAND, 'Z');
+        expect(editor.getValue()).toBe('```\ncodeZ+alpha\n```');
+        undo(editor);
+
+        expect(editor.getValue()).toBe(loaded);
     });
 });
