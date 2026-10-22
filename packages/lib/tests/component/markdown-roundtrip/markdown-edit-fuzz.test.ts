@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { $createLineBreakNode, $createParagraphNode, $createTextNode, $getRoot, $isRootNode, $isTextNode } from 'lexical';
 import type { LexicalEditor, LexicalNode, TextNode } from 'lexical';
 import { $dfs, $findMatchingParent } from '@lexical/utils';
+import { decodeCharacterReferences } from '~/component/display/markdownCharacterReferences';
 import type { MarkdownEditor } from '~/component/editor/MarkdownEditor';
 import { $isReferenceLinkNode } from '~/component/editor/markdownReferenceLinkNode';
 import { $readDefinitions } from '~/component/editor/markdownSerializer';
@@ -296,6 +297,9 @@ function checkRelexes(testCase: CorpusCase, run: FuzzRun): void {
  * Checks that no word is lost: every word of the source outside the edited and deleted blocks, and every word the
  * edited document holds — the edited blocks' text and the words the edits wrote included. A reference link's label
  * is not required: the link is written inline once its definition no longer resolves it.
+ * The source's words are its words as read, its character references read (`&amp;` is `&`, no word), since a block
+ * the save writes again writes a reference as its character; a save's words are its words as written and as read,
+ * since a block it keeps keeps its references (`j&#115;` is still `js`).
  *
  * @param testCase - The corpus case.
  * @param run - The run.
@@ -309,8 +313,8 @@ function checkNoWordLost(testCase: CorpusCase, run: FuzzRun): void {
             labels: new Set(nodes.filter($isReferenceLinkNode).flatMap((link) => [...wordsOf(link.getReference().label)])),
         };
     });
-    const kept = [...wordsOf(testCase.source)].filter((word) => !run.record.released.has(word) && !labels.has(word));
-    const savedWords = wordsOf(run.saved);
+    const kept = [...wordsOf(decodeCharacterReferences(testCase.source))].filter((word) => !run.record.released.has(word) && !labels.has(word));
+    const savedWords = new Set([...wordsOf(run.saved), ...wordsOf(decodeCharacterReferences(run.saved))]);
 
     expect([...run.record.inserted].filter((word) => !shown.includes(word) && !run.record.released.has(word)), run.context)
         .toEqual([]);

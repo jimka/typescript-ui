@@ -361,6 +361,55 @@ describe('link commands', () => {
         expect(apply(text, edit)).toBe('see docs here');
     });
 
+    it('escapes the & of a character reference in a new link\'s URL, so the link reads back to that URL', () => {
+        const text = 'see docs here';
+
+        expect(apply(text, linkSource('/a&copy;')(text, 4, 8)!)).toBe('see [docs](/a\\&copy;) here');
+        expect(apply(text, linkSource('/a b&amp;')(text, 4, 8)!)).toBe('see [docs](</a b\\&amp;>) here');
+    });
+
+    it('escapes it in the title a reference link brings when it becomes an inline link', () => {
+        const text = 'see [docs][r]\n\n[r]: /d "&amp;copy;"';
+
+        expect(apply(text, linkSource('/e')(text, 6, 6)!)).toBe('see [docs](/e "\\&copy;")\n\n[r]: /d "&amp;copy;"');
+    });
+
+    it('keeps the text of an autolink holding a reference when it is unlinked or pointed elsewhere', () => {
+        const text = 'x <https://a.t/?q&copy;> y';
+
+        expect(apply(text, REMOVE_LINK_SOURCE(text, 8, 8)!)).toBe('x https\\://a.t/?q\\&copy; y');
+        expect(apply(text, linkSource('/n')(text, 8, 8)!)).toBe('x [https://a.t/?q\\&copy;](/n) y');
+    });
+
+    it('does the same for a numeric reference in an autolink', () => {
+        const text = 'x <https://a.t/?q&#35;> y';
+
+        expect(apply(text, REMOVE_LINK_SOURCE(text, 8, 8)!)).toBe('x https\\://a.t/?q\\&#35; y');
+        expect(apply(text, linkSource('/n')(text, 8, 8)!)).toBe('x [https://a.t/?q\\&#35;](/n) y');
+    });
+
+    it('writes a destination holding angle brackets or a control character in angle brackets, escaped', () => {
+        const text = 'see docs here';
+
+        expect(apply(text, linkSource('/a<b>c')(text, 4, 8)!)).toBe('see [docs](</a\\<b\\>c>) here');
+        expect(apply(text, linkSource('/a\u0001b')(text, 4, 8)!)).toBe('see [docs](</a\u0001b>) here');
+    });
+
+    it.each(['/a\u00A0', '\u00A0/a', '/a\u00A0b', '/a\u2003', '\u2003/a'])('reads a destination %j back exactly, as marked trims and splits at Unicode spaces', (url) => {
+        const text = 'see docs here';
+        const result = apply(text, linkSource(url)(text, 4, 8)!);
+        const paragraph = lexMarkdown(result)[0] as { tokens: Array<{ type: string; href?: string }> };
+        const link = paragraph.tokens.find((token) => token.type === 'link');
+
+        expect(link?.href).toBe(url);
+    });
+
+    it('links to a destination holding a backslash exactly as given', () => {
+        const text = 'see docs here';
+
+        expect(apply(text, linkSource('/a\\&copy;')(text, 4, 8)!)).toBe('see [docs](</a\\\\\\&copy;>) here');
+    });
+
     it('refuses to wrap a link inside an image\'s alt text', () => {
         expect(linkSource('/e')('![alt](src)', 3, 3)).toBeNull();
         expect(linkSource('/e')('see ![alt](src) here', 6, 9)).toBeNull();
@@ -865,6 +914,25 @@ describe('spanStyleSource and backslash escapes', () => {
         const edit = spanStyleSource(COLOUR)(text, 4, 9)!;
 
         expect(apply(text, edit)).toBe('C:\\\\[Users]{color=#cc0000}');
+    });
+});
+
+describe('CLEAR_FORMAT_SOURCE and character references', () => {
+    it('maps the selection through the backslash it adds, so it still covers the same text', () => {
+        const text = 'a `&copy;` b';
+        const edit = CLEAR_FORMAT_SOURCE(text, 3, 9)!;
+        const result = apply(text, edit);
+
+        expect(result).toBe('a \\&copy; b');
+        expect(result.slice(edit.selection.from, edit.selection.to)).toBe('\\&copy;');
+    });
+
+
+    it('keeps the text of a code span that holds a reference as typed, by escaping its &', () => {
+        const text = 'a `&copy;` b `&#35;` c';
+
+        expect(apply(text, CLEAR_FORMAT_SOURCE(text, 4, 9)!)).toBe('a \\&copy; b `&#35;` c');
+        expect(apply(text, CLEAR_FORMAT_SOURCE(text, 14, 18)!)).toBe('a `&copy;` b \\&#35; c');
     });
 });
 

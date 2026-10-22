@@ -17,6 +17,7 @@ export const REFERENCE_LINK_CASES: readonly CorpusCase[] = [
     { name: 'reference in a fence', source: '::: {align=center}\n[x] in block\n\n[x]: https://blk\n:::', links: ['https://blk'] },
     { name: 'escaped underscore label', source: '[a\\_b] and [a\\_b][]\n\n[a\\_b]: https://e.com', links: ['https://e.com', 'https://e.com'] },
     { name: 'entity in a label', source: '[a&#35;b] and [a&#35;b][]\n\n[a&#35;b]: https://e.com', links: ['https://e.com', 'https://e.com'] },
+    { name: 'named entity in a label', source: '[&copy;] and [x][&amp;]\n\n[&copy;]: /c\n[&amp;]: /a', links: ['/c', '/a'] },
     { name: 'escaped bracket label', source: '[foo\\]bar]\n\n[foo\\]bar]: https://e.com', links: ['https://e.com'] },
     { name: 'empty full-form text', source: '[][ref] x\n\n[ref]: https://e.com', links: [] },
     { name: 'definition then text line', source: '[x]: https://e.com\nafter **b**', links: [] },

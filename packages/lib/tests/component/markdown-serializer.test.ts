@@ -13,7 +13,7 @@ import {
 } from '@lexical/table';
 import type { TableCellNode, TableNode } from '@lexical/table';
 import { MarkdownEditor } from '~/component/editor/MarkdownEditor';
-import { $serializeMarkdown } from '~/component/editor/markdownSerializer';
+import { $serializeInlineNodes, $serializeMarkdown } from '~/component/editor/markdownSerializer';
 import {
     bareAutolinkState, fenceOpeningState, hardBreakMarkerState, imageAttributesState, listLooseState, listMarkerState,
     spanAttributesState,
@@ -532,10 +532,14 @@ describe('$serializeMarkdown — escaping', () => {
         ['E7', '# not a heading', '\\# not a heading'],
         ['E8', 'C:\\path\\x', 'C:\\path\\x'],
         ['E9', 'ends with \\', 'ends with \\\\'],
-        ['E10', '&amp; &#35;', '&amp; \\&#35;'],
+        ['E10', '&amp; &#35;', '\\&amp; \\&#35;'],
         ['E11', '[x]: https://e.com', '\\[x\\]: https\\://e.com'],
         ['E12', '&#x41; b', '\\&#x41; b'],
         ['E13', '&#12345678; &#abc; &#;', '&#12345678; &#abc; &#;'],
+        ['E14', '&copy; &COPY; a&ngE;', '\\&copy; \\&COPY; a\\&ngE;'],
+        ['E15', '&notaname; &Copy; &copy &toString;', '&notaname; &Copy; &copy &toString;'],
+        ['E16', '&amp;copy;', '\\&amp;copy;'],
+        ['E17', '\\&copy;', '\\\\\\&copy;'],
     ];
 
     for (const [id, input, expected] of cases) {
@@ -546,6 +550,124 @@ describe('$serializeMarkdown — escaping', () => {
             expect(viewerModel(output).blocks).toEqual([para(run(input))]);
         });
     }
+});
+
+describe('$serializeMarkdown — character references in a link and a code fence', () => {
+    it('E18: escapes the & of a reference in a link destination and title, so the link reads back as held', () => {
+        const output = serialize(() => [p(fill($createLinkNode('/a&copy;&b', { title: 't&amp;' }), ['x']))]);
+
+        expect(output).toBe('[x](/a\\&copy;&b "t\\&amp;")');
+        expect(viewerModel(output).blocks).toEqual([para(run('x', [], { href: '/a&copy;&b', title: 't&amp;' }))]);
+    });
+
+    it('E19: escapes it inside an angle-bracket destination too', () => {
+        const output = serialize(() => [p(fill($createLinkNode('/a b&#35;'), ['x']))]);
+
+        expect(output).toBe('[x](</a b\\&#35;>)');
+        expect(viewerModel(output).blocks).toEqual([para(run('x', [], { href: '/a b&#35;', title: null }))]);
+    });
+
+    it('E20: writes an autolink as it is, since an autolink reads no reference', () => {
+        const url = 'https://a.test/?q&copy;';
+        const output = serialize(() => [p(fill($createLinkNode(url), [url]))]);
+
+        expect(output).toBe(`<${url}>`);
+        expect(viewerModel(output).blocks).toEqual([para(run(url, [], { href: url, title: null }))]);
+    });
+
+    it('E21: escapes the & of a reference in a code block\'s language', () => {
+        const output = serialize(() => [$createCodeNode('c&amp;')]);
+
+        expect(output).toBe('```c\\&amp;\n```');
+        expect(viewerModel(output).blocks).toEqual([{ kind: 'code', lang: 'c&amp;', text: '' }]);
+    });
+
+    it('E22: doubles the backslash before a reference in a code block\'s language, so it reads back as held', () => {
+        const output = serialize(() => [$createCodeNode('c\\&amp;')]);
+
+        expect(output).toBe('```c\\\\\\&amp;\n```');
+        expect(viewerModel(output).blocks).toEqual([{ kind: 'code', lang: 'c\\&amp;', text: '' }]);
+    });
+});
+
+describe('$serializeMarkdown — a link destination that marked would trim or split', () => {
+    it.each(['/a\u00A0', '\u00A0/a', '/a\u00A0b', '/a\u2003', '\u2003/a'])('E24: writes %j so it reads back exactly', (url) => {
+        const output = serialize(() => [p(fill($createLinkNode(url), ['x']))]);
+
+        expect(output).toBe(`[x](<${url}>)`);
+        expect(viewerModel(output).blocks).toEqual([para(run('x', [], { href: url, title: null }))]);
+    });
+});
+
+describe('$serializeInlineNodes — Markdown joined into a raw or a code block', () => {
+    // A paragraph merged into a raw block, or turned into a code block's text, has no line edge of its own: `marked`
+    // does not trim the joined Markdown there, so a no-break space stays the character and is not written `&nbsp;`.
+    it.each([
+        ['a paragraph holding only it', ['\u00A0'], '\u00A0'],
+        ['a paragraph ending with it', ['x\u00A0'], 'x\u00A0'],
+    ])('J1: %s keeps the character', (_name, children, expected) => {
+        const editor = editorWith(() => [p(...children)]);
+        const joined = lexicalOf(editor).read(() => $serializeInlineNodes(($getRoot().getFirstChild() as ElementNode).getChildren()));
+
+        expect(joined).toBe(expected);
+    });
+});
+
+describe('$serializeMarkdown — a backslash before a symbol in a code block\'s language', () => {
+    it('E23: doubles it, since `marked` reads a backslash before any punctuation or symbol as an escape', () => {
+        const output = serialize(() => [$createCodeNode('c\\\u00A9')]);
+
+        expect(output).toBe('```c\\\\\u00A9\n```');
+        expect(viewerModel(output).blocks).toEqual([{ kind: 'code', lang: 'c\\\u00A9', text: '' }]);
+    });
+});
+
+describe('$serializeMarkdown — a no-break space that marked would trim', () => {
+    // `marked` trims a heading's, a table cell's and a list item's text and drops a block made only of whitespace, a
+    // no-break space included, so a no-break space at such an edge is written as `&nbsp;`, which reads back as the
+    // character. At a paragraph's line edge `marked` keeps it, so it is written as itself.
+    const NBSP = '\u00A0';
+
+    /**
+     * The text a fresh editor holds after loading `markdown`.
+     *
+     * @param markdown - The Markdown to load.
+     * @returns The editor's text content.
+     */
+    function reloadedText(markdown: string): string {
+        const editor = new MarkdownEditor();
+
+        editor.setValue(markdown);
+
+        return lexicalOf(editor).read(() => $getRoot().getTextContent());
+    }
+
+    const cases: Array<[string, string, () => LexicalNode[], string]> = [
+        ['N1', 'in a spacer paragraph', () => [p('a'), p(NBSP), p('b')], 'a\n\n&nbsp;\n\nb'],
+        ['N2', 'at a paragraph\'s start', () => [p(NBSP + 'x')], NBSP + 'x'],
+        ['N3', 'at a paragraph\'s end', () => [p('x' + NBSP)], 'x' + NBSP],
+        ['N4', 'inside text', () => [p('x' + NBSP + 'y')], 'x' + NBSP + 'y'],
+        ['N5', 'at the edge of a heading', () => [fill($createHeadingNode('h1'), [NBSP + 'x' + NBSP])], '# &nbsp;x&nbsp;'],
+        ['N6', 'alone in a cell', () => [table([cell(true, 'h')], [cell(false, NBSP)])], '| h |\n| --- |\n| &nbsp; |'],
+        ['N7', 'at the end of a list item', () => [fill($createListNode('bullet'), [fill($createListItemNode(), ['x' + NBSP])])], '- x&nbsp;'],
+        ['N8', 'after a kept source run at a line end', () => [p('a ', $createMarkdownSourceTextNode('<kbd>', '<kbd>'), 'x', $createMarkdownSourceTextNode('</kbd>', '</kbd>'), NBSP)], 'a <kbd>x</kbd>' + NBSP],
+        ['N9', 'after a backslash in a paragraph', () => [p('C:\\' + NBSP)], 'C:\\' + NBSP],
+        ['N10', 'after a backslash in a heading', () => [fill($createHeadingNode('h2'), ['C:\\' + NBSP])], '## C:\\\\&nbsp;'],
+        ['N11', 'after a backslash in a cell', () => [table([cell(true, 'h')], [cell(false, 'C:\\' + NBSP)])], '| h |\n| --- |\n| C:\\\\&nbsp; |'],
+        ['N12', 'after a backslash in a list item', () => [fill($createListNode('bullet'), [fill($createListItemNode(), ['C:\\' + NBSP])])], '- C:\\\\&nbsp;'],
+        ['N13', 'after a backslash in a quote', () => [fill($createQuoteNode(), ['C:\\' + NBSP])], '> C:' + '\\' + NBSP],
+        ['N14', 'after a backslash before a hard break', () => [p('a\\' + NBSP, $createLineBreakNode(), 'b')], 'a\\' + NBSP + '\\\nb'],
+        ['N15', 'after a tilde at a heading\'s end', () => [fill($createHeadingNode('h2'), ['a~' + NBSP])], '## a~&nbsp;'],
+    ];
+
+    it.each(cases)('%s: a no-break space %s', (_id, _name, build, expected) => {
+        const editor = editorWith(build);
+        const output = serialized(editor);
+        const held = lexicalOf(editor).read(() => $getRoot().getTextContent());
+
+        expect(output).toBe(expected);
+        expect(reloadedText(output)).toBe(held);
+    });
 });
 
 describe('$serializeMarkdown — further cases the plan specifies', () => {

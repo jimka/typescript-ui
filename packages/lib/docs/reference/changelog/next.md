@@ -93,6 +93,20 @@ page resets to empty.
   therefore always pastes. See [Migration](/reference/migration/next) for
   what to change.
 
+- **`Markdown` and `MarkdownEditor` read named character references.**
+  `&copy;`, `&amp;`, `&nbsp;` and every other name of the HTML list read as
+  their characters, as numeric references already do, in text, a link's
+  destination and title, and a code fence's info string; numeric references
+  are now read in those last three places too. A heading's id is made from
+  its text with its backslash escapes and references read (`# Terms &amp;
+  Conditions` gets `terms-conditions`, where it got `terms-amp-conditions`),
+  and the `text` that `extractMarkdownHeadings` reports reads them too
+  (`Terms & Conditions`). A no-break space at the edge of a heading, a
+  table cell (each paragraph of it) or a list item, or alone on a line, is
+  saved as `&nbsp;`, so `marked`'s trim cannot drop it. The editor saves
+  text that would read as a reference with its `&` escaped (`\&copy;`).
+  See [Migration](/reference/migration/next).
+
 ### Core
 
 - **`DOM.sink` and `DOM.source` are now read-only.** Swap a seam through
@@ -521,8 +535,9 @@ page resets to empty.
 - **`MarkdownEditor` saves fewer backslashes.** An edited block's Markdown
   drops a backslash from a line-start marker character, and from a `*`, `_`,
   `~`, backtick or `++` that could not pair with another, where it starts
-  nothing: `--- tail`, `===`, `#tag`, `| a |` and `a * b` save bare. Brackets
-  (`\[a\]`), `<`, `&`, `\`, table pipes, the text of links and spans, and
+  nothing: `--- tail`, `===`, `#tag`, `| a |` and `a * b` save bare. An `&`
+  keeps its backslash only where it starts a character reference. Brackets
+  (`\[a\]`), `<`, `\`, table pipes, the text of links and spans, and
   the paragraphs of a table cell that holds several keep theirs, so a link
   reference definition added later can neither turn text into a link nor
   hide the emphasis around it. What the viewer shows for a save does not

@@ -4,6 +4,8 @@ import type { Tokens } from "marked";
 import {
     formatAttributes, lineEndAt, resolveImageSpec, resolveSpanStyle, spanStyleToAttributes,
 } from "~/component/display/markdownAttributes.js";
+import { needsAngleBrackets } from "~/component/display/markdownDestinations.js";
+import { escapeCharacterReferences, startsWithCharacterReference } from "~/component/display/markdownCharacterReferences.js";
 import { lexMarkdown } from "~/component/display/markdownExtensions.js";
 import {
     analyzeMarkdownSource, canonicalSpanStyle, entryFormat, entryKey, MARK_LETTERS, withMark,
@@ -1100,7 +1102,8 @@ function takeOutOfLink(analysis: SourceAnalysis, outer: SourceInline, link: Sour
  * Escapes the characters that would make an autolink's text a GFM autolink
  * again as plain text: the `:` of a bare URL's scheme, the `.` after `www`
  * and the `@` of an email address — the serializer's own rules for these
- * three characters.
+ * three characters — and the `&` of a character reference, which would read
+ * as the character it names.
  *
  * @param text - The autolink's text.
  * @returns The text, safe as plain text.
@@ -1113,7 +1116,8 @@ function escapeAutolinkText(text: string): string {
         const before = text.slice(0, index);
         const triggers = (char === ":" && BARE_URL_SCHEME.test(before) && text.startsWith("//", index + 1))
             || (char === "." && BARE_WWW_PREFIX.test(before))
-            || (char === "@" && EMAIL_LOCAL_CHARACTER.test(text[index - 1] ?? "") && EMAIL_DOMAIN_CHARACTER.test(text[index + 1] ?? ""));
+            || (char === "@" && EMAIL_LOCAL_CHARACTER.test(text[index - 1] ?? "") && EMAIL_DOMAIN_CHARACTER.test(text[index + 1] ?? ""))
+            || (char === "&" && startsWithCharacterReference(text.slice(index)));
 
         escaped += triggers ? "\\" + char : char;
     }
@@ -1124,7 +1128,9 @@ function escapeAutolinkText(text: string): string {
 /**
  * Builds the edit pointing a link at `url`. An inline link keeps its text
  * and its title as written; a reference link or an autolink becomes an
- * inline link holding its text (and a reference link's title).
+ * inline link holding its text (and a reference link's title). An
+ * autolink's text is written with the `&` of each character reference
+ * escaped, since as link text it would read as the character it names.
  *
  * @param analysis - The document's analysis.
  * @param link - The link.
@@ -1136,7 +1142,8 @@ function repointLink(analysis: SourceAnalysis, link: SourceInline, url: string):
         return null;
     }
 
-    const text = analysis.text.slice(link.innerStart, link.innerEnd);
+    const written = analysis.text.slice(link.innerStart, link.innerEnd);
+    const text = link.hasContent ? written : escapeCharacterReferences(written);
     const raw = analysis.text.slice(link.start, link.end);
     const title = link.hasContent && raw.endsWith(")")
         ? writtenTitle(raw.slice(link.innerEnd - link.start + 2, -1))
@@ -1182,24 +1189,30 @@ function writtenTitle(parenthesised: string): string {
 }
 
 /**
- * Writes a title in double quotes, its `\` and `"` escaped.
+ * Writes a title in double quotes, its `\` and `"` escaped, and the `&` of
+ * each character reference.
  *
  * @param title - The title, or `null`.
  * @returns The quoted title, or `""` for none.
  */
 function quotedTitle(title: string | null): string {
-    return title === null || title === "" ? "" : `"${title.replace(/[\\"]/g, "\\$&")}"`;
+    return title === null || title === "" ? "" : `"${escapeCharacterReferences(title.replace(/[\\"]/g, "\\$&"))}"`;
 }
 
 /**
- * Writes a link destination: in angle brackets when it holds whitespace or a
- * parenthesis, which a bare destination cannot hold safely.
+ * Writes a link destination: in angle brackets when it holds a character a
+ * bare destination cannot hold safely ({@link needsAngleBrackets}), with its
+ * `<`, `>` and backslashes escaped inside them. The `&` of a character
+ * reference is escaped, so the destination reads back as `url`.
  *
  * @param url - The destination.
  * @returns The destination as written.
  */
 function formatDestination(url: string): string {
-    return /[\s()]/.test(url) ? `<${url}>` : url;
+    const angled = [...url].some((char) => needsAngleBrackets(char));
+    const escaped = escapeCharacterReferences(angled ? url.replace(/[\\<>]/g, "\\$&") : url);
+
+    return angled ? `<${escaped}>` : escaped;
 }
 
 /**
@@ -1790,27 +1803,56 @@ export function spanStyleSource(patch: Record<string, string | null>): MarkdownS
  * @param text - The full document text.
  * @param range - The normalised range.
  * @param tokens - The tokens to unwrap; at least one, each with located content.
+ * @param escapeCodeReferences - Whether the `&` of each character reference in
+ *   a code span's code gets a backslash, so the code stays the text it was
+ *   once it is plain text.
  * @returns The edit.
  */
-function removeTokenSyntax(text: string, range: SourceRange, tokens: readonly SourceInline[]): MarkdownSourceEdit {
+function removeTokenSyntax(
+    text: string, range: SourceRange, tokens: readonly SourceInline[], escapeCodeReferences: boolean,
+): MarkdownSourceEdit {
     const removed = tokens.flatMap((token) => [[token.start, token.innerStart], [token.innerEnd, token.end]] as const);
     const isRemoved = (index: number): boolean => removed.some(([start, end]) => start <= index && index < end);
+
     const removedBefore = (offset: number): number => removed
         .reduce((count, [start, end]) => count + Math.max(0, Math.min(end, offset) - start), 0);
 
     const from = Math.min(range.from, ...tokens.map((token) => token.start));
     const to = Math.max(range.to, ...tokens.map((token) => token.end));
+    const codes = escapeCodeReferences ? tokens.filter((token) => token.type === "codespan") : [];
+
+    const escapes = (index: number): boolean => text[index] === "&" && codes.some((code) => (
+        code.innerStart <= index && index < code.innerEnd && startsWithCharacterReference(text.slice(index, code.innerEnd))
+    ));
+
+    const addedBefore = (offset: number): number => {
+        let count = 0;
+
+        for (let index = from; index < offset; index += 1) {
+            const added = !isRemoved(index) && escapes(index);
+
+            if (added) { count += 1; }
+        }
+
+        return count;
+    };
+
     let insert = "";
 
     for (let index = from; index < to; index += 1) {
-        if (!isRemoved(index)) { insert += text[index]; }
+        const kept = !isRemoved(index);
+
+        if (kept) { insert += (escapes(index) ? "\\" : "") + text[index]; }
     }
 
     return {
         from,
         to,
         insert,
-        selection: { from: range.from - removedBefore(range.from), to: range.to - removedBefore(range.to) },
+        selection: {
+            from: range.from - removedBefore(range.from) + addedBefore(range.from),
+            to:   range.to - removedBefore(range.to) + addedBefore(range.to),
+        },
     };
 }
 
@@ -1822,7 +1864,9 @@ function removeTokenSyntax(text: string, range: SourceRange, tokens: readonly So
  * Runs are the viewer's own tokens, so escaped markers, markers inside a code
  * span, a list bullet and a thematic break's `***` are never treated as
  * formatting. Links and `[text]{…}` styled spans are left alone, matching
- * the WYSIWYG command. Declines (`null`) when the selection touches no run —
+ * the WYSIWYG command. The `&` of a character reference in a code span's
+ * code is escaped (`\&copy;`) when the code is taken out, so it stays the
+ * text it was. Declines (`null`) when the selection touches no run —
  * nothing to clear is no edit, rather than an identical rewrite that would
  * still cost an undo step — on a collapsed caret that expands to nothing,
  * and when the result would read otherwise than the same text without those
@@ -1845,7 +1889,10 @@ export const CLEAR_FORMAT_SOURCE: MarkdownSourceTransform = (text, from, to) => 
 
     const without = new Set(touched);
 
-    return verified(analysis, removeTokenSyntax(text, range, touched), (entry) => entryFormat(entry, without));
+    const expected = (entry: SourceEntry): EntryFormat => entryFormat(entry, without);
+
+    return verified(analysis, removeTokenSyntax(text, range, touched, false), expected)
+        ?? verified(analysis, removeTokenSyntax(text, range, touched, true), expected);
 };
 
 /**
