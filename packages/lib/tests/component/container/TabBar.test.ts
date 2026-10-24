@@ -9,12 +9,12 @@ import { ROVING_MEMBER_ATTR } from '~/core/RovingTabIndex';
 import { Glyph } from '~/component/display/Glyph';
 import { file } from '~/glyphs/solid/file';
 import { file_lines } from '~/glyphs/solid/file_lines';
-import { DOM } from '~/core/DOM';
+import { DOM, type Handle } from '~/core/DOM';
 import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { Container } from '~/core/Container';
 import { Tab } from '~/layout/Tab';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, setConnected } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -1086,6 +1086,43 @@ describe('TabBar Home and End — an already active edge tab is revealed', () =>
         vi.restoreAllMocks();
     });
 
+    it('H11: a strip close of a background tab reveals the active tab it focuses, on the next layout', () => {
+        installTestDOM(CONFIG);
+        captureFrames();
+
+        const tab  = new Tab({ scrollable: true } as any);
+        const host = new Container({ layoutManager: tab });
+
+        host.getElement(true);
+        host.setWidth(HOST_WIDTH);
+        host.setHeight(HOST_HEIGHT);
+        host.clearInsets();
+
+        for (let i = 0; i < TAB_COUNT; i++) {
+            host.addComponent(new Component({}));
+        }
+
+        host.doLayout();
+        drainFrames();
+
+        const bar     = (tab as any)._bar as TabBar;
+        const entries = barEntries(bar);
+        const reveal  = vi.spyOn((bar as any)._tabClip, 'revealItem');
+
+        // The active first tab may be scrolled out of view while the user
+        // closes a background tab at the far end: focus lands on the active
+        // tab, so the strip must bring it into view.
+        expect(bar.getActiveEntryId()).toBe(entries[0].id);
+
+        (bar as any).emit('tabclose', entries[TAB_COUNT - 1].id);
+        host.doLayout();
+        drainFrames();
+
+        expect(DOM.source.getActiveElement()).toBe(entries[0].button.getElement());
+        expect(reveal).toHaveBeenCalledWith(entries[0].button.getElement());
+        expect((bar as any)._scrollToSelected).toBe(false);
+    });
+
     it('H10: Home onto the active first tab reveals it on the next layout, once', () => {
         installTestDOM(CONFIG);
         captureFrames();
@@ -1126,5 +1163,133 @@ describe('TabBar Home and End — an already active edge tab is revealed', () =>
         expect((bar as any)._scrollToSelected).toBe(false);
         expect(DOM.source.getActiveElement()).toBe(entries[0].button.getElement());
         expect(entries[0].button.getAria().getTabIndex()).toBe(0);
+    });
+});
+
+// dock-reveal-panel-without-focus plan, cases TB1–TB5 and TB7: a change made from code
+// moves keyboard focus onto a tab only when the strip already holds focus or
+// nothing does; an explicit `focus` option overrides that rule either way.
+describe('TabBar setActiveEntry — focus policy for a change made from code', () => {
+    afterEach(() => DOM.reset());
+
+    /** A three-entry strip with the strip and every entry's button materialised. */
+    function renderedBar(): TabBar {
+        const bar = threeEntryBar();
+
+        bar.getElement(true);
+
+        for (const entry of barEntries(bar)) {
+            entry.button.getElement(true);
+        }
+
+        return bar;
+    }
+
+    /** A connected button outside the strip, focused — the stand-in for a file tree. */
+    function focusOutside(): Handle {
+        const outside = new Button('Outside').getElement(true)!;
+
+        setConnected(outside, true);
+        DOM.sink.focus(outside);
+
+        return outside;
+    }
+
+    const tabIndices = (bar: TabBar): (number | null)[] =>
+        barEntries(bar).map(entry => entry.button.getAria().getTabIndex());
+
+    it('TB1: leaves focus on an outside control and still activates the cell', () => {
+        installTestDOM(CONFIG);
+
+        const bar     = renderedBar();
+        const outside = focusOutside();
+        const pressed = vi.fn();
+
+        bar.on('tabpressed', pressed);
+        bar.setActiveEntry('c');
+
+        expect(DOM.source.getActiveElement()).toBe(outside);
+        expect(bar.getActiveEntryId()).toBe('c');
+        expect(pressed).toHaveBeenCalledTimes(1);
+        expect(pressed).toHaveBeenCalledWith('c');
+        expect(tabIndices(bar)).toEqual([-1, -1, 0]);
+    });
+
+    it('TB2: moves focus onto the new cell when another tab of the strip holds it', () => {
+        installTestDOM(CONFIG);
+
+        const bar = renderedBar();
+
+        DOM.sink.focus(barEntries(bar)[1].button.getElement()!);
+        bar.setActiveEntry('c');
+
+        expect(DOM.source.getActiveElement()).toBe(barEntries(bar)[2].button.getElement());
+    });
+
+    it('TB3: moves focus onto the new cell when nothing holds focus', () => {
+        installTestDOM(CONFIG);
+
+        const bar = renderedBar();
+
+        expect(DOM.source.getActiveElement()).toBeNull();
+
+        bar.setActiveEntry('c');
+
+        expect(DOM.source.getActiveElement()).toBe(barEntries(bar)[2].button.getElement());
+    });
+
+    it('TB4: focus: true moves focus onto the cell from an outside control', () => {
+        installTestDOM(CONFIG);
+
+        const bar = renderedBar();
+
+        focusOutside();
+        bar.setActiveEntry('c', { focus: true });
+
+        expect(DOM.source.getActiveElement()).toBe(barEntries(bar)[2].button.getElement());
+    });
+
+    it('TB5: focus: false leaves focus on the strip tab that held it', () => {
+        installTestDOM(CONFIG);
+
+        const bar = renderedBar();
+        const b   = barEntries(bar)[1].button.getElement()!;
+
+        DOM.sink.focus(b);
+        bar.setActiveEntry('c', { focus: false });
+
+        expect(DOM.source.getActiveElement()).toBe(b);
+        expect(tabIndices(bar)).toEqual([-1, -1, 0]);
+    });
+
+    it('TB7: removing the active closeable cell from code leaves focus outside and puts the tab stop on the neighbour\'s tab, not its ✕', () => {
+        installTestDOM(CONFIG);
+
+        // Removing a cell that is not the first lands the roving stop on the
+        // neighbour's ✕ first; the strip then moves it to that cell's tab
+        // button, which must not take focus from the outside control.
+        const bar = new TabBar();
+
+        bar.createBarEntry('a', 'Alpha', closeable());
+        bar.createBarEntry('b', 'Beta', closeable());
+        bar.createBarEntry('c', 'Gamma', closeable());
+        bar.getElement(true);
+
+        for (const entry of barEntries(bar)) {
+            entry.button.getElement(true);
+            entry.button.getCloseButton()!.getElement(true);
+        }
+
+        bar.setActiveEntry('c', { focus: false });
+
+        const outside = focusOutside();
+
+        bar.removeBarEntry('c');
+
+        const [a, b] = barEntries(bar);
+
+        expect(DOM.source.getActiveElement()).toBe(outside);
+        expect(tabIndices(bar)).toEqual([-1, 0]);
+        expect([a, b].map(e => e.button.getCloseButton()!.getAria().getTabIndex())).toEqual([-1, -1]);
     });
 });

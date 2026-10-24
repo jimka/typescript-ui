@@ -5,7 +5,7 @@ export type { ButtonGroupOptions, ButtonGroupEvent } from '~/overlay/ButtonGroup
 export { AbstractWindow } from '~/overlay/AbstractWindow.js';
 export { Window } from '~/overlay/Window.js';
 export { TabWindow } from '~/overlay/TabWindow.js';
-export type { WindowOptions, WindowState, WindowEvent, WindowMaximizeBounds, WindowSnapModifier, WindowRect, WindowCloseController } from '~/overlay/AbstractWindow.js';
+export type { WindowOptions, WindowState, WindowEvent, WindowMaximizeBounds, WindowSnapModifier, WindowRect, WindowCloseController, WindowRaiseOptions } from '~/overlay/AbstractWindow.js';
 export { Menu } from '~/overlay/Menu.js';
 export { Tooltip } from '~/overlay/Tooltip.js';
 export type { TooltipColors } from '~/overlay/Tooltip.js';
@@ -26,7 +26,7 @@ export type { RailOptions, RailEdge, RailOrientation, RailEvent, RailDrawerRegis
 export { RailHandle } from '~/overlay/RailHandle.js';
 export type { RailHandleOptions } from '~/overlay/RailHandle.js';
 export { Dock } from '~/overlay/Dock.js';
-export type { DockOptions, DockPanelSpec, DockLayoutSpec, DockEvent, DockPanelEvent, DockEmptyEvent, DockExceptionEvent, DockCloseController } from '~/overlay/Dock.js';
+export type { DockOptions, DockPanelSpec, DockLayoutSpec, DockEvent, DockPanelEvent, DockEmptyEvent, DockExceptionEvent, DockCloseController, DockFocusPanelOptions } from '~/overlay/Dock.js';
 
 export { DragManager } from '~/overlay/DragManager.js';
 export type { DragData, DragEventDetail, DragSourceOptions, DropTargetOptions, TabDragData } from '~/overlay/DragManager.js';

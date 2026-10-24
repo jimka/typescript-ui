@@ -196,6 +196,58 @@ describe('RovingTabIndex — repeat activation', () => {
         expect(tabIndices(g)).toEqual([-1, -1, 0]);
     });
 
+    it('moves only the tabindex when moveTo is called with focus: false', () => {
+        const sink = installTestDOM(CONFIG);
+        const { g } = renderedGroup(3);
+
+        sink.writes.length = 0;
+
+        g.moveTo(2, { focus: false });
+
+        expect(sink.writes.filter(w => w.op === 'focus')).toHaveLength(0);
+        expect(tabIndices(g)).toEqual([-1, -1, 0]);
+        expect(g.getActiveIndex()).toBe(2);
+    });
+
+    it('keeps the repeat-activation early return under focus: false', () => {
+        const sink = installTestDOM(CONFIG);
+        const { g } = renderedGroup(3);
+
+        sink.writes.length = 0;
+
+        g.moveTo(0, { focus: false });
+        g.moveTo(0, { focus: false });
+        g.moveTo(0, { focus: false });
+
+        expect(sink.writes).toHaveLength(0);
+        expect(g.getActiveIndex()).toBe(0);
+    });
+
+    it('re-activates without focusing when remove drops the active item with focus: false', () => {
+        const sink = installTestDOM(CONFIG);
+        const { g, items } = renderedGroup(3);
+
+        g.moveTo(2);
+        sink.writes.length = 0;
+
+        g.remove(items[2], { focus: false });
+
+        expect(sink.writes.filter(w => w.op === 'focus')).toHaveLength(0);
+        expect(tabIndices(g)).toEqual([-1, 0]);
+    });
+
+    it('still focuses the re-activated item when remove drops the active item by default', () => {
+        const sink = installTestDOM(CONFIG);
+        const { g, items } = renderedGroup(3);
+
+        g.moveTo(2);
+        sink.writes.length = 0;
+
+        g.remove(items[2]);
+
+        expect(sink.writes.filter(w => w.op === 'focus')).toHaveLength(1);
+    });
+
     it('re-points the tabindex onto the item that slides into the active slot', () => {
         const { g, items } = group(3);
 

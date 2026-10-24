@@ -13,7 +13,8 @@ import { Glyph } from '~/component/display/Glyph';
 import { circle_check } from '~/glyphs/solid/circle_check';
 import { DOM } from '~/core/DOM';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, setConnected } from '../../dom/TestDOM';
+import { _Button as Button } from '~/component/button/Button';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { _ruleCacheKeys } from '~/core/StyleTarget';
 
@@ -1019,8 +1020,22 @@ describe('a reordered Tab strip survives save and restore', () => {
         expect(tab.getActiveContent()).toBe(b);
     });
 
-    it('L1 — a restored floating window does not take focus when shown', () => {
+    it('L1 — a restored floating window takes no focus when shown and ends with autoFocus on', () => {
         installTestDOM(CONFIG);
+
+        // Collects the show-time focus moves a shown window queues, so the
+        // case decides when they run (as AbstractWindow.focus.test.ts does).
+        const scheduled: Array<() => void> = [];
+        vi.spyOn(Component, 'afterNextLayout').mockImplementation((cb: () => void) => {
+            scheduled.push(cb);
+
+            return { cancel: vi.fn() };
+        });
+
+        const opener = new Button({ text: 'Open' }).getElement(true)!;
+
+        setConnected(opener, true);
+        DOM.sink.focus(opener);
 
         const b = new Component({}); b.setId('b');
         const freshRoot = new Container({});
@@ -1039,11 +1054,13 @@ describe('a reordered Tab strip survives save and restore', () => {
         } as LayoutState;
 
         restoreLayout(freshRoot, state, instanceFactory({ a: new Component({}), b }));
+        scheduled.splice(0).forEach(cb => cb());
 
         const floats = [...AbstractWindow.getOpenWindows()].filter(w => w.getTitle() === 'Float');
 
         expect(floats).toHaveLength(1);
-        expect(floats[0].isAutoFocus()).toBe(false);
+        expect(DOM.source.getActiveElement()).toBe(opener);
+        expect(floats[0].isAutoFocus()).toBe(true);
 
         floats.forEach(w => w.dispose());
     });

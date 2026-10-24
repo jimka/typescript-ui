@@ -3,7 +3,8 @@ import { TabBar, TabToolDescriptor } from '~/component/container/TabBar';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { MenuItemConfig } from '~/component/container/MenuItem';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { Button } from '~/component/button/Button';
+import { installTestDOM, setConnected } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -186,5 +187,37 @@ describe('TabBar context menu assembly', () => {
         const toolItems = configs[configs.length - 1].submenu!.items as MenuItemConfig[];
         expect(toolItems.map(i => i.text)).toEqual(['New tab']);
         expect(toolItems[0].action).toBe(tool.action);
+    });
+});
+
+// dock-reveal-panel-without-focus plan, case TB6: the menu's *Switch to* is a
+// gesture on the strip, so it moves focus onto the chosen tab even from a
+// control outside the strip — unlike a tab change made from code.
+describe('TabBar context menu — Switch to moves focus', () => {
+    afterEach(() => DOM.reset());
+
+    it('TB6: Switch to focuses the chosen tab from an outside control', () => {
+        installTestDOM(CONFIG);
+
+        const bar     = pinnedFirstBar();
+        const entries = (bar as unknown as { _entries: Array<{ button: Button; closeButton?: Button }> })._entries;
+
+        bar.getElement(true);
+
+        for (const entry of entries) {
+            entry.button.getElement(true);
+            entry.closeButton?.getElement(true);
+        }
+
+        const outside = new Button('Outside').getElement(true)!;
+
+        setConnected(outside, true);
+        DOM.sink.focus(outside);
+
+        const items = openMenuFor(bar, 0)[0].submenu!.items as MenuItemConfig[];
+
+        items.find(i => i.text === 'Gamma')!.action!();
+
+        expect(DOM.source.getActiveElement()).toBe(entries[2].button.getElement());
     });
 });

@@ -64,6 +64,8 @@ describe('Tab cross-window dock raise', () => {
         bar.emit('dockhover');
 
         expect(spy).toHaveBeenCalledTimes(1);
+        // The spring-loaded raise moves no keyboard focus (dock-reveal-panel-without-focus, S2).
+        expect(spy).toHaveBeenCalledWith({ focus: false });
     });
 
     it('raises the strip\'s ancestor Window when a foreign tab is dropped on the bar', () => {
@@ -83,6 +85,8 @@ describe('Tab cross-window dock raise', () => {
         bar.emit('dockrequested', foreign.getId(), 0);
 
         expect(spy).toHaveBeenCalledTimes(1);
+        // The drop raise stays a plain raise, so the window's autoFocus decides (S3).
+        expect(spy).toHaveBeenCalledWith();
     });
 
     it('is a silent no-op for a dock-hover on a strip with no ancestor Window', () => {

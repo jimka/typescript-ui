@@ -198,7 +198,8 @@ export interface WindowOptions extends ContainerOptions {
      * Whether the window takes keyboard focus when code shows it (`show()`)
      * or raises it (`bringToFront()`). Defaults to `true`. Pass `false` for a
      * window opened in the background — a tool palette, a log window — so
-     * that it does not take the caret from what the user is typing in.
+     * that it does not take the caret from what the user is typing in. A
+     * `bringToFront({ focus })` call's own `focus` value overrides it.
      */
     autoFocus?: boolean;
     /**
@@ -206,6 +207,23 @@ export interface WindowOptions extends ContainerOptions {
      * app-wide default set through `Body.setResizeMode`.
      */
     resizeMode?: ResizeMode;
+}
+
+/**
+ * Options for {@link AbstractWindow.bringToFront}.
+ *
+ * @category Core
+ */
+export interface WindowRaiseOptions {
+    /**
+     * Whether the raise moves keyboard focus into the window. Omit it to
+     * follow the window's `autoFocus`. `false` raises and activates the window
+     * without moving focus — for code that surfaces a window while the user
+     * keeps working elsewhere, such as a list being arrowed through. `true`
+     * takes focus also when `autoFocus` is `false`. A window that is not shown
+     * never takes focus.
+     */
+    focus?: boolean;
 }
 
 /**
@@ -959,13 +977,15 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
      * and marks it as the active window, updating the title bar appearance on both
      * the previously active window and this one.
      *
-     * @remarks A shown window with `autoFocus` enabled also takes keyboard focus,
-     * even when it is already the active window; one with `autoFocus` disabled,
-     * and one that is not shown, moves no focus.
+     * @remarks A shown window takes keyboard focus when `options.focus` says
+     * so, or, with `focus` omitted, when `autoFocus` is enabled — also when it
+     * is already the active window. A window that is not shown moves no focus.
+     *
+     * @param options - Whether the raise moves keyboard focus; see `WindowRaiseOptions`.
      */
-    bringToFront(): void {
+    bringToFront(options?: WindowRaiseOptions): void {
         const shown     = AbstractWindow.openWindows.has(this);
-        const takeFocus = shown && this.isAutoFocus();
+        const takeFocus = shown && (options?.focus ?? this.isAutoFocus());
 
         this.raise(takeFocus);
 
@@ -2349,7 +2369,8 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
     /**
      * Sets whether code that shows the window (`show()`) or raises it
      * (`bringToFront()`) also moves keyboard focus into it. A pointer press
-     * inside the window and `restore()` move focus regardless.
+     * inside the window and `restore()` move focus regardless. A
+     * `bringToFront({ focus })` call's own `focus` value overrides it.
      *
      * @param value - True to take focus when shown or raised from code.
      *
