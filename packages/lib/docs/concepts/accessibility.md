@@ -71,7 +71,9 @@ tabs.moveTo(0); // button1 is now the active item
 
 1. Sets `tabindex=-1` on the previous active item.
 2. Sets `tabindex=0` on the new active item.
-3. Calls `focus()` on the new active item's DOM element.
+3. Calls `focus()` on the new active item's DOM element, unless called with `{ focus: false }`.
+
+`remove` takes the same option for the item it activates when it removes the active one. A group that changes from code — the [`Tab`](/layouts/Tab#selecting-a-tab) strip — uses it to move the tab stop without taking focus from elsewhere.
 
 [`ButtonGroup`](/components/ButtonGroup) uses `RovingTabIndex` automatically for [`ToggleButton`](/components/ToggleButton) groups when you call `setContainer(container)`. For [`RadioButton`](/components/RadioButton) groups, the browser's built-in radio-group navigation handles arrow keys, so `RovingTabIndex` isn't needed.
 

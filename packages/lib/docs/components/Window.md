@@ -140,6 +140,14 @@ A window takes keyboard focus when code shows it, so a screen reader announces i
 
 Focus arrives after the window's first layout, so a field the application focuses right after `show()` keeps focus. Pass `autoFocus: false` to a window opened in the background, such as a tool palette, a log window or one opened from a timer, so that it does not take the caret from what the user is typing in. `setAutoFocus` / `isAutoFocus` change and read it later.
 
+A single `bringToFront` call can override `autoFocus` with its own `focus` option — see [`WindowRaiseOptions`](/api/overlay/interfaces/WindowRaiseOptions):
+
+| Call | Result |
+| --- | --- |
+| `bringToFront()` or `bringToFront({})` | `autoFocus` decides |
+| `bringToFront({ focus: false })` | raises and activates the window without moving focus |
+| `bringToFront({ focus: true })` | takes focus also with `autoFocus: false` |
+
 ### Focus returns to where it came from when the window closes
 
 The window remembers the element focus was on when it last took focus. When it closes with focus inside it, focus goes back there.
