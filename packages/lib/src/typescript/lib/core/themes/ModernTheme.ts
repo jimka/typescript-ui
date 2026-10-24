@@ -18,7 +18,7 @@ import type { Theme } from '~/core/Theme.js';
  */
 export const ModernTheme: Theme = defineTheme(BaseTheme, {
     colorScheme: 'light',
-    text       : { color: 'rgb(0, 0, 0)' },
+    text       : { color: 'rgb(0, 0, 0)', mutedColor: 'rgb(100, 100, 100)' },
     body       : { background: 'rgb(255, 255, 255)' },
     border     : { color: 'black' },
     button     : {

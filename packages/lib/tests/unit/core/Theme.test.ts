@@ -1,11 +1,12 @@
 // Pure, node-safe portions of Theme: the defineTheme deep-merge contract and a
 // structural smoke test of the shipped theme objects. themeToVars (which
 // applies CSS variables) is a DOM-integration tier and is out of scope here.
-// The 'glyph icon-size scale' block below is the one exception: it exercises
+// Two blocks are exceptions that install a test DOM of their own rather than
+// joining the DOM-free blocks: 'glyph icon-size scale' exercises
 // ThemeManager.getResolvedScale()/setTheme against the recording sink (per
-// plans/in-progress/glyph-icon-size-scale.md), so it installs a test DOM of
-// its own rather than joining the DOM-free blocks above.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+// plans/in-progress/glyph-icon-size-scale.md), and 'text.mutedColor reaches
+// :root' reads the CSS variables setTheme writes to the document element.
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
     defineTheme,
     BaseTheme,
@@ -17,7 +18,7 @@ import {
     type DeepPartial,
 } from '~/core/Theme';
 import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../../dom/TestDOM';
+import { installTestDOM, type RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
 const DOM_CONFIG = {
@@ -27,6 +28,110 @@ const DOM_CONFIG = {
     fontMetrics,
     themeVars:       {},
 };
+
+// WCAG 2.x AA minimum contrast for normal-size text.
+const AA_NORMAL_TEXT = 4.5;
+
+/**
+ * Parses `rgb(r, g, b)`, `#rgb` or `#rrggbb` into 0–255 channels.
+ *
+ * @param value - The CSS colour, in one of the forms the surface tokens use.
+ * @returns The red, green and blue channels.
+ * @throws Error - When the colour is in any other form.
+ */
+function parseColor(value: string): [number, number, number] {
+    const rgb = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/.exec(value);
+
+    if (rgb) {
+        return [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+    }
+
+    const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(value);
+
+    if (!hex) {
+        throw new Error(`unsupported colour form: ${value}`);
+    }
+
+    const digits = hex[1].length === 3 ? hex[1].replace(/./g, "$&$&") : hex[1];
+
+    return [0, 2, 4].map(i => parseInt(digits.slice(i, i + 2), 16)) as [number, number, number];
+}
+
+/**
+ * Every colour a background value paints: the value itself for a plain
+ * colour, each colour stop for a gradient.
+ *
+ * @param value - A background token's value.
+ * @returns The colours it contains, in order.
+ */
+function colorStops(value: string): string[] {
+    return value.match(/rgb\([^)]*\)|#[0-9a-f]{6}\b|#[0-9a-f]{3}\b/gi) ?? [];
+}
+
+/**
+ * WCAG 2.x relative luminance of an sRGB colour.
+ *
+ * @param channels - The 0–255 red, green and blue channels.
+ * @returns The relative luminance, from 0 (black) to 1 (white).
+ */
+function luminance([r, g, b]: [number, number, number]): number {
+    // sRGB linearisation and channel weights are the constants WCAG 2.x defines.
+    const lin = (c: number): number => {
+        const s = c / 255;
+
+        return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    };
+
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+/**
+ * WCAG contrast ratio between two colours, always >= 1.
+ *
+ * @param a - One colour.
+ * @param b - The other colour.
+ * @returns The contrast ratio.
+ */
+function contrast(a: string, b: string): number {
+    const la = luminance(parseColor(a));
+    const lb = luminance(parseColor(b));
+
+    // 0.05 is WCAG's flare term, added to both luminances.
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/**
+ * The surface backgrounds muted text is documented to sit on (the list
+ * `Theme.text.mutedColor`'s JSDoc names); a gradient is checked at each of
+ * its colour stops. Fills such as buttons, badges and notifications are out
+ * of scope.
+ */
+const SURFACES: ReadonlyArray<[string, (t: Theme) => string]> = [
+    ['body.background',          t => t.body.background],
+    ['input.background',         t => t.input.background],
+    ['list.background',          t => t.list.background],
+    ['popover.background',       t => t.popover.background],
+    ['contextMenu.background',   t => t.contextMenu.background],
+    ['autoComplete.background',  t => t.autoComplete.background],
+    ['toolBar.background',       t => t.toolBar.background],
+    ['statusBar.background',     t => t.statusBar.background],
+    ['menuBar.background',       t => t.menuBar.background],
+    ['menuBar.panel.background', t => t.menuBar.panel.background],
+    ['tab.toolbar.background',   t => t.tab.toolbar.background],
+    ['window.header.background', t => t.window.header.background],
+    ['tooltip.background',       t => t.tooltip.background],
+    ['tab.button.background',    t => t.tab.button.background],
+    ['tab.button.hover.background', t => t.tab.button.hover.background],
+    ['accordion.header.background', t => t.accordion.header.background],
+    ['table.header.background',  t => t.table.header.background],
+];
+
+/** The three built-in palettes, named for test titles. */
+const BUILT_IN_THEMES: Array<[string, Theme]> = [
+    ['ModernTheme', ModernTheme],
+    ['ClassicTheme', ClassicTheme],
+    ['DarkTheme', DarkTheme],
+];
 
 describe('defineTheme deep-merge contract', () => {
     it('replaces only the overridden leaf, leaving sibling keys from base intact', () => {
@@ -94,6 +199,74 @@ describe('shipped theme objects are well-formed', () => {
             expect(theme.scale.base).toBeTruthy();
         });
     }
+});
+
+describe('text.mutedColor', () => {
+    it('carries the measured value in each built-in theme', () => {
+        expect(ModernTheme.text.mutedColor).toBe('rgb(100, 100, 100)');
+        expect(ClassicTheme.text.mutedColor).toBe('rgb(74, 74, 74)');
+        expect(DarkTheme.text.mutedColor).toBe('rgb(180, 180, 180)');
+    });
+
+    const pairs = BUILT_IN_THEMES.flatMap(([name, theme]) =>
+        SURFACES.map(([surface, read]) => [name, surface, theme, read] as const));
+
+    it.each(pairs)('%s muted text meets WCAG AA on %s', (_name, _surface, theme, read) => {
+        const stops = colorStops(read(theme));
+
+        expect(stops.length).toBeGreaterThan(0);
+
+        for (const stop of stops) {
+            expect(contrast(theme.text.mutedColor!, stop)).toBeGreaterThanOrEqual(AA_NORMAL_TEXT);
+        }
+    });
+
+    it('survives an override of the sibling text.color leaf', () => {
+        const theme = defineTheme(DarkTheme, { text: { color: 'rgb(255, 255, 255)' } });
+
+        expect(theme.text.mutedColor).toBe('rgb(180, 180, 180)');
+    });
+
+    it('is absent from BaseTheme, which carries no palette', () => {
+        expect(BaseTheme.text).toBeUndefined();
+    });
+});
+
+describe('text.mutedColor reaches :root', () => {
+    beforeEach(() => installTestDOM(DOM_CONFIG));
+    afterEach(() => {
+        vi.restoreAllMocks();
+        ThemeManager.setTheme(ModernTheme);
+        DOM.reset();
+    });
+
+    // Literal expectations, not `theme.text.mutedColor`: a theme missing the
+    // key and a write missing the key would otherwise agree on `undefined`.
+    const cases: Array<[string, Theme, string]> = [
+        ['ModernTheme', ModernTheme, 'rgb(100, 100, 100)'],
+        ['ClassicTheme', ClassicTheme, 'rgb(74, 74, 74)'],
+        ['DarkTheme', DarkTheme, 'rgb(180, 180, 180)'],
+        // A hand-written theme may leave the optional token out; the
+        // variable then carries its text colour.
+        ['a theme without mutedColor', { ...ModernTheme, text: { color: 'rgb(1, 2, 3)' } }, 'rgb(1, 2, 3)'],
+    ];
+
+    it.each(cases)('setTheme(%s) writes --ts-ui-text-muted-color', (_name, theme, expected) => {
+        // The modelled DOM mints a new handle on every `getDocumentElement()`
+        // call, so pin one, as a real document has one root.
+        const root = DOM.source.getDocumentElement();
+
+        vi.spyOn(DOM.source, 'getDocumentElement').mockReturnValue(root);
+
+        ThemeManager.setTheme(theme);
+
+        const writes = (DOM.sink as RecordingDOMSink).writes
+            .filter(w => w.op === 'apply' && w.args[0] === root)
+            .map(w => (w.args[1] as { style?: Record<string, string | null> }).style ?? {})
+            .filter(style => '--ts-ui-text-muted-color' in style);
+
+        expect(writes.at(-1)?.['--ts-ui-text-muted-color']).toBe(expected);
+    });
 });
 
 describe('glyph icon-size scale', () => {

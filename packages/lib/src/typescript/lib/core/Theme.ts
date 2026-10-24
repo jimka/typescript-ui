@@ -95,6 +95,18 @@ export interface Theme {
 
     text: {
         color: string;
+        /**
+         * De-emphasised text colour for secondary text that must stay readable:
+         * a path beside a name, a hint, a count, an inactive label, an
+         * empty-state placeholder. Not a disabled colour. The built-in values
+         * meet 4.5 : 1 on the surfaces secondary text sits on: the page,
+         * inputs, lists, menus and popovers, tool, status and menu bars, tab
+         * strips and tabs, window, accordion and table headers, and tooltips,
+         * at each stop of a gradient. Fills such as buttons, badges,
+         * notifications and selected states are not covered. Optional: a
+         * theme that leaves it out gets {@link Theme.text | `text.color`}.
+         */
+        mutedColor?: string;
     };
 
     body: {
@@ -997,6 +1009,7 @@ function themeToVars(theme: Theme): Record<string, string> {
         '--ts-ui-base-size'                        : String(theme.scale.base) + 'px',
         '--ts-ui-line-padding'                     : String(theme.font.linePadding),
         '--ts-ui-text-color'                       : theme.text.color,
+        '--ts-ui-text-muted-color'                 : theme.text.mutedColor ?? theme.text.color,
         '--ts-ui-body-bg'                          : theme.body.background,
         '--ts-ui-border-color'                     : theme.border.color,
         '--ts-ui-border-radius'                    : theme.border.radius,

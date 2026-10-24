@@ -47,6 +47,15 @@ describe('List empty state', () => {
         expect(list.getMaxSize()!.height).toBe(UNBOUNDED);
     });
 
+    it('emptyText placeholder is painted in the theme muted text colour', () => {
+        installTestDOM(CONFIG);
+
+        const list = new TestList({ emptyText: 'None' });
+        const placeholder = list.innerChildren()[0] as _Text;
+
+        expect(placeholder.getForegroundColor()).toBe('var(--ts-ui-text-muted-color, rgb(100, 100, 100))');
+    });
+
     it('an empty list with no empty option has no placeholder child and a finite max', () => {
         installTestDOM(CONFIG);
 
