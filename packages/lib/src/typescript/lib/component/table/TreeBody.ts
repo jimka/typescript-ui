@@ -155,7 +155,8 @@ class TreeBody extends _Body {
     // while a motion runs, via `renderedFlatRows`; `null` when idle.
     // `_motionRecords` caches `_motionRows.map(f => f.record)` so
     // `getRenderedRecords` returns a stable array `Body` can index into.
-    // Framework-managed, no option.
+    // The list is trimmed of the block's hidden tail for a block taller than
+    // the viewport (see `rowMotionRows`). Framework-managed, no option.
     private _motionRows:    FlatRecord[] | null  = null;
     private _motionRecords: ModelRecord[] | null = null;
 
@@ -334,9 +335,9 @@ class TreeBody extends _Body {
      * The change commits at once — `isExpanded` and `getFlatRecords` reflect
      * it before this method returns — and a single toggle then animates the
      * affected rows over 200ms, unless it fails one of the conditions in
-     * `commitWithRowMotion` (a block taller than the viewport, a commit that
-     * moves the scroll offset, `prefers-reduced-motion: reduce`), in which
-     * case it snaps.
+     * `commitWithRowMotion` (a record scrolled out of view above the viewport
+     * whose open children reach more than a viewport below it,
+     * `prefers-reduced-motion: reduce`), in which case it snaps.
      *
      * @param record - The record to expand or collapse.
      * @param expanded - `true` to expand, `false` to collapse.
@@ -355,7 +356,9 @@ class TreeBody extends _Body {
             return this;
         }
 
-        const before    = this._flatRows;
+        const before = this._flatRows;
+        let   rows   = before;
+
         const scheduled = this.commitWithRowMotion(record, expanded, () => {
             if (expanded) {
                 this._expanded.add(id);
@@ -367,15 +370,15 @@ class TreeBody extends _Body {
             this.invalidateRowBindings();
             this.renderWindow();
 
-            const rows = expanded ? this._flatRows : this.collapsingMotionRows(before, record);
-
-            this._motionRows    = rows;
-            this._motionRecords = rows.map(f => f.record);
+            rows = expanded ? this._flatRows : this.collapsingMotionRows(before, record);
 
             return this.rowMotionBlock(rows, rows.findIndex(f => f.record === record));
         });
 
-        if (!scheduled) {
+        if (scheduled) {
+            this._motionRows    = this.rowMotionRows(rows);
+            this._motionRecords = this._motionRows.map(f => f.record);
+        } else {
             this._motionRows    = null;
             this._motionRecords = null;
         }

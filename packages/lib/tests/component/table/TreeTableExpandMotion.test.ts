@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 // Pins plans/implemented/tree-expand-collapse-animation.md's TreeTable
-// row-motion cases (`## Expected Behaviour`, T1-T6). `TreeBody.setExpanded`
+// row-motion cases (`## Expected Behaviour`, T1-T6), and
+// plans/implemented/tree-row-motion-no-snap.md's (T7 and T8 rewritten, T9-T13 new). `TreeBody.setExpanded`
 // commits synchronously (as `TreeExpandMotion.test.ts` pins for `Tree`), then
 // the shared `VirtualRowView` row motion animates the toggled block over
 // `Body`'s render pass.
@@ -126,7 +127,7 @@ function fixtureStore(): Fixture {
 interface BodyPrivate {
     _rowPool:      Row[];
     _boundIndices: number[];
-    _scroller:     { getScrollY(): number } | null;
+    _scroller:     { getScrollY(): number; setScrollY(y: number): void; layoutScrollbars(w: number, h: number): void } | null;
     getRowHeight(): number;
     _previousFocusedCell: { getId(): string } | null;
 }
@@ -729,7 +730,7 @@ describe('TreeTable — expand/collapse row motion', () => {
         return { table, body, E: store.getById(1)! };
     }
 
-    it('a block that exactly fills the viewport animates; one row taller snaps', () => {
+    it('T7: a block taller than the viewport animates, however tall', () => {
         const probe        = mountSingleBranch(1);
         const viewportRows = Math.ceil(probe.body.getHeight() / asPrivate(probe.body).getRowHeight());
 
@@ -739,15 +740,13 @@ describe('TreeTable — expand/collapse row motion', () => {
         fits.table.setExpanded(fits.E, true);
         expect(tweenSpy).toHaveBeenCalledTimes(1);
 
-        tweenSpy.mockClear();
-
         const overflows = mountSingleBranch(viewportRows + 1);
         overflows.table.setExpanded(overflows.E, true);
-        expect(tweenSpy).not.toHaveBeenCalled();
+        expect(tweenSpy).toHaveBeenCalledTimes(2);
         expect(overflows.table.isExpanded(overflows.E)).toBe(true);
     });
 
-    it('a collapse whose commit clamps the scroll offset snaps instead of animating', () => {
+    it('T8: a collapse whose commit clamps the scroll offset animates, driving the scroll offset itself', () => {
         const store = new MemoryStore(MODEL, []);
 
         store.loadData([
@@ -776,15 +775,302 @@ describe('TreeTable — expand/collapse row motion', () => {
         settle(); // 24 flat rows now.
 
         body.setScrollY(24 * H); // scrolled to (past) the end.
+
+        const scrollOf     = (): number => asPrivate(body)._scroller!.getScrollY();
+        const scrollBefore = scrollOf();
+        const layoutSpy    = vi.spyOn(asPrivate(body)._scroller!, 'layoutScrollbars');
+        const tweenSpy     = vi.spyOn(Animation, 'tween');
+        const fx           = { z1: 22 } as unknown as Fixture;
+
+        clock = 1000;
+        table.setExpanded(Z, false);
+
+        expect(tweenSpy).toHaveBeenCalledTimes(1);
+        expect(body.getFlatRecords()).toHaveLength(21);
+        expect(scrollOf()).toBeCloseTo(scrollBefore - 3 * H);
+        expectFinalRender(body, H);
+
+        runFrame(1000);
+        expect(scrollOf()).toBeCloseTo(scrollBefore);
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo(24 * H);
+
+        runFrame(1100);
+        expect(scrollOf()).toBeCloseTo(scrollBefore - 1.5 * H);
+        expect(rowFor(body, fx, 21)!.getTranslateY()).toBeCloseTo(20 * H);
+        expect(rowFor(body, fx, 22)!.getTranslateY()).toBeCloseTo(19.5 * H);
+        expect(rowFor(body, fx, 22)!.getOpacity()).toBeCloseTo(0);
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo(22.5 * H);
+
+        settle();
+        expect(scrollOf()).toBeCloseTo(scrollBefore - 3 * H);
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo(21 * H);
+        expectFinalRender(body, H);
+    });
+
+    /**
+     * Mounts a five-row TreeTable (header included) over root `E` (id 1) with
+     * `childCount` leaf children (ids 2...), then `trailingRoots` root leaves,
+     * the first named `F`. Every node collapsed.
+     */
+    function mountBranchWithTail(
+        childCount: number, trailingRoots: number, minColumnWidth: number = 100,
+    ): { table: TreeTable; body: TreeBody; E: ModelRecord; H: number; viewportRows: number; kids: number[]; F: number } {
+        const store = new MemoryStore(MODEL, []);
+
+        store.loadData([
+            { id: 1, parent: null, name: 'E' },
+            ...Array.from({ length: childCount }, (_, i) => ({ id: 2 + i, parent: 1, name: 'c' + i })),
+            ...Array.from({ length: trailingRoots }, (_, i) => ({ id: 2 + childCount + i, parent: null, name: i === 0 ? 'F' : 't' + i })),
+        ]);
+
+        const spec  = { ...SPEC, columns: [{ field: 'name', minWidth: minColumnWidth }] };
+        const table = new TreeTable(store, spec);
+
+        tables.push(table);
+
+        const body = table.getBody();
+        const H    = asPrivate(body).getRowHeight();
+
+        table.getElement(true);
+        table.setWidth(300);
+        table.setHeight(5 * H);
+        table.doLayout();
+
+        return {
+            table, body, E: store.getById(1)!, H, viewportRows: Math.ceil(body.getHeight() / H),
+            kids: Array.from({ length: childCount }, (_, i) => 2 + i), F: 2 + childCount,
+        };
+    }
+
+    /** The scroller's last content height, read from a `layoutScrollbars` spy. */
+    function contentHeightOf(spy: { mock: { calls: unknown[][] } }): number {
+        return spy.mock.calls.at(-1)?.[1] as number;
+    }
+
+    it('T9: a trimmed expand moves the shown rows and the rows after them as one piece', () => {
+        const probe = mountBranchWithTail(1, 1);
+        const k     = probe.viewportRows + 3;
+        const { table, body, E, H, viewportRows, kids, F } = mountBranchWithTail(k, 1);
+        const m         = Math.min(k, Math.ceil((body.getHeight() - H) / H));
+        const ids       = { } as Fixture;
+        const layoutSpy = vi.spyOn(asPrivate(body)._scroller!, 'layoutScrollbars');
+        const tweenSpy  = vi.spyOn(Animation, 'tween');
+
+        expect(viewportRows).toBe(probe.viewportRows);
+
+        clock = 1000;
+        table.setExpanded(E, true);
+        expect(tweenSpy).toHaveBeenCalledTimes(1);
+
+        runFrame(1000);
+        expect(rowFor(body, ids, F)!.getTranslateY()).toBeCloseTo(H);
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo(2 * H);
+        kids.slice(m).forEach(id => expect(isDisplayed(body, ids, id)).toBe(false));
+
+        runFrame(1100);
+        kids.slice(0, m).forEach((id, j) => expect(rowFor(body, ids, id)!.getTranslateY()).toBeCloseTo((j + 1) * H - 0.5 * m * H));
+        expect(rowFor(body, ids, F)!.getTranslateY()).toBeCloseTo((m + 1) * H - 0.5 * m * H);
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo((k + 2) * H - 0.5 * k * H);
+        expect(rowFor(body, ids, F)!.getAria().getRowIndex()).toBe(k + 3);
+        expect(rowFor(body, ids, F)!.isStyleState('.stripe')).toBe((k + 1) % 2 === 1);
+
+        settle();
+        expectFinalRender(body, H);
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo((k + 2) * H);
+    });
+
+    it('T10: a trimmed collapse moves the shown rows and the rows after them as one piece', () => {
+        const probe = mountBranchWithTail(1, 1);
+        const k     = probe.viewportRows + 3;
+        const { table, body, E, H, kids, F } = mountBranchWithTail(k, 1);
+        const m   = Math.min(k, Math.ceil((body.getHeight() - H) / H));
+        const ids = { } as Fixture;
+
+        clock = 0;
+        table.setExpanded(E, true);
+        settle();
+
+        clock = 1000;
+        table.setExpanded(E, false);
+
+        runFrame(1000);
+        kids.slice(0, m).forEach((id, j) => {
+            expect(rowFor(body, ids, id)!.getTranslateY()).toBeCloseTo((j + 1) * H);
+            expect(rowFor(body, ids, id)!.getAria().getHidden()).toBe(true);
+        });
+        kids.slice(m).forEach(id => expect(isDisplayed(body, ids, id)).toBe(false));
+        expect(rowFor(body, ids, F)!.getTranslateY()).toBeCloseTo((m + 1) * H);
+        expect(rowFor(body, ids, F)!.getAria().getRowIndex()).toBe(3);
+
+        settle();
+        expect(rowFor(body, ids, F)!.getTranslateY()).toBe(H);
+        asPrivate(body)._rowPool.forEach(row => expect(row.getAria().getHidden()).not.toBe(true));
+    });
+
+    it('T11: a vertical scroll the motion did not make settles a scroll-bound motion; a horizontal one does not', () => {
+        const probe = mountBranchWithTail(1, 1);
+        const k     = probe.viewportRows + 3;
+
+        // (a) A trimmed expand.
+        const a = mountBranchWithTail(k, 1);
+
+        clock = 1000;
+        a.table.setExpanded(a.E, true);
+        runFrame(1000);
+        runFrame(1100);
+        expect(isMotionRunning(a.body)).toBe(true);
+
+        a.body.setScrollY(a.H);
+        expect(isMotionRunning(a.body)).toBe(false);
+        expectFinalRender(a.body, a.H);
+
+        // (b) A scroll-driving collapse: T8's setup.
+        const { body, H, scrollBefore } = startEndOfListCollapse();
+
+        body.setScrollY(scrollBefore - H);
+        expect(isMotionRunning(body)).toBe(false);
+        expect(asPrivate(body)._scroller!.getScrollY()).toBeCloseTo(scrollBefore - 3 * H);
+
+        // (c) A horizontal scroll leaves a trimmed motion running.
+        const c = mountBranchWithTail(k, 1, 600);
+
+        clock = 1000;
+        c.table.setExpanded(c.E, true);
+        runFrame(1000);
+        runFrame(1100);
+        expect(isMotionRunning(c.body)).toBe(true);
+
+        c.body.setScrollX(50);
+        expect(isMotionRunning(c.body)).toBe(true);
+
+        c.body.setScrollY(c.H);
+        expect(isMotionRunning(c.body)).toBe(false);
+
+        // (d) A scroll straight on the scroller — the route a wheel, touch
+        // drag or scrollbar takes — settles a trimmed expand in the tick.
+        const d = mountBranchWithTail(k, 1);
+
+        clock = 1000;
+        d.table.setExpanded(d.E, true);
+        runFrame(1000);
+        runFrame(1100);
+        expect(isMotionRunning(d.body)).toBe(true);
+
+        asPrivate(d.body)._scroller!.setScrollY(d.H);
+        expect(isMotionRunning(d.body)).toBe(false);
+        expectFinalRender(d.body, d.H);
+
+        // (e) The same two routes during a scroll-driving collapse, on a
+        // table wider than its view: a horizontal scroll keeps the motion
+        // playing, while a vertical one straight on the scroller settles it.
+        const e = startEndOfListCollapse(600);
+
+        e.body.setScrollX(50);
+        expect(isMotionRunning(e.body)).toBe(true);
+
+        asPrivate(e.body)._scroller!.setScrollY(e.scrollBefore - 2 * e.H);
+        expect(isMotionRunning(e.body)).toBe(false);
+        expect(asPrivate(e.body)._scroller!.getScrollY()).toBeCloseTo(e.scrollBefore - 3 * e.H);
+        expectFinalRender(e.body, e.H);
+    });
+
+    /**
+     * T8's end-of-list fixture (20 roots, then `Z{z1 z2 z3}`), Z expanded and
+     * settled, scrolled to the end, then collapsed and run to the frame at
+     * +100, where its scroll-driving motion is asserted running.
+     *
+     * @param minColumnWidth - The name column's minimum width; above the
+     *   table's 300 px it makes the table scroll horizontally.
+     */
+    function startEndOfListCollapse(minColumnWidth: number = 100): { body: TreeBody; H: number; scrollBefore: number } {
+        const store = new MemoryStore(MODEL, []);
+
+        store.loadData([
+            ...Array.from({ length: 20 }, (_, i) => ({ id: 1 + i, parent: null, name: 'r' + i })),
+            { id: 21, parent: null, name: 'Z' },
+            { id: 22, parent: 21,   name: 'z1' },
+            { id: 23, parent: 21,   name: 'z2' },
+            { id: 24, parent: 21,   name: 'z3' },
+        ]);
+
+        const table = new TreeTable(store, { ...SPEC, columns: [{ field: 'name', minWidth: minColumnWidth }] });
+
+        tables.push(table);
+
+        const body = table.getBody();
+        const H    = asPrivate(body).getRowHeight();
+
+        table.getElement(true);
+        table.setWidth(300);
+        table.setHeight(5 * H);
+        table.doLayout();
+
+        const Z = store.getById(21)!;
+
+        clock = 0;
+        table.setExpanded(Z, true);
+        settle();
+        body.setScrollY(24 * H);
+
         const scrollBefore = asPrivate(body)._scroller!.getScrollY();
 
-        const tweenSpy = vi.spyOn(Animation, 'tween');
-        table.setExpanded(Z, false); // collapsing drops 3 rows, so the commit re-clamps the scroll offset.
+        clock = 1000;
+        table.setExpanded(Z, false);
+        runFrame(1000);
+        runFrame(1100);
+        expect(isMotionRunning(body)).toBe(true);
 
+        return { body, H, scrollBefore };
+    }
+
+    it('T12: a record scrolled out of view above the viewport whose open children reach past one viewport still snaps', () => {
+        const probe = mountBranchWithTail(1, 1);
+        const k     = probe.viewportRows + 3;
+
+        const tweenSpy = vi.spyOn(Animation, 'tween');
+
+        const snaps = mountBranchWithTail(k, 20);
+
+        snaps.body.setScrollY(2 * snaps.H);
+        snaps.table.setExpanded(snaps.E, true);
         expect(tweenSpy).not.toHaveBeenCalled();
-        expect(asPrivate(body)._scroller!.getScrollY()).toBeLessThan(scrollBefore);
-        expect(body.getFlatRecords()).toHaveLength(21);
-        expectFinalRender(body, H);
+        expectFinalRender(snaps.body, snaps.H);
+
+        const animates = mountBranchWithTail(k, 20);
+
+        animates.body.setScrollY(animates.H);
+        animates.table.setExpanded(animates.E, true);
+        expect(tweenSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('T13: a trimmed motion keeps the row pool at the size a snapped toggle needs', () => {
+        const probe = mountBranchWithTail(1, 1);
+        const k     = probe.viewportRows + 3;
+
+        const reduced = vi.spyOn(Animation, 'isReducedMotion').mockReturnValue(true);
+        const snapped = mountBranchWithTail(k, 20);
+
+        snapped.table.setExpanded(snapped.E, true);
+
+        const bound = asPrivate(snapped.body)._rowPool.length;
+
+        reduced.mockRestore();
+
+        const { table, body, E } = mountBranchWithTail(k, 20);
+        const poolSize           = (): number => asPrivate(body)._rowPool.length;
+
+        clock = 1000;
+        table.setExpanded(E, true);
+        expect(poolSize()).toBeLessThanOrEqual(bound);
+
+        runFrame(1000);
+        expect(poolSize()).toBeLessThanOrEqual(bound);
+
+        runFrame(1100);
+        expect(poolSize()).toBeLessThanOrEqual(bound);
+
+        settle();
+        expect(poolSize()).toBeLessThanOrEqual(bound);
     });
 
     it('reduced motion commits the final state with no tween', () => {

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 // Pins plans/implemented/tree-expand-collapse-animation.md's Tree row-motion
-// cases (`## Expected Behaviour`, M1-M15). A single expand/collapse commits
+// cases (`## Expected Behaviour`, M1-M15), and plans/implemented/tree-row-motion-no-snap.md's
+// (M9 and M10 rewritten, M16-M23 new). A single expand/collapse commits
 // its state and its final-state render synchronously in the same call, then
 // VirtualRowView's Animation.tween-based row motion rewinds the affected
 // rows on the next animation frame and plays them forward over 200ms.
@@ -123,7 +124,7 @@ interface TreePrivate {
     _flatRows: Array<{ node: TreeNode; depth: number }>;
     _rowPool: _TreeRow[];
     _boundIndices: number[];
-    _scroller: { getScrollY(): number; layoutScrollbars(w: number, h: number): void } | null;
+    _scroller: { getScrollY(): number; setScrollY(y: number): void; layoutScrollbars(w: number, h: number): void } | null;
 }
 
 function asPrivate(tree: _Tree): TreePrivate {
@@ -203,6 +204,65 @@ function mountSingleBranch(childCount: number): { tree: _Tree; E: TreeNode } {
     tree.setNodes([E]);
 
     return { tree, E };
+}
+
+/** Mounts a 300x120 tree over roots `A, B{b0..b19}, C, D, L0..L9`, every node collapsed. */
+function mountLongBranch(): { tree: _Tree; A: TreeNode; B: TreeNode; C: TreeNode; D: TreeNode; kids: TreeNode[] } {
+    const kids: TreeNode[] = Array.from({ length: 20 }, (_, i) => ({ label: 'b' + i }));
+    const A: TreeNode = { label: 'A' };
+    const B: TreeNode = { label: 'B', children: kids };
+    const C: TreeNode = { label: 'C' };
+    const D: TreeNode = { label: 'D' };
+    const tails: TreeNode[] = Array.from({ length: 10 }, (_, i) => ({ label: 'L' + i }));
+    const tree = new _Tree();
+
+    trees.push(tree);
+    tree.getElement(true);
+    tree.setWidth(300);
+    tree.setHeight(120);
+    tree.setNodes([A, B, C, D, ...tails]);
+
+    return { tree, A, B, C, D, kids };
+}
+
+/** Mounts a 300x120 tree over roots `r0..r8, P{p0..p19}`, every node collapsed. */
+function mountEndBranch(): { tree: _Tree; P: TreeNode; kids: TreeNode[] } {
+    const kids: TreeNode[] = Array.from({ length: 20 }, (_, i) => ({ label: 'p' + i }));
+    const P: TreeNode = { label: 'P', children: kids };
+    const leaves: TreeNode[] = Array.from({ length: 9 }, (_, i) => ({ label: 'r' + i }));
+    const tree = new _Tree();
+
+    trees.push(tree);
+    tree.getElement(true);
+    tree.setWidth(300);
+    tree.setHeight(120);
+    tree.setNodes([...leaves, P]);
+
+    return { tree, P, kids };
+}
+
+/**
+ * Mounts a 300x120 tree over 20 root leaves then `Z{z1 z2 z3}`, expands Z and
+ * settles it, then scrolls to the end (offset 456).
+ */
+function mountEndOfList(): { tree: _Tree; Z: TreeNode; z: TreeNode[] } {
+    const z: TreeNode[] = [{ label: 'z1' }, { label: 'z2' }, { label: 'z3' }];
+    const Z: TreeNode = { label: 'Z', children: z };
+    const leaves: TreeNode[] = Array.from({ length: 20 }, (_, i) => ({ label: 'r' + i }));
+    const tree = new _Tree();
+
+    trees.push(tree);
+    tree.getElement(true);
+    tree.setWidth(300);
+    tree.setHeight(120);
+    tree.setNodes([...leaves, Z]);
+
+    clock = 0;
+    tree.expandNode(Z);
+    settle();
+    tree.setScrollY(24 * ROW_HEIGHT);
+
+    return { tree, Z, z };
 }
 
 describe('Tree — expand/collapse row motion', () => {
@@ -457,48 +517,86 @@ describe('Tree — expand/collapse row motion', () => {
         expect(tweenSpy).not.toHaveBeenCalled();
     });
 
-    it('M9: a block that exactly fills the viewport animates; one row taller snaps', () => {
+    it('M9: a block taller than the viewport animates its shown rows; the hidden tail appears at the settle', () => {
         const tweenSpy = vi.spyOn(Animation, 'tween');
 
         const fits = mountSingleBranch(5);
+        const fitsKids = fits.E.children!;
+
+        clock = 1000;
         fits.tree.expandNode(fits.E);
         expect(tweenSpy).toHaveBeenCalledTimes(1);
+        runFrame(1000);
+        runFrame(1100);
+        fitsKids.forEach(kid => expect(isDisplayed(fits.tree, kid)).toBe(true));
 
         tweenSpy.mockClear();
 
         const overflows = mountSingleBranch(6);
+        const kids      = overflows.E.children!;
+        const layoutSpy = vi.spyOn(asPrivate(overflows.tree)._scroller!, 'layoutScrollbars');
+
+        clock = 1000;
         overflows.tree.expandNode(overflows.E);
-        expect(tweenSpy).not.toHaveBeenCalled();
+        expect(tweenSpy).toHaveBeenCalledTimes(1);
+
+        runFrame(1000);
+        runFrame(1100);
+
+        const expectedY       = [-24, 0, 24, 48];
+        const expectedOpacity = [0, 0, 1, 1];
+
+        for (let j = 0; j < 4; j++) {
+            expect(rowFor(overflows.tree, kids[j]).getTranslateY()).toBeCloseTo(expectedY[j]);
+            expect(rowFor(overflows.tree, kids[j]).getOpacity()).toBeCloseTo(expectedOpacity[j]);
+        }
+
+        expect(isDisplayed(overflows.tree, kids[4])).toBe(false);
+        expect(isDisplayed(overflows.tree, kids[5])).toBe(false);
+        expect(layoutSpy.mock.calls.at(-1)?.[1]).toBeCloseTo(96);
+
+        settle();
+        expectFinalRender(overflows.tree);
+        expect(rowFor(overflows.tree, kids[4]).getTranslateY()).toBe(120);
     });
 
-    it('M10: a collapse whose commit clamps the scroll offset snaps instead of animating', () => {
-        const tree = new _Tree();
-        trees.push(tree);
-        tree.getElement(true);
-        tree.setWidth(300);
-        tree.setHeight(120);
+    it('M10: a collapse whose commit clamps the scroll offset animates, driving the scroll offset itself', () => {
+        const { tree, Z, z } = mountEndOfList();
+        const scrollOf       = (): number => asPrivate(tree)._scroller!.getScrollY();
+        const layoutSpy      = vi.spyOn(asPrivate(tree)._scroller!, 'layoutScrollbars');
+        const tweenSpy       = vi.spyOn(Animation, 'tween');
 
-        const leaves = Array.from({ length: 20 }, (_, i) => ({ label: 'r' + i }));
-        const z1: TreeNode = { label: 'z1' };
-        const z2: TreeNode = { label: 'z2' };
-        const z3: TreeNode = { label: 'z3' };
-        const Z:  TreeNode = { label: 'Z', children: [z1, z2, z3] };
+        expect(scrollOf()).toBe(456);
 
-        tree.setNodes([...leaves, Z]);
+        clock = 1000;
+        asPrivate(tree)._onToggle(Z);
 
-        clock = 0;
-        tree.expandNode(Z);
-        settle(); // settle: 24 flat rows now.
+        expect(tweenSpy).toHaveBeenCalledTimes(1);
+        expect(asPrivate(tree)._flatRows).toHaveLength(21);
+        expect(scrollOf()).toBe(384);
+        expectFinalRender(tree);
 
-        tree.setScrollY(24 * ROW_HEIGHT); // scrolled to (past) the end.
-        const scrollBefore = asPrivate(tree)._scroller!.getScrollY();
+        runFrame(1000);
+        expect(scrollOf()).toBeCloseTo(456);
+        expect(rowFor(tree, Z).getTranslateY()).toBeCloseTo(480);
+        z.forEach((node, i) => {
+            expect(rowFor(tree, node).getTranslateY()).toBeCloseTo(504 + 24 * i);
+            expect(rowFor(tree, node).getOpacity()).toBeCloseTo(1);
+        });
+        expect(layoutSpy.mock.calls.at(-1)?.[1]).toBeCloseTo(576);
 
-        const tweenSpy = vi.spyOn(Animation, 'tween');
-        asPrivate(tree)._onToggle(Z); // collapsing drops 3 rows, so the commit re-clamps the scroll offset.
+        runFrame(1100);
+        expect(scrollOf()).toBeCloseTo(420);
+        expect(rowFor(tree, Z).getTranslateY()).toBeCloseTo(480);
+        [468, 492, 516].forEach((y, i) => expect(rowFor(tree, z[i]).getTranslateY()).toBeCloseTo(y));
+        [0, 0.5, 1].forEach((o, i) => expect(rowFor(tree, z[i]).getOpacity()).toBeCloseTo(o));
+        expect(layoutSpy.mock.calls.at(-1)?.[1]).toBeCloseTo(540);
 
-        expect(tweenSpy).not.toHaveBeenCalled();
-        expect(asPrivate(tree)._scroller!.getScrollY()).toBeLessThan(scrollBefore);
-        expect(isDisplayed(tree, z1)).toBe(false);
+        settle();
+        expect(scrollOf()).toBe(384);
+        expect(layoutSpy.mock.calls.at(-1)?.[1]).toBe(504);
+        z.forEach(node => expect(isDisplayed(tree, node)).toBe(false));
+        expectFinalRender(tree);
     });
 
     it('M11: reduced motion commits the final state with no tween', () => {
@@ -624,6 +722,329 @@ describe('Tree — expand/collapse row motion', () => {
         p._onKeyDown({ key: 'ArrowDown', shiftKey: false, preventDefault: (): void => {} } as KeyboardEvent);
 
         expect(tree.getSelectedNodes()).toEqual([fx.C]);
+    });
+
+    // -----------------------------------------------------------------------
+    // plans/implemented/tree-row-motion-no-snap.md: a tall block animates only its shown
+    // rows, and an end-of-list collapse drives the scroll offset.
+    // -----------------------------------------------------------------------
+
+    /** The second `layoutScrollbars` argument of the last call: the content height the scroller was given. */
+    function contentHeightOf(spy: { mock: { calls: unknown[][] } }): number {
+        return spy.mock.calls.at(-1)?.[1] as number;
+    }
+
+    /** Starts M18's collapse of P (expanded, settled, scrolled to 168) at clock 1000. */
+    function startEndBranchCollapse(): ReturnType<typeof mountEndBranch> {
+        const fx = mountEndBranch();
+
+        clock = 0;
+        fx.tree.expandNode(fx.P);
+        settle();
+        fx.tree.setScrollY(168);
+
+        clock = 1000;
+        asPrivate(fx.tree)._onToggle(fx.P);
+
+        return fx;
+    }
+
+    it('M16: expanding a tall block animates its shown rows; every on-screen row meets the settled render', () => {
+        const { tree, A, B, C, D, kids } = mountLongBranch();
+        const layoutSpy = vi.spyOn(asPrivate(tree)._scroller!, 'layoutScrollbars');
+
+        clock = 1000;
+        tree.expandNode(B);
+
+        runFrame(1000);
+        [-24, 0, 24].forEach((y, i) => expect(rowFor(tree, kids[i]).getTranslateY()).toBeCloseTo(y));
+        [0, 0, 0].forEach((o, i) => expect(rowFor(tree, kids[i]).getOpacity()).toBeCloseTo(o));
+        expect(rowFor(tree, C).getTranslateY()).toBeCloseTo(48);
+        expect(rowFor(tree, D).getTranslateY()).toBeCloseTo(72);
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo(336);
+        kids.slice(3).forEach(kid => expect(isDisplayed(tree, kid)).toBe(false));
+
+        runFrame(1100);
+        [12, 36, 60].forEach((y, i) => expect(rowFor(tree, kids[i]).getTranslateY()).toBeCloseTo(y));
+        [0, 0.5, 1].forEach((o, i) => expect(rowFor(tree, kids[i]).getOpacity()).toBeCloseTo(o));
+        expect(rowFor(tree, C).getTranslateY()).toBeCloseTo(84);
+        expect(rowFor(tree, D).getTranslateY()).toBeCloseTo(108);
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo(576);
+        kids.slice(3).forEach(kid => expect(isDisplayed(tree, kid)).toBe(false));
+
+        runFrame(1199);
+
+        const nearEnd = new Map<TreeNode, number>();
+
+        for (const node of [A, B, ...kids]) {
+            if (!isDisplayed(tree, node)) { continue; }
+
+            const y = rowFor(tree, node).getTranslateY();
+
+            if (y >= 0 && y < 120) { nearEnd.set(node, y); }
+        }
+
+        expect(nearEnd.size).toBeGreaterThanOrEqual(5);
+
+        settle();
+        expectFinalRender(tree);
+
+        for (const [node, y] of nearEnd) {
+            expect(isDisplayed(tree, node)).toBe(true);
+            expect(rowFor(tree, node).getTranslateY()).toBeCloseTo(y, 0);
+        }
+    });
+
+    it('M17: collapsing a tall block animates its shown rows with the rows after it in step', () => {
+        const { tree, B, C, D, kids } = mountLongBranch();
+
+        clock = 0;
+        tree.expandNode(B);
+        settle();
+
+        const layoutSpy = vi.spyOn(asPrivate(tree)._scroller!, 'layoutScrollbars');
+
+        clock = 2000;
+        asPrivate(tree)._onToggle(B);
+
+        expect(asPrivate(tree)._flatRows).toHaveLength(14);
+
+        runFrame(2000);
+        [48, 72, 96].forEach((y, i) => expect(rowFor(tree, kids[i]).getTranslateY()).toBeCloseTo(y));
+        kids.slice(0, 3).forEach(kid => {
+            expect(rowFor(tree, kid).getAria().getHidden()).toBe(true);
+            expect(rowFor(tree, kid).getPointerEvents()).toBe('none');
+        });
+        expect(rowFor(tree, C).getTranslateY()).toBeCloseTo(120);
+        expect(rowFor(tree, D).getTranslateY()).toBeCloseTo(144);
+        kids.slice(3).forEach(kid => expect(isDisplayed(tree, kid)).toBe(false));
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo(816);
+
+        runFrame(2100);
+        [12, 36, 60].forEach((y, i) => expect(rowFor(tree, kids[i]).getTranslateY()).toBeCloseTo(y));
+        expect(rowFor(tree, C).getTranslateY()).toBeCloseTo(84);
+        expect(rowFor(tree, D).getTranslateY()).toBeCloseTo(108);
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo(576);
+
+        settle();
+        expect(rowFor(tree, C).getTranslateY()).toBe(48);
+        expect(rowFor(tree, D).getTranslateY()).toBe(72);
+        expect(contentHeightOf(layoutSpy)).toBe(336);
+        expectFinalRender(tree);
+
+        const p = asPrivate(tree);
+
+        p._rowPool.forEach(row => expect(row.getAria().getHidden()).not.toBe(true));
+    });
+
+    it('M18: a trimmed collapse at the end of the list drives the scroll offset and animates the shown rows', () => {
+        const { tree, P, kids } = startEndBranchCollapse();
+        const scrollOf  = (): number => asPrivate(tree)._scroller!.getScrollY();
+        const layoutSpy = vi.spyOn(asPrivate(tree)._scroller!, 'layoutScrollbars');
+
+        expect(scrollOf()).toBe(120);
+
+        runFrame(1000);
+        expect(scrollOf()).toBeCloseTo(168);
+        expect(rowFor(tree, P).getTranslateY()).toBeCloseTo(216);
+        expect(rowFor(tree, kids[0]).getTranslateY()).toBeCloseTo(240);
+        expect(rowFor(tree, kids[1]).getTranslateY()).toBeCloseTo(264);
+        expect(rowFor(tree, kids[0]).getOpacity()).toBeCloseTo(1);
+        expect(rowFor(tree, kids[1]).getOpacity()).toBeCloseTo(1);
+        kids.slice(2).forEach(kid => expect(isDisplayed(tree, kid)).toBe(false));
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo(720);
+
+        runFrame(1100);
+        expect(scrollOf()).toBeCloseTo(144);
+        expect(rowFor(tree, P).getTranslateY()).toBeCloseTo(216);
+        expect(rowFor(tree, kids[0]).getTranslateY()).toBeCloseTo(216);
+        expect(rowFor(tree, kids[0]).getOpacity()).toBeCloseTo(0);
+        expect(rowFor(tree, kids[1]).getTranslateY()).toBeCloseTo(240);
+        expect(rowFor(tree, kids[1]).getOpacity()).toBeCloseTo(1);
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo(480);
+
+        settle();
+        expect(scrollOf()).toBe(120);
+        expect(rowFor(tree, P).getTranslateY()).toBe(216);
+        expect(contentHeightOf(layoutSpy)).toBe(240);
+        expectFinalRender(tree);
+    });
+
+    it('M19: re-toggling a trimmed motion keeps its shown rows', () => {
+        const { tree, P, kids } = startEndBranchCollapse();
+        const scrollOf  = (): number => asPrivate(tree)._scroller!.getScrollY();
+        const layoutSpy = vi.spyOn(asPrivate(tree)._scroller!, 'layoutScrollbars');
+
+        runFrame(1000);
+        runFrame(1100);
+
+        tree.expandNode(P);
+
+        runFrame(1100);
+        expect(scrollOf()).toBeCloseTo(144);
+        expect(rowFor(tree, kids[0]).getTranslateY()).toBeCloseTo(216);
+        expect(rowFor(tree, kids[1]).getTranslateY()).toBeCloseTo(240);
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo(480);
+
+        runFrame(1200);
+        expect(scrollOf()).toBeCloseTo(144);
+        expect(rowFor(tree, kids[0]).getTranslateY()).toBeCloseTo(240);
+        expect(rowFor(tree, kids[1]).getTranslateY()).toBeCloseTo(264);
+        expect(contentHeightOf(layoutSpy)).toBeCloseTo(720);
+
+        settle();
+        expect(scrollOf()).toBe(144);
+        expectFinalRender(tree);
+    });
+
+    it('M20: a node scrolled out of view above the viewport whose open children reach past one viewport still snaps', () => {
+        const build = (): { tree: _Tree; P: TreeNode } => {
+            const P: TreeNode = { label: 'P', children: Array.from({ length: 20 }, (_, i) => ({ label: 'p' + i })) };
+            const tail: TreeNode[] = Array.from({ length: 30 }, (_, i) => ({ label: 'L' + i }));
+            const tree = new _Tree();
+
+            trees.push(tree);
+            tree.getElement(true);
+            tree.setWidth(300);
+            tree.setHeight(120);
+            tree.setNodes([P, ...tail]);
+
+            return { tree, P };
+        };
+        const tweenSpy = vi.spyOn(Animation, 'tween');
+
+        const snaps = build();
+
+        snaps.tree.setScrollY(48);
+        snaps.tree.expandNode(snaps.P);
+        expect(tweenSpy).not.toHaveBeenCalled();
+        expectFinalRender(snaps.tree);
+
+        const animates = build();
+
+        animates.tree.setScrollY(24);
+        animates.tree.expandNode(animates.P);
+        expect(tweenSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('M21: a scroll the motion did not make settles a scroll-bound motion, and only that kind', () => {
+        // (a) A trimmed expand.
+        const longBranch = mountLongBranch();
+
+        clock = 1000;
+        longBranch.tree.expandNode(longBranch.B);
+        runFrame(1000);
+        runFrame(1100);
+        expect(asPrivate(longBranch.tree).isRowMotionRunning()).toBe(true);
+
+        longBranch.tree.setScrollY(24);
+        expect(asPrivate(longBranch.tree).isRowMotionRunning()).toBe(false);
+        expect(asPrivate(longBranch.tree)._scroller!.getScrollY()).toBe(24);
+        expectFinalRender(longBranch.tree);
+
+        const before = poolSnapshot(longBranch.tree);
+
+        runFrame(1150);
+        runFrames();
+        settle();
+        expect(poolSnapshot(longBranch.tree)).toEqual(before);
+
+        // (b) A scroll straight on the scroller — the route a wheel, touch
+        // drag or scrollbar takes — settles it in the scroller's tick.
+        const direct = mountLongBranch();
+
+        clock = 1000;
+        direct.tree.expandNode(direct.B);
+        runFrame(1000);
+        runFrame(1100);
+        expect(asPrivate(direct.tree).isRowMotionRunning()).toBe(true);
+
+        asPrivate(direct.tree)._scroller!.setScrollY(24);
+        expect(asPrivate(direct.tree).isRowMotionRunning()).toBe(false);
+        expect(asPrivate(direct.tree)._scroller!.getScrollY()).toBe(24);
+        expectFinalRender(direct.tree);
+
+        // (c) A scroll-driving collapse.
+        const { tree, Z } = mountEndOfList();
+
+        clock = 1000;
+        asPrivate(tree)._onToggle(Z);
+        runFrame(1000);
+        runFrame(1100);
+        expect(asPrivate(tree).isRowMotionRunning()).toBe(true);
+
+        tree.setScrollY(400);
+        expect(asPrivate(tree).isRowMotionRunning()).toBe(false);
+        expect(asPrivate(tree)._scroller!.getScrollY()).toBe(384);
+        expectFinalRender(tree);
+
+        // (d) The same collapse, scrolled straight on the scroller, settles
+        // in the scroller's tick.
+        const directCollapse = mountEndOfList();
+
+        clock = 1000;
+        asPrivate(directCollapse.tree)._onToggle(directCollapse.Z);
+        runFrame(1000);
+        runFrame(1100);
+        expect(asPrivate(directCollapse.tree).isRowMotionRunning()).toBe(true);
+
+        asPrivate(directCollapse.tree)._scroller!.setScrollY(400);
+        expect(asPrivate(directCollapse.tree).isRowMotionRunning()).toBe(false);
+        expect(asPrivate(directCollapse.tree)._scroller!.getScrollY()).toBe(384);
+        expectFinalRender(directCollapse.tree);
+    });
+
+    it('M23: a setScrollY during a trimmed expand clamps against the committed content, not the motion\'s', () => {
+        // (a) The committed list holds 34 rows (816px) in a 120px view, so
+        // its maximum offset is 696; mid-motion the rendered content is
+        // shorter, and a scroll clamped against it would land short.
+        const longBranch = mountLongBranch();
+
+        clock = 1000;
+        longBranch.tree.expandNode(longBranch.B);
+        runFrame(1000);
+        runFrame(1100);
+        expect(asPrivate(longBranch.tree).isRowMotionRunning()).toBe(true);
+
+        longBranch.tree.setScrollY(696);
+        expect(asPrivate(longBranch.tree).isRowMotionRunning()).toBe(false);
+        expect(asPrivate(longBranch.tree)._scroller!.getScrollY()).toBe(696);
+        expectFinalRender(longBranch.tree);
+
+        // (b) A target the scroller clamps back to the current offset fires
+        // no scroll tick, yet the settled state still renders.
+        const atTop = mountLongBranch();
+
+        clock = 1000;
+        atTop.tree.expandNode(atTop.B);
+        runFrame(1000);
+        runFrame(1100);
+        expect(asPrivate(atTop.tree).isRowMotionRunning()).toBe(true);
+
+        atTop.tree.setScrollY(-50);
+        expect(asPrivate(atTop.tree).isRowMotionRunning()).toBe(false);
+        expect(asPrivate(atTop.tree)._scroller!.getScrollY()).toBe(0);
+        expectFinalRender(atTop.tree);
+    });
+
+    it('M22: a trimmed motion keeps the row pool at the window bound', () => {
+        const { tree, B } = mountLongBranch();
+        const poolSize    = (): number => asPrivate(tree)._rowPool.length;
+
+        expect(poolSize()).toBe(11);
+
+        clock = 1000;
+        tree.expandNode(B);
+        expect(poolSize()).toBe(11);
+
+        runFrame(1000);
+        expect(poolSize()).toBe(11);
+
+        runFrame(1100);
+        expect(poolSize()).toBe(11);
+
+        settle();
+        expect(poolSize()).toBe(11);
     });
 
     // -----------------------------------------------------------------------

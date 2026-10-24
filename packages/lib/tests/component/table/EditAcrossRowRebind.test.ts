@@ -14,8 +14,9 @@
 // the recording sink), `StringEditor` caches the typed value itself, and a
 // scroll tick renders synchronously once its animation frames are drained. The
 // harness shape is `ScrollRebindLayoutEconomy.test.ts`'s.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
+import { Animation } from '~/core/Animation';
 import { installTestDOM } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 import { Table } from '~/component/table/Table';
@@ -318,7 +319,11 @@ async function makeScrollableTreeTable(): Promise<TreeTable> {
         columns:        [{ field: 'name' }, { field: 'note' }],
     }));
 
+    // The fixture wants the expanded table, not the expand's motion.
+    const reduced = vi.spyOn(Animation, 'isReducedMotion').mockReturnValue(true);
+
     table.setExpanded(table.getRecordById(1)!, true);
+    reduced.mockRestore();
     runFrames();
 
     return table;
