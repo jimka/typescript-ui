@@ -34,6 +34,7 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 | `scale.base` | `--ts-ui-base-size` | Framework scale root in px — the global size knob the `scale.*` ratio tokens multiply. Resolved sizes are read in JS via [`ThemeManager.getResolvedScale()`](/api/core/classes/ThemeManager#getresolvedscale). See [Base size & scaling](#base-size-scaling) |
 | `font.linePadding` | `--ts-ui-line-padding` | Vertical leading (e.g. `"2px"`) added to a control's own font size to form its line box: the rendered line height is `calc(1em + var(--ts-ui-line-padding))`, so the leading scales per font size (12px and 14px text get proportionate line boxes from one token). Every text control renders **and** measures against this same arithmetic, so inputs, labels, and `Text` share one baseline. Drives the row-height of `Text`/tables and the baseline alignment math in `HBox`/`Column`/`Grid`. Override per control with `Text.setLineHeight(px)` for a fixed line-height |
 | `text.color` | `--ts-ui-text-color` | Default text color for all components |
+| `text.mutedColor` | `--ts-ui-text-muted-color` | De-emphasised text that must stay readable — a path beside a name, a hint, a count, an inactive label, a [`List`](/api/component/list/classes/List)'s empty-state placeholder. Built-in values meet WCAG AA (4.5 : 1) on the surfaces secondary text sits on — the page, inputs, lists, menus and popovers, tool, status and menu bars, tab strips and tabs, window, accordion and table headers, and tooltips, at each stop of a gradient — but not on fills such as buttons, badges, notifications or selected states. Optional: a theme that leaves it out writes its `text.color` here. Not a disabled colour |
 | `body.background` | `--ts-ui-body-bg` | Page background; also the background of [`Window`](/api/overlay/classes/Window) |
 | `border.color` | `--ts-ui-border-color` | Default border color for [`Window`](/api/overlay/classes/Window) and other bordered components |
 | `border.radius` | `--ts-ui-border-radius` | Corner radius applied to [`Button`](/api/component/button/classes/Button) and text-input components |
@@ -116,6 +117,16 @@ The [`Theme`](/api/core/interfaces/Theme) interface uses nested objects grouped 
 
 ::: info Blue is the single accent colour
 One accent blue runs across selection (`table.row.selected`, list/row `selectedBackground`), the keyboard `indicator.focus` ring, and drag-and-drop *position* feedback (the [`ReorderIndicator`](/api/overlay/classes/ReorderIndicator) bar, the outline an `outline` resize drag draws, plus the dock / tab-strip drop-zone wash). The overlap is deliberate — blue means "what you're acting on, or where the action goes." Drag feedback stays distinct from selection by **modality** (it shows only during an active drag, on overlays above the page) and **treatment** (a faint area wash plus a thin moving bar, versus a selection's solid filled state), and the drop-zone wash uses a lighter blue than the accent fill. Don't introduce a second accent hue for drag — rely on treatment and modality. See [Drag-and-drop feedback colours](/recipes/drag-and-drop#drop-feedback-colours).
+:::
+
+::: tip Muted text for secondary labels
+Paint secondary text with `--ts-ui-text-muted-color` rather than a hard-coded grey or a `disabledColor` token, so it follows the theme and stays readable:
+
+```typescript
+import { Text } from '@jimka/typescript-ui/component/input';
+
+const path = Text('src/shell', { foregroundColor: 'var(--ts-ui-text-muted-color)' });
+```
 :::
 
 ## Chart tokens

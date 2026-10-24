@@ -221,7 +221,7 @@ The measurement only runs while the option is on, so a list that truncates pays 
 
 ## Theme tokens
 
-Visual chrome is driven by the [`Theme.list`](/api/core/interfaces/Theme) tokens — `--ts-ui-list-bg`, `--ts-ui-list-border`, `--ts-ui-list-row-hover-bg`, `--ts-ui-list-row-selected-bg`, `--ts-ui-list-row-selected-color`, `--ts-ui-list-row-focus-ring`, `--ts-ui-list-row-disabled-color`, and `--ts-ui-list-row-separator`. The separator token defaults to `transparent`; a theme can override it to a `1px solid rgba(...)` colour for a denser, ruled row look. `--ts-ui-list-row-disabled-color` colours both the empty-state placeholder and a [disabled row](#disabled-rows)'s label and glyph.
+Visual chrome is driven by the [`Theme.list`](/api/core/interfaces/Theme) tokens — `--ts-ui-list-bg`, `--ts-ui-list-border`, `--ts-ui-list-row-hover-bg`, `--ts-ui-list-row-selected-bg`, `--ts-ui-list-row-selected-color`, `--ts-ui-list-row-focus-ring`, `--ts-ui-list-row-disabled-color`, and `--ts-ui-list-row-separator`. The separator token defaults to `transparent`; a theme can override it to a `1px solid rgba(...)` colour for a denser, ruled row look. `--ts-ui-list-row-disabled-color` colours a [disabled row](#disabled-rows)'s label and glyph. The empty-state placeholder uses the theme-wide muted text colour, `--ts-ui-text-muted-color` (see [Theming](/concepts/theming#theme-keys)).
 
 ## See also
 
