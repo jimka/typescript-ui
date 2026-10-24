@@ -2091,18 +2091,37 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
-     * Flips the search state (which the `updateListener` in {@link
-     * CodeEditor.mount} turns into a visible search panel) and seeds the
-     * query from the current selection. Called even when the state is
-     * already open, because this method also has to re-focus the find field.
+     * Opens the floating search card, as `Ctrl-F` (`Cmd-F` on macOS) does in
+     * the document, and moves keyboard focus to its find field with the
+     * field's text selected.
      *
-     * @param view - The live CodeMirror view.
-     * @returns `true`, so the keymap binding this backs consumes the key.
+     * The find field is seeded from the primary selection when text is
+     * selected. A collapsed caret, or a selection longer than 100 characters,
+     * keeps the query the card last held. Called while the card is already
+     * open, it re-seeds the same way and moves focus back to the find field,
+     * so calling it twice in a row leaves the same state as calling it once.
+     *
+     * @remarks For a host that offers Find from outside the editor: an Edit
+     * menu item, a command-palette entry, or an app-wide shortcut that targets
+     * this editor while focus is somewhere else. Like the other operations
+     * that act on the live view ({@link CodeEditor.focus},
+     * {@link CodeEditor.revealRange}, {@link CodeEditor.paste}), it does
+     * nothing before the view is mounted. The editor mounts its view on its
+     * first sized layout, so an editor not yet laid out, a disposed one, or
+     * one under the offline test harness returns `false`. The call is not
+     * queued for a later mount.
+     *
+     * @returns `true` when the card is open and its find field was focused;
+     *   `false` when there is no mounted view, in which case nothing changed.
      */
-    private openSearch(view: EditorView): boolean {
-        openSearchPanel(view);
+    openSearch(): boolean {
+        if (!this._view) {
+            return false;
+        }
+
+        openSearchPanel(this._view);
         this.setSearchPanelOpen(true);
-        this.syncSearchPanelFields(view.state);
+        this.syncSearchPanelFields(this._view.state);
         this._searchPanel.focusFind();
 
         return true;
@@ -2360,7 +2379,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
             // document, which closeSearchPanel only does when CodeMirror's own
             // panel holds the active element — a display:none panel never can.
             Prec.high(keymap.of([
-                { key: "Mod-f",  run: (view) => this.openSearch(view), preventDefault: true },
+                { key: "Mod-f",  run: () => this.openSearch(), preventDefault: true },
                 { key: "Escape", run: (view) => this.closeSearch(view) },
             ])),
             drawSelection(),

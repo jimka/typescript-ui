@@ -6509,6 +6509,38 @@ describe('CodeEditor context menu', () => {
 });
 
 describe('CodeEditor floating search panel', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('S1: openSearch() before mount returns false, and neither builds nor shows the card', () => {
+        const editor = new CodeEditor('x') as any;
+
+        expect(editor.openSearch()).toBe(false);
+        expect(editor._searchPanel.isDisplayed()).toBe(false);
+        expect(editor._searchPanel.isBuilt()).toBe(false);
+    });
+
+    it('S2: openSearch() after dispose returns false and does not throw', () => {
+        const editor = new CodeEditor('x');
+
+        editor.dispose();
+
+        expect(editor.openSearch()).toBe(false);
+    });
+
+    it('S3: the Mod-f binding calls the public openSearch() with no argument and passes its result through', () => {
+        const { editor, state } = mountOffline('x');
+        const binding           = state.facet(keymap).flat().find((candidate) => candidate.key === 'Mod-f')!;
+        const spy               = vi.spyOn(editor, 'openSearch').mockReturnValue(true);
+
+        expect(binding.run!({} as EditorView)).toBe(true);
+        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy).toHaveBeenCalledWith();
+
+        spy.mockReturnValue(false);
+        expect(binding.run!({} as EditorView)).toBe(false);
+        expect(binding.preventDefault).toBe(true);
+    });
+
     it('registers exactly one child, undisplayed, with no controls built yet', () => {
         const editor = new CodeEditor() as any;
 
