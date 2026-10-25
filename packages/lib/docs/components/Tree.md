@@ -96,7 +96,7 @@ for (const node of loadStoredExpandedNodes()) {
 
 A single node's expand or collapse — a caret click, a row-click toggle, `Enter`, `ArrowRight` / `ArrowLeft`, `expandNode(Async)`, or a lazy load settling with an expand waiting on it — animates after its state commits: the toggle turns from pointing right to pointing down (or back), the node's children slide out from under it and fade in as they emerge, and the rows below move to make room, over 200ms. State, `getExpandedNodes()` and the `"expand"` / `"collapse"` events all commit synchronously, before the motion starts — nothing about reading the tree right after a toggle waits on the animation.
 
-The bulk and structural calls — the `*` key, `expandAll()`, `revealByPredicate()`, `setNodes()`, `insertNode()`, `removeNode()`, `setChildren()` — never animate; they can change many nodes at once, which a single reveal value cannot describe. A node whose children are taller than the viewport animates the children that are on screen while it is open; the rest appear or disappear off screen. A collapse near the end of a scrolled list slides the rows above down as the children close, the way a file browser does. One toggle still snaps: a node scrolled out of view above the viewport whose open children reach more than a viewport below it. A scroll made while one of these two kinds of motion plays — wheel, touch, scrollbar or `setScrollY()` — settles it at once. `prefers-reduced-motion: reduce` turns off every animation, caret included. While a collapse plays, the rows sliding away carry `aria-hidden="true"`, so assistive technology reads only the committed rows. A call that has to scroll a row into view — `selectNode()`, a click or a keyboard move — settles a running motion first; one whose row is already in view leaves it playing. A keyboard move onto a child that an expand is still fading in also settles it, so the selection never lands on a row that is not yet fully drawn.
+The bulk and structural calls — the `*` key, `expandAll()`, `revealByPredicate()`, `setNodes()`, `insertNode()`, `removeNode()`, `setChildren()`, `moveNode()` — never animate; they can change many nodes at once, which a single reveal value cannot describe. A node whose children are taller than the viewport animates the children that are on screen while it is open; the rest appear or disappear off screen. A collapse near the end of a scrolled list slides the rows above down as the children close, the way a file browser does. One toggle still snaps: a node scrolled out of view above the viewport whose open children reach more than a viewport below it. A scroll made while one of these two kinds of motion plays — wheel, touch, scrollbar or `setScrollY()` — settles it at once. `prefers-reduced-motion: reduce` turns off every animation, caret included. While a collapse plays, the rows sliding away carry `aria-hidden="true"`, so assistive technology reads only the committed rows. A call that has to scroll a row into view — `selectNode()`, a click or a keyboard move — settles a running motion first; one whose row is already in view leaves it playing. A keyboard move onto a child that an expand is still fading in also settles it, so the selection never lands on a row that is not yet fully drawn.
 
 ## Updating nodes
 
@@ -106,6 +106,7 @@ The bulk and structural calls — the `*` key, `expandAll()`, `revealByPredicate
 | --- | --- |
 | `insertNode(parent, index, node)` | Insert one node among `parent`'s children. `index` is clamped: a negative index prepends, one past the end appends. |
 | `removeNode(node)` | Remove a node, at any depth, and everything under it. A node the tree does not hold is ignored. |
+| `moveNode(node, parent, index)` | Move a node, at any depth, and everything under it to position `index` among `parent`'s children, keeping its state — see [Moving and renaming a node](#moving-and-renaming-a-node). |
 | `setChildren(parent, children)` | Replace `parent`'s child list, or the root list. The array is stored by reference. |
 | `notifyNodeChanged(node)` | Repaint the row showing `node` after you changed its `label`, `data` or `hasChildren` in place. |
 
@@ -124,11 +125,37 @@ tree.setChildren(folder, next);
 
 None of these methods emit events: removing a selected node fires no `"selection"`, and removing an expanded one no `"collapse"`. Read `getSelectedNodes()` after a removal when the new selection matters.
 
-An `insertNode`, `removeNode` or `setChildren` that changes a lazy node's children makes them yours: the node counts as loaded, so expanding it never calls `loadChildren`, and a load already in flight for it is dropped. A load in flight for a node you remove is dropped too, and stays dropped if you insert the node again: moving a node with `removeNode` then `insertNode` brings it back as a new node, collapsed and unselected, and one whose load was dropped calls `loadChildren` afresh on its next expand. A dropped load is dropped for every expand and reveal waiting on it: each `expandNodeAsync` resolves `false`, and nothing the loader returns is committed.
+An `insertNode`, `removeNode`, `setChildren` or `moveNode` that changes a lazy node's children makes them yours: the node counts as loaded, so expanding it never calls `loadChildren`, and a load already in flight for it is dropped. A load in flight for a node you remove is dropped too, and stays dropped if you insert the node again: `removeNode` then `insertNode` brings a node back as a new node, collapsed and unselected, and one whose load was dropped calls `loadChildren` afresh on its next expand. Use `moveNode` to move a node and keep its state. A dropped load is dropped for every expand and reveal waiting on it: each `expandNodeAsync` resolves `false`, and nothing the loader returns is committed.
 
-A [`revealByPredicate()`](/api/component/tree/classes/Tree#revealbypredicate) that is still running follows all three calls, and `setNodes()` too, carrying on over the tree as each one left it: every level it still has open searches its live children again from the first. It does not search afresh, though — a node it has already tested is passed over untested, and only descended into. So it still finds a matching node added meanwhile, even under a branch it has already searched, or under a node whose children a later load commits after the load the reveal waited on for it failed; it does not wait for such a load, and one committing after the walk has run out of levels leaves its `null` standing. It never returns, expands or caches loaded children for a node the tree no longer holds.
+A [`revealByPredicate()`](/api/component/tree/classes/Tree#revealbypredicate) that is still running follows `insertNode`, `removeNode`, `setChildren` and `moveNode`, and `setNodes()` too, carrying on over the tree as each one left it: every level it still has open searches its live children again from the first. It does not search afresh, though — a node it has already tested is passed over untested, and only descended into. So it still finds a matching node added meanwhile, even under a branch it has already searched, or under a node whose children a later load commits after the load the reveal waited on for it failed; it does not wait for such a load, and one committing after the walk has run out of levels leaves its `null` standing. It never returns, expands or caches loaded children for a node the tree no longer holds.
 
 Two consequences are worth knowing. After `setNodes()` the walk carries on over the new roots, from the first, but a root object it has already tested is still passed over — so a reveal running across a `setNodes()` handed the same node objects back can resolve `null` with a match in the tree. And a level that restarts finishes before the restart reaches its ancestors, so while the tree is changing under it the node returned need not be the depth-first-earliest match.
+
+### Moving and renaming a node
+
+`moveNode(node, parent, index)` moves a node the tree holds, with everything under it, to position `index` among `parent`'s children. The node never leaves the tree, so it and every node under it keep their expansion, selection, loaded children and any load in flight, and the focus and selection anchor stay where they were. `index` is where the node ends up, clamped as in `insertNode`:
+
+| Before | Call | After |
+| --- | --- | --- |
+| `P: [a, b, c, d]` | `moveNode(b, P, 3)` | `P: [a, c, d, b]` |
+| `P: [a, b, c, d]` | `moveNode(c, P, 0)` | `P: [c, a, b, d]` |
+| `P: [a, b, c, d]`, `Q: [x]` | `moveNode(b, Q, 0)` | `P: [a, c, d]`, `Q: [b, x]` |
+
+A move to where the node already is does nothing. A move the tree cannot make — a node or a parent it does not hold, or a parent that is the node itself or sits under it — is ignored. Like the other methods here, `moveNode` emits no event and never animates. It keeps the scroll offset, clamping it only when the content becomes too short for it, and it does not scroll the moved node into view. Moving into a collapsed parent hides the node's rows until the parent is expanded. An eager parent left with no children loses its caret, as after `removeNode`.
+
+Both parents count as changed, as in `insertNode` and `removeNode`. Moving into a lazy node that has not loaded makes the moved node its only child. When that folder's listing should still come from `loadChildren`, call `removeNode(node)` instead: the node comes back, as a new node, when the folder first loads, if its listing includes it.
+
+A rename that changes where a node sorts is a move within its own parent. `moveNode` does not check the node itself for changes, so follow it with `notifyNodeChanged`, which repaints the new label:
+
+```typescript
+// Rename an entry, keep the folder sorted, and keep the entry open and selected.
+node.label    = newName;
+const others  = (parent === null ? tree.getNodes() : parent.children!).filter(child => child !== node);
+const after   = others.findIndex(child => child.label.localeCompare(newName) > 0);
+
+tree.moveNode(node, parent, after < 0 ? others.length : after);
+tree.notifyNodeChanged(node);
+```
 
 ## Keyboard
 
@@ -185,6 +212,7 @@ A menu opened from the keyboard takes focus and is worked with the arrow keys; f
 | `setNodes(nodes[])` | Replace the entire tree. |
 | `insertNode(parent, index, node)` / `removeNode(node)` | Add or remove one node, keeping the rest of the tree's state — see [Updating nodes](#updating-nodes). |
 | `setChildren(parent, children)` | Replace one node's children, or the roots, keeping every surviving node's state — see [Updating nodes](#updating-nodes). |
+| `moveNode(node, parent, index)` | Move one node and everything under it, keeping their state — see [Moving and renaming a node](#moving-and-renaming-a-node). |
 | `notifyNodeChanged(node)` | Repaint one node changed in place — see [Updating nodes](#updating-nodes). |
 | `expandAll()` | Expand every node whose children are already loaded. There is no bulk collapse; `setNodes()` starts every node collapsed. |
 | `getExpandedNodes()` | Snapshot the currently expanded nodes (see [Expansion state](#expansion-state)). |

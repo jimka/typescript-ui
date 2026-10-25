@@ -72,6 +72,19 @@ page resets to empty.
   that targets an editor while focus is elsewhere. Before the editor has
   mounted its view it does nothing and returns `false`. See
   [Search and replace](/components/CodeEditor#search-and-replace).
+- **`Tree` gains `moveNode(node, parent, index)`**, which moves a node and
+  everything under it to a new position or a new parent without it leaving
+  the tree. The node and every node under it keep their expansion,
+  selection, loaded children and any lazy load in flight, and the focus and
+  anchor stay put, so a file explorer can rename or move a folder without
+  collapsing it. `index` is where the node ends up, clamped as in
+  `insertNode`. A move to the node's current position does nothing, and a
+  move into the node's own subtree, or of or under a node the tree does not
+  hold, is ignored. Like the other node-level methods it emits no event and
+  never animates, and it keeps the scroll offset unless the move leaves
+  the content too short for it. A rename that changes the
+  sort order is `moveNode` followed by `notifyNodeChanged`. See
+  [Moving and renaming a node](/components/Tree#moving-and-renaming-a-node).
 
 ### Core
 
