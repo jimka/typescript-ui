@@ -2,7 +2,8 @@
 
 // Pins plans/implemented/tree-expand-collapse-animation.md's Tree row-motion
 // cases (`## Expected Behaviour`, M1-M15), and plans/implemented/tree-row-motion-no-snap.md's
-// (M9 and M10 rewritten, M16-M23 new). A single expand/collapse commits
+// (M9 and M10 rewritten, M16-M23 new), plus plans/implemented/tree-move-node.md's
+// MV14. A single expand/collapse commits
 // its state and its final-state render synchronously in the same call, then
 // VirtualRowView's Animation.tween-based row motion rewinds the affected
 // rows on the next animation frame and plays them forward over 200ms.
@@ -478,6 +479,9 @@ describe('Tree — expand/collapse row motion', () => {
         ['removeNode(C)',
             (tree, fx) => { tree.removeNode(fx.C); },
             (tree, fx) => { expect(isDisplayed(tree, fx.C)).toBe(false); expect(asPrivate(tree)._flatRows).toHaveLength(6); }],
+        ['moveNode(C, B, 0)',
+            (tree, fx) => { tree.moveNode(fx.C, fx.B, 0); },
+            (tree) => { expect(asPrivate(tree)._flatRows.map(r => r.node.label)).toEqual(['A', 'B', 'C', 'b1', 'b2', 'b3', 'D']); }],
         ['setNodes(...)',
             (tree) => { tree.setNodes([{ label: 'P' }, { label: 'Q' }]); },
             (tree) => { expect(asPrivate(tree)._flatRows.map(r => r.node.label)).toEqual(['P', 'Q']); }],
@@ -504,6 +508,21 @@ describe('Tree — expand/collapse row motion', () => {
         runFrames();
         settle();
         expect(poolSnapshot(tree)).toEqual(before);
+    });
+
+    it('MV14: moveNode never animates', () => {
+        const { tree, fx } = mountFixture();
+
+        tree.expandNode(fx.B);
+        settle();
+
+        const tweenSpy = vi.spyOn(Animation, 'tween');
+
+        tree.moveNode(fx.b3, null, 0);
+
+        expect(tweenSpy).not.toHaveBeenCalled();
+        expect(asPrivate(tree)._flatRows.map(r => r.node.label)).toEqual(['b3', 'A', 'B', 'b1', 'b2', 'C', 'D']);
+        expectFinalRender(tree);
     });
 
     it('M8: expandAll, revealByPredicate and setNodes never animate', async () => {

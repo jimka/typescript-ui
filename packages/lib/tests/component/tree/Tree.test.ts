@@ -409,6 +409,7 @@ interface TreePrivate {
     _pendingLoads: Map<TreeNode, { settled: Promise<unknown> }>;
     _anchorNode: TreeNode | null;
     _focusNode: TreeNode | null;
+    _structureGeneration: number;
 }
 
 function asPrivate(tree: _Tree): TreePrivate {
@@ -3689,6 +3690,335 @@ describe('Tree — node-level updates', () => {
         expect(levels).toHaveBeenCalledTimes(3);
         expect(A.children).toEqual([{ label: 'a' }]);
         expect(B.children).toEqual([{ label: 'b' }]);
+    });
+
+    // --- moveNode ----------------------------------------------------------
+
+    it('moveNode at the root level writes into the same root array; the index is where the node ends up, clamped', () => {
+        const moveTo = (label: string, index: number): string[] => {
+            const roots: TreeNode[] = ['a', 'b', 'c', 'd'].map(name => ({ label: name }));
+            const tree = new _Tree();
+
+            tree.setNodes(roots);
+
+            expect(tree.moveNode(roots.find(node => node.label === label)!, null, index)).toBe(tree);
+            expect(tree.getNodes()).toBe(roots);
+
+            return roots.map(node => node.label);
+        };
+
+        expect(moveTo('b', 3)).toEqual(['a', 'c', 'd', 'b']);
+        expect(moveTo('c', 0)).toEqual(['c', 'a', 'b', 'd']);
+        expect(moveTo('b', 99)).toEqual(['a', 'c', 'd', 'b']);
+        expect(moveTo('b', -1)).toEqual(['b', 'a', 'c', 'd']);
+    });
+
+    it('moveNode to a new parent splices both parents\' own children arrays, the index clamped to the target', () => {
+        const fixture = (): { tree: _Tree; P: TreeNode; Q: TreeNode; nodes: Record<string, TreeNode> } => {
+            const nodes: Record<string, TreeNode> = {};
+
+            for (const name of ['a', 'b', 'c', 'd', 'x']) {
+                nodes[name] = { label: name };
+            }
+
+            const P: TreeNode = { label: 'P', children: [nodes.a, nodes.b, nodes.c, nodes.d] };
+            const Q: TreeNode = { label: 'Q', children: [nodes.x] };
+            const tree = new _Tree();
+
+            tree.setNodes([P, Q]);
+
+            return { tree, P, Q, nodes };
+        };
+
+        const first   = fixture();
+        const pBefore = first.P.children;
+        const qBefore = first.Q.children;
+
+        first.tree.moveNode(first.nodes.b, first.Q, 0);
+
+        expect(first.P.children).toBe(pBefore);
+        expect(first.Q.children).toBe(qBefore);
+        expect(first.P.children).toEqual([first.nodes.a, first.nodes.c, first.nodes.d]);
+        expect(first.Q.children).toEqual([first.nodes.b, first.nodes.x]);
+
+        const second = fixture();
+
+        second.tree.moveNode(second.nodes.b, second.Q, 99);
+
+        expect(second.Q.children).toEqual([second.nodes.x, second.nodes.b]);
+    });
+
+    it('moveNode to the node\'s current position changes nothing: no generation bump, no reflatten, no rebind', () => {
+        const roots: TreeNode[] = ['a', 'b', 'c', 'd'].map(name => ({ label: name }));
+        const [, b, , d] = roots;
+        const tree = mount(roots);
+        const priv = asPrivate(tree);
+        const generation = priv._structureGeneration;
+        const flatRows = priv._flatRows;
+        const rebinds = countRebinds(tree);
+
+        tree.moveNode(b, null, 1);
+        tree.moveNode(d, null, 99);
+
+        expect(roots.map(node => node.label)).toEqual(['a', 'b', 'c', 'd']);
+        expect(priv._structureGeneration).toBe(generation);
+        expect(priv._flatRows).toBe(flatRows);
+        expect(rebinds()).toBe(0);
+
+        tree.moveNode(d, null, 2);
+
+        expect(roots.map(node => node.label)).toEqual(['a', 'b', 'd', 'c']);
+        expect(priv._structureGeneration).toBe(generation + 1);
+    });
+
+    it('moveNode within a parent, with notifyNodeChanged, renames a node and keeps its subtree\'s expansion and selection', () => {
+        const a1:    TreeNode = { label: 'a1' };
+        const g1:    TreeNode = { label: 'g1' };
+        const alpha: TreeNode = { label: 'alpha', children: [a1] };
+        const beta:  TreeNode = { label: 'beta' };
+        const gamma: TreeNode = { label: 'gamma', children: [g1] };
+        const P:     TreeNode = { label: 'P', children: [alpha, beta, gamma] };
+        const tree = mount([P]);
+
+        tree.expandNode(P);
+        tree.expandNode(alpha);
+        tree.expandNode(gamma);
+        tree.selectNode(g1);
+
+        const events = countEvents(tree);
+
+        gamma.label = 'aaa';
+        tree.moveNode(gamma, P, 0);
+        tree.notifyNodeChanged(gamma);
+
+        expect(P.children).toEqual([gamma, alpha, beta]);
+        expect(flatLabels(tree)).toEqual(['P', 'aaa', 'g1', 'alpha', 'a1', 'beta']);
+        expect(new Set(tree.getExpandedNodes())).toEqual(new Set([P, alpha, gamma]));
+        expect(tree.getSelectedNodes()).toEqual([g1]);
+        expect(tree.getSelectedNode()).toBe(g1);
+        expect(tree.getAria().getActiveDescendant()).toBe(rowFor(tree, g1).getId());
+        expect(labelShownFor(tree, gamma)).toBe('aaa');
+        expect(events()).toBe(0);
+    });
+
+    it('moveNode under a collapsed parent hides the node\'s rows but keeps its expansion, selection and focus, and emits nothing', () => {
+        const { tree, R0, R1, C1, R2 } = mountedNested();
+
+        tree.selectNode(C1);
+
+        const events = countEvents(tree);
+
+        tree.moveNode(R1, R2, 0);
+
+        expect(tree.getNodes()).toEqual([R0, R2]);
+        expect(R2.children).toEqual([R1]);
+        expect(flatLabels(tree)).toEqual(['R0', 'R2']);
+        expect(rowFor(tree, R2).getToggle()).not.toBeNull();
+        expect(tree.getExpandedNodes()).toContain(R1);
+        expect(tree.getExpandedNodes()).not.toContain(R2);
+        expect(tree.getSelectedNodes()).toEqual([C1]);
+        expect(tree.getSelectedNode()).toBe(C1);
+        expect(asPrivate(tree)._anchorNode).toBe(C1);
+        expect(asPrivate(tree)._focusNode).toBe(C1);
+        expect(tree.getAria().getActiveDescendant()).toBeNull();
+        expect(events()).toBe(0);
+
+        tree.expandNode(R2);
+
+        expect(flatLabels(tree)).toEqual(['R0', 'R2', 'R1', 'C0', 'C1']);
+    });
+
+    it('moveNode into an expanded parent keeps the node\'s pool row and writes its new ARIA level, set size and position', () => {
+        const { tree, R0, R1, C0, C1 } = mountedNested();
+        const row = rowFor(tree, R0);
+
+        tree.moveNode(R0, R1, 2);
+
+        const ariaOf = (node: TreeNode): Array<number | null> => {
+            const aria = rowFor(tree, node).getAria();
+
+            return [aria.getLevel(), aria.getSetSize(), aria.getPosInSet()];
+        };
+
+        expect(R1.children).toEqual([C0, C1, R0]);
+        expect(flatLabels(tree)).toEqual(['R1', 'C0', 'C1', 'R0', 'R2']);
+        expect(rowFor(tree, R0)).toBe(row);
+        expect(ariaOf(R0)).toEqual([2, 3, 3]);
+        expect(ariaOf(C0)).toEqual([2, 3, 1]);
+    });
+
+    it('moveNode of an eager parent\'s last children removes its caret but keeps it expanded', () => {
+        const { tree, R1, C0, C1 } = mountedNested();
+
+        tree.moveNode(C0, null, 0);
+        tree.moveNode(C1, null, 0);
+
+        expect(R1.children).toEqual([]);
+        expect(rowFor(tree, R1).getToggle()).toBeNull();
+        expect(tree.getExpandedNodes()).toContain(R1);
+    });
+
+    it('moveNode ignores a move into the node\'s own subtree and a node or parent the tree does not hold', () => {
+        const { tree, R0, R1, C0, C1, R2 } = mountedNested();
+        const generation = asPrivate(tree)._structureGeneration;
+        const rebinds = countRebinds(tree);
+
+        expect(tree.moveNode(R1, C0, 0)).toBe(tree);
+        expect(tree.moveNode(R1, R1, 0)).toBe(tree);
+        expect(tree.moveNode({ label: 'Y' }, null, 0)).toBe(tree);
+        expect(tree.moveNode(R0, { label: 'Z' }, 0)).toBe(tree);
+
+        expect(tree.getNodes()).toEqual([R0, R1, R2]);
+        expect(R1.children).toEqual([C0, C1]);
+        expect(C0.children).toBeUndefined();
+        expect(asPrivate(tree)._structureGeneration).toBe(generation);
+        expect(rebinds()).toBe(0);
+    });
+
+    it('moveNode under a lazy, never-loaded parent makes the node its only child, and expanding it never calls loadChildren', async () => {
+        const load = vi.fn(async (): Promise<TreeNode[]> => [{ label: 'loaded' }]);
+        const P: TreeNode = { label: 'P', hasChildren: true, loadChildren: load };
+        const X: TreeNode = { label: 'X' };
+        const tree = new _Tree();
+
+        tree.setNodes([P, X]);
+        tree.moveNode(X, P, 0);
+
+        const expanded = tree.expandNodeAsync(P);
+
+        expect(flatLabels(tree)).toEqual(['P', 'X']);
+        expect(await expanded).toBe(true);
+        expect(load).not.toHaveBeenCalled();
+    });
+
+    it('moveNode under a parent whose lazy load is in flight drops that load: it resolves false and the moved node stays', async () => {
+        const P = heldLazy('P');
+        const X: TreeNode = { label: 'X' };
+        const tree = new _Tree();
+
+        tree.setNodes([P.node, X]);
+
+        const expanded = tree.expandNodeAsync(P.node);
+
+        tree.moveNode(X, P.node, 0);
+        P.resolve([{ label: 'B' }]);
+
+        expect(await expanded).toBe(false);
+        expect(P.node.children).toEqual([X]);
+        expect(tree.getExpandedNodes()).not.toContain(P.node);
+        expect(P.load).toHaveBeenCalledTimes(1);
+    });
+
+    it('moveNode of a node whose own lazy load is in flight keeps the load, which commits where the node now is', async () => {
+        const L = heldLazy('L');
+        const k: TreeNode = { label: 'k' };
+        const Q: TreeNode = { label: 'Q', children: [{ label: 'q' }] };
+        const tree = new _Tree();
+        const onExpand = vi.fn();
+
+        tree.setNodes([L.node, Q]);
+        tree.on('expand', onExpand);
+
+        const expanded = tree.expandNodeAsync(L.node);
+
+        tree.moveNode(L.node, Q, 0);
+
+        expect(asPrivate(tree)._loadingNodes.has(L.node)).toBe(true);
+
+        L.resolve([k]);
+
+        expect(await expanded).toBe(true);
+        expect(L.node.children).toEqual([k]);
+        expect(tree.getExpandedNodes()).toContain(L.node);
+        expect(onExpand).toHaveBeenCalledTimes(1);
+        expect(onExpand).toHaveBeenCalledWith(L.node);
+        expect(L.load).toHaveBeenCalledTimes(1);
+    });
+
+    it('moveNode keeps a moved lazy node loaded and a load in flight under the moved node running', async () => {
+        const load = vi.fn(async (): Promise<TreeNode[]> => []);
+        const L: TreeNode = { label: 'L', hasChildren: true, loadChildren: load };
+        const M = heldLazy('M');
+        const m: TreeNode = { label: 'm' };
+        const D: TreeNode = { label: 'D', children: [M.node] };
+        const Q: TreeNode = { label: 'Q', children: [{ label: 'q' }] };
+        const tree = new _Tree();
+
+        tree.setNodes([L, D, Q]);
+
+        expect(await tree.expandNodeAsync(L)).toBe(true);
+
+        asPrivate(tree)._onToggle(L);
+
+        const expanded = tree.expandNodeAsync(M.node);
+
+        tree.moveNode(L, Q, 0);
+        tree.moveNode(D, Q, 0);
+
+        // L loaded with no children: only its loaded mark keeps a re-expand
+        // from calling loadChildren again.
+        expect(await tree.expandNodeAsync(L)).toBe(true);
+        expect(load).toHaveBeenCalledTimes(1);
+
+        M.resolve([m]);
+
+        expect(await expanded).toBe(true);
+        expect(M.node.children).toEqual([m]);
+        expect(M.load).toHaveBeenCalledTimes(1);
+    });
+
+    it('moveNode takes over the old parent\'s children too: emptying a never-loaded lazy parent never calls loadChildren', async () => {
+        const X: TreeNode = { label: 'X' };
+        const load = vi.fn(async (): Promise<TreeNode[]> => [{ label: 'loaded' }]);
+        const P: TreeNode = { label: 'P', hasChildren: true, loadChildren: load, children: [X] };
+        const tree = new _Tree();
+
+        tree.setNodes([P]);
+        tree.moveNode(X, null, 1);
+
+        expect(tree.getNodes()).toEqual([P, X]);
+        expect(await tree.expandNodeAsync(P)).toBe(true);
+        expect(flatLabels(tree)).toEqual(['P', 'X']);
+        expect(load).not.toHaveBeenCalled();
+    });
+
+    it('moveNode keeps the scroll offset, clamping it only once the content is too short for it', () => {
+        const VISIBLE_ROWS = 5;
+        const leaves = (count: number): TreeNode[] => Array.from({ length: count }, (_, i) => ({ label: 'n' + i }));
+
+        const tall = mount(leaves(60), VISIBLE_ROWS * ROW_HEIGHT);
+
+        tall.setScrollY(20 * ROW_HEIGHT);
+        tall.moveNode(tall.getNodes()[0], null, 59);
+
+        expect(asPool(tall)._scroller.getScrollY()).toBe(20 * ROW_HEIGHT);
+
+        // 11 rows, 5 visible: 6 rows is the maximum offset. Moving three
+        // leaves under the collapsed F leaves 8 rows, so the maximum drops to 3.
+        const F: TreeNode = { label: 'F', children: [{ label: 'f0' }] };
+        const short = mount([...leaves(10), F], VISIBLE_ROWS * ROW_HEIGHT);
+
+        short.setScrollY(6 * ROW_HEIGHT);
+
+        for (const node of short.getNodes().slice(0, 3)) {
+            short.moveNode(node, F, 0);
+        }
+
+        expect(flatLabels(short)).toHaveLength(8);
+        expect(asPool(short)._scroller.getScrollY()).toBe((8 - VISIBLE_ROWS) * ROW_HEIGHT);
+    });
+
+    it('moveNode bumps the structure generation once', () => {
+        const a: TreeNode = { label: 'a' };
+        const tree = new _Tree();
+
+        tree.setNodes([a, { label: 'b' }]);
+
+        const generation = asPrivate(tree)._structureGeneration;
+
+        tree.moveNode(a, null, 1);
+
+        expect(asPrivate(tree)._structureGeneration).toBe(generation + 1);
     });
 
     // --- notifyNodeChanged -------------------------------------------------

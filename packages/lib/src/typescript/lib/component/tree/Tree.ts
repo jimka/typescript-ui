@@ -195,7 +195,8 @@ const _defaultTreeOptions: Partial<TreeOptions> = {
  *
  * Pass root nodes via {@link Tree.setNodes}. Change the tree afterwards one
  * node at a time with {@link Tree.insertNode}, {@link Tree.removeNode},
- * {@link Tree.setChildren} and {@link Tree.notifyNodeChanged}, which keep
+ * {@link Tree.moveNode}, {@link Tree.setChildren} and
+ * {@link Tree.notifyNodeChanged}, which keep
  * every other node's expansion, selection and lazy-load state. The tree
  * flattens the currently visible subtree into a single scrollable list and
  * recycles a fixed pool of internal row components. A reflatten first
@@ -215,7 +216,7 @@ const _defaultTreeOptions: Partial<TreeOptions> = {
  * {@link expandNodeAsync}, or a lazy load settling with an expand waiting
  * on it — commits its state synchronously and then animates: the toggle
  * turns and the affected rows slide into place over 200 ms. Bulk and
- * structural calls (the `*` key, `expandAll`, `revealByPredicate`,
+ * structural calls (the `*` key, `expandAll`, `revealByPredicate`, `moveNode`,
  * `setNodes`, `insertNode`, `removeNode`, `setChildren`) and
  * `prefers-reduced-motion: reduce` never animate; a toggle of a node
  * scrolled out of view above the viewport, whose open children reach more
@@ -426,7 +427,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * values cannot detect.
      *
      * To change part of the tree without resetting the rest, use
-     * {@link insertNode}, {@link removeNode} or {@link setChildren}; to
+     * {@link insertNode}, {@link removeNode}, {@link moveNode} or
+     * {@link setChildren}; to
      * repaint one node changed in place, use {@link notifyNodeChanged}.
      */
     setNodes(nodes: TreeNode[]): this {
@@ -509,6 +511,66 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
+     * Moves `node`, and every node under it, to position `index` among
+     * `parent`'s children. The node never leaves the tree, so it and every node
+     * under it keep their expansion, selection, loaded children and any lazy
+     * load in flight, and the anchor and the focus stay as they were. The
+     * scroll offset is kept, and clamped only when the content becomes too
+     * short for it.
+     *
+     * @param node - The node to move, at any depth.
+     * @param parent - The node to move it under, or `null` for the root level.
+     *   Pass `node`'s current parent to change only its position.
+     * @param index - The position `node` ends up at among `parent`'s children,
+     *   clamped to the valid range: a negative index puts it first, an index at
+     *   or past the end puts it last.
+     *
+     * @returns This tree, for method chaining.
+     *
+     * @remarks
+     * Writes into the arrays the tree already holds, as {@link insertNode} and
+     * {@link removeNode} do. Both the old and the new parent count as changed:
+     * a lazy one counts as loaded afterwards, and a load in flight for it is
+     * dropped — see {@link setChildren}. A load in flight for `node` or a node
+     * under it keeps running and commits where the node now is.
+     *
+     * A move to where `node` already is changes nothing. A move the tree cannot
+     * make is ignored the same way: `node` or `parent` is not in this tree, or
+     * `parent` is `node` itself or a node under it.
+     *
+     * Emits no event and never animates: a running expand or collapse animation
+     * stops, and the rows render in their new places at once. The moved node is
+     * not scrolled into view. `moveNode` does not check the node itself for
+     * changes, so after changing its `label` for a rename, call
+     * {@link notifyNodeChanged}, which repaints its row.
+     */
+    moveNode(node: TreeNode, parent: TreeNode | null, index: number): this {
+        const from = this._locate(node);
+
+        if (from === null || !this._canMoveUnder(node, parent)) {
+            return this;
+        }
+
+        const sameParent = from.parent === parent;
+        const siblings   = this._childrenOf(parent);
+        // The node's own slot does not count when it stays in the same array.
+        const last       = sameParent ? siblings.length - 1 : siblings.length;
+        const at         = Math.max(0, Math.min(index, last));
+
+        if (sameParent && at === from.index) {
+            return this;
+        }
+
+        from.siblings.splice(from.index, 1);
+        siblings.splice(at, 0, node);
+
+        this._supersedeLoad(from.parent);
+        this._commitStructureChange(parent);
+
+        return this;
+    }
+
+    /**
      * Replaces `parent`'s children with `children`, keeping the state of
      * every node the tree still holds afterwards.
      *
@@ -530,9 +592,9 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * The caller owns `parent`'s children from here on: a lazy `parent`
      * counts as loaded, so expanding it never calls `loadChildren`, and a
      * load already in flight for it is dropped — its result is discarded and
-     * its `expandNodeAsync` promise resolves `false`. {@link insertNode} and
-     * {@link removeNode} treat the parent they change the same way. Emits no
-     * event.
+     * its `expandNodeAsync` promise resolves `false`. {@link insertNode},
+     * {@link removeNode} and {@link moveNode} treat the parents they change the
+     * same way. Emits no event.
      */
     setChildren(parent: TreeNode | null, children: TreeNode[]): this {
         if (parent === null) {
@@ -748,7 +810,7 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * walk or the expand started the call.
      *
      * The walk follows an {@link insertNode}, {@link removeNode},
-     * {@link setChildren} or {@link setNodes} made while it waits on a load:
+     * {@link moveNode}, {@link setChildren} or {@link setNodes} made while it waits on a load:
      * every level it still has open re-reads its live children and searches
      * them again from the first, innermost level first. It does not search
      * afresh, though — a node it has already tested is passed over untested,
@@ -1065,8 +1127,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      *   toggle was first requested — once, however many expands and
      *   `revealByPredicate` calls share the node's load, and whichever of
      *   them started it. It never fires from `setNodes`, `expandAll`, or
-     *   `revealByPredicate`, nor from `insertNode`, `removeNode` or
-     *   `setChildren` — a lazy load one of those drops fires nothing; a
+     *   `revealByPredicate`, nor from `insertNode`, `removeNode`,
+     *   `moveNode` or `setChildren` — a lazy load one of those drops fires nothing; a
      *   rejected lazy load fires only `"loaderror"` instead.
      * @param listener - The callback to invoke when the event fires.
      *
@@ -1313,9 +1375,10 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * @remarks
      * The one search the tree makes for a single node, so every caller reads
      * what it needs off one walk: {@link removeNode} the holding array and
-     * index, {@link _expandPathTo} the path, {@link _expandSiblingsOfCurrentNode}
-     * the siblings, and the reveal's walk the `null` alone, to learn that a
-     * level has left the tree.
+     * index, {@link moveNode} the moved node's array and index and the
+     * target's path, {@link _expandPathTo} the path,
+     * {@link _expandSiblingsOfCurrentNode} the siblings, and the reveal's walk
+     * the `null` alone, to learn that a level has left the tree.
      */
     private _locate(node: TreeNode): NodeLocation | null {
         const ancestors: TreeNode[] = [];
@@ -1347,6 +1410,24 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
         };
 
         return search(null, this._nodes);
+    }
+
+    /**
+     * Reports whether `parent` can take `node` as a child: it is the root level
+     * or a node this tree holds, and it is neither `node` nor a node under it.
+     *
+     * @param node - The node being moved, which the tree holds.
+     * @param parent - The candidate parent, or `null` for the root level.
+     * @returns `true` when the move would not detach a node or form a cycle.
+     */
+    private _canMoveUnder(node: TreeNode, parent: TreeNode | null): boolean {
+        if (parent === null) {
+            return true;
+        }
+
+        const location = this._locate(parent);
+
+        return location !== null && !location.path.includes(node);
     }
 
     /**
@@ -1425,8 +1506,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
     }
 
     /**
-     * The shared tail of `insertNode`, `removeNode` and `setChildren`, run
-     * after the child array has been changed.
+     * The shared tail of `insertNode`, `removeNode`, `setChildren` and
+     * `moveNode`, run after the child array has been changed.
      *
      * @param parent - The node whose children changed, or `null` for the root level.
      *
@@ -1508,8 +1589,8 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * `"expand"` on a real transition, the same as {@link expandNode}: once,
      * however many callers share the load.
      *
-     * {@link setNodes}, and an {@link insertNode}, {@link removeNode} or
-     * {@link setChildren} that takes over the node's children or drops the
+     * {@link setNodes}, and an {@link insertNode}, {@link removeNode},
+     * {@link moveNode} or {@link setChildren} that takes over the node's children or drops the
      * node, drops its load, and so does disposing the tree. A dropped load
      * commits nothing, and every call waiting on it resolves `false` once the
      * dropped `loadChildren` call settles — the tree stops acting on that
