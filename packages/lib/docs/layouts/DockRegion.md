@@ -60,6 +60,8 @@ A `center` drop never splits: if the region is already a [`Tab`](/layouts/Tab) �
 
 Every re-parent goes through [`Component.moveComponent`](/api/core/classes/Component#movecomponent), so the moved panel and the region keep their content and layout constraints intact.
 
+[`Dock.splitPanel`](/api/overlay/classes/Dock#splitpanel) makes the same edge split from code, with no drag.
+
 ## Pruning emptied containers
 
 The inverse of a drop is handled too. `DockRegion` listens to the [`empty`](/layouts/Tab#events) event of every stack it creates: when a stack loses its last tab — torn off, re-docked elsewhere, or closed — the empty stack is removed, and if that leaves a `Split` with a single child, the `Split` collapses (its lone child is hoisted into the grandparent at the `Split`'s slot). So tearing the last panel out of a split pane cleans up both the empty stack and the now-redundant split rather than leaving them behind.

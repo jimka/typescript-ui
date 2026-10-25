@@ -70,7 +70,7 @@ Once a panel is docked, the gestures come from the composed primitives:
 | --- | --- | --- |
 | Drag a tab within its strip | Reorder | [`Tab`](/api/layout/classes/Tab) |
 | Drag a tab off the strip | Tear off into a floating [`Window`](/components/Window) that is itself a **mini-dock**. The float takes keyboard focus. A float rebuilt by a layout restore takes none when the restore shows it, and after that answers raises the same way | [`Tab`](/api/layout/classes/Tab) + `Dock` |
-| Drop a tab on a region **edge** | Split the region, new pane gets the panel | [`DockRegion`](/api/layout/classes/DockRegion) |
+| Drop a tab on a region **edge** | Split the region, new pane gets the panel (or `splitPanel` from code) | [`DockRegion`](/api/layout/classes/DockRegion) |
 | Drop a tab on a region **centre** | Dock as a tab | [`DockRegion`](/api/layout/classes/DockRegion) |
 | Drop a tab into another window | Dock there, and that window is raised and activated | [`DockRegion`](/api/layout/classes/DockRegion) |
 | Hold a dragged tab over a backgrounded window | Spring-loads it to the front after a short dwell so you can aim, without moving keyboard focus | [`DockRegion`](/api/layout/classes/DockRegion) |
@@ -100,6 +100,7 @@ The payload's **`window`** names which host the event concerns: `null` for the t
 | Re-dock a float — *whether* dropped on a region body/edge **or** merged onto a tab bar | `detach`(*float*) then `attach`(`window: null`) |
 | Move a panel to a **different region** within one host | `move`(*that host*) |
 | Reorder tabs within one strip | *(silent)* |
+| Split from code with `splitPanel` | `attach` for a newly opened panel; otherwise `move`, or `detach` then `attach` when its host changes |
 
 ```typescript
 dock.on('close', ({ id }) => controller.disposeStore(id));
@@ -147,7 +148,7 @@ No error UI is shown — presenting the failure is the consumer's job.
 
 ## Programmatic control
 
-Six methods drive the lifecycle and presentation from code, each keyed by panel `id` and each returning whether it found the panel:
+Seven methods drive the lifecycle, layout and presentation from code, each keyed by panel `id`:
 
 ```typescript
 if (dock.focusPanel('search')) {
@@ -158,6 +159,9 @@ dock.focusPanel('preview', { focus: false }); // the file tree keeps focus
 
 dock.removePanel('editor'); // closes through the user-close path -> fires `close`
 
+dock.splitPanel('editor', 'search', 'right');                     // move Search beside Editor
+dock.splitPanel('editor', previewSpec, 'bottom', { ratio: 0.3 }); // open a new panel under it
+
 dock.setPanelTitle('search', 'Search results');
 dock.setPanelGlyph('search', 'magnifying-glass');
 dock.setPanelItalic('search', true);   // preview-tab treatment
@@ -166,6 +170,7 @@ dock.setPanelModified('editor', true); // unsaved-changes dot
 
 - **`focusPanel(id, options?)`** activates the host tab and raises the host float when the panel is floated, so a buried panel surfaces. A successful activation naturally produces a `focus`. By default the panel's tab takes keyboard focus only when focus would otherwise be lost or already sits in that strip, and its float takes focus when the window's `autoFocus` is on. Pass `{ focus: false }` to activate and raise without moving focus, for selection driven from a file tree or a results list — see [`DockFocusPanelOptions`](/api/overlay/interfaces/DockFocusPanelOptions). Returns `false` for an unknown id or one registered but never docked.
 - **`removePanel(id)`** closes the panel through the same path a tab ✕ takes, firing exactly one `close`. Focus moves to the neighbouring tab only when the closed tab or its content held it. Returns `false` for an unknown id or one in no region. The cached frame is evicted (a later `addPanel` rebuilds it from the registered factory) while the registration is kept.
+- **`splitPanel(targetId, panel, side, options?)`** does what dropping a tab on the `side` edge of the target's tab group does, following the same [wrap-or-extend rule](/layouts/DockRegion#wrap-vs-extend): when the group already sits in a split running that way, the new pane joins it beside the group; otherwise the group and the new pane become the two panes of a new split. `side` is an [`Edge`](/api/primitive/type-aliases/Edge). `panel` is a registered id — moved when open, opened again when it was closed — or a spec, registered and opened as `addPanel` does. The panel lands alone in its new tab group and becomes the active panel, so `focus` fires before the call returns — unless the panel was already the focused one, since re-activating the focused panel is silent; `attach`, `move`, or `detach` then `attach` follow on the next frame, as for a drop, and report the move in either case. `ratio` is the new pane's share of the target group's slot; leave it out to size the pane as a drop does. It applies when the pane wraps the target's group into a new split, or joins a split that has been laid out since it last changed. A pane that joins a split that has not been laid out yet — one made by another `splitPanel` in the same task, say — ignores `ratio` and resets that split's pending shares, so all its panes size as for a drop; that cancels the `ratio` the earlier call gave it too. A pane that joins a laid-out split another call in the same task has already added a pane to also ignores `ratio` and sizes as for a drop, leaving the other panes' shares alone. A new split's `ratio` shows in `getLayoutState()` only after that split's first layout. `focus` decides whether a float holding the target takes keyboard focus when it is raised; the panel's new tab never takes focus, and focusing the panel's content is the application's job — see [`DockSplitOptions`](/api/overlay/interfaces/DockSplitOptions). Returns `false` for an unknown id, a target in a strip-mode tear-off window, or a split that would change nothing (the panel is the target's only tab, or already sits alone right beside it on that side). Throws for a `ratio` outside `(0, 1)`.
 - **`setPanelTitle`/`setPanelGlyph`/`setPanelItalic`/`setPanelModified`** relabel, re-icon, italicise, or mark modified a panel's tab — the same durable presentation [`Tab`](/api/layout/classes/Tab) itself exposes ([`setTabName`](/layouts/Tab#renaming-re-iconing-italicising-and-marking-a-tab-modified) / `setTabGlyph` / `setTabItalic` / `setTabModified`), reached by panel `id` instead of by the live content component. Each accepts a panel whose tab cell has not been created yet (durably recorded, applied once the cell exists) and returns `false` only for an id never registered via `addPanel`/`addLazyPanel`.
 
 `setTabOptions(options)` applies a [`TabOptions`](/api/layout/interfaces/TabOptions) bag's presentation fields — width mode, scrolling, orientation, and the rest — to every region this dock owns, immediately, and stores it to apply to every region it builds afterward:
