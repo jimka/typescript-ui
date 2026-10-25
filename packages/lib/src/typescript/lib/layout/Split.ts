@@ -1379,6 +1379,23 @@ class Split extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * Drops the `paneSizes` option's array while it is still undrained, so the
+     * first layout sizes the panes as though none was passed, and neither
+     * applies nor warns about it. For a caller that has just changed the panes
+     * of a split that has never been laid out, which leaves that array stale.
+     * No-op once the array has been drained.
+     *
+     * @returns This layout manager, for method chaining.
+     *
+     * @internal
+     */
+    discardPendingPaneSizes(): this {
+        this._pendingSizes = null;
+
+        return this;
+    }
+
+    /**
      * Collapses or restores the pane at the given index **without animating** —
      * the geometry change lands on the next layout pass. Unlike
      * {@link setPaneCollapsed} (which runs a coordinated rAF animation), this is

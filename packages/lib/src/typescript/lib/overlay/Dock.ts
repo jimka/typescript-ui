@@ -17,6 +17,7 @@ import { ListenerBag } from "~/core/ListenerBag.js";
 import { callable } from "~/core/Callable.js";
 import { DOM } from "~/core/DOM.js";
 import type { AxisOrientation } from "~/primitive/Axis.js";
+import type { Edge } from "~/primitive/Edge.js";
 
 /**
  * Declarative description of one dockable content panel.
@@ -53,7 +54,8 @@ export interface DockPanelSpec {
      * The content: a live component, or a factory built on first resolve. It is
      * placed inside the identity frame, never mutated. A factory returning a
      * promise is accepted only by {@link Dock.addLazyPanel}, which shows a
-     * spinner for the whole wait; {@link Dock.addPanel} throws on one.
+     * spinner for the whole wait; {@link Dock.addPanel} and
+     * {@link Dock.splitPanel} throw on one.
      */
     content:  Component | ComponentFactory;
 }
@@ -234,6 +236,44 @@ export interface DockFocusPanelOptions {
      * built with `autoFocus: false`.
      */
     focus?: boolean;
+}
+
+/**
+ * Options for {@link Dock.splitPanel}.
+ *
+ * @category Core
+ */
+export interface DockSplitOptions {
+    /**
+     * Whether activating the panel may move keyboard focus. It is passed to
+     * the panel's activation as `DockFocusPanelOptions.focus`. In practice it
+     * decides only the raise of a float that holds the target: omitted, the
+     * window's `autoFocus` decides; `false` raises it without moving focus;
+     * `true` takes focus into it also when it was built with
+     * `autoFocus: false`. Whatever this says, a split never moves focus onto
+     * the panel's new tab, and when the panel's old tab held focus and its
+     * old group keeps other tabs, focus moves to one of them.
+     */
+    focus?: boolean;
+    /**
+     * The new pane's share of the target group's slot, along the split, as a
+     * fraction between 0 and 1, exclusive; the target group keeps the rest.
+     * It applies when the new pane wraps the target's group into a new split,
+     * or joins a split that has been laid out since it last changed. Omit it
+     * to size the new pane as
+     * an edge drop does: half of a new split, or an equal share taken from
+     * every pane when the pane joins a split that already runs that way.
+     *
+     * A pane that joins a split that has not been laid out yet, for example
+     * one made by another `splitPanel` in the same task, ignores `ratio` and
+     * resets that split's pending shares, so all its panes size as for a drop.
+     * That also cancels the `ratio` an earlier call in the same task gave that
+     * split. A pane that joins a laid-out split which another call in the same
+     * task has already added a pane to also ignores `ratio` and sizes as for
+     * a drop, so the shares the other panes kept are left alone. A new split's `ratio` is not visible to {@link Dock.getLayoutState}
+     * until that split's first layout.
+     */
+    ratio?: number;
 }
 
 /**
@@ -2033,6 +2073,148 @@ class Dock extends Container<DockOptions> {
         (region.getLayoutManager() as Tab).setActiveTabIndex(index, { focus });
 
         return true;
+    }
+
+    /**
+     * Puts a panel in a new pane beside the panel `targetId`, on `side` — the
+     * programmatic form of dropping a tab on a region edge. The target's whole
+     * tab group is split: when that group already sits in a split running the
+     * same way, the new pane joins that split next to it; otherwise the group
+     * and the new pane become the two panes of a new split. The panel lands as
+     * the only tab of its own new tab group and becomes the active panel, which
+     * fires `"focus"` before this method returns unless the panel was already
+     * the focused one: re-activating the focused panel is silent, so a split of
+     * it is reported only by its `"attach"` (a newly opened panel), `"move"`
+     * (same host) or `"detach"` then `"attach"` (another host), which follow on
+     * the next frame, as for a drop.
+     *
+     * A split is a change made from code, so activating the panel moves
+     * keyboard focus only as {@link DockSplitOptions.focus} describes, never
+     * onto the panel's new tab. Separately, whatever `focus` says, when the
+     * panel's old tab held focus and its old group keeps other tabs, focus
+     * moves to one of them, as a close from code does. Focusing the panel's
+     * content afterwards is the application's job.
+     *
+     * @param targetId - The panel to split beside. It must be open in the tiled
+     *   tree or in a float that holds this dock's tab groups; a panel in a
+     *   strip-mode tear-off window cannot be split beside.
+     * @param panel - The id of a registered panel — moved when open, opened again
+     *   when it was closed — or a spec to register and open, as `addPanel` takes.
+     *   A spec whose id is already open moves that panel.
+     * @param side - The edge of the target's tab group the new pane goes on.
+     * @param options - The new pane's share, and whether activating the panel may
+     *   move keyboard focus.
+     *
+     * @returns `true` when the split was made; `false` when `targetId` is not an
+     *   open panel in a tab group that can be split, `panel` is an unknown id, or
+     *   the split would leave the layout as it is — the panel is the target's only
+     *   tab, or already sits alone right beside it on that side.
+     *
+     * @throws Error - When `options.ratio` is not between 0 and 1, exclusive, or
+     *   a spec's `content` factory returns a promise.
+     */
+    splitPanel(targetId: string, panel: string | DockPanelSpec, side: Edge, options?: DockSplitOptions): boolean {
+        const ratio = options?.ratio;
+
+        if (ratio !== undefined && !(ratio > 0 && ratio < 1)) {
+            throw new Error(`Dock.splitPanel: ratio must be between 0 and 1, exclusive; got ${ratio}.`);
+        }
+
+        const region = this.splitTargetRegion(targetId);
+
+        if (!region) {
+            return false;
+        }
+
+        const frame = this.splitSourceFrame(panel);
+
+        if (!frame) {
+            return false;
+        }
+
+        // Read before the move: afterwards the frame's parent is the new stack.
+        const fresh       = frame.getParentComponent() === null;
+        const sourceTab   = this.ownerTab(frame);
+        const constraints = fresh ? this.leafConstraints(this._panels.get(frame.getId())!) : undefined;
+
+        // The target region is wired by the sweep; one added in this task may not be yet.
+        this.wireRegion(region);
+
+        const stack = this._wiring.get(region)!.dockRegion.dropOnEdge(frame, side, { constraints, ratio });
+
+        if (!stack) {
+            return false;
+        }
+
+        // A drag drops the old cell after the drop; do the same, so the old
+        // region is already empty when its "empty" event prunes it.
+        sourceTab?.removeMovedTab(frame);
+        this.activateSplitPanel(stack, frame, fresh, options?.focus);
+        this.scheduleSweep();
+
+        return true;
+    }
+
+    /**
+     * The tab region `splitPanel` splits for `targetId`: the open frame's parent
+     * when it is a `Tab` region of this dock — the tiled tree or an adopted float.
+     * Read from the parent, not from the strip cells, so a panel added in the same
+     * task qualifies. A `TabWindow` is refused: it holds no `DockRegion`.
+     *
+     * @param targetId - The panel to split beside.
+     *
+     * @returns The target's `Tab` region, or `null` when it cannot be split beside.
+     */
+    private splitTargetRegion(targetId: string): Component | null {
+        const parent = this._frames.get(targetId)?.getParentComponent() ?? null;
+
+        if (!parent || parent instanceof TabWindow || !this.isTab(parent)) {
+            return null;
+        }
+
+        return parent;
+    }
+
+    /**
+     * The identity frame `splitPanel` moves: a registered id's frame (built again
+     * when it was closed), or a spec registered first, as `addPanel` does.
+     *
+     * @param panel - A registered panel id, or a spec to register.
+     *
+     * @returns The identity frame, or `null` for an unknown id.
+     */
+    private splitSourceFrame(panel: string | DockPanelSpec): Component | null {
+        if (typeof panel === "string") {
+            return this.resolvePanel(panel);
+        }
+
+        this._panels.set(panel.id, panel);
+
+        return this.resolvePanel(panel.id);
+    }
+
+    /**
+     * Wires the new stack, gives the panel its strip cell, and activates it.
+     * `_frameRegion` is seeded only for a panel entering the dock for the first
+     * time (as addPanel does); a moved panel keeps its old entry so the sweep
+     * reports the "move". `_lastActiveRegion` is set last because the activation
+     * runs onPanelFocused, which writes it from the not-yet-updated `_frameRegion`.
+     *
+     * @param stack - The new tab stack holding `frame`.
+     * @param frame - The panel's identity frame.
+     * @param fresh - Whether the panel had no parent before the split.
+     * @param focus - Passed to the activation as `DockFocusPanelOptions.focus`.
+     */
+    private activateSplitPanel(stack: Component, frame: Component, fresh: boolean, focus: boolean | undefined): void {
+        this.wireRegion(stack);
+        (stack.getLayoutManager() as Tab).createTab(frame);
+
+        if (fresh) {
+            this._frameRegion.set(frame.getId(), stack);
+        }
+
+        this.focusPanel(frame.getId(), { focus });
+        this._lastActiveRegion = stack;
     }
 
     /**

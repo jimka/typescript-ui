@@ -1315,6 +1315,12 @@ class MiscPanel extends Panel {
             dock.on("emptychange", e => console.log(`[Dock] emptychange: empty=${e.empty}`));
             dock.on("exception", e => console.log(`[Dock] exception: ${e.id} — ${String(e.error)}`));
 
+            // The panel the split buttons below split beside.
+            let focusedPanelId: string | null = null;
+            dock.on("focus", e => {
+                focusedPanelId = e ? e.id : null;
+            });
+
             let savedLayout: LayoutState | null = null;
             const toolbar = new ToolBar();
 
@@ -1357,10 +1363,50 @@ class MiscPanel extends Panel {
                 });
             });
 
+            // splitPanel opens a new panel beside the focused one — the command
+            // form of dropping a tab on a region edge. "Split down" gives the
+            // new pane 30% of the focused group's height.
+            let splitPanelCounter = 0;
+            const splitRightButton = new Button("Split right");
+            splitRightButton.on("action", () => {
+                if (focusedPanelId === null) {
+                    return;
+                }
+
+                splitPanelCounter += 1;
+
+                const result = dock.splitPanel(focusedPanelId, {
+                    id:      `split-${splitPanelCounter}`,
+                    title:   "Split",
+                    content: dockPanel("Split — opened beside the focused panel."),
+                }, "right");
+
+                console.log(`[Dock] splitPanel: ${result}`);
+            });
+
+            const splitDownButton = new Button("Split down");
+            splitDownButton.on("action", () => {
+                if (focusedPanelId === null) {
+                    return;
+                }
+
+                splitPanelCounter += 1;
+
+                const result = dock.splitPanel(focusedPanelId, {
+                    id:      `split-${splitPanelCounter}`,
+                    title:   "Split",
+                    content: dockPanel("Split — opened beside the focused panel."),
+                }, "bottom", { ratio: 0.3 });
+
+                console.log(`[Dock] splitPanel: ${result}`);
+            });
+
             toolbar.addComponent(saveButton);
             toolbar.addComponent(restoreButton);
             toolbar.addComponent(addAsyncButton);
             toolbar.addComponent(addFailingButton);
+            toolbar.addComponent(splitRightButton);
+            toolbar.addComponent(splitDownButton);
 
             const body = new Container({ layoutManager: new Border() });
             body.addComponent(toolbar, { placement: Placement.NORTH });

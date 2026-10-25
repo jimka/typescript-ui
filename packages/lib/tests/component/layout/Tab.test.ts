@@ -583,3 +583,93 @@ describe('Tab content-area overflow inflation', () => {
         expect(child.getWidth()).toBe(500);
     });
 });
+
+// removeMovedTab is the programmatic twin of the clean-up a finished tab drag
+// runs: the content has already moved to another container, and only its
+// orphaned strip cell has to go.
+describe('Tab removeMovedTab', () => {
+    afterEach(() => DOM.reset());
+
+    function setup(): { host: Container; tab: Tab; a: Component; b: Component; other: Container } {
+        installTestDOM(CONFIG);
+
+        const { host, tab, a, b } = hostTab(new Tab());
+
+        tab.createTab(a);
+        tab.createTab(b);
+
+        return { host, tab, a, b, other: new Container({}) };
+    }
+
+    it('RM1: removes the tab of moved content without closing or destroying it', () => {
+        const { tab, a, other } = setup();
+        const tabclose = vi.fn();
+
+        tab.on('tabclose', tabclose);
+        other.moveComponent(a);
+
+        expect(tab.removeMovedTab(a)).toBe(true);
+        expect(tab.indexOfContent(a)).toBe(-1);
+        expect(tabclose).not.toHaveBeenCalled();
+        expect(a.isDestroyed()).toBe(false);
+    });
+
+    it('RM2: refuses content that is still a child of the container', () => {
+        const { tab, a } = setup();
+
+        expect(tab.removeMovedTab(a)).toBe(false);
+        expect(tab.indexOfContent(a)).toBe(0);
+    });
+
+    it('RM3: fires "empty" once, after the last moved tab is removed', () => {
+        const { tab, a, b, other } = setup();
+        const empty = vi.fn();
+
+        tab.on('empty', empty);
+        other.moveComponent(a);
+        other.moveComponent(b);
+
+        expect(tab.removeMovedTab(a)).toBe(true);
+        expect(empty).not.toHaveBeenCalled();
+        expect(tab.removeMovedTab(b)).toBe(true);
+        expect(empty).toHaveBeenCalledTimes(1);
+    });
+
+    it('RM4: returns false for content no tab hosts', () => {
+        const { tab } = setup();
+
+        expect(tab.removeMovedTab(new Component({}))).toBe(false);
+    });
+
+    it('RM5: selects the next tab when the removed tab was active', () => {
+        const { tab, a, b, other } = setup();
+
+        tab.setActiveTabIndex(0);
+        other.moveComponent(a);
+        tab.removeMovedTab(a);
+
+        expect(tab.getActiveContent()).toBe(b);
+    });
+
+    it('RM7: keeps the active tab when the removed tab was not active', () => {
+        const { tab, a, b, other } = setup();
+
+        tab.setActiveTabIndex(1);
+        other.moveComponent(a);
+
+        expect(tab.removeMovedTab(a)).toBe(true);
+        expect(tab.getActiveContent()).toBe(b);
+    });
+
+    it('RM6: drops a pending activation of moved content that never got a cell', () => {
+        const { host, tab, other } = setup();
+        const c = new Component({});
+
+        host.addComponent(c);
+        tab.setActiveContent(c);
+        other.moveComponent(c);
+
+        expect(tab.removeMovedTab(c)).toBe(false);
+        expect((tab as unknown as { _pendingActiveContent: Component | null })._pendingActiveContent).toBeNull();
+    });
+});

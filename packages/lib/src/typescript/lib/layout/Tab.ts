@@ -1292,6 +1292,42 @@ class Tab extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * Removes the tab of `content` after `content` has been moved out of this
+     * tab's container — the clean-up a finished tab drag performs, for a caller
+     * that moves the content itself. The cell goes, and when it was the active
+     * tab a neighbouring tab is selected; `content` is not destroyed and no
+     * `"tabclose"` fires. `"empty"` fires when this was the last tab. A
+     * deferred activation of `content` that has not applied yet is dropped
+     * too.
+     *
+     * @param content - The content component that has already left this tab's container.
+     *
+     * @returns `true` when a tab was removed; `false` when `content` is still a
+     *   child of this tab's container (close it with `closeTab` instead) or no tab
+     *   hosts it.
+     */
+    removeMovedTab(content: Component): boolean {
+        if (this.getContainer()?.getComponents().includes(content)) {
+            return false;
+        }
+
+        if (this._pendingActiveContent === content) {
+            this._pendingActiveContent = null;
+            this._pendingActiveFocus = undefined;
+        }
+
+        const entry = this._contents.find(e => e.component === content);
+
+        if (!entry) {
+            return false;
+        }
+
+        this.removeEntryKeepingContent(entry.id);
+
+        return true;
+    }
+
+    /**
      * Replaces the label of the tab hosting `content`.
      *
      * @param content - The content component whose tab to rename.
