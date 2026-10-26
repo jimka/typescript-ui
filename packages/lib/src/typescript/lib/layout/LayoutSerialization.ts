@@ -367,10 +367,10 @@ function windowNodeFor(win: AbstractWindow): WindowNode | null {
 }
 
 /**
- * Captures the arrangement of `root` (and every open window) to a plain,
- * serializable object. Only `Split`/`Tab`/`Window` topology and geometry is
- * recorded; each leaf is a bare panel-ID reference whose content the caller
- * rebuilds on restore.
+ * Captures the arrangement of `root` (and every open window except one that
+ * hosts `root`) to a plain, serializable object. Only `Split`/`Tab`/`Window`
+ * topology and geometry is recorded; each leaf is a bare panel-ID reference
+ * whose content the caller rebuilds on restore.
  *
  * @param root - The container whose arrangement to capture.
  * @returns The captured {@link LayoutState}.
@@ -378,7 +378,10 @@ function windowNodeFor(win: AbstractWindow): WindowNode | null {
  * @category Layouts
  */
 export function serializeLayout(root: Component): LayoutState {
+    // A window that hosts `root` is the layout's container, not one of its
+    // floats: restoreLayout leaves it alone, so it is not recorded either.
     const windows = Window.getOpenWindows()
+        .filter(win => !hostsComponent(win, root))
         .map(windowNodeFor)
         .filter((node): node is WindowNode => node !== null);
 
@@ -489,7 +492,7 @@ function parkLeaves(root: Component, liveWindows: AbstractWindow[], factory: Lay
  * `node`'s ancestor chain looking for `win`.
  *
  * @param win - A candidate host window.
- * @param node - The layout root being restored.
+ * @param node - The layout root being serialized or restored.
  * @returns `true` when `win` contains `node`.
  */
 function hostsComponent(win: AbstractWindow, node: Component): boolean {
@@ -703,8 +706,8 @@ function applyWindow(node: WindowNode, parked: Map<string, Component>, factory: 
  *
  * @remarks Single-pass park-and-rebuild: it parks every factory-known leaf and
  * detaches any transient chrome (so both survive undisposed), disposes
- * whatever scaffold remains under `root`, and closes all open windows,
- * rebuilds the container tree from `state`, re-homes the parked leaves via
+ * whatever scaffold remains under `root`, and closes every open window except
+ * one that hosts `root`, rebuilds the container tree from `state`, re-homes the parked leaves via
  * [`moveComponent`](/api/core/classes/Component#movecomponent), then applies
  * geometry. Because the container tree is rebuilt from scratch each call,
  * switching A→B→A reproduces A exactly with no residue from B. A panel ID with

@@ -13,6 +13,7 @@ import { Glyph } from '~/component/display/Glyph';
 import { circle_check } from '~/glyphs/solid/circle_check';
 import { DOM } from '~/core/DOM';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
+import { Window } from '~/overlay/Window';
 import { installTestDOM, setConnected } from '../../dom/TestDOM';
 import { _Button as Button } from '~/component/button/Button';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -1065,3 +1066,55 @@ describe('a reordered Tab strip survives save and restore', () => {
         floats.forEach(w => w.dispose());
     });
 });
+
+describe('a window that hosts the root is not a float', () => {
+    afterEach(() => {
+        AbstractWindow.getOpenWindows().forEach(w => w.dispose());
+        vi.restoreAllMocks();
+        DOM.reset();
+    });
+
+    /** A Tab root holding panel `a`, placed inside a shown Window. */
+    function rootInWindow(): { win: Window; root: Container; a: Component } {
+        const a = new Component({}); a.setId('a');
+        const root = new Container({ layoutManager: new Tab() });
+        const win = new Window('Host');
+
+        root.addComponent(a);
+        win.addComponent(root);
+        win.show();
+        win.doLayout();
+
+        return { win, root, a };
+    }
+
+    it('H1 — serializeLayout records no window node for the window hosting the root, but does for a float', () => {
+        installTestDOM(CONFIG);
+
+        const { root } = rootInWindow();
+        const b = new Component({}); b.setId('b');
+        const float = new Window('Float');
+
+        float.addComponent(b);
+        float.show();
+
+        const state = serializeLayout(root);
+
+        expect(state.windows.map(w => w.header)).toEqual(['Float']);
+    });
+
+    it('H2 — restoring a root that lives in a window warns about nothing and keeps the host open', () => {
+        installTestDOM(CONFIG);
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const { win, root, a } = rootInWindow();
+        const state = serializeLayout(root);
+
+        restoreLayout(root, state, instanceFactory({ a }));
+
+        expect(warn).not.toHaveBeenCalled();
+        expect(AbstractWindow.getOpenWindows()).toEqual([win]);
+        expect((root.getLayoutManager() as Tab).indexOfContent(a)).toBe(0);
+    });
+});
+

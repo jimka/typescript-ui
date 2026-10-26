@@ -2077,3 +2077,31 @@ describe('Dock keyboard focus', () => {
         expect(DOM.source.getActiveElement()).toBe(win.getElement());
     });
 });
+
+describe('Dock layout state of a dock inside a window', () => {
+    it('does not record the window hosting the dock, and restores without a warning', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const dock = new Dock();
+        const win = new Window('Host');
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        win.addComponent(dock);
+        win.show();
+        win.doLayout();
+        flush();
+
+        const state = dock.getLayoutState();
+
+        expect(state.windows).toEqual([]);
+
+        dock.setLayoutState(state);
+        flush();
+
+        expect(warn).not.toHaveBeenCalled();
+        expect(AbstractWindow.getOpenWindows()).toEqual([win]);
+        expect(dock.focusPanel('a')).toBe(true);
+    });
+});
