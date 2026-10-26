@@ -131,6 +131,14 @@ page resets to empty.
   pane's share of a new split, or of one laid out since it last changed.
   See
   [Programmatic control](/components/Dock#programmatic-control).
+- **`Dock` emits `splitresize`** when the user resizes a split from its
+  gutter — once when a drag ends — and each time one of its panes collapses
+  or expands, in the main dock or a float. Its
+  [`DockSplitEvent`](/api/overlay/interfaces/DockSplitEvent) payload carries
+  the host window, the pane ratios and collapsed flags, and the panel ids in
+  each pane, so an application can save its layout without polling
+  `getLayoutState()`. Window resizes and changes to the region tree do not
+  fire it. See [Dock: `splitresize`](/components/Dock#splitresize).
 
 ## Fixed
 
