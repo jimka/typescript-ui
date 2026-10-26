@@ -144,6 +144,13 @@ page resets to empty.
 
 ### Layouts
 
+- **`serializeLayout` (and so `Dock.getLayoutState`) no longer records the
+  window that hosts the layout as a float.** For a `Dock` placed in a
+  `Window`, the state carried that window as a float whose content was the
+  dock itself, so a restore warned `no component for panelId`, or, when the
+  host's content was a split or tab group, opened a second copy of the window
+  and moved panels into it. `restoreLayout` already left the host window
+  alone; saving now matches it.
 - **The spring-loaded raise during a tab drag no longer moves keyboard focus**
   into the window it raises (`DockRegion`, and a `Tab` strip in a window).
   Since 0.11.0 it did, which left focus in a window the drag only passed over.
