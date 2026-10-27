@@ -111,6 +111,7 @@ export interface DockOptions extends ContainerOptions {
         dblclick?:    (event: DockPanelEvent) => void;
         emptychange?: (event: DockEmptyEvent) => void;
         exception?:   (event: DockExceptionEvent) => void;
+        splitresize?: (event: DockSplitEvent) => void;
     };
 }
 
@@ -140,6 +141,11 @@ export interface DockOptions extends ContainerOptions {
  * event: it fires once each time the dock transitions between holding no live
  * panel anywhere and holding at least one, carrying a {@link DockEmptyEvent}.
  *
+ * `"splitresize"` is also dock-wide: it fires when one of the dock's splits
+ * is resized from its gutter — once when a gutter drag ends — and each time
+ * one of its panes collapses or expands, carrying a {@link DockSplitEvent}.
+ * Changes to the region tree fire the panel events instead.
+ *
  * `"exception"` reports that a lazy panel's content factory rejected, carrying a
  * {@link DockExceptionEvent} rather than a {@link DockPanelEvent} — a panel that
  * never built has no content to name. It follows that panel's own `"close"`,
@@ -158,7 +164,7 @@ export interface DockOptions extends ContainerOptions {
  * @category Core
  */
 export type DockEvent =
-    "attach" | "detach" | "move" | "focus" | "close" | "beforeclose" | "dblclick" | "emptychange" | "exception";
+    "attach" | "detach" | "move" | "focus" | "close" | "beforeclose" | "dblclick" | "emptychange" | "exception" | "splitresize";
 
 /**
  * Controller handed to a Dock `"beforeclose"` listener. Calling
@@ -277,6 +283,35 @@ export interface DockSplitOptions {
 }
 
 /**
+ * Payload for a {@link Dock} `"splitresize"` event: the state of one split
+ * region after one of its panes was resized from its gutter, collapsed or
+ * expanded.
+ *
+ * @category Core
+ */
+export interface DockSplitEvent {
+    /**
+     * The host the split sits in: `null` for the tiled tree (the main dock),
+     * otherwise the float window holding it.
+     */
+    window:    AbstractWindow | null;
+    /**
+     * Each pane's share of the split, in pane order, summing to 1 — the ratios
+     * {@link Dock.getLayoutState} records for this split, up to float
+     * rounding. A collapsed pane keeps the share it takes back when expanded.
+     */
+    ratios:    number[];
+    /** Whether each pane is collapsed, in pane order. */
+    collapsed: boolean[];
+    /**
+     * For each pane, in pane order, the ids of the open panels anywhere inside
+     * it, nested splits included. Read each inner array as a set: its order
+     * is not the tab strips' order.
+     */
+    panels:    string[][];
+}
+
+/**
  * Per-region drag-and-drop wiring tracked by the re-wire sweep.
  */
 interface RegionWiring {
@@ -291,6 +326,14 @@ interface RegionWiring {
      * restore) is re-wired instead of permanently skipped.
      */
     wiredTab:   Tab | null;
+    /**
+     * The `Split` instance this region's manager was last subscribed as, with
+     * the listener it was given, or `null` when the region is not a `Split`
+     * region. Compared by identity against `region.getLayoutManager()` on every
+     * sweep, as `wiredTab` is, so a manager rebuilt in place is re-subscribed;
+     * kept so the subscription can be released (see unwireSplit).
+     */
+    wiredSplit: { split: Split; onResize: () => void } | null;
 }
 
 /**
@@ -1411,7 +1454,7 @@ class Dock extends Container<DockOptions> {
         let wiring = this._wiring.get(region);
 
         if (!wiring) {
-            wiring = { dockRegion: new DockRegion(region, this.requestSweep), wiredTab: null };
+            wiring = { dockRegion: new DockRegion(region, this.requestSweep), wiredTab: null, wiredSplit: null };
 
             this._wiring.set(region, wiring);
         }
@@ -1452,6 +1495,8 @@ class Dock extends Container<DockOptions> {
             }
         }
 
+        this.wireSplit(region, wiring);
+
         for (const child of region.getComponents()) {
             // A lazy panel's identity frame carries a Tab manager, which would
             // otherwise make this sweep wire the panel itself as a drop-taking,
@@ -1461,6 +1506,90 @@ class Dock extends Container<DockOptions> {
                 this.wireRegion(child);
             }
         }
+    }
+
+    /**
+     * Subscribes the dock to a `Split` region's gutter events, so that a finished
+     * drag or a pane collapsed or expanded is re-emitted as `"splitresize"`.
+     * Idempotent per `Split` instance, like the `Tab` wiring: a region whose
+     * manager was replaced (a `setLayoutState` restore) releases the old instance
+     * and subscribes the new one; a region that is not a `Split` region holds none.
+     *
+     * @param region - The region being wired.
+     * @param wiring - The region's wiring record.
+     */
+    private wireSplit(region: Component, wiring: RegionWiring): void {
+        const split   = this.regionKind(region) === "Split" ? (region.getLayoutManager() as Split) : null;
+        const current = wiring.wiredSplit?.split ?? null;
+
+        if (split === current) {
+            return;
+        }
+
+        this.unwireSplit(wiring);
+
+        if (!split) {
+            return;
+        }
+
+        // Per-region listener: the named const carries the region and split that
+        // the Split events' own payloads do not (ARCHITECTURE: a listener is a
+        // named reference, never an inline arrow).
+        const onResize: () => void = (): void => { this.emitSplitResize(region, split); };
+
+        split.on("paneresize",   onResize);
+        split.on("panecollapse", onResize);
+
+        wiring.wiredSplit = { split, onResize };
+    }
+
+    /**
+     * Releases the `Split` subscription `wireSplit` made for a region, if any.
+     *
+     * @param wiring - The region's wiring record.
+     */
+    private unwireSplit(wiring: RegionWiring): void {
+        if (!wiring.wiredSplit) {
+            return;
+        }
+
+        const { split, onResize } = wiring.wiredSplit;
+
+        split.off("paneresize",   onResize);
+        split.off("panecollapse", onResize);
+
+        wiring.wiredSplit = null;
+    }
+
+    /**
+     * Emits `"splitresize"` with a split region's state as it is now.
+     *
+     * @param region - The split region whose gutter was used.
+     * @param split - Its `Split` manager.
+     */
+    private emitSplitResize(region: Component, split: Split): void {
+        const panes = region.getComponents();
+
+        this.emit("splitresize", {
+            // hostForFrame walks the ancestor chain, so it serves any component.
+            window:    this.hostForFrame(region, this.getRootRegion()),
+            ratios:    split.getPaneRatios(),
+            collapsed: panes.map((_pane, index) => split.isPaneCollapsed(index)),
+            panels:    panes.map(pane => this.panelIdsUnder(pane)),
+        });
+    }
+
+    /**
+     * The ids of the registered panels whose identity frame lies inside `pane`.
+     *
+     * @param pane - A pane of a split region.
+     *
+     * @returns The panel ids, in the registry's order.
+     */
+    private panelIdsUnder(pane: Component): string[] {
+        return [...this._frames.entries()]
+            .filter(([id, frame]) => this._panels.has(id) && this.isUnder(pane, frame))
+            .map(([id]) => id);
     }
 
     /**
@@ -1574,6 +1703,7 @@ class Dock extends Container<DockOptions> {
 
         for (const [region, wiring] of this._wiring) {
             if (!reachable.has(region)) {
+                this.unwireSplit(wiring);
                 wiring.dockRegion.destroy();
                 this._wiring.delete(region);
             }
@@ -2600,6 +2730,26 @@ class Dock extends Container<DockOptions> {
      * @returns This dock, for method chaining.
      */
     on(event: "dblclick", listener: (event: DockPanelEvent) => void): this;
+    /**
+     * Registers a listener for the `"splitresize"` event, which fires when
+     * one of the dock's splits is resized from its gutter or one of its panes
+     * collapses or expands: once when a gutter drag ends, moved or not, and
+     * once for each collapse or expand the split reports — from its gutter's
+     * chevron, from keyboard navigation that opens a collapsed pane to reach
+     * a control inside it, or from code calling the region's `Split`. It
+     * fires for splits in the tiled tree and in floats, nested or not, from
+     * the frame after the split was made. It does not fire while a drag is
+     * still moving, for an outline drag cancelled with `Escape`, when the
+     * dock or a float is resized, or for changes to the region tree (an edge
+     * drop, `splitPanel`, a pane pruned when its last panel leaves,
+     * `setLayoutState`) — those fire the panel events instead.
+     *
+     * @param event - The `"splitresize"` event.
+     * @param listener - Invoked with the resized split's state.
+     *
+     * @returns This dock, for method chaining.
+     */
+    on(event: "splitresize", listener: (event: DockSplitEvent) => void): this;
     on(event: DockEvent, listener: Function): this {
         this._listeners.add(event, listener);
 
@@ -2661,6 +2811,15 @@ class Dock extends Container<DockOptions> {
      * @returns This dock, for method chaining.
      */
     off(event: "dblclick", listener: (event: DockPanelEvent) => void): this;
+    /**
+     * Removes a previously registered `"splitresize"` listener.
+     *
+     * @param event - The `"splitresize"` event.
+     * @param listener - The exact listener reference passed to `on`.
+     *
+     * @returns This dock, for method chaining.
+     */
+    off(event: "splitresize", listener: (event: DockSplitEvent) => void): this;
     off(event: DockEvent, listener: Function): this {
         this._listeners.remove(event, listener);
 
@@ -2680,6 +2839,7 @@ class Dock extends Container<DockOptions> {
     protected emit(event: "exception", payload: DockExceptionEvent): void;
     protected emit(event: "beforeclose", payload: DockPanelEvent, controller: DockCloseController): void;
     protected emit(event: "dblclick", payload: DockPanelEvent): void;
+    protected emit(event: "splitresize", payload: DockSplitEvent): void;
     protected emit(event: DockEvent, ...payload: unknown[]): void {
         this._listeners.fire(event, ...payload);
     }
@@ -2693,6 +2853,10 @@ class Dock extends Container<DockOptions> {
      * registering it as a child, so the inherited child recursion never
      * reaches it either; the `detach()` calls in the drop-target callbacks are
      * mid-drag hides of a still-live overlay, not teardown.
+     *
+     * Also releases the `"splitresize"` subscription on the `Split` manager of
+     * every wired region: a float window keeps its regions when the dock goes
+     * away, and its splits would otherwise keep the dock reachable.
      */
     protected destructor(): void {
         this._emptyDropTeardown?.();
@@ -2704,8 +2868,12 @@ class Dock extends Container<DockOptions> {
         // overlay. `destroy()` is otherwise reached only by the
         // unreachable-region sweep, so without this every region a drag ever
         // hovered would keep its overlay's rules when the dock goes away.
+        // A float's split regions belong to its window and can outlive the
+        // dock, so the "splitresize" subscription on their Split managers is
+        // released here too.
         for (const wiring of this._wiring.values()) {
             wiring.dockRegion.destroy();
+            this.unwireSplit(wiring);
         }
 
         this._wiring.clear();
