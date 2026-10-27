@@ -427,3 +427,55 @@ No export changes; `Split` and `Dock` stay on their current pages.
 [^carve]: Dividing the target's own stored size touches only the two panes involved, so it works in px and in the unit base alike, keeps `Σ` unchanged, and leaves an unsized pane from an earlier call to take its drop share at the next layout. Writing every pane through `applyPaneRatios` — what `carveSlot` did — needs a share for every pane, which is why the old code had to return early or flatten (the round-3 audit finding `[0.167, 0.167, 0.333, 0.333]`). The equal-share branch applies only when no pane has a stored size: a never-laid-out split with no ratios written, where Dock's tab stacks (no preferred size) are divided equally by the first layout anyway.
 
 [^refill]: The refill scales every flexible pane by `available / Σ` after the clamp, including the pane just raised to its minimum, so a pane can end below its minimum and creep up over later layouts (`[0.5, 0.25, 0.25]` → `[0.476, 0.238, 0.286]` → `[0.47, 0.235, 0.296]` for minimums 50 / 100 / 150 in 500 px). This happens on a laid-out split with or without this plan.
+
+## Implementation Notes
+
+- **Scope.** The user confirmed Part B, so both parts are implemented. Part A
+  and Part B ship as two code commits (the Split fix stands alone; the Dock
+  lift builds on it), each with its own documentation commit.
+- **Red phases matched the plan exactly.** Step 1 failed S1, S3, S4, S6, S9,
+  S10, L1, L2, L3, L5 and D1, and passed S2, S5, S7, S8 and L4. Step 6 failed
+  R1, R2, R7, R8, R9, R10 and N4b, and passed R11.
+- **Cited line numbers had drifted** after the stacked Dock teardown and
+  `serializeLayout` changes; every edit was located by content and the code
+  matched the plan's description, so no deviation was needed.
+- **R8 also checks `getLayoutState()` before layout,** beside `ratiosOf`, so
+  the JSDoc's "reports it straight away" is covered for an insert as well as
+  a wrap (R1/R2).
+- **`next.md`.** The *Fixed → Layouts* section already existed (from the
+  stacked branches); the new entry is appended at its end. The existing
+  *Added → Overlay* `splitPanel` entry was edited in place. No headings were
+  added.
+- **Docs package not rebuilt/tested:** the docs edits change prose only, no
+  links. `docs:api` reported zero warnings and `docs:llms:check` passed with
+  no regeneration needed.
+- **Manual checks (Chrome, own dev server on port 8032, stopped afterwards).**
+  MV2: *Editor* → **Split down** gave the editor column 275 / 118 px (new pane
+  30 %), with no console warning; a second **Split down** then **Save** +
+  **Restore** at once kept 267 / 79 / 47 → 266 / 79 / 48 px. MV1 in a fresh
+  window: *Editor* → **Split down** twice, **Save**, **Restore**: same heights
+  within 1 px, no warnings. The gutter drag to 60 / 30 / 10 and the
+  drag-elsewhere-before-restore steps were **not** done (no reliable gutter
+  drag through the MCP); the split-produced 68 / 20 / 12 arrangement was used
+  instead.
+- **Unrelated observation, not investigated:** after any **Restore layout**
+  in that demo (even with no splits at all) the *VBox* tab's panel parent
+  reports a 678 px height instead of 393 px. It does not involve a nested
+  split or `applyPaneRatios` on an unsized split, so it is outside this plan;
+  whether it predates this branch was not checked.
+- **Audit fixes, folded into their commits.** The public `ratio` contract
+  (`DockSplitOptions.ratio`, the Dock page, both commit messages) now states
+  `carveSlot`'s equal-share branch: in a split where no pane has a share yet
+  (a `new Dock({ layout })` neither laid out nor restored, or a split an
+  earlier call made without a `ratio` — probed: a wrap then a `0.25` join gave
+  `[0.5, 0.375, 0.125]`), `ratio` carves the target's equal share; R12 pins
+  the auditor's probe (`[⅓, ¼, 1/12, ⅓]` against `[¼, ¼, ¼, ¼]`).
+  `setPaneSize` / `getPaneSize` JSDoc and the Split page's methods table now
+  say the value is a share while `applyPaneRatios`' shares are pending, and
+  `recalculateSizes`' JSDoc names the early return and the scale-before-clamp
+  step. The Split page no longer claims a restored split always lays out as
+  saved. S11 (max clamp, `weight: 0` pin, pin with a min, max beside a pin)
+  and N4b's new `_unitBaseSizes` check were added after the fix, so they
+  passed on first run here; S11 pins the fix itself, though: the round-2
+  audit ran it on the base branch, where it fails (0.5 against 0.2857 in the
+  max case).
