@@ -31,7 +31,7 @@ const dock = new DockRegion(region);
 dock.destroy();
 ```
 
-The dragged source must be a tab carrying the framework's tab-drag payload — any tab from a `reorderable` [`Tab`](/layouts/Tab) strip qualifies, so a tab dragged from one strip can be docked onto any `DockRegion` with no extra wiring. `destroy()` unregisters the drop target and disposes the overlay, releasing its stylesheet rules along with its element.
+The dragged source must be a tab carrying the framework's tab-drag payload — any tab from a `reorderable` [`Tab`](/layouts/Tab) strip qualifies, so a tab dragged from one strip can be docked onto any `DockRegion` with no extra wiring. `destroy()` unregisters the drop target and disposes the overlay, releasing its stylesheet rules along with its element. It also removes the self-prune listener from every stack the region created (see [Pruning emptied containers](#pruning-emptied-containers)), so a stack still alive after its region is destroyed — one in a float window that outlives a `Dock`, say — no longer prunes itself when it empties; its owner must prune it, as `Dock` does.
 
 ## Where a drop lands
 

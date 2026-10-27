@@ -145,3 +145,20 @@ page resets to empty.
   the dropped tab, where the drop put it.
 - **`FocusReveal` opening a hidden tab no longer focuses the tab button**
   before it focuses its target.
+
+### Overlay
+
+- **A lazy `Dock` panel that is closed while loading and added again stays
+  open when the first load fails.** With `disposeOnClose: false`, the closed
+  panel's frame is kept, and its content factory goes on running. When that
+  factory rejected after the panel had been re-added, the dock closed the
+  re-added panel and emitted `close` and `exception` for it. Only the load
+  of the panel that is open now reports to the dock. No consumer action is
+  needed.
+- **Disposing a `Dock` while one of its floats stays open lets go of the
+  dock.** The float window, the tab groups and splits in it and its lazy
+  panels' frames kept the listeners the dock had given them, so the float
+  held the disposed dock for as long as it stayed open, and a lazy panel's
+  factory settling after the dispose called into the destroyed dock. The
+  dock now removes every listener it gave them when it is disposed. No
+  consumer action is needed.
