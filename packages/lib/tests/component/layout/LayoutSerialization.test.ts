@@ -8,12 +8,13 @@ import { Component } from '~/core/Component';
 import { Split } from '~/layout/Split';
 import { Tab } from '~/layout/Tab';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
-import { serializeLayout, restoreLayout, type LayoutFactory, type LayoutState, type SplitNode, type TabNode } from '~/layout/LayoutSerialization';
+import { serializeLayout, restoreLayout, type LayoutFactory, type LayoutState, type PanelNode, type SplitNode, type TabNode, type WindowNode } from '~/layout/LayoutSerialization';
 import { Glyph } from '~/component/display/Glyph';
 import { circle_check } from '~/glyphs/solid/circle_check';
 import { DOM } from '~/core/DOM';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { Window } from '~/overlay/Window';
+import { TabWindow } from '~/overlay/TabWindow';
 import { installTestDOM, setConnected } from '../../dom/TestDOM';
 import { _Button as Button } from '~/component/button/Button';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -1287,6 +1288,479 @@ describe('the includeWindow option', () => {
         expect(b.isDestroyed()).toBe(false);
         expect(AbstractWindow.getOpenWindows()).toContain(other);
         expect(warn).not.toHaveBeenCalled();
+    });
+});
+
+describe('a tab-strip window', () => {
+    afterEach(() => {
+        AbstractWindow.getOpenWindows().forEach(w => w.dispose());
+        vi.restoreAllMocks();
+        DOM.reset();
+    });
+
+    /** The geometry fields of a hand-built window node, as in the `L1` restore test. */
+    const GEOMETRY = {
+        header:      'H',
+        rect:        { x: 10, y: 10, width: 300, height: 200 },
+        state:       'normal' as const,
+        restoreRect: null,
+    };
+
+    /** A component with id `id` and name (tab label) `id.toUpperCase()`. */
+    function named(id: string): Component {
+        return new Component({ id, name: id.toUpperCase() });
+    }
+
+    /** A panel node naming `panelId`. */
+    function panel(panelId: string): PanelNode {
+        return { kind: 'panel', panelId };
+    }
+
+    /** The panel ids of a tab node's children, in order. */
+    function childIds(node: TabNode): string[] {
+        return node.children.map(child => (child as PanelNode).panelId);
+    }
+
+    /**
+     * An empty Tab root, then a shown `TabWindow` holding `x`, `y` and `z`, with
+     * `y` active and carrying `closeable: false` and `tooltip: 'TY'`.
+     */
+    function stripSetup(): {
+        root: Container; x: Component; y: Component; z: Component; tw: TabWindow; factory: LayoutFactory;
+    } {
+        const { host: root } = tabHost();
+        const x = named('x');
+        const y = named('y');
+        const z = named('z');
+        const tw = new TabWindow();
+
+        tw.createTab(x);
+
+        // Placed with its constraints first, so createTab's own move is a no-op
+        // and `y` keeps them.
+        tw.moveComponent(y, undefined, Object.assign(new LayoutConstraints(), { closeable: false, tooltip: 'TY' }));
+        tw.createTab(y);
+        tw.createTab(z);
+        (tw.getLayoutManager() as Tab).setActiveTabIndex(1);
+        tw.show();
+
+        return { root, x, y, z, tw, factory: instanceFactory({ x, y, z }) };
+    }
+
+    /** The one open window, asserted to be the only one. */
+    function onlyOpenWindow(): AbstractWindow {
+        const open = AbstractWindow.getOpenWindows();
+
+        expect(open).toHaveLength(1);
+
+        return open[0];
+    }
+
+    it('TW1 — a TabWindow is saved with every tab', () => {
+        const { root } = stripSetup();
+        const { windows } = serializeLayout(root);
+
+        expect(windows).toHaveLength(1);
+        expect(windows[0].windowMode).toBe('strip');
+        expect(windows[0].header).toBe('Y');
+
+        const content = windows[0].content as TabNode;
+
+        expect(content.kind).toBe('tab');
+        expect(childIds(content)).toEqual(['x', 'y', 'z']);
+        expect(content.activeIndex).toBe(1);
+        expect(content.children[1]).toMatchObject({ closeable: false, tooltip: 'TY' });
+    });
+
+    it('TW2 — restore rebuilds a TabWindow with every tab, the active one and the constraints', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const { root, x, y, z, tw, factory } = stripSetup();
+
+        restoreLayout(root, serializeLayout(root), factory);
+
+        expect(AbstractWindow.getOpenWindows()).not.toContain(tw);
+
+        const restored = onlyOpenWindow();
+
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(restored).not.toBe(tw);
+        expect(restored.getComponents().map(c => c.getId())).toEqual(['x', 'y', 'z']);
+        expect((restored.getLayoutManager() as Tab).getActiveContent()).toBe(y);
+        expect(restored.getTitle()).toBe('Y');
+        expect(restored.getLayoutConstraints(y)?.closeable).toBe(false);
+        expect([x, y, z].map(c => c.isDestroyed())).toEqual([false, false, false]);
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('TW3 — a strip-order reorder survives', () => {
+        const { root, x, y, z, tw, factory } = stripSetup();
+        const tab = tw.getLayoutManager() as Tab;
+
+        reorder(tab, 2, 0);
+        tab.setActiveContent(y);
+
+        restoreLayout(root, serializeLayout(root), factory);
+
+        const restoredTab = onlyOpenWindow().getLayoutManager() as Tab;
+
+        expect(restoredTab.indexOfContent(z)).toBe(0);
+        expect(restoredTab.indexOfContent(x)).toBe(1);
+        expect(restoredTab.indexOfContent(y)).toBe(2);
+        expect(restoredTab.getActiveContent()).toBe(y);
+    });
+
+    it('TW4 — a missing tab is skipped and the active tab is kept', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const { root, y, z } = stripSetup();
+
+        restoreLayout(root, serializeLayout(root), instanceFactory({ y, z }));
+
+        const restored = onlyOpenWindow();
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('"x"'));
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(restored.getComponents()).toEqual([y, z]);
+        expect((restored.getLayoutManager() as Tab).getActiveContent()).toBe(y);
+    });
+
+    it('TW5 — a one-tab strip comes back as a TabWindow', () => {
+        const { host: root } = tabHost();
+        const x = named('x');
+        const tw = new TabWindow();
+
+        tw.createTab(x);
+        tw.show();
+
+        const state = serializeLayout(root);
+
+        expect(state.windows).toHaveLength(1);
+        expect(state.windows[0].windowMode).toBe('strip');
+        expect(state.windows[0].content?.kind).toBe('tab');
+        expect(childIds(state.windows[0].content as TabNode)).toEqual(['x']);
+
+        restoreLayout(root, state, instanceFactory({ x }));
+
+        const restored = onlyOpenWindow();
+
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(restored).not.toBe(tw);
+        expect(restored.getComponents()).toEqual([x]);
+    });
+
+    it('TW6 — a bare window records no windowMode and restores as a Window', () => {
+        const { host: root } = tabHost();
+        const x = named('x');
+        const win = new Window('Plain');
+
+        win.addComponent(x);
+        win.show();
+
+        const state = serializeLayout(root);
+
+        expect(state.windows).toHaveLength(1);
+        expect('windowMode' in state.windows[0]).toBe(false);
+
+        restoreLayout(root, state, instanceFactory({ x }));
+
+        const restored = onlyOpenWindow();
+
+        expect(restored).toBeInstanceOf(Window);
+        expect(restored).not.toBeInstanceOf(TabWindow);
+    });
+
+    /** Restores one hand-written window node onto an empty Tab root. */
+    function restoreWindowNode(node: WindowNode, factory: LayoutFactory): void {
+        const { host: root } = tabHost();
+
+        restoreLayout(root, { version: 1, root: { kind: 'tab', children: [], activeIndex: 0 }, windows: [node] }, factory);
+    }
+
+    it('TW7a — a "strip" node whose content is one panel opens a TabWindow holding it', () => {
+        const x = named('x');
+
+        restoreWindowNode({ kind: 'window', windowMode: 'strip', content: panel('x'), ...GEOMETRY }, instanceFactory({ x }));
+
+        const restored = onlyOpenWindow();
+
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(restored.getComponents()).toEqual([x]);
+        expect((restored.getLayoutManager() as Tab).getActiveContent()).toBe(x);
+
+        // The title is the active tab's label; the saved header 'H' is not read.
+        expect(restored.getTitle()).toBe('X');
+    });
+
+    it('TW7b — a "strip" node with only a legacy panelId opens a TabWindow holding it', () => {
+        const x = named('x');
+
+        restoreWindowNode({ kind: 'window', windowMode: 'strip', panelId: 'x', ...GEOMETRY }, instanceFactory({ x }));
+
+        const restored = onlyOpenWindow();
+
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(restored.getComponents()).toEqual([x]);
+        expect((restored.getLayoutManager() as Tab).getActiveContent()).toBe(x);
+    });
+
+    it('TW7c — a "strip" node none of whose tabs can be placed opens no window', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const dispose = vi.spyOn(TabWindow.prototype, 'dispose');
+
+        restoreWindowNode({
+            kind:       'window',
+            windowMode: 'strip',
+            content:    { kind: 'tab', children: [panel('gone'), panel('gone2')], activeIndex: 0 },
+            ...GEOMETRY,
+        }, instanceFactory({}));
+
+        expect(AbstractWindow.getOpenWindows()).toEqual([]);
+        expect(warn).toHaveBeenCalledTimes(2);
+
+        // The never-shown TabWindow the restore built is disposed, not leaked.
+        expect(dispose).toHaveBeenCalledTimes(1);
+
+        const built = dispose.mock.contexts[0] as TabWindow;
+
+        expect(built).toBeInstanceOf(TabWindow);
+        expect(built.isDestroyed()).toBe(true);
+    });
+
+    it('TW7d — a "strip" node whose content is a split opens a TabWindow whose one tab holds that split', () => {
+        const x = named('x');
+        const y = named('y');
+
+        restoreWindowNode({
+            kind:       'window',
+            windowMode: 'strip',
+            content:    {
+                kind:        'split',
+                orientation: 'horizontal',
+                children:    [panel('x'), panel('y')],
+                ratios:      [0.5, 0.5],
+                collapsed:   [false, false],
+            },
+            ...GEOMETRY,
+        }, instanceFactory({ x, y }));
+
+        const restored = onlyOpenWindow();
+        const tabs = restored.getComponents();
+
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(tabs).toHaveLength(1);
+        expect(tabs[0].getLayoutManager()).toBeInstanceOf(Split);
+        expect(tabs[0].getComponents()).toEqual([x, y]);
+    });
+
+    it('TW8 — a window node without windowMode still restores as a Window holding a Tab container', () => {
+        const { root, x, y, z, factory } = stripSetup();
+
+        // TW1's saved shape, minus `windowMode`: what an older reader, or an
+        // edited state, presents.
+        const state: LayoutState = {
+            version: 1,
+            root:    { kind: 'tab', children: [], activeIndex: 0 },
+            windows: [{
+                kind:    'window',
+                content: { kind: 'tab', children: [panel('x'), panel('y'), panel('z')], activeIndex: 1 },
+                ...GEOMETRY,
+            }],
+        };
+
+        restoreLayout(root, state, factory);
+
+        const restored = onlyOpenWindow();
+
+        expect(restored).toBeInstanceOf(Window);
+        expect(restored).not.toBeInstanceOf(TabWindow);
+
+        const content = restored.getComponents().find(c => !restored.isChromeComponent(c))!;
+
+        expect(content.getLayoutManager()).toBeInstanceOf(Tab);
+        expect(content.getComponents()).toEqual([x, y, z]);
+    });
+
+    it('TW9 — a restored strip window takes no focus when shown and ends with autoFocus on', () => {
+        installTestDOM(CONFIG);
+
+        // Collects the show-time focus moves a shown window queues, so the
+        // case decides when they run (as L1 does).
+        const scheduled: Array<() => void> = [];
+        vi.spyOn(Component, 'afterNextLayout').mockImplementation((cb: () => void) => {
+            scheduled.push(cb);
+
+            return { cancel: vi.fn() };
+        });
+
+        const opener = new Button({ text: 'Open' }).getElement(true)!;
+
+        setConnected(opener, true);
+        DOM.sink.focus(opener);
+
+        const x = named('x');
+        const y = named('y');
+
+        restoreLayout(new Container({}), {
+            version: 1,
+            root:    { kind: 'tab', children: [], activeIndex: 0 },
+            windows: [{
+                kind:       'window',
+                windowMode: 'strip',
+                content:    { kind: 'tab', children: [panel('x'), panel('y')], activeIndex: 0 },
+                ...GEOMETRY,
+            }],
+        }, instanceFactory({ x, y }));
+        scheduled.splice(0).forEach(cb => cb());
+
+        const restored = onlyOpenWindow();
+
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(DOM.source.getActiveElement()).toBe(opener);
+        expect(restored.isAutoFocus()).toBe(true);
+    });
+
+    /** A rect that differs from every default and from `GEOMETRY.rect`. */
+    const MOVED_RECT = { x: 123, y: 77, width: 410, height: 290 };
+
+    it('TW10 — a restored strip window keeps its saved rect', () => {
+        const { root, tw, factory } = stripSetup();
+
+        tw.applyRect(MOVED_RECT);
+        tw.doLayout();
+
+        const state = serializeLayout(root);
+
+        expect(state.windows[0].rect).toEqual(MOVED_RECT);
+
+        restoreLayout(root, state, factory);
+
+        const restored = onlyOpenWindow();
+
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(restored.getRect()).toEqual(MOVED_RECT);
+        expect(restored.getWindowState()).toBe('normal');
+        expect(restored.getRestoreRect()).toBeNull();
+    });
+
+    it('TW11 — a maximized strip window comes back maximized with its saved restoreRect', () => {
+        const { root, tw, factory } = stripSetup();
+
+        tw.applyRect(MOVED_RECT);
+        tw.doLayout();
+        tw.setWindowState('maximized');
+
+        const state = serializeLayout(root);
+
+        expect(state.windows[0].state).toBe('maximized');
+        expect(state.windows[0].restoreRect).toEqual(MOVED_RECT);
+
+        restoreLayout(root, state, factory);
+
+        const restored = onlyOpenWindow();
+
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(restored.getWindowState()).toBe('maximized');
+        expect(restored.getRestoreRect()).toEqual(MOVED_RECT);
+    });
+
+    it('TW12 — a restored strip window holding a non-closeable tab is not closeable', () => {
+        const { root, factory } = stripSetup();
+
+        restoreLayout(root, serializeLayout(root), factory);
+
+        const restored = onlyOpenWindow();
+
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(restored.isCloseable()).toBe(false);
+    });
+
+    it('TW13 — a restored bare window keeps its saved rect', () => {
+        const { host: root } = tabHost();
+        const x = named('x');
+        const win = new Window('Plain');
+
+        win.addComponent(x);
+        win.show();
+        win.applyRect(MOVED_RECT);
+        win.doLayout();
+
+        restoreLayout(root, serializeLayout(root), instanceFactory({ x }));
+
+        const restored = onlyOpenWindow();
+
+        expect(restored).not.toBe(win);
+        expect(restored.getRect()).toEqual(MOVED_RECT);
+    });
+});
+
+describe('the isPanel option', () => {
+    afterEach(() => {
+        AbstractWindow.getOpenWindows().forEach(w => w.dispose());
+        vi.restoreAllMocks();
+        DOM.reset();
+    });
+
+    /**
+     * A Tab root holding panel `a`, then `framed`: a container with id
+     * `framed` whose own Tab holds `inner`.
+     */
+    function framedSetup(): { root: Container; a: Component; framed: Container; inner: Component } {
+        const { host: root } = tabHost();
+        const { a } = panels();
+        const framed = new Container({ id: 'framed', layoutManager: new Tab() });
+        const inner = new Component({ id: 'inner' });
+
+        framed.addComponent(inner);
+        root.addComponent(a);
+        root.addComponent(framed);
+        root.doLayout();
+
+        return { root, a, framed, inner };
+    }
+
+    it('IP1 — the save records a marked container as one panel', () => {
+        const { root, framed } = framedSetup();
+        const saved = serializeLayout(root, { isPanel: c => c === framed }).root as TabNode;
+
+        expect(saved.kind).toBe('tab');
+        expect(saved.children.map(child => child.kind)).toEqual(['panel', 'panel']);
+        expect(saved.children.map(child => (child as PanelNode).panelId)).toEqual(['a', 'framed']);
+    });
+
+    it('IP2 — the restore parks a marked container whole', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const { root, a, framed, inner } = framedSetup();
+        const options = { isPanel: (c: Component): boolean => c === framed };
+        const state = serializeLayout(root, options);
+
+        restoreLayout(root, state, instanceFactory({ a, framed }), options);
+
+        expect(framed.isDestroyed()).toBe(false);
+        expect(framed.getParentComponent()).toBe(root);
+        expect(inner.getParentComponent()).toBe(framed);
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('IP3 — isPanel is never asked about root or a window, and the default descends', () => {
+        const { root, a, framed, inner } = framedSetup();
+        const tw = new TabWindow();
+        const x = new Component({ id: 'x' });
+
+        tw.createTab(x);
+        tw.show();
+
+        const isPanel = vi.fn((_c: Component): boolean => false);
+        const state = serializeLayout(root, { isPanel });
+
+        restoreLayout(root, state, instanceFactory({ a, inner, x }), { isPanel });
+
+        const asked = isPanel.mock.calls.map(([c]) => c);
+
+        expect(asked).toContain(framed);
+        expect(asked).not.toContain(root);
+        expect(asked).not.toContain(tw);
+        expect(asked.some(c => c instanceof AbstractWindow)).toBe(false);
+        expect((serializeLayout(root).root as TabNode).children[1].kind).toBe('tab');
     });
 });
 
