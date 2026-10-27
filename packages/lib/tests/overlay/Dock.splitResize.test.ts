@@ -2,7 +2,9 @@
 // region's "paneresize" (a finished gutter drag) and "panecollapse" (a pane
 // collapsed or expanded): when it fires, its payload, the splits it covers
 // (nested, in a float), the changes that do not fire it, the release of a
-// split's subscription when its manager is rebuilt or its region leaves.
+// split's subscription when its manager is rebuilt or its region leaves, and
+// the release of every subscription the dock and its DockRegions made when the
+// dock is disposed.
 //
 // The harness is the one Dock.lifecycle.test.ts uses: the dock gets a
 // materialised, sized element so doLayout() registers region tabs, and the
@@ -15,6 +17,9 @@ import { Split } from '~/layout/Split';
 import { SplitNode } from '~/layout/LayoutSerialization';
 import { Window } from '~/overlay/Window';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
+import { TabWindow } from '~/overlay/TabWindow';
+import { ListenerBag } from '~/core/ListenerBag';
+import { DockRegion } from '~/layout/DockRegion';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -134,6 +139,111 @@ function sourceTabEntryId(tab: Tab, content: Component): string {
     const contents = (tab as unknown as { _contents: Array<{ id: string; component: Component | null }> })._contents;
 
     return contents.find(e => e.component === content)!.id;
+}
+
+// Tears panel `id` off the root tab group into a strip-mode TabWindow through
+// Tab's own tear-off path, as Dock.splitPanel.test.ts does.
+function tearOffToTabWindow(dock: Dock, id: string): TabWindow {
+    const tab = dock.getRootRegion().getLayoutManager() as Tab;
+    const frame = frameOf(dock, id);
+
+    (tab as unknown as {
+        detachTabToWindow(id: string, content: Component, clientX: number, clientY: number, forceBare: boolean): void;
+    }).detachTabToWindow(sourceTabEntryId(tab, frame), frame, 100, 100, false);
+
+    priv(dock).scheduleSweep();
+    flush();
+
+    return AbstractWindow.getOpenWindows().find(w => w instanceof TabWindow) as TabWindow;
+}
+
+// One `on` registration: the object subscribed to, the event, the listener,
+// and the recorded pass that made it (the innermost one on the stack).
+interface Registration {
+    target:   object;
+    event:    string;
+    listener: Function;
+    pass:     string;
+}
+
+// What recordDockSubscriptions saw: every `on` registration, and every
+// DockRegion the dock made.
+interface DockSubscriptions {
+    registrations: Registration[];
+    dockRegions:   Set<DockRegion>;
+}
+
+// Records every `on` registration the dock and its DockRegions make on a
+// Window, Tab or Split: those made while one of the passes that subscribe is
+// on the stack — wireRegion (Tab and Split regions), subscribeFloatWindows
+// (float windows, and a TabWindow's own Tab), resolvePanel (a lazy panel's
+// frame Tab) and DockRegion.newStack (the stack a drop or a programmatic split
+// creates). Also collects every DockRegion: wireRegion is the only place the
+// dock makes one.
+function recordDockSubscriptions(dock: Dock): DockSubscriptions {
+    const registrations: Registration[] = [];
+    const dockRegions = new Set<DockRegion>();
+    const passes: string[] = [];
+
+    for (const proto of [AbstractWindow.prototype, Tab.prototype, Split.prototype] as Array<Record<string, any>>) {
+        const original = proto.on as Function;
+
+        vi.spyOn(proto, 'on').mockImplementation(function (this: object, ...args: unknown[]) {
+            const [event, listener] = args as [string, Function];
+
+            if (passes.length > 0) {
+                registrations.push({ target: this, event, listener, pass: passes[passes.length - 1] });
+            }
+
+            return original.call(this, event, listener);
+        });
+    }
+
+    // Runs `original` as the recorded pass `name`.
+    const recorded = (name: string, original: Function, self: object, args: unknown[]): unknown => {
+        passes.push(name);
+
+        try {
+            return original.apply(self, args);
+        } finally {
+            passes.pop();
+        }
+    };
+
+    for (const name of ['wireRegion', 'subscribeFloatWindows', 'resolvePanel']) {
+        const original = priv(dock)[name] as Function;
+
+        priv(dock)[name] = (...args: unknown[]): unknown => {
+            const result = recorded(name, original, dock, args);
+
+            for (const wiring of priv(dock)._wiring.values()) {
+                dockRegions.add(wiring.dockRegion);
+            }
+
+            return result;
+        };
+    }
+
+    const regionProto = DockRegion.prototype as unknown as Record<string, any>;
+    const newStack = regionProto.newStack as Function;
+
+    vi.spyOn(regionProto, 'newStack').mockImplementation(function (this: object, ...args: unknown[]) {
+        return recorded('newStack', newStack, this, args);
+    });
+
+    return { registrations, dockRegions };
+}
+
+// Asserts that no registration in `registrations` is still in its target's
+// listener bag: every listener the dock gave is gone, whichever object it was
+// given to.
+function expectAllReleased(registrations: Registration[]): void {
+    for (const { target, event, listener } of registrations) {
+        const fields = target as { _listeners?: ListenerBag<string>; _windowListeners?: ListenerBag<string> };
+        const bag = fields._windowListeners ?? fields._listeners!;
+
+        expect(bag.get(event)).not.toContain(listener);
+    }
 }
 
 const specC = (): DockPanelSpec => ({ id: 'c', title: 'C', content: new Component({}) });
@@ -577,5 +687,184 @@ describe('Dock "splitresize" — restore and release', () => {
 
         expect(priv(dock)._wiring.has(v)).toBe(false);
         expect(log).toHaveLength(0);
+    });
+
+    it('R5: disposing the dock leaves no dock listener on a bare float that outlives it', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const { registrations } = recordDockSubscriptions(dock);
+        const win = floatPanel(dock, 'a');
+
+        expect(dock.splitPanel('a', 'b', 'right')).toBe(true);
+        flush();
+        win.doLayout();
+
+        // The float's window, split and tab regions belong to the window, not
+        // to the dock, so the dock's own teardown does not destroy them.
+        const split = priv(dock).windowContent(win) as Component;
+        const floatTabs = split.getComponents().map(region => region.getLayoutManager());
+        const targets = new Set<object>(registrations.map(r => r.target));
+
+        expect(targets.has(win)).toBe(true);
+        expect(targets.has(split.getLayoutManager())).toBe(true);
+        floatTabs.forEach(tab => expect(targets.has(tab)).toBe(true));
+
+        dock.dispose();
+
+        expectAllReleased(registrations);
+
+        win.requestClose();
+        flush();
+    });
+
+    it('R6: disposing the dock leaves no dock listener on a strip-mode tear-off that outlives it', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const { registrations } = recordDockSubscriptions(dock);
+        const tw = tearOffToTabWindow(dock, 'a');
+        const targets = new Set<object>(registrations.map(r => r.target));
+
+        expect(targets.has(tw)).toBe(true);
+        expect(targets.has(tw.getLayoutManager())).toBe(true);
+
+        dock.dispose();
+
+        expectAllReleased(registrations);
+
+        tw.requestClose();
+        flush();
+    });
+
+    it('R7: disposing the dock leaves no DockRegion listener on a float stack, nor a DockRegion holding the dock', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const { registrations, dockRegions } = recordDockSubscriptions(dock);
+        const win = floatPanel(dock, 'a');
+
+        expect(dock.splitPanel('a', 'b', 'right')).toBe(true);
+        flush();
+        win.doLayout();
+
+        // The split made a new stack inside the float for 'b', whose "empty"
+        // the float region's DockRegion subscribed to prune it.
+        const split = priv(dock).windowContent(win) as Component;
+        const stackTab = priv(dock).regionForFrame(frameOf(dock, 'b')).getLayoutManager() as Tab;
+        const fromRegions = registrations.filter(r => r.pass === 'newStack');
+
+        expect(split.getComponents().map(region => region.getLayoutManager())).toContain(stackTab);
+        expect(fromRegions.map(r => [r.target, r.event])).toContainEqual([stackTab, 'empty']);
+
+        const regionListeners = fromRegions.map(r => r.listener);
+
+        dock.dispose();
+
+        // The stack belongs to the float, which outlives the dock, so it must
+        // carry no listener a DockRegion gave it.
+        const emptyBag = (stackTab as unknown as { _listeners: ListenerBag<string> })._listeners.get('empty');
+
+        expect(emptyBag.filter(listener => regionListeners.includes(listener))).toEqual([]);
+        expectAllReleased(registrations);
+
+        // Nor may any DockRegion still lead back to the dock's sweep.
+        expect(dockRegions.size).toBeGreaterThan(0);
+        dockRegions.forEach(region => {
+            expect((region as unknown as { _onStructureChanged: unknown })._onStructureChanged).toBeNull();
+        });
+
+        win.requestClose();
+        flush();
+    });
+
+    it('R8: disposing the dock releases a floated lazy panel, whose factory settling later reaches nothing', async () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        // Lets the materialize cross-fade complete synchronously once the
+        // factory settles, so a resolve runs onReady and its busychange.
+        vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
+
+        const dock = mountDock();
+        let resolveA: (content: Component) => void = () => {};
+        let rejectB: (error: unknown) => void = () => {};
+
+        dock.addPanel({ id: 'x', title: 'X', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        const { registrations } = recordDockSubscriptions(dock);
+
+        // Each lazy panel is active when added, so laying the dock out starts
+        // its load, and the flush drains materialize's two-rAF yield so its
+        // factory runs and is left pending.
+        dock.addLazyPanel({ id: 'a', title: 'A', content: () => new Promise<Component>(res => { resolveA = res; }) });
+        dock.doLayout();
+        flush();
+        dock.addLazyPanel({ id: 'b', title: 'B', content: () => new Promise<Component>((_res, rej) => { rejectB = rej; }) });
+        dock.doLayout();
+        flush();
+
+        const frames = [frameOf(dock, 'a'), frameOf(dock, 'b')];
+        const wins = [floatPanel(dock, 'a'), floatPanel(dock, 'b')];
+
+        // Each frame's Tab carries the dock's two lazy-load listeners.
+        const fromResolve = registrations.filter(r => r.pass === 'resolvePanel');
+
+        frames.forEach(frame => {
+            const tab = frame.getLayoutManager();
+
+            expect(fromResolve.filter(r => r.target === tab).map(r => r.event).sort()).toEqual(['busychange', 'exception']);
+        });
+
+        dock.dispose();
+
+        // The floated frames outlive the dock and hold none of its listeners.
+        frames.forEach(frame => expect(frame.isDestroyed()).toBe(false));
+        expectAllReleased(registrations);
+
+        const setFrameBusy = vi.spyOn(priv(dock), 'setFrameBusy');
+        const failPanel = vi.spyOn(priv(dock), 'failPanel');
+
+        const built = new Component({});
+
+        resolveA(built);
+        rejectB(new Error('late'));
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+        flush();
+
+        // Both loads really settled: 'a' shows its content, 'b' closed its
+        // failed tab, leaving the frame empty.
+        expect(frames[0].getComponents()).toEqual([built]);
+        expect(frames[1].getComponents()).toEqual([]);
+        expect(setFrameBusy).not.toHaveBeenCalled();
+        expect(failPanel).not.toHaveBeenCalled();
+
+        wins.forEach(win => win.requestClose());
+        flush();
     });
 });

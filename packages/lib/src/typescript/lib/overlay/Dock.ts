@@ -319,13 +319,15 @@ interface RegionWiring {
     dockRegion: DockRegion;
     /**
      * The `Tab` instance last wired with `setReorderable(true)` + the
-     * prune-on-`"empty"` subscription + the seven `tab.on(...)` handlers, or
-     * `null` before that has run for this region's current manager. Compared
-     * by identity against `region.getLayoutManager()` on every sweep, so a
-     * manager rebuilt in place on the same `Component` (a `setLayoutState`
-     * restore) is re-wired instead of permanently skipped.
+     * prune-on-`"empty"` subscription + the seven `tab.on(...)` handlers, with
+     * the region's own `"empty"` listener, or `null` before that has run for
+     * this region's current manager. Compared by identity against
+     * `region.getLayoutManager()` on every sweep, so a manager rebuilt in place
+     * on the same `Component` (a `setLayoutState` restore) is re-wired instead
+     * of permanently skipped; kept so the subscription can be released (see
+     * unwireTab).
      */
-    wiredTab:   Tab | null;
+    wiredTab:   { tab: Tab; onEmpty: () => void } | null;
     /**
      * The `Split` instance this region's manager was last subscribed as, with
      * the listener it was given, or `null` when the region is not a `Split`
@@ -334,6 +336,39 @@ interface RegionWiring {
      * kept so the subscription can be released (see unwireSplit).
      */
     wiredSplit: { split: Split; onResize: () => void } | null;
+}
+
+/**
+ * The lifecycle listeners the dock gave one float window, kept so they can be
+ * released when the dock is destroyed while the window stays open.
+ */
+interface FloatSubscription {
+    /** The window's `"activate"` listener. */
+    onActivate:    () => void;
+    /** The window's `"close"` listener. */
+    onClose:       () => void;
+    /** The window's `"beforeclose"` listener. */
+    onBeforeClose: (controller: WindowCloseController) => void;
+    /**
+     * A `TabWindow`'s own `Tab`, subscribed to the shared panel-lifecycle
+     * handlers, or `null` for a bare `Window` (whose regions `wireRegion`
+     * wires instead).
+     */
+    tab:           Tab | null;
+}
+
+/**
+ * The listeners the dock gave a lazy panel's frame `Tab`, kept so they can be
+ * released when the dock lets go of the frame, or is destroyed while the frame
+ * lives on in a float window.
+ */
+interface LazyFrameSubscription {
+    /** The frame's own `Tab`, which runs the content factory. */
+    tab:           Tab;
+    /** Its `"exception"` listener. */
+    onFailed:      (error: unknown) => void;
+    /** Its `"busychange"` listener. */
+    onBusyChanged: (busy: boolean) => void;
 }
 
 /**
@@ -393,9 +428,13 @@ class Dock extends Container<DockOptions> {
     // region, so a new tab opens beside whatever tab-bar the user last worked in
     // rather than always the first/primary region. Null until the first add.
     private _lastActiveRegion: Component | null = null;
-    // Float windows whose lifecycle events are already subscribed; the tracked-set
-    // guard that stops a re-sweep stacking duplicate listeners.
-    private _floatSubscribed: Set<AbstractWindow> = new Set<AbstractWindow>();
+    // Float windows whose lifecycle events are already subscribed, with the
+    // listeners given; the guard that stops a re-sweep stacking duplicate
+    // listeners, and the ledger the destructor releases them from.
+    private _floatSubscribed: Map<AbstractWindow, FloatSubscription> = new Map<AbstractWindow, FloatSubscription>();
+    // panelId -> the listeners given to that lazy panel's frame Tab; released
+    // when the frame leaves _frames and by the destructor.
+    private _lazySubscribed: Map<string, LazyFrameSubscription> = new Map<string, LazyFrameSubscription>();
 
     // Presentation-only TabOptions applied to every region this dock builds, now
     // and later — see setTabOptions. Never contains "reorderable" / "listeners"
@@ -787,6 +826,8 @@ class Dock extends Container<DockOptions> {
 
                 tab.on("exception",  onFailed);
                 tab.on("busychange", onBusyChanged);
+                // Kept so they can be released (see unsubscribeLazyFrame).
+                this._lazySubscribed.set(spec.id, { tab, onFailed, onBusyChanged });
                 tab.addLazyTab(factory, spec.title ?? spec.id);
             } else {
                 // A normal panel builds its content now; the frame exists at once so
@@ -1211,8 +1252,8 @@ class Dock extends Container<DockOptions> {
      * does not adopt. A `TabWindow`'s internal `Tab` is never wired by
      * `wireRegion`, so its `"activate"` / `"tabclose"` / `"detach"` /
      * `"dock"` are subscribed here explicitly; both float kinds get the
-     * window's `"activate"` / `"close"`. The tracked set stops a re-sweep
-     * stacking duplicate listeners.
+     * window's `"activate"` / `"close"`. The tracked map stops a re-sweep
+     * stacking duplicate listeners and keeps them for the destructor to release.
      */
     private subscribeFloatWindows(): void {
         for (const win of this.floatWindowsHoldingFrames()) {
@@ -1224,14 +1265,13 @@ class Dock extends Container<DockOptions> {
             const onFloatClose:       () => void = (): void => { this.onFloatClosed(win); };
             const onFloatBeforeClose: (controller: WindowCloseController) => void =
                 (controller): void => { this.onFloatBeforeClose(win, controller); };
+            const tab = win instanceof TabWindow ? (win.getLayoutManager() as Tab) : null;
 
             win.on("activate",    onFloatActivate);
             win.on("close",       onFloatClose);
             win.on("beforeclose", onFloatBeforeClose);
 
-            if (win instanceof TabWindow) {
-                const tab = win.getLayoutManager() as Tab;
-
+            if (tab) {
                 // Applies the dock-wide presentation the first time this
                 // TabWindow is seen — the same reason wireRegion applies it to
                 // a freshly-wired tiled/adopted region: TabWindow's own
@@ -1240,32 +1280,50 @@ class Dock extends Container<DockOptions> {
                 // default detachWindowMode) would otherwise never pick it up.
                 this.applyTabOptions(tab, this._tabOptions);
 
-                tab.on("activate", this.onPanelFocused);
-                tab.on("tabclose",  this.onPanelClosed);
-                tab.on("detach",  this.onPanelDetached);
-                tab.on("dock",    this.onPanelDocked);
-                tab.on("beforetabclose", this.onPanelBeforeClose);
-                tab.on("tabdblclick",    this.onPanelDoubleClicked);
+                this.subscribePanelLifecycle(tab);
             }
 
-            this._floatSubscribed.add(win);
+            this._floatSubscribed.set(win, {
+                onActivate:    onFloatActivate,
+                onClose:       onFloatClose,
+                onBeforeClose: onFloatBeforeClose,
+                tab,
+            });
         }
 
         this.pruneClosedFloatSubscriptions();
     }
 
     /**
-     * Drops closed windows from the float-subscription tracking set so a future
+     * Drops closed windows from the float-subscription tracking map so a future
      * window object never collides with a stale entry. The listeners themselves
-     * die with the closed window, so only the set bookkeeping is needed.
+     * die with the closed window, so only the map bookkeeping is needed.
      */
     private pruneClosedFloatSubscriptions(): void {
         const open = new Set<AbstractWindow>(AbstractWindow.getOpenWindows());
 
-        for (const win of this._floatSubscribed) {
+        for (const win of this._floatSubscribed.keys()) {
             if (!open.has(win)) {
                 this._floatSubscribed.delete(win);
             }
+        }
+    }
+
+    /**
+     * Releases what {@link subscribeFloatWindows} subscribed on one float
+     * window: its lifecycle listeners and, for a `TabWindow`, its own `Tab`'s
+     * panel-lifecycle handlers.
+     *
+     * @param win - The float window to release.
+     * @param subscription - The listeners it was given.
+     */
+    private unsubscribeFloat(win: AbstractWindow, subscription: FloatSubscription): void {
+        win.off("activate",    subscription.onActivate);
+        win.off("close",       subscription.onClose);
+        win.off("beforeclose", subscription.onBeforeClose);
+
+        if (subscription.tab) {
+            this.unsubscribePanelLifecycle(subscription.tab);
         }
     }
 
@@ -1462,7 +1520,10 @@ class Dock extends Container<DockOptions> {
         if (this.isTab(region)) {
             const tab: Tab = region.getLayoutManager() as Tab;
 
-            if (wiring.wiredTab !== tab) {
+            if (wiring.wiredTab?.tab !== tab) {
+                // A manager rebuilt in place leaves the old instance subscribed
+                // otherwise, as wireSplit's own release does for a Split.
+                this.unwireTab(wiring);
                 tab.setReorderable(true);
                 // Applies the dock-wide presentation to a Tab instance this sweep
                 // is wiring for the first time — the only way setTabOptions's
@@ -1481,17 +1542,9 @@ class Dock extends Container<DockOptions> {
                 const onEmpty: () => void = (): void => { this.pruneRegion(region); };
 
                 tab.on("empty", onEmpty);
-                // The lifecycle handlers are shared bound methods: their payloads (the
-                // closed/activated content, the torn-off window) carry the identity
-                // they need, so no per-region capture is required.
-                tab.on("tabclose",  this.onPanelClosed);
-                tab.on("activate", this.onPanelFocused);
-                tab.on("detach",  this.onPanelDetached);
-                tab.on("dock",    this.onPanelDocked);
-                tab.on("beforetabclose", this.onPanelBeforeClose);
-                tab.on("tabdblclick",    this.onPanelDoubleClicked);
+                this.subscribePanelLifecycle(tab);
 
-                wiring.wiredTab = tab;
+                wiring.wiredTab = { tab, onEmpty };
             }
         }
 
@@ -1506,6 +1559,56 @@ class Dock extends Container<DockOptions> {
                 this.wireRegion(child);
             }
         }
+    }
+
+    /**
+     * Subscribes a `Tab` — a wired region's or a `TabWindow`'s own — to the
+     * panel-lifecycle handlers. They are shared bound methods: their payloads
+     * (the closed/activated content, the torn-off window) carry the identity
+     * they need, so no per-region capture is required, and the same references
+     * release them (see unsubscribePanelLifecycle).
+     *
+     * @param tab - The `Tab` to subscribe.
+     */
+    private subscribePanelLifecycle(tab: Tab): void {
+        tab.on("tabclose",       this.onPanelClosed);
+        tab.on("activate",       this.onPanelFocused);
+        tab.on("detach",         this.onPanelDetached);
+        tab.on("dock",           this.onPanelDocked);
+        tab.on("beforetabclose", this.onPanelBeforeClose);
+        tab.on("tabdblclick",    this.onPanelDoubleClicked);
+    }
+
+    /**
+     * Releases what {@link subscribePanelLifecycle} subscribed on a `Tab`.
+     *
+     * @param tab - The `Tab` to release.
+     */
+    private unsubscribePanelLifecycle(tab: Tab): void {
+        tab.off("tabclose",       this.onPanelClosed);
+        tab.off("activate",       this.onPanelFocused);
+        tab.off("detach",         this.onPanelDetached);
+        tab.off("dock",           this.onPanelDocked);
+        tab.off("beforetabclose", this.onPanelBeforeClose);
+        tab.off("tabdblclick",    this.onPanelDoubleClicked);
+    }
+
+    /**
+     * Releases the `Tab` subscriptions `wireRegion` made for a region, if any.
+     *
+     * @param wiring - The region's wiring record.
+     */
+    private unwireTab(wiring: RegionWiring): void {
+        if (!wiring.wiredTab) {
+            return;
+        }
+
+        const { tab, onEmpty } = wiring.wiredTab;
+
+        tab.off("empty", onEmpty);
+        this.unsubscribePanelLifecycle(tab);
+
+        wiring.wiredTab = null;
     }
 
     /**
@@ -1703,6 +1806,7 @@ class Dock extends Container<DockOptions> {
 
         for (const [region, wiring] of this._wiring) {
             if (!reachable.has(region)) {
+                this.unwireTab(wiring);
                 this.unwireSplit(wiring);
                 wiring.dockRegion.destroy();
                 this._wiring.delete(region);
@@ -1792,6 +1896,7 @@ class Dock extends Container<DockOptions> {
         this._frames.delete(id);
         this._panelHost.delete(id);
         this._frameRegion.delete(id);
+        this.unsubscribeLazyFrame(id);
 
         this.emit("close", { id, content, window: null });
 
@@ -1831,6 +1936,7 @@ class Dock extends Container<DockOptions> {
         // through the shared path; evict it directly so a re-add rebuilds it.
         if (!this.removePanel(id)) {
             this._frames.delete(id);
+            this.unsubscribeLazyFrame(id);
         }
 
         this.emit("exception", { id, error });
@@ -1859,6 +1965,28 @@ class Dock extends Container<DockOptions> {
         }
 
         (region.getLayoutManager() as Tab).setTabBusy(frame, busy);
+    }
+
+    /**
+     * Releases the listeners {@link resolvePanel} gave a lazy panel's frame
+     * `Tab`. Called wherever the dock lets go of the frame: a frame evicted
+     * from `_frames` can live on (a float, or `disposeOnClose: false`), and a
+     * factory that settled later would otherwise report into the panel's next
+     * frame, or into a destroyed dock. A no-op for a panel that is not lazy.
+     *
+     * @param id - The id of the panel whose frame the dock let go of.
+     */
+    private unsubscribeLazyFrame(id: string): void {
+        const subscription = this._lazySubscribed.get(id);
+
+        if (!subscription) {
+            return;
+        }
+
+        subscription.tab.off("exception",  subscription.onFailed);
+        subscription.tab.off("busychange", subscription.onBusyChanged);
+
+        this._lazySubscribed.delete(id);
     }
 
     /**
@@ -1986,6 +2114,7 @@ class Dock extends Container<DockOptions> {
             this._frames.delete(id);
             this._panelHost.delete(id);
             this._frameRegion.delete(id);
+            this.unsubscribeLazyFrame(id);
 
             this.emit("close", { id, content: frame, window: null });
 
@@ -2854,9 +2983,14 @@ class Dock extends Container<DockOptions> {
      * reaches it either; the `detach()` calls in the drop-target callbacks are
      * mid-drag hides of a still-live overlay, not teardown.
      *
-     * Also releases the `"splitresize"` subscription on the `Split` manager of
-     * every wired region: a float window keeps its regions when the dock goes
-     * away, and its splits would otherwise keep the dock reachable.
+     * Also releases every subscription the dock and its `DockRegion`s made on
+     * objects that can outlive the dock and would otherwise keep it reachable:
+     * float windows, a `TabWindow`'s own `Tab`, the `Tab` and `Split` managers
+     * of every wired region, the `"empty"` listener on each stack a
+     * `DockRegion` created (bar one it pruned itself, which is detached and
+     * goes with its listener), and a lazy panel's frame `Tab`. A float window
+     * keeps its regions and frames when the dock goes away, and a lazy
+     * frame's factory can settle after it.
      */
     protected destructor(): void {
         this._emptyDropTeardown?.();
@@ -2868,15 +3002,33 @@ class Dock extends Container<DockOptions> {
         // overlay. `destroy()` is otherwise reached only by the
         // unreachable-region sweep, so without this every region a drag ever
         // hovered would keep its overlay's rules when the dock goes away.
-        // A float's split regions belong to its window and can outlive the
-        // dock, so the "splitresize" subscription on their Split managers is
-        // released here too.
+        // A float's regions, and their Tab and Split managers, belong to its
+        // window and can outlive the dock, so every subscription the dock made
+        // on them is released here too; `destroy()` releases the stacks its
+        // DockRegion created and its link to this dock's sweep.
         for (const wiring of this._wiring.values()) {
             wiring.dockRegion.destroy();
+            this.unwireTab(wiring);
             this.unwireSplit(wiring);
         }
 
         this._wiring.clear();
+
+        // Likewise for the float windows themselves and a TabWindow's own Tab:
+        // a float still open when the dock goes away would otherwise keep the
+        // disposed dock reachable through these listeners.
+        for (const [win, subscription] of this._floatSubscribed) {
+            this.unsubscribeFloat(win, subscription);
+        }
+
+        this._floatSubscribed.clear();
+
+        // A lazy frame torn off into a float outlives the dock, and its
+        // factory can settle afterwards: without this it would call
+        // failPanel / setFrameBusy on the destroyed dock.
+        for (const id of this._lazySubscribed.keys()) {
+            this.unsubscribeLazyFrame(id);
+        }
 
         super.destructor();
     }

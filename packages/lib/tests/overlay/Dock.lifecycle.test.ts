@@ -15,7 +15,7 @@
 //     pre-empt.
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Component } from '~/core/Component';
-import { Dock, DockPanelEvent } from '~/overlay/Dock';
+import { Dock, DockPanelEvent, DockPanelSpec } from '~/overlay/Dock';
 import { Tab } from '~/layout/Tab';
 import { Window } from '~/overlay/Window';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
@@ -1807,6 +1807,48 @@ describe('Dock lazy panel failure', () => {
         // The panel's own close precedes the failure report, so a listener
         // inspecting the dock sees the final state.
         expect(log).toEqual(['close:p', 'exception:p:Error: boom']);
+    });
+
+    it('a kept frame whose factory rejects after a re-add leaves the re-added panel alone', async () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = mountDock();
+        const log: string[] = [];
+        const rejects: Array<(e: unknown) => void> = [];
+        const spec: DockPanelSpec = {
+            id:             'p',
+            title:          'P',
+            // Each build is a fresh pending promise; the close keeps the
+            // first frame alive, so its build can still settle.
+            content:        () => new Promise<Component>((_res, rej) => { rejects.push(rej); }),
+            disposeOnClose: false,
+        };
+
+        dock.addLazyPanel(spec);
+        dock.doLayout();
+        flush();
+
+        expect(dock.removePanel('p')).toBe(true);
+
+        dock.addLazyPanel(spec);
+        dock.doLayout();
+        flush();
+
+        const frame = frameOf(dock, 'p');
+
+        dock.on('close',     (e: DockPanelEvent) => log.push(`close:${e.id}`));
+        dock.on('exception', e => log.push(`exception:${e.id}`));
+
+        // The first build, owned by the frame the dock let go of, fails.
+        expect(rejects).toHaveLength(2);
+        rejects[0](new Error('stale'));
+        await Promise.resolve();
+        await Promise.resolve();
+        flush();
+
+        expect(log).toEqual([]);
+        expect(frameOf(dock, 'p')).toBe(frame);
     });
 
     it('reports nothing when the panel was closed before its factory rejected', async () => {
