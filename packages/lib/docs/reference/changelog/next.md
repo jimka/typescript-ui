@@ -128,7 +128,7 @@ page resets to empty.
   pane beside another panel from code — the split a tab dropped on a region
   edge makes — for commands such as *Split Editor Right*. `panel` is a
   registered id to move or reopen, or a spec to open; `ratio` sets the new
-  pane's share of a new split, or of one laid out since it last changed.
+  pane's share of the target group's slot.
   See
   [Programmatic control](/components/Dock#programmatic-control).
 - **`Dock` emits `splitresize`** when the user resizes a split from its
