@@ -231,6 +231,8 @@ localStorage.setItem('layout', JSON.stringify(saved));
 dock.setLayoutState(JSON.parse(localStorage.getItem('layout')!));
 ```
 
+The state covers only this dock's own windows: the floats that hold one of its panels, whether a tab-strip tear-off or a Shift-torn mini-dock. Other application windows, another dock's floats (including those of a dock nested in one of its panels) and the window the dock itself sits in are not recorded, and `setLayoutState` leaves them open. A saved window that names none of the dock's registered panels — which a state saved before this release can contain — is skipped without a warning.
+
 Transport (localStorage, a server, debounced auto-save) is the application's concern — `Dock` only returns and accepts the state object. A panel whose `id` is no longer registered is skipped on restore, so dropping a feature degrades gracefully.
 
 To save as the user works, listen to `splitresize`, `attach`, `detach`, `move`, `close` and `focus`. Some changes the state records have no event of their own — among them a tab reordered within its strip, a float window moved or resized, and the ratio drift of a pinned pane when its window is resized — so save on unload as well.

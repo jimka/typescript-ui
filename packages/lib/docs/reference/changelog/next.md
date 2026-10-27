@@ -115,6 +115,11 @@ page resets to empty.
 - **`Tab.removeMovedTab(content)`** removes the tab of content that code has
   already moved to another container, without destroying it or firing
   `tabclose`. See [Tear-off & re-dock](/layouts/Tab#tear-off-re-dock).
+- **`serializeLayout` and `restoreLayout` take `{ includeWindow }`**, a
+  predicate that limits the windows they capture, park and close to the ones
+  it accepts. Without it both cover every open window except a host of the
+  layout, as before. See
+  [Limiting the windows](/layouts/LayoutSerialization#limiting-the-windows).
 
 ### Overlay
 
@@ -186,3 +191,13 @@ page resets to empty.
   factory settling after the dispose called into the destroyed dock. The
   dock now removes every listener it gave them when it is disposed. No
   consumer action is needed.
+- **`Dock.getLayoutState` and `Dock.setLayoutState` cover only the dock's own
+  floats.** A save recorded every open window — application windows and
+  another dock's floats among them — and a restore closed all of them but the
+  window the dock sits in, warning `restoreLayout: no component for panelId`
+  for each panel it could not rebuild in them. Both now cover only the floats
+  holding one of the dock's panels, and a restore leaves every other window
+  open. A saved window that names none of the dock's registered panels, which
+  a state saved before this release can contain, is skipped without a
+  warning. No consumer action is needed. See
+  [Saving and restoring](/components/Dock#saving-and-restoring).
