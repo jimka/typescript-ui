@@ -263,21 +263,26 @@ export interface DockSplitOptions {
     focus?: boolean;
     /**
      * The new pane's share of the target group's slot, along the split, as a
-     * fraction between 0 and 1, exclusive; the target group keeps the rest.
-     * It applies when the new pane wraps the target's group into a new split,
-     * or joins a split that has been laid out since it last changed. Omit it
-     * to size the new pane as
-     * an edge drop does: half of a new split, or an equal share taken from
-     * every pane when the pane joins a split that already runs that way.
+     * fraction between 0 and 1, exclusive; the target group keeps the rest and
+     * every other pane keeps its share. Omit it to size the new pane as an
+     * edge drop does: half of a new split, or an equal share taken from every
+     * pane when the pane joins a split that already runs that way.
      *
-     * A pane that joins a split that has not been laid out yet, for example
-     * one made by another `splitPanel` in the same task, ignores `ratio` and
-     * resets that split's pending shares, so all its panes size as for a drop.
-     * That also cancels the `ratio` an earlier call in the same task gave that
-     * split. A pane that joins a laid-out split which another call in the same
-     * task has already added a pane to also ignores `ratio` and sizes as for
-     * a drop, so the shares the other panes kept are left alone. A new split's `ratio` is not visible to {@link Dock.getLayoutState}
-     * until that split's first layout.
+     * It applies whether or not the split has been laid out yet, so several
+     * `splitPanel` calls in one task each keep their `ratio`, and
+     * {@link Dock.getLayoutState} reports it straight away. When the new pane
+     * joins a split that already runs that way, the share it divides depends on
+     * what that split holds:
+     *
+     * - When no pane of the split has a share yet — the split of a
+     *   `new Dock({ layout })` that has been neither laid out nor restored, or
+     *   one an earlier call in the same task made without a `ratio` — every
+     *   pane counts as one equal share, and the new pane takes `ratio` of the
+     *   target group's.
+     * - Otherwise, a pane that an earlier call in the same task added without
+     *   a `ratio` has no share until the next layout, which gives it its drop
+     *   share from every pane, this one included. If that pane is the target's
+     *   group itself, there is no share to divide, and `ratio` is ignored.
      */
     ratio?: number;
 }

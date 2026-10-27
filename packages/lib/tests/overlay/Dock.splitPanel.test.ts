@@ -10,6 +10,7 @@ import { Component } from '~/core/Component';
 import { Dock, DockPanelSpec } from '~/overlay/Dock';
 import { Tab } from '~/layout/Tab';
 import { Split } from '~/layout/Split';
+import type { SplitNode } from '~/layout/LayoutSerialization';
 import { Window } from '~/overlay/Window';
 import { TabWindow } from '~/overlay/TabWindow';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
@@ -467,8 +468,9 @@ describe('Dock.splitPanel pane shares', () => {
         const root = dock.getRootRegion();
 
         expect(shape(root)).toBe('H[T(a,b),T(c)]');
-        // The new split holds the shares until its first layout gives it a size.
-        expectRatios((root.getLayoutManager() as Split).getPaneSizes().map(size => size.value), [0.75, 0.25]);
+        // The new split holds the shares until its first layout, and reports them already.
+        expectRatios(ratiosOf(root), [0.75, 0.25]);
+        expectRatios((dock.getLayoutState().root as SplitNode).ratios, [0.75, 0.25]);
 
         dock.doLayout();
         expectRatios(ratiosOf(dock.getRootRegion()), [0.75, 0.25]);
@@ -485,8 +487,9 @@ describe('Dock.splitPanel pane shares', () => {
         const root = dock.getRootRegion();
 
         expect(shape(root)).toBe('H[T(c),T(a,b)]');
-        // The new split holds the shares until its first layout gives it a size.
-        expectRatios((root.getLayoutManager() as Split).getPaneSizes().map(size => size.value), [0.25, 0.75]);
+        // The new split holds the shares until its first layout, and reports them already.
+        expectRatios(ratiosOf(root), [0.25, 0.75]);
+        expectRatios((dock.getLayoutState().root as SplitNode).ratios, [0.25, 0.75]);
 
         dock.doLayout();
         expectRatios(ratiosOf(dock.getRootRegion()), [0.25, 0.75]);
@@ -564,41 +567,41 @@ describe('Dock.splitPanel pane shares', () => {
         expectRatios(ratiosOf(dock.getRootRegion()), [0.5, 0.5]);
     });
 
-    it("R7: a second split joining a not-yet-laid-out wrap resets its pending ratio, without a warning", () => {
+    it("R7: a second split joining a not-yet-laid-out wrap keeps the wrap's ratio, without a warning", () => {
         installTestDOM(CONFIG);
         captureRaf();
 
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
         // Two splits in one task: the first wraps with a ratio, the second
-        // joins that wrap before its first layout.
-        const splitTwice = (ratio: number | undefined): Dock => {
+        // joins that wrap before its first layout, with `second` as its ratio.
+        const splitTwice = (second: number | undefined): Dock => {
             const dock = tabsDock(['a', 'b']);
 
-            expect(dock.splitPanel('a', spec('c'), 'bottom', { ratio })).toBe(true);
-            expect(dock.splitPanel('a', spec('d'), 'bottom')).toBe(true);
+            expect(dock.splitPanel('a', spec('c'), 'bottom', { ratio: 0.3 })).toBe(true);
+            expect(dock.splitPanel('a', spec('d'), 'bottom', { ratio: second })).toBe(true);
 
             dock.doLayout();
 
             return dock;
         };
 
-        const withRatio    = splitTwice(0.3);
         const withoutRatio = splitTwice(undefined);
+        const withRatio    = splitTwice(0.5);
 
         expect(shape(withRatio.getRootRegion())).toBe('V[T(a,b),T(d),T(c)]');
-        expectRatios(ratiosOf(withRatio.getRootRegion()), [1 / 3, 1 / 3, 1 / 3]);
-        expectRatios(ratiosOf(withRatio.getRootRegion()), ratiosOf(withoutRatio.getRootRegion()));
+        // Without a ratio the new pane takes its drop third from both panes.
+        expectRatios(ratiosOf(withoutRatio.getRootRegion()), [0.7 * 2 / 3, 1 / 3, 0.3 * 2 / 3]);
+        expectRatios(ratiosOf(withRatio.getRootRegion()), [0.35, 0.35, 0.3]);
         expect(warn).not.toHaveBeenCalled();
     });
 
-    it('R10: a ratio joining a split changed since its last layout sizes the pane as a drop does', () => {
+    it('R10: a ratio joining a split changed since its last layout divides the target\'s share; the earlier pane still takes its drop share', () => {
         installTestDOM(CONFIG);
         captureRaf();
 
         // A laid-out 90 / 10 split gains an unsized pane from a split without
-        // a ratio; a second split with a ratio in the same task must not
-        // flatten the panes that kept their shares.
+        // a ratio; a second split in the same task divides the target's share.
         const splitTwice = (ratio: number | undefined): Dock => {
             const dock = regionsDock([['a'], ['b']]);
 
@@ -618,36 +621,33 @@ describe('Dock.splitPanel pane shares', () => {
         const withoutRatio = splitTwice(undefined);
 
         expect(shape(withRatio.getRootRegion())).toBe('H[T(d),T(a),T(c),T(b)]');
-        expectRatios(ratiosOf(withRatio.getRootRegion()), ratiosOf(withoutRatio.getRootRegion()));
-        expect(ratiosOf(withRatio.getRootRegion())[3]).toBeCloseTo(0.05);
+        expectRatios(ratiosOf(withRatio.getRootRegion()), [0.3375, 0.3375, 0.25, 0.075]);
+        expectRatios(ratiosOf(withoutRatio.getRootRegion()), [0.25, 0.45, 0.25, 0.05]);
     });
 
-    it('R8: a ratio joining a split that was never laid out sizes the pane as a drop does', () => {
+    it("R8: a ratio joining a split that was never laid out carves the target's share", () => {
         installTestDOM(CONFIG);
         captureRaf();
 
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
         // Straight after construction: the root split has no size yet.
-        const splitBeforeLayout = (ratio: number | undefined): Dock => {
-            const dock = regionsDock([['a'], ['b']], false);
+        const dock = regionsDock([['a'], ['b']], false);
 
-            expect(dock.splitPanel('a', spec('c'), 'right', { ratio })).toBe(true);
+        expect(dock.splitPanel('a', spec('c'), 'right', { ratio: 0.4 })).toBe(true);
 
-            dock.doLayout();
+        const root = dock.getRootRegion();
 
-            return dock;
-        };
+        expect(shape(root)).toBe('H[T(a),T(c),T(b)]');
+        expectRatios(ratiosOf(root), [0.3, 0.2, 0.5]);
+        expectRatios((dock.getLayoutState().root as SplitNode).ratios, [0.3, 0.2, 0.5]);
 
-        const withRatio    = splitBeforeLayout(0.4);
-        const withoutRatio = splitBeforeLayout(undefined);
-
-        expect(shape(withRatio.getRootRegion())).toBe('H[T(a),T(c),T(b)]');
-        expectRatios(ratiosOf(withRatio.getRootRegion()), ratiosOf(withoutRatio.getRootRegion()));
+        dock.doLayout();
+        expectRatios(ratiosOf(dock.getRootRegion()), [0.3, 0.2, 0.5]);
         expect(warn).not.toHaveBeenCalled();
     });
 
-    it('R9: a ratio joining a never-laid-out split collapses no pane that has a large minimum width', () => {
+    it('R9: a ratio joining a never-laid-out split keeps the carve when a pane has a large minimum width', () => {
         installTestDOM(CONFIG);
         captureRaf();
 
@@ -661,26 +661,72 @@ describe('Dock.splitPanel pane shares', () => {
 
         // Mixed minimum widths, one of them most of the 800 px dock, in a
         // split that has not been laid out yet.
-        const splitBeforeLayout = (ratio: number | undefined): Dock => {
-            const dock = new Dock({ layout: { split: 'horizontal', children: [{ tabs: [minWidthSpec('a', 0)] }, { tabs: [minWidthSpec('b', 500)] }] } });
+        const dock = new Dock({ layout: { split: 'horizontal', children: [{ tabs: [minWidthSpec('a', 0)] }, { tabs: [minWidthSpec('b', 500)] }] } });
 
-            dock.getElement(true);
-            dock.setWidth(800);
-            dock.setHeight(600);
+        dock.getElement(true);
+        dock.setWidth(800);
+        dock.setHeight(600);
 
-            expect(dock.splitPanel('a', minWidthSpec('c', 0), 'right', { ratio })).toBe(true);
+        expect(dock.splitPanel('a', minWidthSpec('c', 0), 'right', { ratio: 0.4 })).toBe(true);
+
+        dock.doLayout();
+
+        const withRatio = ratiosOf(dock.getRootRegion());
+
+        // No pane squeezed to a pixel or two of the 800 px dock, and the new
+        // pane keeps 0.4 of the target's share against the target's 0.6.
+        withRatio.forEach(share => expect(share * 800).toBeGreaterThan(100));
+        expect(withRatio[1] / withRatio[0]).toBeCloseTo(2 / 3, 5);
+    });
+
+    it("R11: a ratio is ignored when the target's group itself joined in this task without one", () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const splitTwice = (ratio: number | undefined): Dock => {
+            const dock = regionsDock([['a'], ['b']]);
+
+            flush();
+
+            expect(dock.splitPanel('a', spec('c'), 'right')).toBe(true);
+            expect(dock.splitPanel('c', spec('d'), 'right', { ratio })).toBe(true);
 
             dock.doLayout();
 
             return dock;
         };
 
-        const withRatio    = ratiosOf(splitBeforeLayout(0.4).getRootRegion());
-        const withoutRatio = ratiosOf(splitBeforeLayout(undefined).getRootRegion());
+        const withRatio    = splitTwice(0.25);
+        const withoutRatio = splitTwice(undefined);
 
-        // No pane squeezed to a pixel or two of the 800 px dock.
-        withRatio.forEach(share => expect(share * 800).toBeGreaterThan(100));
-        expectRatios(withRatio, withoutRatio);
+        expect(shape(withRatio.getRootRegion())).toBe('H[T(a),T(c),T(d),T(b)]');
+        expectRatios(ratiosOf(withRatio.getRootRegion()), [0.25, 0.25, 0.25, 0.25]);
+        expectRatios(ratiosOf(withoutRatio.getRootRegion()), [0.25, 0.25, 0.25, 0.25]);
+    });
+
+    it("R12: in a split where no pane has a share yet, a ratio carves the target's equal share", () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        // Straight after construction, the first split stores no share, so the
+        // second one counts every pane as an equal share, the target included.
+        const splitTwice = (ratio: number | undefined): Dock => {
+            const dock = regionsDock([['a'], ['b']], false);
+
+            expect(dock.splitPanel('a', spec('c'), 'right')).toBe(true);
+            expect(dock.splitPanel('c', spec('d'), 'right', { ratio })).toBe(true);
+
+            dock.doLayout();
+
+            return dock;
+        };
+
+        const withRatio    = splitTwice(0.25);
+        const withoutRatio = splitTwice(undefined);
+
+        expect(shape(withRatio.getRootRegion())).toBe('H[T(a),T(c),T(d),T(b)]');
+        expectRatios(ratiosOf(withRatio.getRootRegion()), [1 / 3, 0.25, 1 / 12, 1 / 3]);
+        expectRatios(ratiosOf(withoutRatio.getRootRegion()), [0.25, 0.25, 0.25, 0.25]);
     });
 });
 
