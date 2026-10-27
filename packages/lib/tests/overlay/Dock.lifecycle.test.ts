@@ -17,6 +17,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Component } from '~/core/Component';
 import { Dock, DockPanelEvent, DockPanelSpec } from '~/overlay/Dock';
 import { Tab } from '~/layout/Tab';
+import { Split } from '~/layout/Split';
 import { Window } from '~/overlay/Window';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { Tooltip } from '~/overlay/Tooltip';
@@ -2103,5 +2104,46 @@ describe('Dock layout state of a dock inside a window', () => {
         expect(warn).not.toHaveBeenCalled();
         expect(AbstractWindow.getOpenWindows()).toEqual([win]);
         expect(dock.focusPanel('a')).toBe(true);
+    });
+});
+
+describe('Dock setLayoutState keeps the ratios of nested splits', () => {
+    it('D1: a nested split of tab groups comes back with its saved ratios', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const spec = (id: string): DockPanelSpec => ({ id, title: id.toUpperCase(), content: new Component({}) });
+        const dock = new Dock({
+            layout: {
+                split:    'horizontal',
+                children: [
+                    { tabs: [spec('a')] },
+                    { split: 'vertical', children: [{ tabs: [spec('b')] }, { tabs: [spec('c')] }, { tabs: [spec('d')] }] },
+                ],
+            },
+        });
+
+        dock.getElement(true);
+        dock.setWidth(800);
+        dock.setHeight(600);
+        dock.doLayout();
+
+        const splitOf = (region: Component): Split => region.getLayoutManager() as Split;
+        const nestedOf = (): Component => dock.getRootRegion().getComponents()[1];
+
+        splitOf(dock.getRootRegion()).applyPaneRatios([0.3, 0.7]);
+        splitOf(nestedOf()).applyPaneRatios([0.6, 0.3, 0.1]);
+        dock.doLayout();
+
+        dock.setLayoutState(dock.getLayoutState());
+        dock.doLayout();
+
+        const expectRatios = (actual: number[], expected: number[]): void => {
+            expect(actual).toHaveLength(expected.length);
+            expected.forEach((value, i) => expect(actual[i]).toBeCloseTo(value, 3));
+        };
+
+        expectRatios(splitOf(dock.getRootRegion()).getPaneRatios(), [0.3, 0.7]);
+        expectRatios(splitOf(nestedOf()).getPaneRatios(), [0.6, 0.3, 0.1]);
     });
 });

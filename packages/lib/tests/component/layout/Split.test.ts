@@ -1746,3 +1746,274 @@ describe('Split events', () => {
         expect(listener).toHaveBeenCalledTimes(1); // unchanged — removed listener not invoked
     });
 });
+
+describe('Split pane ratios before the first layout', () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        DOM.reset();
+    });
+
+    type Orientation = 'horizontal' | 'vertical';
+
+    // A host whose split has `mins.length` plain panes (no preferred size, so
+    // nothing is seeded from one), each held to the given main-axis minimum.
+    // Not rendered or sized: the split has no extent yet.
+    function unsizedHost(orientation: Orientation, mins: number[], split: Split = new Split({ orientation })): { host: Container; split: Split; panes: Component[] } {
+        const host  = new Container({ layoutManager: split });
+        const panes = mins.map(min => addPane(host, orientation, min));
+
+        return { host, split, panes };
+    }
+
+    function addPane(host: Container, orientation: Orientation, min: number = 0): Component {
+        const pane = new Component({});
+
+        pane.setMinSize(orientation === 'horizontal' ? { width: min, height: 0 } : { width: 0, height: min });
+        host.addComponent(pane);
+
+        return pane;
+    }
+
+    // Renders and sizes the host, then lays it out once.
+    function sizeAndLayOut(host: Container, width: number, height: number): void {
+        host.getElement(true);
+        host.setWidth(width);
+        host.setHeight(height);
+        host.doLayout();
+    }
+
+    function expectRatios(actual: number[], expected: number[], digits: number = 3): void {
+        expect(actual).toHaveLength(expected.length);
+        expected.forEach((value, i) => expect(actual[i]).toBeCloseTo(value, digits));
+    }
+
+    it('S1: a vertical split keeps the ratios against minimum heights', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = unsizedHost('vertical', [24, 24]);
+
+        split.applyPaneRatios([0.8, 0.2]);
+        sizeAndLayOut(host, 300, 500);
+
+        expectRatios(split.getPaneRatios(), [0.8, 0.2]);
+    });
+
+    it('S2: reports the ratios before the host is sized, normalised', () => {
+        installTestDOM(CONFIG);
+
+        const { split } = unsizedHost('vertical', [24, 24]);
+
+        split.applyPaneRatios([0.8, 0.2]);
+        expectRatios(split.getPaneRatios(), [0.8, 0.2]);
+
+        split.applyPaneRatios([8, 2]);
+        expectRatios(split.getPaneRatios(), [0.8, 0.2]);
+    });
+
+    it('S3: no pane is squeezed when one has a large minimum width', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split, panes } = unsizedHost('horizontal', [0, 300, 0]);
+
+        split.applyPaneRatios([0.2, 0.6, 0.2]);
+        sizeAndLayOut(host, 500, 300);
+
+        expectRatios(split.getPaneRatios(), [0.2, 0.6, 0.2]);
+        panes.forEach(pane => expect(pane.getWidth()).toBeGreaterThanOrEqual(99));
+    });
+
+    it('S4: lays out as though the ratios had been written on a laid-out split', () => {
+        installTestDOM(CONFIG);
+
+        const cases: Array<{ mins: number[]; ratios: number[]; firstPass: number[] }> = [
+            { mins: [50, 100, 150], ratios: [0.6, 0.3, 0.1],   firstPass: [0.5, 0.25, 0.25] },
+            { mins: [0, 300, 0],    ratios: [0.45, 0.45, 0.1], firstPass: [0.3913, 0.5217, 0.087] },
+            { mins: [100, 0],       ratios: [0.1, 0.9],        firstPass: [0.1818, 0.8182] },
+        ];
+
+        for (const { mins, ratios, firstPass } of cases) {
+            const a = unsizedHost('horizontal', mins);
+
+            sizeAndLayOut(a.host, 500, 300);
+            a.split.applyPaneRatios(ratios);
+
+            const b = unsizedHost('horizontal', mins);
+
+            b.split.applyPaneRatios(ratios);
+            b.host.getElement(true);
+            b.host.setWidth(500);
+            b.host.setHeight(300);
+
+            for (let pass = 0; pass < 3; pass += 1) {
+                a.host.doLayout();
+                b.host.doLayout();
+
+                expectRatios(b.split.getPaneRatios(), a.split.getPaneRatios(), 6);
+
+                if (pass === 0) {
+                    expectRatios(b.split.getPaneRatios(), firstPass);
+                }
+            }
+        }
+    });
+
+    it('S5: a pane added before the first layout takes its share from both', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = unsizedHost('horizontal', [0, 0]);
+
+        split.applyPaneRatios([0.7, 0.3]);
+        addPane(host, 'horizontal');
+        sizeAndLayOut(host, 500, 300);
+
+        expectRatios(split.getPaneRatios(), [0.4667, 0.2, 0.3333]);
+    });
+
+    it('S6: a pane added before the first layout is sized as on a laid-out split', () => {
+        installTestDOM(CONFIG);
+
+        const a = unsizedHost('horizontal', [0, 200]);
+
+        sizeAndLayOut(a.host, 500, 300);
+        a.split.applyPaneRatios([0.7, 0.3]);
+        addPane(a.host, 'horizontal');
+        a.host.doLayout();
+
+        const b = unsizedHost('horizontal', [0, 200]);
+
+        b.split.applyPaneRatios([0.7, 0.3]);
+        addPane(b.host, 'horizontal');
+        sizeAndLayOut(b.host, 500, 300);
+
+        expectRatios(b.split.getPaneRatios(), a.split.getPaneRatios(), 6);
+    });
+
+    it('S7: the panes left after one is removed share its ratio', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split, panes } = unsizedHost('horizontal', [0, 0, 0]);
+
+        split.applyPaneRatios([0.5, 0.3, 0.2]);
+        host.removeComponent(panes[0]);
+        sizeAndLayOut(host, 500, 300);
+
+        expectRatios(split.getPaneRatios(), [0.6, 0.4]);
+    });
+
+    it('S8: a pane added or removed before the first layout warns nothing', () => {
+        installTestDOM(CONFIG);
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        const added = unsizedHost('horizontal', [0, 0]);
+
+        added.split.applyPaneRatios([0.7, 0.3]);
+        addPane(added.host, 'horizontal');
+        sizeAndLayOut(added.host, 500, 300);
+
+        const removed = unsizedHost('horizontal', [0, 0, 0]);
+
+        removed.split.applyPaneRatios([0.5, 0.3, 0.2]);
+        removed.host.removeComponent(removed.panes[0]);
+        sizeAndLayOut(removed.host, 500, 300);
+
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('S9: the latest call wins over a paneSizes option not yet applied', () => {
+        installTestDOM(CONFIG);
+
+        const warn  = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const split = new Split({ orientation: 'horizontal', paneSizes: [{ unit: 'ratio', value: 0.5 }, { unit: 'ratio', value: 0.5 }] });
+        const { host } = unsizedHost('horizontal', [0, 0], split);
+
+        split.applyPaneRatios([0.8, 0.2]);
+        addPane(host, 'horizontal');
+        sizeAndLayOut(host, 500, 300);
+
+        expectRatios(split.getPaneRatios(), [0.5333, 0.1333, 0.3333]);
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('S10: a layout with no extent keeps the ratios, and the scale fires no event', () => {
+        installTestDOM(CONFIG);
+
+        const { host, split } = unsizedHost('vertical', [24, 24]);
+        const resized   = vi.fn();
+        const collapsed = vi.fn();
+
+        split.on('paneresize', resized);
+        split.on('panecollapse', collapsed);
+        split.applyPaneRatios([0.8, 0.2]);
+
+        host.getElement(true);
+        host.doLayout();
+        expectRatios(split.getPaneRatios(), [0.8, 0.2]);
+
+        host.setWidth(300);
+        host.setHeight(500);
+        host.doLayout();
+        host.doLayout();
+        expectRatios(split.getPaneRatios(), [0.8, 0.2]);
+
+        expect(resized).not.toHaveBeenCalled();
+        expect(collapsed).not.toHaveBeenCalled();
+    });
+
+    it('S11: a pane with a maximum, and a pinned pane, lay out as though the ratios had been written on a laid-out split', () => {
+        installTestDOM(CONFIG);
+
+        type PaneSpec = { min?: number; max?: number; weight?: number };
+
+        // Horizontal panes with optional min / max widths and an optional
+        // `weight` constraint (`0` pins the pane's px size on resize).
+        const hostWith = (specs: PaneSpec[]): { host: Container; split: Split; panes: Component[] } => {
+            const split = new Split({ orientation: 'horizontal' });
+            const host  = new Container({ layoutManager: split });
+            const panes = specs.map(({ min, max, weight }) => {
+                const pane = new Component({});
+
+                pane.setMinSize({ width: min ?? 0, height: 0 });
+
+                if (max !== undefined) {
+                    pane.setMaxSize({ width: max, height: BIG });
+                }
+
+                host.addComponent(pane, weight === undefined ? undefined : { weight });
+
+                return pane;
+            });
+
+            return { host, split, panes };
+        };
+
+        const cases: Array<{ specs: PaneSpec[]; ratios: number[] }> = [
+            { specs: [{ max: 100 }, {}, {}],               ratios: [0.5, 0.3, 0.2] },
+            { specs: [{ weight: 0 }, {}, {}],              ratios: [0.2, 0.5, 0.3] },
+            { specs: [{ weight: 0, min: 150 }, {}, {}],    ratios: [0.1, 0.6, 0.3] },
+            { specs: [{ max: 120 }, { weight: 0 }, {}],    ratios: [0.4, 0.4, 0.2] },
+        ];
+
+        for (const { specs, ratios } of cases) {
+            const a = hostWith(specs);
+
+            sizeAndLayOut(a.host, 500, 300);
+            a.split.applyPaneRatios(ratios);
+
+            const b = hostWith(specs);
+
+            b.split.applyPaneRatios(ratios);
+            b.host.getElement(true);
+            b.host.setWidth(500);
+            b.host.setHeight(300);
+
+            for (let pass = 0; pass < 3; pass += 1) {
+                a.host.doLayout();
+                b.host.doLayout();
+
+                expectRatios(b.split.getPaneRatios(), a.split.getPaneRatios(), 6);
+                b.panes.forEach((pane, i) => expect(pane.getWidth()).toBeCloseTo(a.panes[i].getWidth(), 6));
+            }
+        }
+    });
+});
