@@ -1118,6 +1118,178 @@ describe('a window that hosts the root is not a float', () => {
     });
 });
 
+describe('the includeWindow option', () => {
+    afterEach(() => {
+        AbstractWindow.getOpenWindows().forEach(w => w.dispose());
+        vi.restoreAllMocks();
+        DOM.reset();
+    });
+
+    /**
+     * A page-level Tab root holding panel `a`, then a shown `Settings` window
+     * holding `settings-form`, then a shown `Float` window holding panel `b`.
+     */
+    function rootSettingsAndFloat(): {
+        root: Container; a: Component; b: Component;
+        settings: Window; settingsForm: Component; float: Window;
+    } {
+        const { host: root } = tabHost();
+        const { a, b } = panels();
+
+        root.addComponent(a);
+        root.doLayout();
+
+        const settingsForm = new Component({}); settingsForm.setId('settings-form');
+        const settings = new Window('Settings');
+
+        settings.addComponent(settingsForm);
+        settings.show();
+
+        const float = new Window('Float');
+
+        float.addComponent(b);
+        float.show();
+
+        return { root, a, b, settings, settingsForm, float };
+    }
+
+    it('LW1 — the default save records every window that does not host the root', () => {
+        const { root } = rootSettingsAndFloat();
+
+        expect(serializeLayout(root).windows.map(w => w.header)).toEqual(['Settings', 'Float']);
+    });
+
+    it('LW2 — the default restore closes every such window and warns for a panel the factory does not know', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const { root, a, b, settings } = rootSettingsAndFloat();
+
+        restoreLayout(root, serializeLayout(root), instanceFactory({ a, b }));
+
+        expect(AbstractWindow.getOpenWindows()).not.toContain(settings);
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('"settings-form"'));
+    });
+
+    it('LW3 — a save records only the windows includeWindow accepts, asking once per open window', () => {
+        const { root, settings, float } = rootSettingsAndFloat();
+        const includeWindow = vi.fn((w: AbstractWindow): boolean => w !== settings);
+        const state = serializeLayout(root, { includeWindow });
+
+        expect(state.windows.map(w => w.header)).toEqual(['Float']);
+        expect(includeWindow.mock.calls).toEqual([[settings], [float]]);
+    });
+
+    it('LW4 — a restore leaves a window includeWindow refuses open and untouched', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const { root, a, b, settings, settingsForm, float } = rootSettingsAndFloat();
+        const state = serializeLayout(root, { includeWindow: w => w !== settings });
+
+        // Records, per call, whether the window was still open and `b` still
+        // in `float` — i.e. that every question is asked before any park or close.
+        const seen: Array<[AbstractWindow, boolean, boolean]> = [];
+
+        const includeWindow = (w: AbstractWindow): boolean => {
+            seen.push([w, AbstractWindow.getOpenWindows().includes(w), b.getParentComponent() === float]);
+
+            return w !== settings;
+        };
+
+        restoreLayout(root, state, instanceFactory({ a, b }), { includeWindow });
+
+        expect(seen).toEqual([[settings, true, true], [float, true, true]]);
+
+        const open = AbstractWindow.getOpenWindows();
+        const floats = open.filter(w => w.getTitle() === 'Float');
+
+        expect(open).toContain(settings);
+        expect(settingsForm.getParentComponent()).toBe(settings);
+        expect(open).not.toContain(float);
+        expect(floats).toHaveLength(1);
+        expect(b.getParentComponent()).toBe(floats[0]);
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('LW5 — a window that hosts the root is never offered to includeWindow', () => {
+        installTestDOM(CONFIG);
+
+        const a = new Component({}); a.setId('a');
+        const root = new Container({ layoutManager: new Tab() });
+        const host = new Window('Host');
+
+        root.addComponent(a);
+        host.addComponent(root);
+        host.show();
+        host.doLayout();
+
+        const includeWindow = vi.fn((): boolean => true);
+        const state = serializeLayout(root, { includeWindow });
+
+        expect(state.windows).toEqual([]);
+
+        restoreLayout(root, state, instanceFactory({ a }), { includeWindow });
+
+        expect(includeWindow).not.toHaveBeenCalled();
+        expect(AbstractWindow.getOpenWindows()).toEqual([host]);
+    });
+
+    it('LW6 — a factory-known leaf in a refused window is not parked, and the restore moves it into place', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const { host: root } = tabHost();
+        const { a, b } = panels();
+
+        root.addComponent(a);
+        root.doLayout();
+
+        const other = new Window('Other');
+
+        other.addComponent(b);
+        other.show();
+
+        const state: LayoutState = {
+            version: 1,
+            root:    {
+                kind:        'tab',
+                children:    [{ kind: 'panel', panelId: 'a', glyph: null }, { kind: 'panel', panelId: 'b', glyph: null }],
+                activeIndex: 0,
+            },
+            windows: [],
+        };
+
+        restoreLayout(root, state, instanceFactory({ a, b }), { includeWindow: () => false });
+
+        expect(b.getParentComponent()).toBe(root);
+        expect(AbstractWindow.getOpenWindows()).toContain(other);
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('LW7 — a factory-known leaf in a refused window the state does not name stays in that window', () => {
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const { host: root } = tabHost();
+        const { a, b } = panels();
+
+        root.addComponent(a);
+        root.doLayout();
+
+        const other = new Window('Other');
+
+        other.addComponent(b);
+        other.show();
+
+        const state: LayoutState = {
+            version: 1,
+            root:    { kind: 'tab', children: [{ kind: 'panel', panelId: 'a', glyph: null }], activeIndex: 0 },
+            windows: [],
+        };
+
+        restoreLayout(root, state, instanceFactory({ a, b }), { includeWindow: () => false });
+
+        expect(b.getParentComponent()).toBe(other);
+        expect(b.isDestroyed()).toBe(false);
+        expect(AbstractWindow.getOpenWindows()).toContain(other);
+        expect(warn).not.toHaveBeenCalled();
+    });
+});
+
 describe('restoreLayout keeps the ratios of nested splits', () => {
     afterEach(() => DOM.reset());
 
