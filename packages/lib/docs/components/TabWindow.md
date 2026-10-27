@@ -84,7 +84,7 @@ A non-closeable tab keeps its contract in window form. The strip pushes the ever
 ## Gotchas
 
 - A `TabWindow` is floating chrome, not part of its parent's layout flow — same as [`Window`](/components/Window#gotchas).
-- Serialization round-trips a torn-off `TabWindow` back to a header [`Window`](/components/Window) on restore — restoring it as a `TabWindow` is out of scope.
+- [Layout serialization](/layouts/LayoutSerialization#tab-strip-windows) saves a `TabWindow` with `windowMode: "strip"` and every tab, and restores it as a `TabWindow` with the same tabs, in the same order, and the same active tab. A state saved before this release holds only its first tab and restores as a header [`Window`](/components/Window).
 
 ## See also
 
