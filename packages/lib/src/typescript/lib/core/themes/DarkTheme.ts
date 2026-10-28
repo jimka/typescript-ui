@@ -16,7 +16,7 @@ import type { Theme } from '~/core/Theme.js';
  */
 export const DarkTheme: Theme = defineTheme(BaseTheme, {
     colorScheme: 'dark',
-    text       : { color: 'rgb(220, 220, 220)' },
+    text       : { color: 'rgb(220, 220, 220)', mutedColor: 'rgb(180, 180, 180)' },
     body       : { background: 'rgb(30, 30, 30)' },
     border     : { color: 'rgb(90, 90, 90)' },
     button     : {

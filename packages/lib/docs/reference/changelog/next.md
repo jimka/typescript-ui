@@ -41,6 +41,16 @@ page resets to empty.
   of jumping. One toggle still snaps: a node scrolled out of view above
   the viewport whose open children reach more than a viewport below it. A
   scroll made while one of these motions plays settles it at once.
+- **A `List` or `MultiSelectList` empty-state placeholder is painted in
+  the theme's new muted text colour.** It borrowed the disabled-row colour,
+  `list.row.disabledColor`, which reads 2.32 : 1 against the light themes'
+  list background and 2.49 : 1 against the dark one. It now uses
+  `text.mutedColor` (see *Added*), at 5.92 : 1 in `ModernTheme`, 8.86 : 1
+  in `ClassicTheme` and 7.11 : 1 in `DarkTheme`. A theme that
+  recoloured the placeholder through `list.row.disabledColor` now does so
+  through `text.mutedColor`; disabled rows still use
+  `list.row.disabledColor`. A theme that sets no `text.mutedColor` paints
+  the placeholder in its `text.color`.
 
 ### Layouts
 
@@ -62,6 +72,21 @@ page resets to empty.
   that targets an editor while focus is elsewhere. Before the editor has
   mounted its view it does nothing and returns `false`. See
   [Search and replace](/components/CodeEditor#search-and-replace).
+
+### Core
+
+- **`Theme.text.mutedColor`, written to `:root` as
+  `--ts-ui-text-muted-color`** — a theme-wide colour for de-emphasised
+  text that must stay readable, such as a path beside a name, a hint, a
+  count or an inactive label. It is `rgb(100, 100, 100)` in `ModernTheme`,
+  `rgb(74, 74, 74)` in `ClassicTheme` and `rgb(180, 180, 180)` in
+  `DarkTheme`, and each meets WCAG AA's 4.5 : 1 on the page, inputs,
+  lists, menus, popovers, bars, tabs, headers and tooltips of its theme,
+  gradients included, though not on fills such as buttons, badges or
+  notifications. It is optional: a theme
+  made with `defineTheme` from a built-in theme inherits it, and a theme
+  that leaves it out writes its `text.color` to the variable. See
+  [Theming](/concepts/theming#theme-keys).
 
 ### Layouts
 

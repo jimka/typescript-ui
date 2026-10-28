@@ -18,7 +18,7 @@ import type { Theme } from '~/core/Theme.js';
  */
 export const ClassicTheme: Theme = defineTheme(BaseTheme, {
     colorScheme: 'light',
-    text       : { color: 'rgb(0, 0, 0)' },
+    text       : { color: 'rgb(0, 0, 0)', mutedColor: 'rgb(74, 74, 74)' },
     body       : { background: 'rgb(255, 255, 255)' },
     border     : { color: 'black' },
     button     : {

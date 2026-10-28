@@ -1168,7 +1168,7 @@ abstract class AbstractSelectableList<
     /**
      * Builds the empty-state placeholder: the `emptyComponent` factory's output
      * if set, otherwise a muted, horizontally-centered single-line `Text` from
-     * `emptyText` using the list-scoped disabled token.
+     * `emptyText` painted in the theme's muted text colour.
      *
      * @returns The placeholder component.
      */
@@ -1179,7 +1179,7 @@ abstract class AbstractSelectableList<
         }
 
         const text = new Text(this._options.emptyText ?? "", { textAlign: "center" });
-        text.setForegroundColor("var(--ts-ui-list-row-disabled-color, rgb(170, 170, 170))");
+        text.setForegroundColor("var(--ts-ui-text-muted-color, rgb(100, 100, 100))");
 
         return text;
     }
