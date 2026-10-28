@@ -25,8 +25,8 @@ export interface TreeNode {
      *
      * @remarks Omit or pass an empty array for leaf nodes. Once the node is in
      * a tree, change this list through {@link Tree.setChildren},
-     * {@link Tree.insertNode} or {@link Tree.removeNode} rather than by
-     * assignment, so the tree keeps its rows and state in step.
+     * {@link Tree.insertNode}, {@link Tree.removeNode} or {@link Tree.moveNode}
+     * rather than by assignment, so the tree keeps its rows and state in step.
      */
     children?: TreeNode[];
 
@@ -59,8 +59,8 @@ export interface TreeNode {
      * {@link Tree.setChildren} took it or an ancestor out, or
      * {@link Tree.setNodes} replaced every node — and holds it again with no
      * children. A call still in flight when the node was dropped, or when
-     * {@link Tree.insertNode}, {@link Tree.removeNode} or
-     * {@link Tree.setChildren} changed its children, is discarded: its result
+     * {@link Tree.insertNode}, {@link Tree.removeNode}, {@link Tree.moveNode}
+     * or {@link Tree.setChildren} changed its children, is discarded: its result
      * is never committed, and the next call can start while it is still
      * pending, so a loader must not assume its calls for one node never
      * overlap. The tree does still hold whatever is waiting on a discarded
