@@ -488,7 +488,7 @@ describe('Dock "splitresize" — no event for container resizes and region-tree 
         expect(ratiosOf(root.getComponents()[0])).toHaveLength(2);
     });
 
-    it('N4b: splitPanel whose ratio rides in as pending pane sizes fires nothing at the new split\'s first layout', () => {
+    it('N4b: splitPanel whose ratio is still pending fires nothing at the new split\'s first layout', () => {
         installTestDOM(CONFIG);
         captureRaf();
 
@@ -498,17 +498,17 @@ describe('Dock "splitresize" — no event for container resizes and region-tree 
         expect(dock.splitPanel('a', specC(), 'bottom', { ratio: 0.25 })).toBe(true);
 
         // Wire the new split while its ratio is still pending, so its first
-        // layout drains the pending sizes with the dock already subscribed.
+        // layout scales the pending shares with the dock already subscribed.
         const v = root.getComponents()[0];
 
         priv(dock).runSweep();
         expect(priv(dock)._wiring.get(v).wiredSplit.split).toBe(v.getLayoutManager());
-        expect((v.getLayoutManager() as any)._pendingSizes).not.toBeNull();
+        expect((v.getLayoutManager() as any)._unitBaseSizes).toBe(true);
+        expectRatios(ratiosOf(v), [0.75, 0.25]);
 
         dock.doLayout();
         flush();
 
-        expect((v.getLayoutManager() as any)._pendingSizes).toBeNull();
         expect(log).toHaveLength(0);
         expectRatios(ratiosOf(v), [0.75, 0.25]);
     });

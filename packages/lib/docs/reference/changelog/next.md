@@ -128,7 +128,7 @@ page resets to empty.
   pane beside another panel from code — the split a tab dropped on a region
   edge makes — for commands such as *Split Editor Right*. `panel` is a
   registered id to move or reopen, or a spec to open; `ratio` sets the new
-  pane's share of a new split, or of one laid out since it last changed.
+  pane's share of the target group's slot.
   See
   [Programmatic control](/components/Dock#programmatic-control).
 - **`Dock` emits `splitresize`** when the user resizes a split from its
@@ -160,6 +160,15 @@ page resets to empty.
   the dropped tab, where the drop put it.
 - **`FocusReveal` opening a hidden tab no longer focuses the tab button**
   before it focuses its target.
+- **`restoreLayout` (and so `Dock.setLayoutState`) restores the saved ratios
+  of nested splits.** `Split.applyPaneRatios` on a split that had not been
+  laid out yet seeded the ratios against a unit base, and the split's first
+  layout raised each pane to its minimum size before scaling them, so they
+  came out in proportion to the minimums: a `Dock`'s stacked tab groups
+  restored at equal heights, and a pane beside one with a large minimum
+  could shrink to under a pixel. The ratios are now held until the split
+  first has a size. A later `applyPaneRatios` also replaces a `paneSizes`
+  option that has not been applied yet.
 
 ### Overlay
 

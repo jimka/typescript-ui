@@ -10,7 +10,6 @@ import { DragManager, DragEventDetail, tabDragRegistry, SPRING_RAISE_DELAY_MS } 
 import { DropZone, DropZoneOverlay, EDGE_BAND_FRACTION } from "~/overlay/DropZoneOverlay.js";
 import type { Edge } from "~/primitive/Edge.js";
 import type { LayoutConstraints } from "~/layout/LayoutConstraints.js";
-import type { LayoutSize } from "~/layout/LayoutSizes.js";
 
 /**
  * Coordinator that turns an edge/center drop onto a region into a structural
@@ -486,9 +485,9 @@ export class DockRegion {
      *   of the unit's slot, the unit keeping the rest. `ratio` is ignored when
      *   the region is itself a same-axis `Split`, a branch `Dock`'s
      *   programmatic split never reaches because its targets are tab stacks;
-     *   when the unit has no parent to split in; and when the stack joins a
-     *   same-axis `Split` that has not been laid out, which also drops the
-     *   shares that split still holds pending, so its panes size as for a drop.
+     *   when the unit has no parent to split in; and when the unit has no
+     *   share yet in a same-axis `Split` where other panes have one (the unit
+     *   joined it earlier in the same task without `ratio`).
      * @returns The new tab stack holding `panel`.
      */
     private splitOnEdge(panel: Component, zone: DropZone, options?: { constraints?: LayoutConstraints; ratio?: number }): Container {
@@ -531,13 +530,7 @@ export class DockRegion {
         if (containerLm instanceof Split && String(containerLm.getOrientation()) === axis) {
             container.moveComponent(stack, leading ? unitIndex : unitIndex + 1);
 
-            // A split never laid out has no extent to carve `ratio` against, and
-            // the shares a wrap left it pending no longer match its panes:
-            // Split would discard them with a warning. Drop them, so its panes
-            // size as for a drop.
-            if (!this.isLaidOut(containerLm, container)) {
-                containerLm.discardPendingPaneSizes();
-            } else if (options?.ratio !== undefined) {
+            if (options?.ratio !== undefined) {
                 this.carveSlot(containerLm, container, unit, stack, options.ratio);
             }
 
@@ -545,12 +538,8 @@ export class DockRegion {
         }
 
         // Otherwise wrap the unit in a fresh same-axis Split (a perpendicular
-        // drop therefore nests by one level, as intended). A requested share
-        // rides in as `paneSizes`, which the split applies on its first
-        // layout against its real extent: written as ratios now, before the
-        // split has a size, they would be seeded against a unit base and
-        // clamped to the panes' minimum sizes.
-        const split = new Container({ layoutManager: new Split({ orientation: axis, paneSizes: this.wrapPaneSizes(leading, options?.ratio) }) });
+        // drop therefore nests by one level, as intended).
+        const split = new Container({ layoutManager: new Split({ orientation: axis }) });
 
         container.moveComponent(split, unitIndex);
 
@@ -561,6 +550,12 @@ export class DockRegion {
 
         split.moveComponent(stack,    leading ? 0 : 1);
         split.moveComponent(unitPane, leading ? 1 : 0);
+
+        // A requested share is written once both panes are in; Split holds it
+        // until the new split first has a size.
+        if (options?.ratio !== undefined) {
+            (split.getLayoutManager() as Split).applyPaneRatios(leading ? [options.ratio, 1 - options.ratio] : [1 - options.ratio, options.ratio]);
+        }
 
         // The fresh `split` now occupies the slot `unit` held in `container`. When
         // that container is itself a Split, hand the new wrapper the size the unit
@@ -574,56 +569,13 @@ export class DockRegion {
     }
 
     /**
-     * The `paneSizes` a wrapping `Split` starts with: the new stack's `ratio`
-     * share and the unit's remainder, in pane order, or `undefined` for the
-     * drop's own equal halves.
-     *
-     * @param leading - Whether the new stack is the split's first pane.
-     * @param ratio - The new stack's share, or `undefined` for none.
-     * @returns The pane sizes, or `undefined`.
-     */
-    private wrapPaneSizes(leading: boolean, ratio: number | undefined): LayoutSize[] | undefined {
-        if (ratio === undefined) {
-            return undefined;
-        }
-
-        const stackSize: LayoutSize = { unit: "ratio", value: ratio };
-        const unitSize: LayoutSize  = { unit: "ratio", value: 1 - ratio };
-
-        return leading ? [stackSize, unitSize] : [unitSize, stackSize];
-    }
-
-    /**
-     * Whether `container`'s `Split` has been laid out: it has a main-axis extent
-     * left over after its gutters. A container built in this task (a wrap made
-     * by an earlier split) or never laid out (straight after `new Dock`) has
-     * none. This is the test `applyPaneRatios` makes to choose between that
-     * extent and a unit base, which the panes' minimum sizes then overrule on
-     * the first layout.
-     *
-     * @param lm - The container's `Split` manager.
-     * @param container - The `Split` region.
-     * @returns `true` when the split has a live extent to write shares against.
-     */
-    private isLaidOut(lm: Split, container: Component): boolean {
-        const inner = container.getInnerSize();
-        const main  = inner ? (lm.getOrientation() === "horizontal" ? inner.width : inner.height) : 0;
-        const gaps  = lm.getComponentSpacing() * (container.getComponents().length - 1);
-
-        // A never-sized box reports NaN, which fails this test as it should.
-        return main - gaps > 0;
-    }
-
-    /**
      * Gives the freshly inserted `stack` `ratio` of `unit`'s share of `container`'s
-     * `Split`, leaving every other pane's share alone. Shares are the stored pane
-     * sizes, written back against the container's live extent, so only a split
-     * that has been laid out is carved (see {@link isLaidOut}); `splitOnEdge`
-     * sizes a pane joining one that has not as a drop does. When any pane other
-     * than `stack` has no stored size — the split changed since it was last laid
-     * out, e.g. an earlier split in this task added a pane — there is no share
-     * to carve from without flattening the others, so `ratio` is ignored and
-     * `stack` sizes as a drop does.
+     * `Split`, leaving every other pane's stored share alone. Works whether or
+     * not the split has been laid out: before its first layout the shares are
+     * relative and Split scales them on that layout. A split with no stored
+     * share on any pane counts every pane as an equal share. When `unit` has no
+     * share but another pane has — `unit` joined in this task without one —
+     * `ratio` is ignored.
      *
      * @param lm - The container's `Split` manager.
      * @param container - The `Split` region `stack` was just inserted into.
@@ -634,19 +586,28 @@ export class DockRegion {
     private carveSlot(lm: Split, container: Component, unit: Component, stack: Component, ratio: number): void {
         const panes = container.getComponents();
 
-        if (!panes.every(pane => pane === stack || lm.getPaneSize(pane) !== undefined)) {
+        // No pane has a share yet: the first layout would give every pane an
+        // equal one, so carve from that.
+        if (panes.every(pane => lm.getPaneSize(pane) === undefined)) {
+            const shares = panes.map(() => 1);
+
+            shares[panes.indexOf(stack)] = ratio;
+            shares[panes.indexOf(unit)]  = 1 - ratio;
+
+            lm.applyPaneRatios(shares);
+
             return;
         }
 
-        const shares = panes.map(pane => lm.getPaneSize(pane) ?? 0);
+        const unitShare = lm.getPaneSize(unit);
 
-        const unitIndex = panes.indexOf(unit);
-        const unitShare = shares[unitIndex];
+        // The target's group joined in this task without a share: nothing to divide.
+        if (unitShare === undefined) {
+            return;
+        }
 
-        shares[panes.indexOf(stack)] = unitShare * ratio;
-        shares[unitIndex]            = unitShare * (1 - ratio);
-
-        lm.applyPaneRatios(shares);
+        lm.setPaneSize(stack, unitShare * ratio);
+        lm.setPaneSize(unit, unitShare * (1 - ratio));
     }
 
     /**

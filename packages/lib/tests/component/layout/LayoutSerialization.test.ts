@@ -8,7 +8,7 @@ import { Component } from '~/core/Component';
 import { Split } from '~/layout/Split';
 import { Tab } from '~/layout/Tab';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
-import { serializeLayout, restoreLayout, type LayoutFactory, type LayoutState, type TabNode } from '~/layout/LayoutSerialization';
+import { serializeLayout, restoreLayout, type LayoutFactory, type LayoutState, type SplitNode, type TabNode } from '~/layout/LayoutSerialization';
 import { Glyph } from '~/component/display/Glyph';
 import { circle_check } from '~/glyphs/solid/circle_check';
 import { DOM } from '~/core/DOM';
@@ -1118,3 +1118,123 @@ describe('a window that hosts the root is not a float', () => {
     });
 });
 
+describe('restoreLayout keeps the ratios of nested splits', () => {
+    afterEach(() => DOM.reset());
+
+    type Orientation = 'horizontal' | 'vertical';
+
+    /**
+     * A laid-out 1000 × 600 horizontal root split holding a nested split of
+     * leaves `n0…` (one per minimum, each held to it along the nested axis)
+     * and a leaf `z`, so the nested split is 500 px wide. The nested split
+     * gets `ratios` and the root is laid out again.
+     *
+     * @returns The root, its leaves by id, and the nested split's manager.
+     */
+    function nestedHost(orientation: Orientation, mins: number[], ratios: number[], collapsedIndex?: number): { root: Container; leaves: Record<string, Component>; nested: Split } {
+        installTestDOM(CONFIG);
+
+        const root   = new Container({ layoutManager: new Split({ orientation: 'horizontal' }) });
+        const nested = new Split({ orientation });
+        const inner  = new Container({ layoutManager: nested });
+        const leaves: Record<string, Component> = {};
+
+        root.getElement(true);
+        root.setWidth(1000);
+        root.setHeight(600);
+
+        mins.forEach((min, index) => {
+            const leaf = new Component({});
+
+            leaf.setId(`n${index}`);
+            leaf.setMinSize(orientation === 'horizontal' ? { width: min, height: 0 } : { width: 0, height: min });
+            inner.addComponent(leaf);
+            leaves[`n${index}`] = leaf;
+        });
+
+        const z = new Component({});
+
+        z.setId('z');
+        leaves.z = z;
+        root.addComponent(inner);
+        root.addComponent(z);
+        root.doLayout();
+
+        nested.applyPaneRatios(ratios);
+
+        if (collapsedIndex !== undefined) {
+            nested.setPaneCollapsedImmediate(collapsedIndex, true);
+        }
+
+        root.doLayout();
+
+        return { root, leaves, nested };
+    }
+
+    /** Saves `root` and restores it in place from the same leaves. */
+    function saveAndRestore(root: Container, leaves: Record<string, Component>): void {
+        const state = serializeLayout(root);
+
+        restoreLayout(root, state, instanceFactory(leaves));
+    }
+
+    /** The split manager of the nested split `restoreLayout` rebuilt. */
+    function restoredNested(root: Container): Split {
+        return root.getComponents()[0].getLayoutManager() as Split;
+    }
+
+    function expectRatios(actual: number[], expected: number[]): void {
+        expect(actual).toHaveLength(expected.length);
+        expected.forEach((value, i) => expect(actual[i]).toBeCloseTo(value, 3));
+    }
+
+    it('L1: a vertical split held to minimum heights', () => {
+        const { root, leaves } = nestedHost('vertical', [24, 24], [0.8, 0.2]);
+
+        saveAndRestore(root, leaves);
+        root.doLayout();
+
+        expectRatios(restoredNested(root).getPaneRatios(), [0.8, 0.2]);
+    });
+
+    it('L2: a horizontal split whose panes have different minimum widths', () => {
+        const { root, leaves } = nestedHost('horizontal', [50, 100, 150], [0.5, 0.2, 0.3]);
+
+        saveAndRestore(root, leaves);
+        root.doLayout();
+
+        expectRatios(restoredNested(root).getPaneRatios(), [0.5, 0.2, 0.3]);
+    });
+
+    it('L3: no pane is squeezed beside one with a large minimum width', () => {
+        const { root, leaves } = nestedHost('horizontal', [0, 300, 0], [0.2, 0.6, 0.2]);
+
+        saveAndRestore(root, leaves);
+        root.doLayout();
+
+        expectRatios(restoredNested(root).getPaneRatios(), [0.2, 0.6, 0.2]);
+        ['n0', 'n1', 'n2'].forEach(id => expect(leaves[id].getWidth()).toBeGreaterThanOrEqual(99));
+    });
+
+    it('L4: a save straight after the restore records the restored ratios', () => {
+        const { root, leaves } = nestedHost('vertical', [24, 24], [0.8, 0.2]);
+
+        saveAndRestore(root, leaves);
+
+        const node = serializeLayout(root).root as SplitNode;
+
+        expectRatios((node.children[0] as SplitNode).ratios, [0.8, 0.2]);
+    });
+
+    it('L5: a collapsed pane is restored collapsed beside the ratios', () => {
+        const { root, leaves } = nestedHost('vertical', [24, 24, 24], [0.6, 0.3, 0.1], 1);
+
+        saveAndRestore(root, leaves);
+        root.doLayout();
+
+        const nested = restoredNested(root);
+
+        expectRatios(nested.getPaneRatios(), [0.6, 0.3, 0.1]);
+        expect(nested.isPaneCollapsed(1)).toBe(true);
+    });
+});

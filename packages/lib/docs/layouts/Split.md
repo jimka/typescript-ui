@@ -210,6 +210,8 @@ it, however many pane-less passes ran before.
 
 > **`getPaneRatios` / `applyPaneRatios` are a different surface.** They serve [Layout serialization](/layouts/LayoutSerialization)'s same-session topology switching — a weight-agnostic ratio of the *whole* pane set, with no unit tag. Using them for cross-session persistence would restore a `weight: 0` pane at the wrong px on a differently-sized window; use `getPaneSizes` / `applyPaneSizes` for that instead.
 
+`applyPaneRatios` works on a split that has not been laid out yet: it holds the ratios and applies them against the split's size on its first layout, before any pane is held to its minimum or maximum, so it lays out as the same ratios applied to a laid-out split would; a restored split therefore comes back as saved unless a pane's minimum or maximum size comes into play. Panes added or removed in between are handled as on a laid-out split, and a later `applyPaneRatios` replaces a `paneSizes` option that has not been applied yet.
+
 ## Live or outline resizing
 
 By default a gutter drag lays both neighbouring panes out on every frame that moves them, so their content reflows as the gutter moves. A frame that can move neither pane — the pointer held past a pane's minimum or maximum, which is what dragging a sidebar shut produces — lays out neither, as long as the pane's own class opts into the unchanged-geometry layout skip (`Panel` does) and the pane is not owed a pass. A pane held against its own minimum or maximum keeps the gutter on its edge — the gutter follows the extent the pane committed, not the travel the pointer asked for — and a window resize under a live drag re-divides the pair rather than pushing the trailing pane out of the container. With `resizeMode: 'outline'` the panes stay put while a thin accent-blue line follows the pointer — stopping exactly where the drag would stop — and the panes are laid out once, on release. Press Escape before releasing to cancel: the line disappears and nothing changes.
@@ -226,8 +228,8 @@ A split with no `resizeMode` of its own follows the app-wide default set through
 | --- | --- |
 | `setOrientation(value)` | `'horizontal'` (default) or `'vertical'`. |
 | `setComponentSpacing(px)` | Pixel gap reserved between adjacent panes; defaults to `0`. |
-| `setPaneSize(pane, px)` | Seed or override a pane's stored main-axis size in pixels. |
-| `getPaneSize(pane)` | Read a pane's stored main-axis size, or `undefined` when unset. |
+| `setPaneSize(pane, size)` | Seed or override a pane's stored main-axis size: pixels, or a share relative to the other panes while `applyPaneRatios` ratios wait for the first layout. |
+| `getPaneSize(pane)` | Read a pane's stored main-axis size, in the same unit, or `undefined` when unset. |
 | `setPaneCollapsed(index, value)` | Collapse or restore the pane at `index`. |
 | `isPaneCollapsed(index)` | Whether the pane at `index` is collapsed. |
 | `getPaneSizes()` | Weight-aware, mixed-unit sizes for cross-session persistence. See [Saving and restoring layout](#saving-and-restoring-layout). |

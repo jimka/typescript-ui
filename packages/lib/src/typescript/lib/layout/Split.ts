@@ -246,6 +246,12 @@ class Split extends LayoutManager implements FocusRevealer {
     // connected layout, which correctly suppresses the rescale pass.
     private _lastAvailableMain: number = 0;
 
+    // True while `_sizes` holds shares `applyPaneRatios` wrote against a unit
+    // base, because the container had no main-axis extent yet. The first layout
+    // with an extent scales them to px before it clamps anything
+    // (`scaleUnitBaseSizes`); until then a layout leaves them alone.
+    private _unitBaseSizes: boolean = false;
+
     // Canceller for the in-flight collapse/restore animation, or null when
     // idle. Calling it stops the rAF loop in place so a rapid re-toggle can
     // re-snapshot the current geometry and retarget without two loops fighting.
@@ -861,13 +867,18 @@ class Split extends LayoutManager implements FocusRevealer {
      *
      * Lets a caller that has just inserted a pane (an edge-drop dock, say) give
      * it a specific share instead of the equal division `recalculateSizes`
-     * applies to a pane with no stored size. The value is a px main-axis extent
-     * — the same unit the gutters store and {@link recalculateSizes} rescales —
-     * not a ratio; pass it relative to the other panes' current stored sizes.
-     * Marks the container's layout pass as owed.
+     * applies to a pane with no stored size. The value is in the unit of the
+     * other panes' stored sizes, not a ratio of the whole: a px main-axis
+     * extent — the same unit the gutters store and {@link recalculateSizes}
+     * rescales — except while shares written by {@link applyPaneRatios} wait
+     * for the split's first layout, when it is a share on their base (which
+     * sums to 1) and that layout scales it to px with them. Pass it relative to
+     * the other panes' current stored sizes. Marks the container's layout pass
+     * as owed.
      *
      * @param pane - The pane whose stored size to seed or override.
-     * @param size - The main-axis extent in px to store for the pane.
+     * @param size - The main-axis extent to store for the pane: px, or a share
+     *   while {@link applyPaneRatios}' shares wait for the first layout.
      * @returns This layout manager, for method chaining.
      */
     setPaneSize(pane: Component, size: number): this {
@@ -878,13 +889,19 @@ class Split extends LayoutManager implements FocusRevealer {
     }
 
     /**
-     * Returns a pane's stored main-axis size in px, or `undefined` when the pane
-     * has no stored size yet (it has never been laid out, or it was added since
-     * the last layout). A pane reporting `undefined` is the one
-     * {@link recalculateSizes} gives a proportional share on the next layout.
+     * Returns a pane's stored main-axis size, or `undefined` when the pane has
+     * no stored size yet (the split has never been laid out and no ratios were
+     * written, or the pane was added since). The size is px, except while
+     * shares written by {@link applyPaneRatios} (or {@link setPaneSize}
+     * alongside them) wait for the split's first layout: then it is a share
+     * relative to the other panes, on a base that sums to 1. A pane reporting
+     * `undefined` is the one {@link recalculateSizes} gives a proportional
+     * share on the next layout.
      *
      * @param pane - The pane whose stored size to read.
-     * @returns The stored main-axis extent in px, or `undefined` when unset.
+     * @returns The stored main-axis extent — px, or a share while
+     *   {@link applyPaneRatios}' shares wait for the first layout — or
+     *   `undefined` when unset.
      */
     getPaneSize(pane: Component): number | undefined {
         return this._sizes.get(pane);
@@ -1037,6 +1054,31 @@ class Split extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * Scales the shares `applyPaneRatios` stored against a unit base to px of
+     * `available`, and records `available` as the extent they were last
+     * normalised against — what `applyPaneRatios` does on a container that
+     * already has an extent. A pane added since has no stored size and is left
+     * for the new-pane share below; a pane removed since was pruned already, and
+     * the refill reclaims its share.
+     *
+     * @param components - The container's current panes.
+     * @param available - The main-axis extent the panes share, net of gaps.
+     */
+    private scaleUnitBaseSizes(components: Array<Component>, available: number): void {
+        // The unit base sums to 1, so multiplying by the extent converts a share to px.
+        for (const component of components) {
+            const stored = this._sizes.get(component);
+
+            if (stored !== undefined) {
+                this._sizes.set(component, stored * available);
+            }
+        }
+
+        this._lastAvailableMain = available;
+        this._unitBaseSizes     = false;
+    }
+
+    /**
      * Moves a pane's stored size (and collapsed state) onto another component,
      * for when a structural change swaps one child for another in the *same* pane
      * slot — a pane wrapped in a nested `Split`, or a single-pane `Split`'s lone
@@ -1101,6 +1143,8 @@ class Split extends LayoutManager implements FocusRevealer {
      * order. Captures the user's split ratios for serialization; ratios are
      * viewport-independent, so they survive a restore into a differently-sized
      * container (`Split` rescales px against the live extent on the next layout).
+     * Ratios written by {@link applyPaneRatios} before the first layout are
+     * reported as written.
      *
      * @returns One ratio per pane in child order, summing to ~1.0; an equal
      *   split when no sizes are stored yet, or `[]` when detached.
@@ -1213,12 +1257,14 @@ class Split extends LayoutManager implements FocusRevealer {
      * (re-normalised internally), so a caller that dropped a pane on restore can
      * pass a short or non-unit array without skewing the result.
      *
-     * @remarks Stored sizes are px, so the ratios are seeded against a positive
-     * base extent: the live inner main-axis extent when the container is already
-     * sized (no rescale needed next layout), else a unit base that
-     * `recalculateSizes` scales up on the first connected layout. `_lastAvailableMain`
-     * is reset to that same base so the next layout does not double-rescale the
-     * freshly-written sizes.
+     * @remarks Stored sizes are px, so the ratios are seeded against the
+     * container's live net-of-gaps main-axis extent when it has one. A container
+     * with no extent yet gets them against a unit base, and the first layout
+     * that has an extent scales them to px before it clamps any pane to its
+     * minimum or maximum, so the split lays out as though the ratios had been
+     * written against that extent. Panes added or removed in between are
+     * handled as on a laid-out split. An undrained `paneSizes` option is
+     * dropped: the latest call wins.
      *
      * @param ratios - Relative pane weights in child order.
      * @returns This layout manager, for method chaining.
@@ -1250,7 +1296,16 @@ class Split extends LayoutManager implements FocusRevealer {
             this._sizes.set(component, norm[idx] * base);
         });
 
-        this._lastAvailableMain = base;
+        // The latest call wins: an undrained `paneSizes` array would otherwise
+        // overwrite these shares on the first layout.
+        this._pendingSizes = null;
+
+        if (available > 0) {
+            this._lastAvailableMain = available;
+            this._unitBaseSizes     = false;
+        } else {
+            this._unitBaseSizes = true;
+        }
 
         container.scheduleLayout();
 
@@ -1372,25 +1427,9 @@ class Split extends LayoutManager implements FocusRevealer {
         // Match `applyPaneRatios`: rebase so the next `recalculateSizes` treats the
         // freshly-written sizes as the baseline instead of double-rescaling them.
         this._lastAvailableMain = available > 0 ? available : 1;
+        this._unitBaseSizes     = false;
 
         container.scheduleLayout();
-
-        return this;
-    }
-
-    /**
-     * Drops the `paneSizes` option's array while it is still undrained, so the
-     * first layout sizes the panes as though none was passed, and neither
-     * applies nor warns about it. For a caller that has just changed the panes
-     * of a split that has never been laid out, which leaves that array stale.
-     * No-op once the array has been drained.
-     *
-     * @returns This layout manager, for method chaining.
-     *
-     * @internal
-     */
-    discardPendingPaneSizes(): this {
-        this._pendingSizes = null;
 
         return this;
     }
@@ -2629,6 +2668,9 @@ class Split extends LayoutManager implements FocusRevealer {
      * @remarks When some panels already have stored sizes and a new panel is added,
      * its size is taken proportionally from the existing panels so the total remains constant.
      * When no panels have stored sizes the available container dimension is divided equally.
+     * Shares {@link applyPaneRatios} wrote before the container had an extent are scaled to
+     * px of the available extent first, before any pane is clamped to its minimum or maximum;
+     * while the container still has no extent, the call returns early and leaves them pending.
      */
     recalculateSizes() {
         let container = this.getContainer();
@@ -2685,6 +2727,17 @@ class Split extends LayoutManager implements FocusRevealer {
         let available = Math.max(0, main - this.spacingTotal(components.length));
 
         const horizontal = this._orientation === "horizontal";
+
+        // Shares written before the container had an extent are scaled to px
+        // first, so the clamp below works on real sizes. With no extent yet they
+        // are left for a later layout (a never-sized box reports no or a NaN size).
+        if (this._unitBaseSizes) {
+            if (!(available > 0)) {
+                return;
+            }
+
+            this.scaleUnitBaseSizes(components, available);
+        }
 
         // Seed first-layout panes from their preferred constraint (HBox model),
         // then re-clamp every stored size to its current [min, max] so a live
