@@ -208,6 +208,11 @@ class CodeEditorPanel extends Panel {
             this._editor.revealRange({ line: 2, column: 9, length: 7 }, { focus: false });
         });
 
+        // Opens the search card from outside the editor, as an app's Find…
+        // menu item would.
+        const findBtn = new Button({ text: 'Find' });
+        findBtn.on('action', () => { this._editor.openSearch(); });
+
         const upperToolbar = new ToolBar();
         upperToolbar.addComponent(formatBtn);
         upperToolbar.addComponent(this._readOnlyBtn);
@@ -220,6 +225,7 @@ class CodeEditorPanel extends Panel {
         upperToolbar.addComponent(saveBtn);
         upperToolbar.addComponent(revealBtn);
         upperToolbar.addComponent(previewBtn);
+        upperToolbar.addComponent(findBtn);
         upperToolbar.addComponent(new Text('Language:'));
         upperToolbar.addComponent(this.makeLanguageButton('JS', 'javascript', SAMPLE_JS));
         upperToolbar.addComponent(this.makeLanguageButton('CSS', 'css', SAMPLE_CSS));

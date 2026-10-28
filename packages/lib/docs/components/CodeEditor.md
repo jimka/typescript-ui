@@ -333,6 +333,12 @@ When the app enables [spatial focus navigation](/concepts/accessibility#spatial-
 
 `Ctrl-F` (`Cmd-F` on macOS) opens a rounded, shadowed card pinned to the editor's upper-right corner, overlaying the document instead of docking a strip that reserves space for it. Every match in the document stays tinted while the card is open, with the current match tinted more strongly. `Escape` — in the document or in either of the card's fields — closes it and returns focus to the document.
 
+To open the card from outside the editor — an Edit › Find… menu item, a command-palette entry, or an app-wide shortcut that targets the active editor while focus is in another control — call `openSearch()`. It does what `Ctrl-F` does: it opens the card, seeds the find field from the selection, and moves focus to the find field. Called while the card is already open, it re-seeds and re-focuses the find field. Before the editor has mounted (it mounts on its first sized layout) and after `dispose()`, it does nothing and returns `false`.
+
+```typescript
+findButton.on('action', () => { editor.openSearch(); });
+```
+
 The card has nine controls, each a glyph-only button whose hover tooltip names its action:
 
 | Control | Behaviour |
@@ -403,6 +409,7 @@ Right-clicking anywhere in the editor opens a menu leading with **Cut / Copy / P
 | `getSelection()` | Read the primary selection's `{ characterCount, lineCount, from, to }`. `0`/`1`/`0`/`0` for a collapsed selection (a bare caret) at the document start. Returns that same value when the editor is not mounted. |
 | `on('selectionchange', fn)` / `off('selectionchange', fn)` | Subscribe to selection changes — fires once per real change to the character count, line count, or either document offset. |
 | `revealRange(at, options?)` | Select, scroll to and highlight a 1-based `{ line, column, length }` range. `options.focus` (default `true`) takes keyboard focus; `options.highlight` (default `true`) paints the highlight. No-op before the editor is mounted. |
+| `openSearch()` | Open the [search card](#search-and-replace) as `Ctrl-F` does: seed the find field from the selection and focus it. Returns `true`, or `false` with no effect before the editor is mounted. |
 | `replaceRange(from, to, insert, selection?)` | Replace a `[from, to)` range and optionally place the resulting selection, in one transaction (one undo step, never joined with the typing before or after it). Both are clamped against the live document; refused, with the read-only flash, while the editor is read-only. Updates the cached value (with no `"change"`) before the editor mounts. |
 
 ## Theming
