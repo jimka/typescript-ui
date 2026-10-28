@@ -112,6 +112,9 @@ page resets to empty.
   focuses it without emitting `"tabpressed"`, and a scrollable strip brings
   it into view on its next layout, for an owner that ends a close on the
   active tab. See [Cell lifecycle](/components/TabBar#cell-lifecycle).
+- **`Tab.removeMovedTab(content)`** removes the tab of content that code has
+  already moved to another container, without destroying it or firing
+  `tabclose`. See [Tear-off & re-dock](/layouts/Tab#tear-off-re-dock).
 
 ### Overlay
 
@@ -121,6 +124,13 @@ page resets to empty.
 - **`bringToFront({ focus })`** on `Window` / `TabWindow`: `false` raises
   without focus, `true` takes focus also with `autoFocus: false`, omitted
   follows `autoFocus`. See [Focus](/components/Window#focus).
+- **`Dock.splitPanel(targetId, panel, side, options?)`** puts a panel in a new
+  pane beside another panel from code — the split a tab dropped on a region
+  edge makes — for commands such as *Split Editor Right*. `panel` is a
+  registered id to move or reopen, or a spec to open; `ratio` sets the new
+  pane's share of a new split, or of one laid out since it last changed.
+  See
+  [Programmatic control](/components/Dock#programmatic-control).
 
 ## Fixed
 

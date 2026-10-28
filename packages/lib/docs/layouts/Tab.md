@@ -403,6 +403,13 @@ state survives, and **no `tabclose` event fires** (the tab is relocated, not
 closed). Because the content is re-parented, in-flight CSS transitions on it
 reset — a torn-off or docked panel snaps into place rather than animating.
 
+Code that moves a tab's content to another container itself calls
+[`removeMovedTab(content)`](/api/layout/classes/Tab#removemovedtab) afterwards:
+the cell goes, a neighbouring tab is selected when it was the active one,
+`empty` fires when it was the last tab, and no `tabclose` fires. It returns
+`false` while the content is still in this tab's container; `closeTab` stays
+the call for content that is still in the strip.
+
 ### Re-docking a floating window
 
 `setDetachWindowMode(mode)` (option `detachWindowMode`) selects how a tear-off

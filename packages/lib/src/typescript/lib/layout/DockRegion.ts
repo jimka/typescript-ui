@@ -8,6 +8,9 @@ import { Split } from "~/layout/Split.js";
 import { Tab } from "~/layout/Tab.js";
 import { DragManager, DragEventDetail, tabDragRegistry, SPRING_RAISE_DELAY_MS } from "~/overlay/DragManager.js";
 import { DropZone, DropZoneOverlay, EDGE_BAND_FRACTION } from "~/overlay/DropZoneOverlay.js";
+import type { Edge } from "~/primitive/Edge.js";
+import type { LayoutConstraints } from "~/layout/LayoutConstraints.js";
+import type { LayoutSize } from "~/layout/LayoutSizes.js";
 
 /**
  * Coordinator that turns an edge/center drop onto a region into a structural
@@ -132,6 +135,31 @@ export class DockRegion {
         this._teardown();
         this._overlay.dispose();
         this.clearSpringRaise();
+    }
+
+    /**
+     * Performs an edge drop of `panel` on this region from code: the same
+     * legality check and the same split `onDrop` runs, without a drag. The
+     * caller releases the panel's old tab and wires the new stack; `Dock`'s
+     * programmatic split does both.
+     *
+     * @param panel - The content component to re-home.
+     * @param side - The edge of this region to split on.
+     * @param options - `constraints` for a panel that has no parent yet (a moved
+     *   panel carries its own); `ratio` for the new pane's share of the unit's
+     *   slot (see splitOnEdge).
+     *
+     * @returns The new tab stack now holding `panel`, or `null` when the drop
+     *   would be refused.
+     *
+     * @internal
+     */
+    dropOnEdge(panel: Component, side: Edge, options?: { constraints?: LayoutConstraints; ratio?: number }): Container | null {
+        if (!this.isLegalDrop(panel.getId(), side, panel)) {
+            return null;
+        }
+
+        return this.splitOnEdge(panel, side, options);
     }
 
     /**
@@ -280,9 +308,12 @@ export class DockRegion {
      *
      * @param componentId - The dragged content component's id.
      * @param zone - The zone the cursor resolved to.
+     * @param dragged - The dragged content component, or undefined when it
+     *   cannot be resolved. Defaults to the drag registry's entry for
+     *   `componentId`.
      * @returns `true` when the drop would change the layout.
      */
-    private isLegalDrop(componentId: string, zone: DropZone): boolean {
+    private isLegalDrop(componentId: string, zone: DropZone, dragged: Component | undefined = tabDragRegistry.get(componentId)): boolean {
         for (let node: Component | null = this._region; node; node = node.getParentComponent()) {
             if (node.getId() === componentId) {
                 return false;
@@ -296,14 +327,14 @@ export class DockRegion {
         }
 
         if (zone === "center") {
-            return !this.isRedundantCenterDrop(componentId);
+            return !this.isRedundantCenterDrop(dragged);
         }
 
-        return !this.isRedundantEdgeDrop(componentId, zone);
+        return !this.isRedundantEdgeDrop(dragged, zone);
     }
 
     /**
-     * Whether a centre drop of `componentId` would add it to the tab bar it is
+     * Whether a centre drop of `dragged` would add it to the tab bar it is
      * already in — the panel is already a tab there, so the drop changes
      * nothing. Mirrors {@link dockAsTab}'s target resolution: a centre drop adds
      * to the region's own `Tab` (when the region is a stack), or to the region's
@@ -311,12 +342,10 @@ export class DockRegion {
      * region in a fresh stack and so is never redundant. Redundant exactly when
      * the dragged panel's current stack is that same target stack.
      *
-     * @param componentId - The dragged content component's id.
+     * @param dragged - The dragged content component, or undefined when it cannot be resolved.
      * @returns `true` when the centre drop would leave the layout unchanged.
      */
-    private isRedundantCenterDrop(componentId: string): boolean {
-        const dragged = tabDragRegistry.get(componentId);
-
+    private isRedundantCenterDrop(dragged: Component | undefined): boolean {
         if (!dragged) {
             return false;
         }
@@ -337,7 +366,7 @@ export class DockRegion {
     }
 
     /**
-     * Whether an edge drop of `componentId` on `zone` would reproduce the
+     * Whether an edge drop of `dragged` on `zone` would reproduce the
      * current layout — i.e. land the dragged panel exactly where it already is.
      * Such a drop is the spatial equivalent of a self-drop and is rejected so it
      * gets red, no-op feedback rather than silently rebuilding the same tree.
@@ -350,13 +379,11 @@ export class DockRegion {
      * exact insertion that method would perform, but reads the tree before any
      * mutation.
      *
-     * @param componentId - The dragged content component's id.
+     * @param dragged - The dragged content component, or undefined when it cannot be resolved.
      * @param zone - The edge the cursor resolved to (never `"center"`).
      * @returns `true` when the drop would leave the layout unchanged.
      */
-    private isRedundantEdgeDrop(componentId: string, zone: DropZone): boolean {
-        const dragged = tabDragRegistry.get(componentId);
-
+    private isRedundantEdgeDrop(dragged: Component | undefined, zone: DropZone): boolean {
         if (!dragged) {
             return false;
         }
@@ -436,8 +463,17 @@ export class DockRegion {
      *
      * @param panel - The dragged content component to re-home.
      * @param zone - The edge the cursor was released on (never `"center"`).
+     * @param options - `constraints` for the panel in its new stack, replacing
+     *   the ones carried from its old parent; `ratio` for the new stack's share
+     *   of the unit's slot, the unit keeping the rest. `ratio` is ignored when
+     *   the region is itself a same-axis `Split`, a branch `Dock`'s
+     *   programmatic split never reaches because its targets are tab stacks;
+     *   when the unit has no parent to split in; and when the stack joins a
+     *   same-axis `Split` that has not been laid out, which also drops the
+     *   shares that split still holds pending, so its panes size as for a drop.
+     * @returns The new tab stack holding `panel`.
      */
-    private splitOnEdge(panel: Component, zone: DropZone): void {
+    private splitOnEdge(panel: Component, zone: DropZone, options?: { constraints?: LayoutConstraints; ratio?: number }): Container {
         const axis    = (zone === "left" || zone === "right") ? "horizontal" : "vertical";
         const leading = zone === "top" || zone === "left";
 
@@ -446,7 +482,7 @@ export class DockRegion {
         // never be detached again. The stack's tab is that handle (tear-off and
         // re-dock come free from the reorderable Tab wiring).
         const stack = this.newStack();
-        stack.moveComponent(panel);
+        stack.moveComponent(panel, undefined, options?.constraints);
 
         // The region is itself a same-axis Split → extend it directly.
         const lm = this._region.getLayoutManager();
@@ -454,7 +490,7 @@ export class DockRegion {
         if (lm instanceof Split && String(lm.getOrientation()) === axis) {
             this._region.moveComponent(stack, leading ? 0 : this._region.getComponents().length);
 
-            return;
+            return stack;
         }
 
         // Pick the unit to split: the region's whole Tab stack when the region is
@@ -466,7 +502,7 @@ export class DockRegion {
         const container = unit.getParentComponent();
 
         if (!container) {
-            return;
+            return stack;
         }
 
         const containerLm = container.getLayoutManager();
@@ -477,12 +513,26 @@ export class DockRegion {
         if (containerLm instanceof Split && String(containerLm.getOrientation()) === axis) {
             container.moveComponent(stack, leading ? unitIndex : unitIndex + 1);
 
-            return;
+            // A split never laid out has no extent to carve `ratio` against, and
+            // the shares a wrap left it pending no longer match its panes:
+            // Split would discard them with a warning. Drop them, so its panes
+            // size as for a drop.
+            if (!this.isLaidOut(containerLm, container)) {
+                containerLm.discardPendingPaneSizes();
+            } else if (options?.ratio !== undefined) {
+                this.carveSlot(containerLm, container, unit, stack, options.ratio);
+            }
+
+            return stack;
         }
 
         // Otherwise wrap the unit in a fresh same-axis Split (a perpendicular
-        // drop therefore nests by one level, as intended).
-        const split = new Container({ layoutManager: new Split({ orientation: axis }) });
+        // drop therefore nests by one level, as intended). A requested share
+        // rides in as `paneSizes`, which the split applies on its first
+        // layout against its real extent: written as ratios now, before the
+        // split has a size, they would be seeded against a unit base and
+        // clamped to the panes' minimum sizes.
+        const split = new Container({ layoutManager: new Split({ orientation: axis, paneSizes: this.wrapPaneSizes(leading, options?.ratio) }) });
 
         container.moveComponent(split, unitIndex);
 
@@ -501,6 +551,84 @@ export class DockRegion {
         if (containerLm instanceof Split) {
             containerLm.transferPaneSize(unit, split);
         }
+
+        return stack;
+    }
+
+    /**
+     * The `paneSizes` a wrapping `Split` starts with: the new stack's `ratio`
+     * share and the unit's remainder, in pane order, or `undefined` for the
+     * drop's own equal halves.
+     *
+     * @param leading - Whether the new stack is the split's first pane.
+     * @param ratio - The new stack's share, or `undefined` for none.
+     * @returns The pane sizes, or `undefined`.
+     */
+    private wrapPaneSizes(leading: boolean, ratio: number | undefined): LayoutSize[] | undefined {
+        if (ratio === undefined) {
+            return undefined;
+        }
+
+        const stackSize: LayoutSize = { unit: "ratio", value: ratio };
+        const unitSize: LayoutSize  = { unit: "ratio", value: 1 - ratio };
+
+        return leading ? [stackSize, unitSize] : [unitSize, stackSize];
+    }
+
+    /**
+     * Whether `container`'s `Split` has been laid out: it has a main-axis extent
+     * left over after its gutters. A container built in this task (a wrap made
+     * by an earlier split) or never laid out (straight after `new Dock`) has
+     * none. This is the test `applyPaneRatios` makes to choose between that
+     * extent and a unit base, which the panes' minimum sizes then overrule on
+     * the first layout.
+     *
+     * @param lm - The container's `Split` manager.
+     * @param container - The `Split` region.
+     * @returns `true` when the split has a live extent to write shares against.
+     */
+    private isLaidOut(lm: Split, container: Component): boolean {
+        const inner = container.getInnerSize();
+        const main  = inner ? (lm.getOrientation() === "horizontal" ? inner.width : inner.height) : 0;
+        const gaps  = lm.getComponentSpacing() * (container.getComponents().length - 1);
+
+        // A never-sized box reports NaN, which fails this test as it should.
+        return main - gaps > 0;
+    }
+
+    /**
+     * Gives the freshly inserted `stack` `ratio` of `unit`'s share of `container`'s
+     * `Split`, leaving every other pane's share alone. Shares are the stored pane
+     * sizes, written back against the container's live extent, so only a split
+     * that has been laid out is carved (see {@link isLaidOut}); `splitOnEdge`
+     * sizes a pane joining one that has not as a drop does. When any pane other
+     * than `stack` has no stored size — the split changed since it was last laid
+     * out, e.g. an earlier split in this task added a pane — there is no share
+     * to carve from without flattening the others, so `ratio` is ignored and
+     * `stack` sizes as a drop does.
+     *
+     * @param lm - The container's `Split` manager.
+     * @param container - The `Split` region `stack` was just inserted into.
+     * @param unit - The pane `stack` was inserted beside.
+     * @param stack - The inserted pane.
+     * @param ratio - The fraction of `unit`'s share `stack` takes, between 0 and 1.
+     */
+    private carveSlot(lm: Split, container: Component, unit: Component, stack: Component, ratio: number): void {
+        const panes = container.getComponents();
+
+        if (!panes.every(pane => pane === stack || lm.getPaneSize(pane) !== undefined)) {
+            return;
+        }
+
+        const shares = panes.map(pane => lm.getPaneSize(pane) ?? 0);
+
+        const unitIndex = panes.indexOf(unit);
+        const unitShare = shares[unitIndex];
+
+        shares[panes.indexOf(stack)] = unitShare * ratio;
+        shares[unitIndex]            = unitShare * (1 - ratio);
+
+        lm.applyPaneRatios(shares);
     }
 
     /**
