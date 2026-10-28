@@ -188,6 +188,11 @@ page resets to empty.
   the first tab: it restores as a `Window` holding that tab, and the other
   tabs cannot be recovered from it, so save the layout again. See
   [Tab-strip windows](/layouts/LayoutSerialization#tab-strip-windows).
+- **A split or tab group rebuilt by `restoreLayout` (and so
+  `Dock.setLayoutState`) fills its slot.** The rebuilt group was a plain
+  `Component`, which grows to its content's minimum size, so a `Dock` panel
+  taller than the dock overflowed it after a restore instead of scrolling
+  inside it. It is now a `Container`, as the `Dock` builds it.
 
 ### Overlay
 

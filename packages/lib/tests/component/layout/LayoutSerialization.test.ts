@@ -449,6 +449,35 @@ describe('restoreLayout round-trip', () => {
         expect(disposeSpy).not.toHaveBeenCalled();
         expect(leaf.getParentComponent()).toBe(root);
     });
+
+    it('L3: a rebuilt Tab host fills its pane instead of growing to its content\'s minimum', () => {
+        installTestDOM(CONFIG);
+
+        // A horizontal split whose second pane is a Tab host holding content
+        // taller than the root — the live Dock builds that host as a
+        // fit-parent Container, which clips the content to its slot.
+        const root = new Container({ layoutManager: new Split({ orientation: 'horizontal' }) });
+        const host = new Container({ layoutManager: new Tab() });
+        const a    = new Component({}); a.setId('a');
+        const b    = new Component({}); b.setId('b');
+
+        b.setMinSize({ width: 0, height: 600 });
+        host.addComponent(b);
+        root.addComponent(a);
+        root.addComponent(host);
+        root.getElement(true);
+        root.setWidth(400);
+        root.setHeight(300);
+        root.doLayout();
+
+        restoreLayout(root, serializeLayout(root), instanceFactory({ a, b }));
+        root.doLayout();
+
+        const rebuilt = root.getComponents()[1];
+
+        expect(b.getParentComponent()).toBe(rebuilt);
+        expect(rebuilt.getHeight()).toBe(300);
+    });
 });
 
 describe('serializeLayout of a Split holding a transient child', () => {

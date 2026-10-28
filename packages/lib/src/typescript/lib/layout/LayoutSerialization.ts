@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
 
 import { Component } from "~/core/Component.js";
+import { Container } from "~/core/Container.js";
 import { Window } from "~/overlay/Window.js";
 import { AbstractWindow } from "~/overlay/AbstractWindow.js";
 import { TabWindow } from "~/overlay/TabWindow.js";
@@ -676,6 +677,9 @@ function constraintsFor(node: LayoutNode): LayoutConstraints | undefined {
  * Resolves an arrangement node to a live component: a parked/factory leaf for a
  * panel node, or a freshly-built and populated sub-container for a split/tab
  * node. Returns `null` (with a warning) when a panel's factory yields nothing.
+ * The sub-container is a fit-parent {@link Container}, as the live `Dock`
+ * builds its regions, so it fills the slot its parent allocates and clips
+ * oversized content rather than growing to the content's minimum size.
  *
  * @param node - The node to materialize.
  * @param parked - The parked leaves to re-home from.
@@ -693,7 +697,7 @@ function materializeNode(node: LayoutNode, parked: Map<string, Component>, facto
         return panel;
     }
 
-    const container = new Component();
+    const container = new Container();
 
     populateContainer(container, node, parked, factory);
 
