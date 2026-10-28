@@ -217,9 +217,9 @@ const _defaultTreeOptions: Partial<TreeOptions> = {
  * turns and the affected rows slide into place over 200 ms. Bulk and
  * structural calls (the `*` key, `expandAll`, `revealByPredicate`,
  * `setNodes`, `insertNode`, `removeNode`, `setChildren`) and
- * `prefers-reduced-motion: reduce` never animate; a toggle whose children
- * would not fit in the current viewport, or whose commit moves the scroll
- * offset, snaps instead.
+ * `prefers-reduced-motion: reduce` never animate; a toggle of a node
+ * scrolled out of view above the viewport, whose open children reach more
+ * than a viewport below it, snaps instead.
  *
  * @example
  * ```typescript
@@ -1247,27 +1247,25 @@ class Tree extends VirtualRowView<TreeRow, TreeOptions> {
      * allow one. The motion row list is `_flatRows` itself for an expand
      * (children are already in it) and the pre-toggle row list for a collapse
      * (its children are no longer in `_flatRows`, but the motion must keep
-     * showing them while it plays).
+     * showing them while it plays); for a block taller than the viewport
+     * {@link rowMotionRows} trims the block's hidden tail from it.
      *
      * @param node - The node being expanded or collapsed.
      * @param expanding - `true` for an expand, `false` for a collapse.
      */
     private _reflattenWithMotion(node: TreeNode, expanding: boolean): void {
         const before = this._flatRows;
+        let   rows   = before;
 
         const scheduled = this.commitWithRowMotion(node, expanding, () => {
             this._reflattenAndRender();
 
-            const rows = expanding ? this._flatRows : before;
-
-            this._motionRows = rows;
+            rows = expanding ? this._flatRows : before;
 
             return this.rowMotionBlock(rows, rows.findIndex(row => row.node === node));
         });
 
-        if (!scheduled) {
-            this._motionRows = null;
-        }
+        this._motionRows = scheduled ? this.rowMotionRows(rows) : null;
     }
 
     /**

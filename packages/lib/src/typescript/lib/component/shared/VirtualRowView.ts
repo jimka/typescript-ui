@@ -31,8 +31,14 @@ export interface RowMotionBlock {
 interface RowMotion extends RowMotionBlock {
     /** The toggled node or record; a second toggle of the same key reverses from `reveal`. */
     key:     object;
+    /** How many of the block's leading rows the motion row list keeps; equal to `blockLength` unless the motion is trimmed. */
+    shownLength: number;
     /** 0 = children hidden under the toggled row, 1 = fully shown. */
     reveal:  number;
+    /** The reveal the tween starts from. */
+    revealFrom: number;
+    /** The reveal the tween runs to: 1 for an expand, 0 for a collapse. */
+    revealTo: number;
     /** False until the first frame applies the motion; render passes ignore an unstarted one. */
     started: boolean;
     /**
@@ -40,6 +46,12 @@ interface RowMotion extends RowMotionBlock {
      * collapse reversed into one) or has already dropped it (a collapse).
      */
     expanding: boolean;
+    /** The vertical scroll offset before the commit — where the scroll sits at `revealFrom`. */
+    scrollFrom: number;
+    /** The offset the commit's render left — where the scroll sits at `revealTo`. Differs from `scrollFrom` only when that render clamped it. */
+    scrollTo: number;
+    /** The vertical offset this motion last rendered against; a scroll tick that finds another one came from elsewhere. */
+    scrollY: number;
     /** Cancels the driving {@link Animation.tween}. */
     handle:  Animation.CancelHandle;
 }
@@ -88,6 +100,7 @@ function reorder<T>(arr: T[], order: number[]): void {
  * by `Tree`), plus the expand/collapse row-motion primitives
  * ({@link commitWithRowMotion}, {@link rowMotionY}, {@link rowMotionContentHeight},
  * {@link rowMotionOverhang}, {@link applyRowMotionStyle}, {@link rowMotionBlock},
+ * {@link rowMotionRows},
  * {@link stopRowMotion}, {@link settleRowMotion},
  * {@link settleRowMotionIfEntering}, {@link isRowMotionRunning},
  * {@link rowMotionCommittedIndex}, {@link isRowMotionLeavingSlot},
@@ -124,6 +137,8 @@ abstract class VirtualRowView<
     private _rowMotion: RowMotion | null = null;
     /** Whether the last render pass rendered a running row motion, for {@link noteRowMotionPass}. */
     private _lastPassInMotion: boolean = false;
+    /** True while a row motion itself moves the scroll offset, so its own scroll tick is not taken for a user's. */
+    private _rowMotionScrolling: boolean = false;
 
     /**
      * Returns the height in pixels of a single row. Read on every window /
@@ -156,7 +171,7 @@ abstract class VirtualRowView<
      * @param element - This view's initialised element handle.
      */
     protected initScroller(element: Handle): void {
-        this._scroller = new VirtualScroller(this, element, () => this.onScrollerTick());
+        this._scroller = new VirtualScroller(this, element, () => this.routeScrollerTick());
 
         // Track the scroller's created container handles so they are released
         // with this view (on destructor or GC); the scroller is not a Component.
@@ -166,11 +181,39 @@ abstract class VirtualRowView<
     }
 
     /**
-     * Invoked on every scroller tick. Default behaviour re-renders the window;
-     * `Body` overrides it to additionally emit its scroll events.
+     * Invoked on every scroller tick, after a scroll-bound row motion that the
+     * tick's scroll did not come from has been settled. Default behaviour
+     * re-renders the window; `Body` overrides it to additionally emit its
+     * scroll events.
      */
     protected onScrollerTick(): void {
         this.renderWindow();
+    }
+
+    /**
+     * The scroller's tick: settles a scroll-bound motion on a vertical scroll
+     * it did not make, then runs {@link onScrollerTick}, which renders the
+     * committed state. Every other motion keeps playing through a scroll.
+     */
+    private routeScrollerTick(): void {
+        const motion = this._rowMotion;
+
+        if (motion !== null && !this._rowMotionScrolling && this.isRowMotionScrollBound(motion)
+            && this._scroller!.getScrollY() !== motion.scrollY) {
+            this.settleRowMotion();
+        }
+
+        this.onScrollerTick();
+    }
+
+    /**
+     * Whether a motion was planned for one scroll offset: it is trimmed
+     * (`shownLength < blockLength`) or drives the scroll offset itself.
+     *
+     * @param motion - The motion to test.
+     */
+    private isRowMotionScrollBound(motion: RowMotion): boolean {
+        return motion.shownLength < motion.blockLength || motion.scrollFrom !== motion.scrollTo;
     }
 
     /**
@@ -226,11 +269,36 @@ abstract class VirtualRowView<
      * Sets the JS-controlled vertical scroll position. Delegates to the
      * underlying {@link VirtualScroller}.
      *
+     * @remarks
+     * When an expand or collapse motion that was planned for the current
+     * scroll offset is playing and `y` moves away from that offset, the
+     * motion is settled first, so the scroller clamps `y` against the
+     * committed content height rather than the motion's. Mid-expand the
+     * motion's height is the shorter one and would land the scroll short.
+     *
      * @param y - The new scroll position in pixels.
      */
     setScrollY(y: number): this {
-        this._scroller?.resetWheelEase();
-        this._scroller?.setScrollY(y);
+        const scroller = this._scroller;
+        const motion   = this._rowMotion;
+        const settles  = scroller !== null && motion !== null && !this._rowMotionScrolling
+            && this.isRowMotionScrollBound(motion) && y !== scroller.getScrollY();
+
+        const scrollY  = scroller?.getScrollY();
+
+        if (settles) {
+            this.settleRowMotion();
+        }
+
+        scroller?.resetWheelEase();
+        scroller?.setScrollY(y);
+
+        // A target the scroller clamps back to the current offset fires no
+        // scroll tick, and `settleRowMotion` leaves the render to its caller,
+        // so render the settled state here.
+        if (settles && scroller!.getScrollY() === scrollY) {
+            this.renderWindow();
+        }
 
         return this;
     }
@@ -582,11 +650,27 @@ abstract class VirtualRowView<
     }
 
     /**
-     * The running motion's hidden height in pixels — the height its child
-     * block has not yet revealed (or has already re-hidden, for a collapse) —
-     * or `0` when no motion is running.
+     * The running motion's hidden height in pixels — the height its shown
+     * rows have not yet revealed (or have already re-hidden, for a collapse),
+     * which is how far the rows after them are pulled up — or `0` when no
+     * motion is running.
      */
     private rowMotionHiddenHeight(): number {
+        const motion = this._rowMotion;
+
+        if (motion === null || !motion.started) {
+            return 0;
+        }
+
+        return (1 - motion.reveal) * motion.shownLength * this.getRowHeight();
+    }
+
+    /**
+     * The running motion's whole-block hidden height in pixels, hidden tail
+     * included — what the content height and the settle hand-off use — or `0`
+     * when no motion is running.
+     */
+    private rowMotionBlockHiddenHeight(): number {
         const motion = this._rowMotion;
 
         if (motion === null || !motion.started) {
@@ -619,11 +703,13 @@ abstract class VirtualRowView<
     /**
      * Maps an index into the row list the current render pass reads to the
      * same row's index in the committed row list. The two differ only while
-     * a collapse motion runs: its row list still holds the leaving block,
-     * which the committed list has already dropped, so every row after the
-     * block sits `blockLength` further down. A leaving row has no committed
-     * index and keeps its index in the motion row list — its pre-collapse
-     * one.
+     * a motion runs and its row list leaves out the block's hidden tail: a
+     * row past the shown rows sits `blockLength - shownLength` rows further
+     * down in the committed list during an expand, and `shownLength` rows
+     * further up during a collapse (whose row list still holds the leaving
+     * shown rows, which the committed list has dropped). A leaving row has no
+     * committed index and keeps its index in the motion row list — its
+     * pre-collapse one.
      *
      * @param dataIndex - The row's index into the row list the current render
      *   pass is reading.
@@ -632,23 +718,30 @@ abstract class VirtualRowView<
     protected rowMotionCommittedIndex(dataIndex: number): number {
         const motion = this._rowMotion;
 
-        if (motion === null || !motion.started || motion.expanding) {
+        if (motion === null || !motion.started || dataIndex < motion.blockStart + motion.shownLength) {
             return dataIndex;
         }
 
-        return dataIndex < motion.blockStart + motion.blockLength ? dataIndex : dataIndex - motion.blockLength;
+        return motion.expanding
+            ? dataIndex + motion.blockLength - motion.shownLength
+            : dataIndex - motion.shownLength;
     }
 
     /**
      * The total content height for `totalRows` rows, given any running row
-     * motion — `totalRows` rows' worth of height, less the motion's current
-     * hidden height.
+     * motion — `totalRows` rows' worth of height plus the block's hidden tail
+     * (which the motion row list leaves out), less the whole block's current
+     * hidden height, so it runs continuously from the closed list's height to
+     * the open list's.
      *
      * @param totalRows - The number of rows in the row list the current
      *   render pass is reading.
      */
     protected rowMotionContentHeight(totalRows: number): number {
-        return totalRows * this.getRowHeight() - this.rowMotionHiddenHeight();
+        const motion     = this._rowMotion;
+        const hiddenTail = motion !== null && motion.started ? motion.blockLength - motion.shownLength : 0;
+
+        return (totalRows + hiddenTail) * this.getRowHeight() - this.rowMotionBlockHiddenHeight();
     }
 
     /**
@@ -660,7 +753,7 @@ abstract class VirtualRowView<
     }
 
     /**
-     * Whether `dataIndex` falls inside a started motion's child block.
+     * Whether `dataIndex` falls inside a started motion's shown rows.
      *
      * @param dataIndex - The row's index into the row list the current render
      *   pass is reading.
@@ -669,7 +762,7 @@ abstract class VirtualRowView<
         const motion = this._rowMotion;
 
         return motion !== null && motion.started
-            && dataIndex >= motion.blockStart && dataIndex < motion.blockStart + motion.blockLength;
+            && dataIndex >= motion.blockStart && dataIndex < motion.blockStart + motion.shownLength;
     }
 
     /**
@@ -784,53 +877,106 @@ abstract class VirtualRowView<
      * @param expanding - Whether this toggle is an expand (`reveal` runs 0→1)
      *   or a collapse (`reveal` runs 1→0).
      * @param commit - Performs the state change and its final-state render,
-     *   then returns the toggled row's child block (via {@link rowMotionBlock}),
+     *   then returns the toggled row's whole child block (via {@link rowMotionBlock}),
      *   or `null` when there is nothing to animate (e.g. the toggled row left
      *   the render entirely).
      * @returns `true` when a motion was scheduled.
      */
     protected commitWithRowMotion(key: object, expanding: boolean, commit: () => RowMotionBlock | null): boolean {
-        const motion        = this._rowMotion;
-        const retarget      = motion !== null && motion.key === key ? motion.reveal : null;
+        const previous      = this._rowMotion;
+        const retarget      = previous !== null && previous.key === key ? previous : null;
         const scrollYBefore = this._scroller?.getScrollY() ?? 0;
         const block         = commit();
 
-        if (block === null || !this.mayAnimateRowMotion(block, scrollYBefore)) {
+        if (block === null) {
             return false;
         }
 
-        const from = retarget ?? (expanding ? 0 : 1);
+        // A retarget keeps the shown rows it started with, capped at the
+        // block so they can never outnumber the rows it now holds.
+        const shownLength = retarget !== null
+            ? Math.min(retarget.shownLength, block.blockLength)
+            : this.rowMotionShownLength(block, scrollYBefore);
+
+        if (!this.mayAnimateRowMotion(block, shownLength)) {
+            return false;
+        }
+
+        const from = retarget?.reveal ?? (expanding ? 0 : 1);
         const to   = expanding ? 1 : 0;
 
         if (from === to) {
             return false;
         }
 
-        this.scheduleRowMotion(key, block, from, to);
+        this.scheduleRowMotion(key, block, shownLength, from, to, scrollYBefore);
 
         return true;
     }
 
+    /** How many whole rows the view's height spans. */
+    private rowMotionViewportRows(): number {
+        return Math.ceil((this.getHeight() || 0) / this.getRowHeight());
+    }
+
     /**
-     * Whether a toggle's child block may animate: motion is not disabled by
-     * `prefers-reduced-motion`, the view is rendered, the block fits within
-     * one viewport's worth of rows, and the commit's own render left the
-     * scroll offset unchanged (a scroll clamp mid-commit would make the first
-     * frame jump).
+     * How many of the block's leading rows a motion animates: all of them when
+     * the block fits the viewport, otherwise the rows from the block's start
+     * down to the viewport's bottom edge, measured while the node is open at
+     * the scroll offset `openScrollY`. The rest — the hidden tail — is off
+     * screen at both ends of the motion.
      *
      * @param block - The child block the toggle would animate.
-     * @param scrollYBefore - The vertical scroll offset captured before the commit ran.
+     * @param openScrollY - The vertical scroll offset before the commit.
      */
-    private mayAnimateRowMotion(block: RowMotionBlock, scrollYBefore: number): boolean {
+    private rowMotionShownLength(block: RowMotionBlock, openScrollY: number): number {
+        if (block.blockLength <= this.rowMotionViewportRows()) {
+            return block.blockLength;
+        }
+
+        const rowHeight    = this.getRowHeight();
+        const rowsToBottom = Math.ceil((openScrollY + (this.getHeight() || 0) - block.blockStart * rowHeight) / rowHeight);
+
+        return Math.min(block.blockLength, Math.max(0, rowsToBottom));
+    }
+
+    /**
+     * Whether a toggle's child block may animate: motion is not disabled by
+     * `prefers-reduced-motion`, the view is rendered, the block is not empty,
+     * the view has a height, and the block's shown rows fit within one
+     * viewport's worth of rows. The one toggle left to snap is a node scrolled
+     * out of view above the viewport whose open children reach more than a
+     * viewport below it.
+     *
+     * @param block - The child block the toggle would animate.
+     * @param shownLength - How many of the block's leading rows would animate.
+     */
+    private mayAnimateRowMotion(block: RowMotionBlock, shownLength: number): boolean {
         if (Animation.isReducedMotion() || this._scroller === null) {
             return false;
         }
 
-        const viewportRows = Math.ceil((this.getHeight() || 0) / this.getRowHeight());
+        const viewportRows = this.rowMotionViewportRows();
 
-        return block.blockLength > 0
-            && block.blockLength <= viewportRows
-            && this._scroller.getScrollY() === scrollYBefore;
+        return block.blockLength > 0 && viewportRows > 0 && shownLength <= viewportRows;
+    }
+
+    /**
+     * The row list a just-scheduled motion renders: `rows` itself, or a copy
+     * without the block's hidden tail, so the rows after the block follow the
+     * shown rows directly and move with them as one piece.
+     *
+     * @param rows - The full row list the motion would otherwise render.
+     */
+    protected rowMotionRows<T>(rows: T[]): T[] {
+        const motion = this._rowMotion!;
+
+        if (motion.shownLength === motion.blockLength) {
+            return rows;
+        }
+
+        return rows.slice(0, motion.blockStart + motion.shownLength)
+            .concat(rows.slice(motion.blockStart + motion.blockLength));
     }
 
     /**
@@ -840,11 +986,17 @@ abstract class VirtualRowView<
      * @param key - Identity of the toggled node/record.
      * @param block - The child block to animate.
      * @param from - The starting reveal value (0..1).
+     * @param shownLength - How many of the block's leading rows animate.
      * @param to - The ending reveal value (0..1).
+     * @param scrollFrom - The vertical scroll offset before the commit.
      */
-    private scheduleRowMotion(key: object, block: RowMotionBlock, from: number, to: number): void {
+    private scheduleRowMotion(
+        key: object, block: RowMotionBlock, shownLength: number, from: number, to: number, scrollFrom: number,
+    ): void {
+        const scrollTo = this._scroller!.getScrollY();
         const motion: RowMotion = {
-            key, ...block, reveal: from, started: false, expanding: to === 1, handle: { cancel: (): void => {} },
+            key, ...block, shownLength, reveal: from, revealFrom: from, revealTo: to, started: false,
+            expanding: to === 1, scrollFrom, scrollTo, scrollY: scrollTo, handle: { cancel: (): void => {} },
         };
 
         this._rowMotion = motion;
@@ -870,7 +1022,8 @@ abstract class VirtualRowView<
     /**
      * The driving tween's per-frame callback: updates the motion's reveal,
      * flips {@link RowMotion.started} to `true` and notifies
-     * {@link onRowMotionRowsChanged} on the very first frame, then re-renders.
+     * {@link onRowMotionRowsChanged} on the very first frame, then moves the
+     * scroll offset (see {@link driveRowMotionScroll}) or re-renders.
      * A no-op when `motion` is no longer the current motion (stopped or
      * superseded since the tween was scheduled).
      *
@@ -882,14 +1035,56 @@ abstract class VirtualRowView<
             return;
         }
 
+        const firstFrame = !motion.started;
+
         motion.reveal = reveal;
 
-        if (!motion.started) {
+        if (firstFrame) {
             motion.started = true;
             this.onRowMotionRowsChanged();
         }
 
-        this.renderWindow();
+        // A scroll change ticks the scroller, and the tick renders this frame.
+        if (!this.driveRowMotionScroll(motion, firstFrame)) {
+            this.renderWindow();
+        }
+    }
+
+    /**
+     * Moves the scroll offset to where the motion's reveal puts it: a linear
+     * interpolation between the offset before the commit and the one the
+     * commit's render left. A no-op for a motion whose commit did not move
+     * the offset.
+     *
+     * @param motion - The motion this frame belongs to.
+     * @param firstFrame - Whether this is the motion's first frame.
+     * @returns Whether the offset moved, and so the scroller's tick rendered.
+     */
+    private driveRowMotionScroll(motion: RowMotion, firstFrame: boolean): boolean {
+        const scroller = this._scroller;
+
+        if (scroller === null || motion.scrollFrom === motion.scrollTo) {
+            return false;
+        }
+
+        // Only a collapse clamps the commit, and its committed list lacks the
+        // block, so the motion's content height is the committed one plus the
+        // block's revealed share. Set before restoring `scrollFrom`, which the
+        // committed height would clamp straight back.
+        if (firstFrame) {
+            scroller.setContentHeight(scroller.getContentHeight() + motion.reveal * motion.blockLength * this.getRowHeight());
+        }
+
+        const progress = (motion.reveal - motion.revealTo) / (motion.revealFrom - motion.revealTo);
+        const before   = scroller.getScrollY();
+
+        this._rowMotionScrolling = true;
+        scroller.setScrollY(motion.scrollTo + (motion.scrollFrom - motion.scrollTo) * progress);
+        this._rowMotionScrolling = false;
+
+        motion.scrollY = scroller.getScrollY();
+
+        return motion.scrollY !== before;
     }
 
     /**
@@ -944,11 +1139,11 @@ abstract class VirtualRowView<
 
         if (motion !== null && motion.started && scroller !== null) {
             // The last frame gave the scroller the rendered row list's
-            // height less the hidden height. The committed list holds the
+            // height less the whole block's hidden height. The committed list holds the
             // block on an expand, and has already dropped it on a collapse.
             const droppedHeight = motion.expanding ? 0 : motion.blockLength * this.getRowHeight();
 
-            scroller.setContentHeight(scroller.getContentHeight() + this.rowMotionHiddenHeight() - droppedHeight);
+            scroller.setContentHeight(scroller.getContentHeight() + this.rowMotionBlockHiddenHeight() - droppedHeight);
         }
 
         this.stopRowMotion();
