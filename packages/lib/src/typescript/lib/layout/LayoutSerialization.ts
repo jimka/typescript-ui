@@ -668,7 +668,7 @@ function applyWindow(node: WindowNode, parked: Map<string, Component>, factory: 
     }
 
     // A restored layout shows its windows from code, not from a gesture on any
-    // one of them, so none takes focus.
+    // one of them, so the show takes no focus.
     const win = new Window(node.header, { autoFocus: false });
 
     // Carry the leaf's glyph (single-panel content only) through the re-home, as
@@ -689,6 +689,11 @@ function applyWindow(node: WindowNode, parked: Map<string, Component>, factory: 
     if (node.state !== "normal") {
         win.setWindowState(node.state);
     }
+
+    // From here on the float answers later raises (Dock.focusPanel, a drop into
+    // it) like a float torn off a tab strip. show() decided its own focus move
+    // when it ran, so switching autoFocus on now moves no focus.
+    win.setAutoFocus(true);
 }
 
 /**

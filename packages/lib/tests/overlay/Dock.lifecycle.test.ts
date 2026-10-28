@@ -20,8 +20,9 @@ import { Tab } from '~/layout/Tab';
 import { Window } from '~/overlay/Window';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { Tooltip } from '~/overlay/Tooltip';
-import { DOM } from '~/core/DOM';
-import { installTestDOM } from '../dom/TestDOM';
+import { DOM, type Handle } from '~/core/DOM';
+import { Button } from '~/component/button/Button';
+import { installTestDOM, setConnected } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
 const CONFIG = {
@@ -1837,5 +1838,200 @@ describe('Dock lazy panel failure', () => {
         flush();
 
         expect(log).toEqual([]);
+    });
+});
+
+// dock-reveal-panel-without-focus plan, cases D1–D6, DP1 and TO1. "Opener" is a
+// connected button outside the dock standing in for Loom's file tree. Every
+// case runs flush() before placing focus, so a shown float's queued show-time
+// focus move cannot land after it.
+describe('Dock keyboard focus', () => {
+    /** A connected button outside the dock. */
+    function opener(): Handle {
+        const el = new Button('Opener').getElement(true)!;
+
+        setConnected(el, true);
+
+        return el;
+    }
+
+    /** A dock with tiled panels `a` then `b` (so `b` is active), laid out and flushed. */
+    function tiledDock(): Dock {
+        const dock = mountDock();
+
+        dock.addPanel({ id: 'a', title: 'A', content: new Component({}) });
+        dock.addPanel({ id: 'b', title: 'B', content: new Component({}) });
+        dock.doLayout();
+        flush();
+
+        return dock;
+    }
+
+    /** `tiledDock` with `a` floated and `b` re-activated, so the float is behind. */
+    function floatedDock(): { dock: Dock; win: Window; events: Array<DockPanelEvent | null> } {
+        const dock = tiledDock();
+        const win  = floatPanel(dock, 'a');
+
+        dock.focusPanel('b');
+        flush();
+
+        const events: Array<DockPanelEvent | null> = [];
+
+        dock.on('focus', e => events.push(e));
+
+        return { dock, win, events };
+    }
+
+    it('D1: focusPanel with focus: false switches a tiled tab and leaves focus on the opener', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock   = tiledDock();
+        const el     = opener();
+        const events: Array<DockPanelEvent | null> = [];
+
+        dock.on('focus', e => events.push(e));
+        DOM.sink.focus(el);
+
+        expect(dock.focusPanel('a', { focus: false })).toBe(true);
+        expect(rootTab(dock).getActiveContent()?.getId()).toBe('a');
+        expect(DOM.source.getActiveElement()).toBe(el);
+        expect(events).toHaveLength(1);
+        expect(events[0]?.id).toBe('a');
+    });
+
+    it('D2: a bare focusPanel on a tiled panel leaves focus on the opener (the strip policy)', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = tiledDock();
+        const el   = opener();
+
+        DOM.sink.focus(el);
+        dock.focusPanel('a');
+
+        expect(rootTab(dock).getActiveContent()?.getId()).toBe('a');
+        expect(DOM.source.getActiveElement()).toBe(el);
+    });
+
+    it('D3: focusPanel with focus: false raises a buried float without moving focus', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const { dock, win, events } = floatedDock();
+        const el                    = opener();
+
+        DOM.sink.focus(el);
+
+        expect(dock.focusPanel('a', { focus: false })).toBe(true);
+        expect(DOM.source.getActiveElement()).toBe(el);
+        expect(events.at(-1)?.id).toBe('a');
+        expect(events.at(-1)?.window).toBe(win);
+    });
+
+    it('D4: a bare focusPanel moves focus into a torn-off float (autoFocus on)', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const { dock, win } = floatedDock();
+
+        DOM.sink.focus(opener());
+        dock.focusPanel('a');
+
+        expect(DOM.source.getActiveElement()).toBe(win.getElement());
+    });
+
+    it('D5: a repeat focusPanel with focus: false on the already-active float moves no focus', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const { dock } = floatedDock();
+        const el       = opener();
+
+        DOM.sink.focus(el);
+        dock.focusPanel('a', { focus: false });
+        DOM.sink.focus(el);
+        dock.focusPanel('a', { focus: false });
+
+        expect(DOM.source.getActiveElement()).toBe(el);
+    });
+
+    it('D6: a float rebuilt by setLayoutState ends with autoFocus on and answers focusPanel like a torn-off one', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = tiledDock();
+        const old  = floatPanel(dock, 'a');
+
+        dock.setLayoutState(dock.getLayoutState());
+        flush();
+
+        const restored = AbstractWindow.getOpenWindows().find(w => w !== old) as Window;
+        const content  = priv(dock).windowContent(restored);
+        const regions: Component[] = [];
+
+        priv(dock).collectTabRegions(content, regions);
+        regions.forEach(r => r.getElement(true));
+        restored.getElement(true);
+        restored.doLayout();
+        dock.doLayout();
+        flush();
+
+        const el = opener();
+
+        DOM.sink.focus(el);
+
+        expect(restored.isAutoFocus()).toBe(true);
+
+        dock.focusPanel('a', { focus: false });
+
+        expect(DOM.source.getActiveElement()).toBe(el);
+
+        dock.focusPanel('a');
+
+        expect(DOM.source.getActiveElement()).toBe(restored.getElement());
+    });
+
+    it('DP1: Loom\'s preview — close the temporary tab, add the next, select it without focus', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = tiledDock();
+
+        dock.focusPanel('a');
+        flush();
+
+        const el = opener();
+
+        DOM.sink.focus(el);
+        dock.removePanel('a');
+        dock.addPanel({ id: 'c', title: 'C', content: new Component({}) });
+        dock.focusPanel('c', { focus: false });
+        dock.doLayout();
+        flush();
+
+        expect(rootTab(dock).getActiveContent()?.getId()).toBe('c');
+        expect(DOM.source.getActiveElement()).toBe(el);
+    });
+
+    it('TO1: a bare tear-off takes focus into the new window', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock    = tiledDock();
+        const tab     = rootTab(dock);
+        const frameA  = frameOf(dock, 'a');
+        const entryId = sourceTabEntryId(tab, frameA);
+
+        DOM.sink.focus(opener());
+
+        (tab as unknown as {
+            detachTabToWindow(id: string, content: Component, clientX: number, clientY: number, forceBare: boolean): void;
+        }).detachTabToWindow(entryId, frameA, 100, 100, true);
+
+        const win = AbstractWindow.getOpenWindows().at(-1)!;
+
+        expect(win.isAutoFocus()).toBe(true);
+        expect(DOM.source.getActiveElement()).toBe(win.getElement());
     });
 });

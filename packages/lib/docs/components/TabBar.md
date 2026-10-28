@@ -52,10 +52,11 @@ The `"tearoffrequested"` / `"detach"` pair is driven purely by whether the drag 
 | Method | Purpose |
 | --- | --- |
 | `createBarEntry(id, name, constraints?)` | Add a cell; `constraints.closeable` adds a ✕, `constraints.glyph` a leading icon. The first cell becomes active. |
-| `removeBarEntry(id)` | Bar-side teardown (button group, roving focus, wrapper, context-menu listener). |
+| `removeBarEntry(id, options?)` | Bar-side teardown (button group, roving focus, wrapper, context-menu listener). Moves focus to a surviving cell only when the removed cell held it; `{ focus }` overrides. |
 | `moveBarEntry(id, toIndex)` | Move a cell to a slot (used by the owner's dock path). |
-| `setActiveEntry(id)` | Programmatic select that funnels through the same path a click does — emits `"tabpressed"`. |
+| `setActiveEntry(id, options?)` | Select from code — emits `"tabpressed"`. Moves focus onto the cell only when the strip holds focus or nothing does; `{ focus }` overrides. |
 | `setActiveVisual(id)` | Visual-only re-select (button state + indicator), no emit — for re-selection after a close. |
+| `focusActiveEntry()` | Move the tab stop onto the active cell and focus it, no emit; a scrollable strip brings it into view on its next layout — for ending a close made on the strip on the active tab. |
 | `getEntryIds()` / `getActiveEntryId()` | The ordered cell ids / the active id. |
 | `setEntryContentId(id, contentId)` | Push the content's component id (feeds the drag payload and the button's `aria-controls`). |
 | `setEntryBusy(id, busy)` / `isEntryBusy(id)` | Push the cell's loading state (the owner pushes it by cell id, same as `setEntryContentId`) — shows the tab button's loading overlay. |

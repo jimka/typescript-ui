@@ -218,6 +218,25 @@ export interface DockExceptionEvent {
 }
 
 /**
+ * Options for {@link Dock.focusPanel}.
+ *
+ * @category Core
+ */
+export interface DockFocusPanelOptions {
+    /**
+     * Whether activating the panel may move keyboard focus. Omit it for the
+     * defaults: the tab switch moves focus onto the panel's tab only when
+     * focus would otherwise be lost or already sits in that tab strip, and
+     * raising the panel's float lets the window's `autoFocus` decide. `false`
+     * moves no focus — for selecting panels from another control that keeps
+     * focus, such as a file tree or a results list being arrowed through.
+     * `true` moves focus onto the panel's tab and into its float, also one
+     * built with `autoFocus: false`.
+     */
+    focus?: boolean;
+}
+
+/**
  * Per-region drag-and-drop wiring tracked by the re-wire sweep.
  */
 interface RegionWiring {
@@ -1978,16 +1997,18 @@ class Dock extends Container<DockOptions> {
 
     /**
      * Activates the tab hosting `id` and raises its host float when it lives in
-     * one, so a buried floated panel surfaces. A successful activation drives the
-     * host `Tab`'s active-tab change and the float raise, each of which emits a
-     * `"focus"`.
+     * one, so a buried floated panel surfaces. A successful activation emits a
+     * `"focus"`. Keyboard focus follows the defaults described on
+     * {@link DockFocusPanelOptions}; pass `{ focus: false }` to leave focus where
+     * it is.
      *
      * @param id - The panel id to focus.
+     * @param options - Whether the activation may move keyboard focus.
      *
      * @returns `true` when the panel was found and activated, `false` for an
      *   unknown id or one in no `Tab` region (registered but never docked).
      */
-    focusPanel(id: string): boolean {
+    focusPanel(id: string, options?: DockFocusPanelOptions): boolean {
         const frame = this._frames.get(id);
 
         if (!frame) {
@@ -2006,8 +2027,10 @@ class Dock extends Container<DockOptions> {
             return false;
         }
 
-        this.floatForFrame(frame)?.bringToFront();
-        (region.getLayoutManager() as Tab).setActiveTabIndex(index);
+        const focus = options?.focus;
+
+        this.floatForFrame(frame)?.bringToFront({ focus });
+        (region.getLayoutManager() as Tab).setActiveTabIndex(index, { focus });
 
         return true;
     }

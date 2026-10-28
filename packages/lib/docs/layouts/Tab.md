@@ -120,6 +120,24 @@ Tabs are selected by clicking their button. To set programmatically, look up the
 
 From the keyboard, with a tab focused: `ArrowLeft` / `ArrowRight` activate the previous / next tab, wrapping at the ends, and `Home` / `End` activate the first / last tab. `Home` and `End` act only while a tab or its ✕ holds focus, so a text field among the [tab tools](#tab-tools) keeps them for its caret.
 
+**Keyboard focus.** A gesture on the strip — a click, the keys above, or the context menu's *Switch to* — moves focus onto the new tab. A close made on the strip — the ✕, `Delete`, the context menu's *Close* and its bulk close items — ends with keyboard focus and the strip's tab stop on the active tab, wherever focus was before (some browsers do not focus the ✕ when it is clicked). Closing the active tab lands on the tab that becomes active, its left neighbour (the right one when it was first). Closing any other tab lands on the active tab, which stays selected. A bulk close (*Close others*, *Close all to the left* / *above*, *Close all to the right* / *below*) ends on the active tab too, also when a `"beforetabclose"` listener keeps one of its tabs open. Focus never rests on a tab that is not selected, and a tab that was already active is not announced again through `"select"` or `"activate"`. When the close leaves the strip empty there is no tab to focus, and focus is not moved: focus that was on the closed tab or inside its content goes with it. A switch made from code (`setActiveTabIndex`, `setActiveContent`, a [`Dock`](/components/Dock) action) moves focus onto the new tab only when the strip already holds focus, nothing does, or focus is inside the content the switch hides. A close made from code (`closeTab`, `Dock.removePanel`) moves focus onto the neighbouring tab only when the closed tab or its content held it. Otherwise either change moves only the strip's tab stop, so a file tree or editor driving the strip keeps focus. Pass `{ focus: true }` or `{ focus: false }` to `setActiveTabIndex` / `setActiveContent` to decide per call.
+
+| Change | Where focus is before | Focus after |
+| --- | --- | --- |
+| click on a tab, or the menu's *Switch to* | anywhere | new tab's button |
+| `setActiveTabIndex(i)` from code | in a file tree outside the strip | stays in the tree |
+| `setActiveTabIndex(i)` from code | on another tab of the same strip | new tab's button |
+| `setActiveTabIndex(i)` from code | nowhere (`<body>`) | new tab's button |
+| `setActiveTabIndex(i)` from code | inside the tab being hidden | new tab's button |
+| `Dock.addPanel(spec)` (activated on the next layout) | in a file tree | stays in the tree |
+| `closeTab` / `removePanel` of the active tab from code | in a file tree | stays in the tree |
+| `closeTab` / `removePanel` of the active tab from code | nowhere (`<body>`) | stays nowhere |
+| `closeTab` from code | on the closed tab's button or ✕ | neighbour's button |
+| ✕, `Delete` or the menu's *Close* on the active tab | anywhere | button of the tab that becomes active |
+| ✕, `Delete` or the menu's *Close* on another tab | anywhere | active tab's button; the active tab stays selected |
+| the menu's *Close others* / *Close all to the left* / *Close all to the right* | anywhere | active tab's button |
+| any close on the strip that leaves it empty | anywhere | not moved (lost if it was on the closed tab or in its content) |
+
 ## Lazy panel construction
 
 For tabs whose content is expensive to build (large forms, virtualised tables, charts), pass a **factory** instead of a component. The factory only runs when the user first activates that tab:

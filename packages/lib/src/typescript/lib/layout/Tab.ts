@@ -331,6 +331,8 @@ class Tab extends LayoutManager implements FocusRevealer {
     // A setActiveContent request for a child whose tab cell does not exist yet
     // (added but not laid out). doLayout applies it once it creates the cell.
     private _pendingActiveContent: Component | null = null;
+    // The `focus` option of that deferred request, applied with it.
+    private _pendingActiveFocus: boolean | undefined = undefined;
     // Last tab index that was faded in during a doLayout pass. Compared
     // against `_selectedTabIndex` so the cross-tab fade fires only on actual
     // selection changes (not on every relayout, e.g. window resize).
@@ -1135,11 +1137,17 @@ class Tab extends LayoutManager implements FocusRevealer {
     };
 
     /**
-     * Strip `"tabclose"` handler: a cell's ✕ was clicked. Emits the cancelable
+     * Strip `"tabclose"` handler: a close was made on the strip — a cell's ✕,
+     * `Delete` on a focused cell, or the context menu's *Close* or one of its
+     * bulk close items, which report one close per tab. Emits the cancelable
      * `"beforetabclose"` event first; if a listener vetoes via
      * `preventDefault()` the close is aborted. Otherwise removes the cell and
      * its content component, emits the public `"tabclose"`, then selects the
-     * next tab.
+     * next tab. Every close reported here is a gesture, so it ends with
+     * keyboard focus and the roving stop on the active tab, wherever focus
+     * was: the tab that becomes active when the active tab closed, the tab
+     * that stays active otherwise. Safari and Firefox do not focus the ✕ on
+     * click, so the rule cannot depend on where focus is.
      *
      * @param id - The cell id to close.
      */
@@ -1161,13 +1169,13 @@ class Tab extends LayoutManager implements FocusRevealer {
             }
         }
 
-        this.closeEntry(id);
+        this.closeEntry(id, true);
     };
 
     /**
      * Tears down the tab with cell id `id` — the single close implementation
-     * shared by the user-✕ click ({@link Tab._onBarTabClose}) and the public
-     * {@link closeTab}. Removes the cell and its content component, emits
+     * shared by a close made on the strip ({@link Tab._onBarTabClose}) and the
+     * public {@link closeTab}. Removes the cell and its content component, emits
      * `"tabclose"`, destroys the content (unless the caller opted out with
      * `disposeOnClose: false` or a `"tabclose"` listener re-homed it), selects
      * the next tab, re-lays out, syncs the host window's closeable state,
@@ -1175,8 +1183,12 @@ class Tab extends LayoutManager implements FocusRevealer {
      * the strip is drained.
      *
      * @param id - The cell id to close.
+     * @param fromStrip - `true` for a close made on the strip, which ends with
+     *   focus and the roving stop on the active tab. Omitted for a close from
+     *   code, which moves focus onto the neighbouring tab only when the closed
+     *   tab or its content held it.
      */
-    private closeEntry(id: string): void {
+    private closeEntry(id: string, fromStrip?: true): void {
         const container = this.getContainer();
         if (!container) {
             return;
@@ -1195,7 +1207,19 @@ class Tab extends LayoutManager implements FocusRevealer {
 
         this._contents[idx].materializeAnimation?.cancel();
 
-        this._bar.removeBarEntry(id);
+        // A close made on the strip puts focus on the active tab once the
+        // re-selection below has run, so the removal must not first move it
+        // onto a neighbour. A close from code also moves focus held inside
+        // the closed content, which would otherwise be lost with it.
+        let removeOptions: { focus: boolean } | undefined;
+
+        if (fromStrip) {
+            removeOptions = { focus: false };
+        } else if (this.contentHoldsFocus(content)) {
+            removeOptions = { focus: true };
+        }
+
+        this._bar.removeBarEntry(id, removeOptions);
         this._contents.splice(idx, 1);
 
         let constraints: LayoutConstraints | undefined;
@@ -1226,6 +1250,13 @@ class Tab extends LayoutManager implements FocusRevealer {
         }
 
         this.selectNextContent(idx, wasSelected);
+
+        // Not through setActiveTabIndex: the active tab is already selected,
+        // and a second "select" / "activate" for it would be spurious.
+        if (fromStrip) {
+            this._bar.focusActiveEntry();
+        }
+
         this.getContainer()?.scheduleLayout();
         this.syncHostWindowCloseable();
         this.closeHostWindowIfEmpty();
@@ -1513,12 +1544,11 @@ class Tab extends LayoutManager implements FocusRevealer {
      * Strip `"dockhover"` handler: a foreign tab has dwelt over this strip long
      * enough to spring-load a raise. Surfaces the strip's window so a backgrounded
      * float can be aimed at, mirroring the dwell-raise a dock region performs over
-     * its body — a no-op for an in-document strip. For a window with `autoFocus`
-     * enabled the raise also moves keyboard focus into it, even when it is
-     * already frontmost.
+     * its body — a no-op for an in-document strip. The raise moves no keyboard
+     * focus.
      */
     private _onBarDockHover = (): void => {
-        this.ancestorWindow()?.bringToFront();
+        this.ancestorWindow()?.bringToFront({ focus: false });
     };
 
     /**
@@ -2085,8 +2115,11 @@ class Tab extends LayoutManager implements FocusRevealer {
             const pendingIndex = this.indexOfContent(this._pendingActiveContent);
 
             if (pendingIndex >= 0) {
+                const focus = this._pendingActiveFocus;
+
                 this._pendingActiveContent = null;
-                this.setActiveTabIndex(pendingIndex);
+                this._pendingActiveFocus = undefined;
+                this.setActiveTabIndex(pendingIndex, { focus });
             }
         }
 
@@ -2346,7 +2379,9 @@ class Tab extends LayoutManager implements FocusRevealer {
         const hidden  = content !== null && this.getVisibleComponent() !== content;
 
         if (content !== null && hidden) {
-            this.setActiveContent(content);
+            // The caller focuses `target` next, so a focus stop on the tab
+            // button in between serves no one.
+            this.setActiveContent(content, { focus: false });
             this.getContainer()?.doLayout();
         }
     }
@@ -2383,6 +2418,19 @@ class Tab extends LayoutManager implements FocusRevealer {
     }
 
     /**
+     * Whether keyboard focus is inside `content`'s element.
+     *
+     * @param content - The tab content to test, or `null`.
+     *
+     * @returns `true` when the focused element lies inside `content`.
+     */
+    private contentHoldsFocus(content: Component | null): boolean {
+        const active = DOM.source.getActiveElement();
+
+        return content !== null && active !== null && this.contentAround(active) === content;
+    }
+
+    /**
      * Returns the display label of the currently active tab, or `null` when the
      * strip is empty. A read-only accessor over the bar's active cell, used by a
      * host [`AbstractWindow`](/api/overlay/classes/AbstractWindow) to derive its title from the active tab.
@@ -2396,49 +2444,62 @@ class Tab extends LayoutManager implements FocusRevealer {
     }
 
     /**
-     * Activates the tab at the given index programmatically — clamped to the
-     * valid range — driving the same selection sync a click does through the
-     * strip: the button group's pressed state, the roving tabindex, lazy
-     * materialization of the target, and a re-layout. Used by layout restore to
-     * reinstate the saved active tab.
-     *
-     * @param index - Zero-based tab index; clamped to `[0, tabCount - 1]`.
-     * @returns This layout manager, for method chaining.
-     */
-    /**
      * Activates the tab hosting `content`. If its tab cell does not exist yet —
      * a child added but not laid out, whose tab {@link doLayout} creates lazily —
      * the request is deferred and applied on the next layout pass. Lets a
      * programmatic add focus the panel it just added.
      *
      * @param content - The content component whose tab should become active.
+     * @param options - `true` always moves focus onto the new tab, `false` never
+     *   does.
      * @returns This layout manager, for method chaining.
      */
-    setActiveContent(content: Component): this {
+    setActiveContent(content: Component, options?: { focus?: boolean }): this {
         const index = this.indexOfContent(content);
 
         if (index >= 0) {
             this._pendingActiveContent = null;
-            this.setActiveTabIndex(index);
+            this._pendingActiveFocus = undefined;
+            this.setActiveTabIndex(index, options);
         } else {
             this._pendingActiveContent = content;
+            this._pendingActiveFocus = options?.focus;
         }
 
         return this;
     }
 
-    setActiveTabIndex(index: number): this {
+    /**
+     * Activates the tab at the given index programmatically — clamped to the
+     * valid range — driving the same selection sync a click does through the
+     * strip: the button group's pressed state, the roving tab stop, lazy
+     * materialization of the target, and a re-layout. Used by layout restore to
+     * reinstate the saved active tab. Keyboard focus moves onto the new tab only
+     * when the strip already holds focus, nothing does, or focus is inside the
+     * content this switch hides, unless `options.focus` says otherwise.
+     *
+     * @param index - Zero-based tab index; clamped to `[0, tabCount - 1]`.
+     * @param options - `true` always moves focus onto the new tab, `false` never
+     *   does.
+     * @returns This layout manager, for method chaining.
+     */
+    setActiveTabIndex(index: number, options?: { focus?: boolean }): this {
         if (this._contents.length === 0) {
             return this;
         }
 
         const clamped = Util.clamp(index, 0, this._contents.length - 1);
 
+        // Condition 3 of the strip's policy: focus inside the content this switch
+        // hides would otherwise be lost, so it follows the switch onto the tab.
+        const rescue = this.contentHoldsFocus(this.getActiveContent());
+        const focus  = options?.focus ?? (rescue ? true : undefined);
+
         // Drive the selection through the strip, which sets the button group,
-        // roving focus, and indicator intent, then emits "tabpressed" — handled
+        // roving tab stop, and indicator intent, then emits "tabpressed" — handled
         // by _onBarTabPressed, which moves the active content index and kicks
         // lazy materialization.
-        this._bar.setActiveEntry(this._contents[clamped].id);
+        this._bar.setActiveEntry(this._contents[clamped].id, { focus });
 
         return this;
     }
@@ -2476,7 +2537,11 @@ class Tab extends LayoutManager implements FocusRevealer {
             this._bar.moveBarEntry(entry.id, dest);
         }
 
-        this.setActiveTabIndex(dest);
+        // A drop is the user's gesture, so its tab takes focus like a click
+        // would. The code-change rule would leave focus where it is: the
+        // dragged button is still in its source strip, and still focused,
+        // until the drag session ends after this drop.
+        this.setActiveTabIndex(dest, { focus: true });
         container.scheduleLayout();
     }
 

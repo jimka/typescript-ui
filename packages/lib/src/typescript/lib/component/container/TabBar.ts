@@ -1732,9 +1732,24 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
+     * Whether a tab change made from code may move keyboard focus onto a tab: the
+     * strip already holds focus on a tab button or ✕, or nothing holds focus.
+     * Focus on a strip tool or anywhere else on the page stays where it is.
+     *
+     * @returns `true` when a change made from code may move focus.
+     */
+    private codeChangeMayFocus(): boolean {
+        const active = DOM.source.getActiveElement();
+
+        return active === null
+            || active === DOM.source.getBody()
+            || this.entryIndexForElement(active) >= 0;
+    }
+
+    /**
      * Hands the roving group's active slot back to a tab button when a removal
-     * left it on a close ✕, moving DOM focus with it. No-op when the active
-     * member is already a tab button, or when the group is empty.
+     * left it on a close ✕, moving DOM focus with it when `focus` is true. No-op
+     * when the active member is already a tab button, or when the group is empty.
      *
      * `RovingTabIndex.remove` activates the member *before* the one it removed
      * whenever that member was the active one; with each cell's ✕ interleaved
@@ -1745,8 +1760,10 @@ class TabBar extends Container<TabBarOptions> {
      * and the focus that came with it, would come to rest on a close button.
      * The ✕'s own cell is the one `remove` meant to land on, so its tab button
      * is the correct destination.
+     *
+     * @param focus - False to move the roving stop without focusing.
      */
-    private moveRovingOffCloseButton(): void {
+    private moveRovingOffCloseButton(focus: boolean): void {
         const items  = this._rovingTabIndex.getItems();
         const active = items[this._rovingTabIndex.getActiveIndex()] ?? null;
 
@@ -1763,7 +1780,7 @@ class TabBar extends Container<TabBarOptions> {
         const buttonIdx = items.indexOf(entry.button);
 
         if (buttonIdx >= 0) {
-            this._rovingTabIndex.moveTo(buttonIdx);
+            this._rovingTabIndex.moveTo(buttonIdx, { focus });
         }
     }
 
@@ -1851,9 +1868,9 @@ class TabBar extends Container<TabBarOptions> {
         const target = this._entries[e.key === 'Home' ? 0 : this._entries.length - 1];
 
         if (target.id === this._activeId) {
-            this.focusActiveEdgeEntry(target);
+            this.focusActiveEdgeEntry();
         } else {
-            this.setActiveEntry(target.id);
+            this.setActiveEntry(target.id, { focus: true });
         }
 
         return { prevent: true };
@@ -1862,27 +1879,14 @@ class TabBar extends Container<TabBarOptions> {
     /**
      * `Home` / `End` onto the tab that is already active: no `"tabpressed"` is
      * emitted, since nothing changed for the owner, but the key still has to
-     * bring the tab into focus and view. Focus goes through the roving group
-     * (which does not scroll the strip) so the tab stop follows the active
-     * tab. The reveal is the strip's own one-shot path, run directly: `Tab`
-     * schedules the layout that normally runs it only on `"tabpressed"`, and
-     * nothing has moved, so the laid-out rects it reads are still current.
-     *
-     * @param target - The already-active edge cell.
+     * bring the tab into focus and view. Focus goes through
+     * {@link focusActiveEntry}, so the tab stop follows the active tab. The
+     * reveal is the strip's own one-shot path, run directly: `Tab` schedules
+     * the layout that normally runs it only on `"tabpressed"`, and nothing has
+     * moved, so the laid-out rects it reads are still current.
      */
-    private focusActiveEdgeEntry(target: BarEntry): void {
-        const rovingIdx = this._rovingTabIndex.getItems().indexOf(target.button);
-
-        if (rovingIdx >= 0) {
-            this._rovingTabIndex.moveTo(rovingIdx);
-        }
-
-        // `moveTo` leaves focus alone when the group already points here.
-        const focused = DOM.source.getActiveElement() === target.button.getElement();
-
-        if (!focused) {
-            target.button.focus(true);
-        }
+    private focusActiveEdgeEntry(): void {
+        this.focusActiveEntry();
 
         // Nothing moved, so the laid-out rects are current and the strip's own
         // one-shot reveal can run now, with no flag left pending.
@@ -2012,10 +2016,12 @@ class TabBar extends Container<TabBarOptions> {
      * to drop its content record. No-op for an unknown id.
      *
      * @param id - The cell id to remove.
+     * @param options - `true` moves focus to a surviving cell, `false` never
+     *   does; omitted, focus moves only when the removed cell held it.
      *
      * @returns This tab strip, for method chaining.
      */
-    removeBarEntry(id: string): this {
+    removeBarEntry(id: string, options?: { focus?: boolean }): this {
         const idx = this._entries.findIndex(entry => entry.id === id);
 
         if (idx < 0) {
@@ -2033,6 +2039,7 @@ class TabBar extends Container<TabBarOptions> {
         const rovingActive    = rovingItems[this._rovingTabIndex.getActiveIndex()] ?? null;
         const wasRovingActive = rovingActive === entry.button || rovingActive === entry.closeButton;
         const heldFocus       = this.entryIndexForElement(DOM.source.getActiveElement()) === idx;
+        const rescue          = options?.focus ?? heldFocus;
 
         this._buttonGroup.removeButton(entry.button);
 
@@ -2040,13 +2047,13 @@ class TabBar extends Container<TabBarOptions> {
         // ✕ it owns, so a ✕ left behind would be a disposed component the group
         // holds forever.
         if (entry.closeButton) {
-            this._rovingTabIndex.remove(entry.closeButton);
+            this._rovingTabIndex.remove(entry.closeButton, { focus: rescue });
         }
 
-        this._rovingTabIndex.remove(entry.button);
+        this._rovingTabIndex.remove(entry.button, { focus: rescue });
         this._entries.splice(idx, 1);
-        this.moveRovingOffCloseButton();
-        this.restoreFocusAfterClose(heldFocus && !wasRovingActive, idx);
+        this.moveRovingOffCloseButton(rescue);
+        this.restoreFocusAfterClose(rescue && !wasRovingActive, idx);
         this._tabClip.removeItem(entry.button);
 
         // The tooltip attachment is keyed by the button's id in a static map and
@@ -2099,15 +2106,20 @@ class TabBar extends Container<TabBarOptions> {
     }
 
     /**
-     * Activates the cell with `id` programmatically — the same selection sync a
-     * click drives: the button group's pressed state, the roving tab index, the
-     * indicator intent, and a `"tabpressed"` emit. No-op for an unknown id.
+     * Activates the cell with `id` from code — the same selection sync a click
+     * drives: the button group's pressed state, the roving tab stop, the
+     * indicator intent, and a `"tabpressed"` emit. The roving stop moves to it;
+     * keyboard focus moves onto its button only when the strip already holds
+     * focus or nothing does, unless `options.focus` says otherwise. No-op for an
+     * unknown id.
      *
      * @param id - The cell id to activate.
+     * @param options - `true` always moves focus onto the cell's button, `false`
+     *   never does.
      *
      * @returns This tab strip, for method chaining.
      */
-    setActiveEntry(id: string): this {
+    setActiveEntry(id: string, options?: { focus?: boolean }): this {
         const idx = this._entries.findIndex(entry => entry.id === id);
 
         if (idx < 0) {
@@ -2121,7 +2133,7 @@ class TabBar extends Container<TabBarOptions> {
         this._entries.forEach(entry => entry.button.setSelected(false));
         this._entries[idx].button.setSelected(true);
 
-        this.onTabPressed(this._entries[idx].button);
+        this.onTabPressed(this._entries[idx].button, options?.focus ?? this.codeChangeMayFocus());
 
         return this;
     }
@@ -2146,6 +2158,43 @@ class TabBar extends Container<TabBarOptions> {
         this._entries.forEach(entry => entry.button.setSelected(false));
         this._entries[idx].button.setSelected(true);
         this._activeId = id;
+
+        return this;
+    }
+
+    /**
+     * Moves the roving tab stop onto the active cell's tab button and gives
+     * that button keyboard focus, wherever the stop and focus were, and asks
+     * a scrollable strip to bring it into view on its next layout pass (the
+     * focus itself never scrolls). Emits no `"tabpressed"`, so the owner sees
+     * no new selection. Used by the owner to end a close made on the strip on
+     * the active tab. No-op on an empty strip.
+     *
+     * @returns This tab strip, for method chaining.
+     */
+    focusActiveEntry(): this {
+        const entry = this.activeEntry();
+
+        if (entry === null) {
+            return this;
+        }
+
+        const rovingIdx = this._rovingTabIndex.getItems().indexOf(entry.button);
+
+        if (rovingIdx >= 0) {
+            this._rovingTabIndex.moveTo(rovingIdx);
+        }
+
+        // `moveTo` leaves focus alone when the group already points here.
+        const focused = DOM.source.getActiveElement() === entry.button.getElement();
+
+        if (!focused) {
+            entry.button.focus(true);
+        }
+
+        // The active tab may sit scrolled out of view; reveal it from the
+        // laid-out rects of the next pass, as a selection change does.
+        this._scrollToSelected = true;
 
         return this;
     }
@@ -2176,7 +2225,7 @@ class TabBar extends Container<TabBarOptions> {
         const switchItems: MenuItemConfig[] = this._entries.map(t => ({
             text:    t.name,
             enabled: t !== activeEntry,
-            action:  () => this.setActiveEntry(t.id),
+            action:  () => this.setActiveEntry(t.id, { focus: true }),
         }));
 
         // On a vertical strip (west/east) the tabs run top-to-bottom, so the
@@ -2257,8 +2306,9 @@ class TabBar extends Container<TabBarOptions> {
      * `"tabpressed"` handler performs the content swap and re-lays out.
      *
      * @param button - The tab button component that was pressed.
+     * @param focus - False to move the roving stop without focusing.
      */
-    private onTabPressed(button: Component): void {
+    private onTabPressed(button: Component, focus: boolean = true): void {
         const idx = this._entries.findIndex(entry => entry.button === button);
 
         if (idx >= 0) {
@@ -2269,7 +2319,7 @@ class TabBar extends Container<TabBarOptions> {
             const rovingIdx = this._rovingTabIndex.getItems().indexOf(button);
 
             if (rovingIdx >= 0) {
-                this._rovingTabIndex.moveTo(rovingIdx);
+                this._rovingTabIndex.moveTo(rovingIdx, { focus });
             }
 
             // Bring the newly-selected tab into view on the next pass. A

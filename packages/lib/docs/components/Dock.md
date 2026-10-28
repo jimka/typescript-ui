@@ -69,11 +69,11 @@ Once a panel is docked, the gestures come from the composed primitives:
 | Gesture | Result | Owned by |
 | --- | --- | --- |
 | Drag a tab within its strip | Reorder | [`Tab`](/api/layout/classes/Tab) |
-| Drag a tab off the strip | Tear off into a floating [`Window`](/components/Window) that is itself a **mini-dock**. The float takes keyboard focus; a float rebuilt by a layout restore does not | [`Tab`](/api/layout/classes/Tab) + `Dock` |
+| Drag a tab off the strip | Tear off into a floating [`Window`](/components/Window) that is itself a **mini-dock**. The float takes keyboard focus. A float rebuilt by a layout restore takes none when the restore shows it, and after that answers raises the same way | [`Tab`](/api/layout/classes/Tab) + `Dock` |
 | Drop a tab on a region **edge** | Split the region, new pane gets the panel | [`DockRegion`](/api/layout/classes/DockRegion) |
 | Drop a tab on a region **centre** | Dock as a tab | [`DockRegion`](/api/layout/classes/DockRegion) |
 | Drop a tab into another window | Dock there, and that window is raised and activated | [`DockRegion`](/api/layout/classes/DockRegion) |
-| Hold a dragged tab over a backgrounded window | Spring-loads it to the front after a short dwell so you can aim | [`DockRegion`](/api/layout/classes/DockRegion) |
+| Hold a dragged tab over a backgrounded window | Spring-loads it to the front after a short dwell so you can aim, without moving keyboard focus | [`DockRegion`](/api/layout/classes/DockRegion) |
 | Drag a window's last tab back out | Re-dock, and the now-empty float closes itself | [`Tab`](/api/layout/classes/Tab) + `Dock` |
 
 `Dock` guarantees the regions these gestures create are themselves dockable: after any structural change it runs an idempotent, animation-frame-coalesced sweep that gives every region a `DockRegion` drop target and makes every `Tab` reorderable. A torn-off tab lands in an ordinary header [`Window`](/components/Window) whose content the sweep **adopts** into a wired region tree — so the float is a *mini-dock* you can edge-split, arrange into multiple panes, and re-dock against the main dock in both directions, not a tab-only strip.
@@ -154,6 +154,8 @@ if (dock.focusPanel('search')) {
     return; // already open — activated its tab and surfaced its float
 }
 
+dock.focusPanel('preview', { focus: false }); // the file tree keeps focus
+
 dock.removePanel('editor'); // closes through the user-close path -> fires `close`
 
 dock.setPanelTitle('search', 'Search results');
@@ -162,8 +164,8 @@ dock.setPanelItalic('search', true);   // preview-tab treatment
 dock.setPanelModified('editor', true); // unsaved-changes dot
 ```
 
-- **`focusPanel(id)`** activates the host tab and raises the host float when the panel is floated, so a buried panel surfaces. A successful activation naturally produces a `focus`. Returns `false` for an unknown id or one registered but never docked.
-- **`removePanel(id)`** closes the panel through the same path a tab ✕ takes, firing exactly one `close`. Returns `false` for an unknown id or one in no region. The cached frame is evicted (a later `addPanel` rebuilds it from the registered factory) while the registration is kept.
+- **`focusPanel(id, options?)`** activates the host tab and raises the host float when the panel is floated, so a buried panel surfaces. A successful activation naturally produces a `focus`. By default the panel's tab takes keyboard focus only when focus would otherwise be lost or already sits in that strip, and its float takes focus when the window's `autoFocus` is on. Pass `{ focus: false }` to activate and raise without moving focus, for selection driven from a file tree or a results list — see [`DockFocusPanelOptions`](/api/overlay/interfaces/DockFocusPanelOptions). Returns `false` for an unknown id or one registered but never docked.
+- **`removePanel(id)`** closes the panel through the same path a tab ✕ takes, firing exactly one `close`. Focus moves to the neighbouring tab only when the closed tab or its content held it. Returns `false` for an unknown id or one in no region. The cached frame is evicted (a later `addPanel` rebuilds it from the registered factory) while the registration is kept.
 - **`setPanelTitle`/`setPanelGlyph`/`setPanelItalic`/`setPanelModified`** relabel, re-icon, italicise, or mark modified a panel's tab — the same durable presentation [`Tab`](/api/layout/classes/Tab) itself exposes ([`setTabName`](/layouts/Tab#renaming-re-iconing-italicising-and-marking-a-tab-modified) / `setTabGlyph` / `setTabItalic` / `setTabModified`), reached by panel `id` instead of by the live content component. Each accepts a panel whose tab cell has not been created yet (durably recorded, applied once the cell exists) and returns `false` only for an id never registered via `addPanel`/`addLazyPanel`.
 
 `setTabOptions(options)` applies a [`TabOptions`](/api/layout/interfaces/TabOptions) bag's presentation fields — width mode, scrolling, orientation, and the rest — to every region this dock owns, immediately, and stores it to apply to every region it builds afterward:

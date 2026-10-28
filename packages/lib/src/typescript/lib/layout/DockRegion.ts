@@ -3,7 +3,7 @@
 import { Component } from "~/core/Component.js";
 import { Container } from "~/core/Container.js";
 import { DOM } from "~/core/DOM.js";
-import { AbstractWindow } from "~/overlay/AbstractWindow.js";
+import { AbstractWindow, type WindowRaiseOptions } from "~/overlay/AbstractWindow.js";
 import { Split } from "~/layout/Split.js";
 import { Tab } from "~/layout/Tab.js";
 import { DragManager, DragEventDetail, tabDragRegistry, SPRING_RAISE_DELAY_MS } from "~/overlay/DragManager.js";
@@ -152,18 +152,22 @@ export class DockRegion {
 
     /**
      * Raises and activates the region's host window, if any. A no-op for an
-     * in-document region. For a window with `autoFocus` enabled the raise also
-     * moves keyboard focus into it, even when it is already frontmost.
+     * in-document region. `options` goes to the window's `bringToFront`: the
+     * drop raise passes none, so the window's `autoFocus` decides; the
+     * spring-loaded raise passes `focus: false`.
+     *
+     * @param options - Forwarded to the window's raise.
      */
-    private raiseHostWindow(): void {
-        this.hostWindow()?.bringToFront();
+    private raiseHostWindow(options?: WindowRaiseOptions): void {
+        this.hostWindow()?.bringToFront(options);
     }
 
     /**
      * Arms the spring-loaded host-window raise if one is not already pending, so
      * a tab dwelling over a backgrounded float surfaces it after
      * {@link SPRING_RAISE_DELAY_MS}. Idempotent across the repeated `onDragOver`
-     * calls a single hover produces — the timer runs once per dwell.
+     * calls a single hover produces — the timer runs once per dwell. The raise
+     * moves no keyboard focus.
      */
     private scheduleSpringRaise(): void {
         if (this._raiseTimer !== null) {
@@ -177,7 +181,7 @@ export class DockRegion {
             // every reachable end, but guarding here keeps a cancelled drag (or
             // any future end path) from raising a window after the gesture ended.
             if (DragManager.isDragging()) {
-                this.raiseHostWindow();
+                this.raiseHostWindow({ focus: false });
             }
         }, SPRING_RAISE_DELAY_MS);
     }

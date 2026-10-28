@@ -92,10 +92,12 @@ export class RovingTabIndex {
     /**
      * Removes a component from the group.
      *
-     * @remarks If the removed item was active, focus moves to the previous item (or index 0).
+     * @remarks If the removed item was active, the previous item (or index 0)
+     * becomes active and, unless `options.focus` is `false`, takes focus.
      * @param component - The component to remove.
+     * @param options - `focus: false` re-activates without focusing the item.
      */
-    remove(component: Component): this {
+    remove(component: Component, options?: { focus?: boolean }): this {
         const idx = this._items.indexOf(component);
 
         if (idx < 0) {
@@ -112,7 +114,7 @@ export class RovingTabIndex {
         }
 
         if (idx === this._activeIndex) {
-            this.moveTo(Math.max(0, idx - 1));
+            this.moveTo(Math.max(0, idx - 1), options);
         } else if (idx < this._activeIndex) {
             this._activeIndex -= 1;
         }
@@ -121,14 +123,15 @@ export class RovingTabIndex {
     }
 
     /**
-     * Activates the item at the given index, updating `tabindex` on both the old and new items and transferring DOM focus.
+     * Activates the item at the given index, updating `tabindex` on both the old and new items, and transfers DOM focus unless `options.focus` is `false`.
      *
      * @remarks Re-activating the item that is already active and already
      * tabbable does nothing at all — no `tabindex` write, and no focus move,
      * so clicking the selected member leaves focus and scroll where they are.
      * @param index - Zero-based index of the item to activate. Clamped to valid range.
+     * @param options - `focus: false` moves the tabindex without focusing the item.
      */
-    moveTo(index: number): void {
+    moveTo(index: number, options?: { focus?: boolean }): void {
         if (this._items.length === 0) {
             return;
         }
@@ -157,7 +160,10 @@ export class RovingTabIndex {
 
         if (next) {
             next.getAria().setTabIndex(0);
-            next.focus(this._preventScroll);
+
+            if (options?.focus ?? true) {
+                next.focus(this._preventScroll);
+            }
         }
     }
 

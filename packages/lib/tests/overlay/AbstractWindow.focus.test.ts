@@ -474,6 +474,96 @@ describe('AbstractWindow focus on show', () => {
             expect(focus).not.toHaveBeenCalled();
         });
 
+        // dock-reveal-panel-without-focus plan, cases W1–W5: a per-call
+        // `focus` option on bringToFront overrides `autoFocus` either way;
+        // omitting it (or passing `{}`) keeps `autoFocus` in charge.
+        it('W1: focus: false raises and activates an inactive window without moving focus', () => {
+            installTestDOM(CONFIG);
+
+            const layout = collectLayoutCallbacks();
+
+            focusedOpener();
+
+            const a = shown(new Window('A'), layout);
+
+            shown(new Window('B'), layout);
+            DOM.sink.focus(pageElement());
+
+            const spy   = vi.fn();
+            const focus = vi.spyOn(DOM.sink, 'focus');
+
+            a.on('activate', spy);
+            a.bringToFront({ focus: false });
+
+            expect(focus).not.toHaveBeenCalled();
+            expect(spy).toHaveBeenCalledTimes(1);
+            expect((a as any)._focusOnActivation).toBe(true);
+        });
+
+        it('W2: focus: false on the active window leaves focus on the page', () => {
+            installTestDOM(CONFIG);
+
+            const layout = collectLayoutCallbacks();
+
+            focusedOpener();
+
+            const win   = shown(new Window('W'), layout);
+            const other = pageElement();
+
+            DOM.sink.focus(other);
+            win.bringToFront({ focus: false });
+
+            expect(active()).toBe(other);
+            expect((win as any)._focusOnActivation).toBe(true);
+        });
+
+        it('W3: focus: true takes focus also with autoFocus false', () => {
+            installTestDOM(CONFIG);
+
+            const layout = collectLayoutCallbacks();
+
+            focusedOpener();
+
+            const a = shown(new Window('A', { autoFocus: false }), layout);
+
+            shown(new Window('B'), layout);
+            DOM.sink.focus(pageElement());
+            a.bringToFront({ focus: true });
+
+            expect(active()).toBe(a.getElement());
+        });
+
+        it('W4: focus: true on a window that was never shown takes no focus', () => {
+            installTestDOM(CONFIG);
+
+            focusedOpener();
+
+            const win = track(new Window('W'));
+
+            win.getElement(true);
+
+            const focus = vi.spyOn(DOM.sink, 'focus');
+
+            win.bringToFront({ focus: true });
+
+            expect(focus).not.toHaveBeenCalled();
+        });
+
+        it('W5: an empty options bag follows autoFocus, as a bare call does', () => {
+            installTestDOM(CONFIG);
+
+            const layout = collectLayoutCallbacks();
+
+            focusedOpener();
+
+            const win = shown(new Window('W'), layout);
+
+            DOM.sink.focus(pageElement());
+            win.bringToFront({});
+
+            expect(active()).toBe(win.getElement());
+        });
+
         it('R5: focus already inside the window stays', () => {
             installTestDOM(CONFIG);
 
