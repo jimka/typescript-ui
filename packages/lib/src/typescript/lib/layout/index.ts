@@ -46,4 +46,4 @@ export type { DropZone } from '~/overlay/DropZoneOverlay.js';
 export { Card } from '~/layout/Card.js';
 export type { CardOptions } from '~/layout/Card.js';
 export { serializeLayout, restoreLayout } from '~/layout/LayoutSerialization.js';
-export type { LayoutState, LayoutNode, PanelNode, SplitNode, TabNode, WindowNode, SerializedRect, LayoutFactory } from '~/layout/LayoutSerialization.js';
+export type { LayoutState, LayoutNode, PanelNode, SplitNode, TabNode, WindowNode, SerializedRect, LayoutFactory, LayoutSerializationOptions } from '~/layout/LayoutSerialization.js';

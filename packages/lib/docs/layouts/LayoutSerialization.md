@@ -29,7 +29,7 @@ const state = serializeLayout(workspace);
 localStorage.setItem('workspace', JSON.stringify(state));
 ```
 
-`Split` sizes are captured as **ratios** (summing to ~1.0), not pixels, so a layout saved on one screen restores at the same proportions on a differently-sized one. `Window` rects stay absolute pixels and are clamped back into the viewport on restore. Open windows are gathered from [`Window.getOpenWindows()`](/api/overlay/classes/Window) into a `windows` array on the state, orthogonal to the in-root tree (windows mount on the document, not inside `root`). A window that hosts `root` itself — a `Dock` placed in a `Window`, say — is the layout's container rather than one of its floats, so it is not recorded, and restore leaves it open.
+`Split` sizes are captured as **ratios** (summing to ~1.0), not pixels, so a layout saved on one screen restores at the same proportions on a differently-sized one. `Window` rects stay absolute pixels and are clamped back into the viewport on restore. Open windows are gathered from [`Window.getOpenWindows()`](/api/overlay/classes/Window) — or only the ones `includeWindow` accepts (see [Limiting the windows](#limiting-the-windows)) — into a `windows` array on the state, orthogonal to the in-root tree (windows mount on the document, not inside `root`). A window that hosts `root` itself — a `Dock` placed in a `Window`, say — is the layout's container rather than one of its floats, so it is not recorded, and restore leaves it open.
 
 ## Restoring — runtime layout switching
 
@@ -58,13 +58,26 @@ The factory **must return the same `Component` instance** for a given `panelId` 
 
 `restoreLayout` performs one pass:
 
-1. **Park** every factory-known leaf — detach it from the live tree (and open windows) without destroying it, preserving its state, and detach any transient chrome (e.g. a Dock empty-state placeholder) the same way.
-2. **Dispose** all `Split`/`Tab` containers under `root` and close every open window except one that hosts `root`.
+1. **Park** every factory-known leaf — detach it from the live tree and from the open windows that are closed in step 2 (a leaf in a window `includeWindow` excludes is not parked) without destroying it, preserving its state, and detach any transient chrome (e.g. a Dock empty-state placeholder) the same way.
+2. **Dispose** all `Split`/`Tab` containers under `root` and close every open window except one that hosts `root` (only those `includeWindow` accepts, when given).
 3. **Rebuild** the container tree from the target state.
 4. **Re-home** the parked leaves into it via [`moveComponent`](/api/core/classes/Component).
 5. **Apply geometry** — pane ratios, active tab, window rects. A floating window rebuilt here takes no focus when the restore shows it, so a restore never takes focus from what the user is working in. After that it answers raises like a float torn off a tab strip (`autoFocus` on).
 
 Because the container tree is rebuilt from scratch each call, switching A→B→A reproduces A exactly with no residue from B, and no orphaned containers accumulate across switches. Restore runs as a discrete user action (typically behind a loading indicator), not on a hot path.
+
+## Limiting the windows
+
+By default both functions cover every open window except one that hosts `root`. Pass `{ includeWindow }` ([`LayoutSerializationOptions`](/api/layout/interfaces/LayoutSerializationOptions)) to limit the floating-window plane to the windows a predicate accepts. The predicate is asked once for each open window when the call starts, and never about a window that hosts `root`.
+
+```typescript
+const mine = new Set(myFloats);
+
+const state = serializeLayout(root, { includeWindow: w => mine.has(w) });
+restoreLayout(root, state, factory, { includeWindow: w => mine.has(w) });
+```
+
+A leaf in an excluded window is not parked; when the state names it, the restore moves it into place through the factory, and otherwise it stays where it is. [`Dock`](/components/Dock) uses this to save and restore only its own floats.
 
 ## The state schema
 
@@ -92,6 +105,6 @@ Containers the serializer does not recognise (`Border`, `HBox`, `VBox`, `Accordi
 
 ## See also
 
-- [API: serializeLayout](/api/layout/functions/serializeLayout) · [restoreLayout](/api/layout/functions/restoreLayout)
+- [API: serializeLayout](/api/layout/functions/serializeLayout) · [restoreLayout](/api/layout/functions/restoreLayout) · [LayoutSerializationOptions](/api/layout/interfaces/LayoutSerializationOptions)
 - [`Split`](/layouts/Split) · [`Tab`](/layouts/Tab) — the recognised arrangement managers
 - [Layout system](/concepts/layout-system) — constraint resolution

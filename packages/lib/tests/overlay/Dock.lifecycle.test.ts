@@ -20,6 +20,8 @@ import { Tab } from '~/layout/Tab';
 import { Split } from '~/layout/Split';
 import { Window } from '~/overlay/Window';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
+import { TabWindow } from '~/overlay/TabWindow';
+import type { LayoutNode, LayoutState } from '~/layout/LayoutSerialization';
 import { Tooltip } from '~/overlay/Tooltip';
 import { DOM, type Handle } from '~/core/DOM';
 import { Button } from '~/component/button/Button';
@@ -2104,6 +2106,269 @@ describe('Dock layout state of a dock inside a window', () => {
         expect(warn).not.toHaveBeenCalled();
         expect(AbstractWindow.getOpenWindows()).toEqual([win]);
         expect(dock.focusPanel('a')).toBe(true);
+    });
+});
+
+describe("Dock layout state covers only the dock's own windows", () => {
+    /** A shown application window titled `Settings`, holding component `settings-form`. */
+    function settingsWindow(): { win: Window; form: Component } {
+        const form = new Component({}); form.setId('settings-form');
+        const win = new Window('Settings');
+
+        win.addComponent(form);
+        win.show();
+
+        return { win, form };
+    }
+
+    /**
+     * Tears panel `id` off its source strip the way the `TO1` test does — a
+     * `TabWindow` when `bare` is false, a bare `Window` mini-dock when true —
+     * then flushes the sweep.
+     *
+     * @returns The window the tear-off opened.
+     */
+    function tearOff(dock: Dock, id: string, bare: boolean): AbstractWindow {
+        const frame = frameOf(dock, id);
+        const tab = priv(dock).regionForFrame(frame).getLayoutManager() as Tab;
+        const entryId = sourceTabEntryId(tab, frame);
+
+        (tab as unknown as {
+            detachTabToWindow(id: string, content: Component, clientX: number, clientY: number, forceBare: boolean): void;
+        }).detachTabToWindow(entryId, frame, 100, 100, bare);
+
+        flush();
+
+        return AbstractWindow.getOpenWindows().at(-1)!;
+    }
+
+    /** A `mountDock()` dock with tiled panels `a` and `b` (or the given ids), laid out and flushed. */
+    function twoPanelDock(ids: [string, string] = ['a', 'b']): Dock {
+        const dock = mountDock();
+
+        ids.forEach(id => dock.addPanel({ id, title: id.toUpperCase(), content: new Component({}) }));
+        dock.doLayout();
+        flush();
+
+        return dock;
+    }
+
+    /** The open window `node` lies in, or `null` when it is in none. */
+    function openWindowHolding(node: Component): AbstractWindow | null {
+        const open = AbstractWindow.getOpenWindows();
+
+        for (let n: Component | null = node; n; n = n.getParentComponent()) {
+            if (open.includes(n as AbstractWindow)) {
+                return n as AbstractWindow;
+            }
+        }
+
+        return null;
+    }
+
+    /** Every panel id a layout node names, in tree order. */
+    function panelIdsOf(node: LayoutNode | undefined): string[] {
+        if (!node) {
+            return [];
+        }
+
+        if (node.kind === 'panel') {
+            return [node.panelId];
+        }
+
+        return node.children.flatMap(panelIdsOf);
+    }
+
+    /** The panel ids each window node of `state` names. */
+    function windowPanelIds(state: LayoutState): string[][] {
+        return state.windows.map(w => w.panelId !== undefined && !w.content ? [w.panelId] : panelIdsOf(w.content));
+    }
+
+    /** The geometry fields of a hand-built window node, as in the `L1` restore test. */
+    const WINDOW_GEOMETRY = {
+        rect:        { x: 10, y: 10, width: 300, height: 200 },
+        state:       'normal' as const,
+        restoreRect: null,
+    };
+
+    it('OW1: a save records no application window', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = twoPanelDock();
+
+        settingsWindow();
+
+        expect(dock.getLayoutState().windows).toEqual([]);
+    });
+
+    it('OW2: a restore leaves an application window open, holding its content', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const dock = twoPanelDock();
+        const { win, form } = settingsWindow();
+
+        dock.setLayoutState(dock.getLayoutState());
+        flush();
+
+        expect(AbstractWindow.getOpenWindows()).toContain(win);
+        expect(form.getParentComponent()).toBe(win);
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('OW3: an own bare float is still saved and rebuilt', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = twoPanelDock();
+        const float = floatPanel(dock, 'a');
+        const { win: settings } = settingsWindow();
+        const state = dock.getLayoutState();
+
+        expect(windowPanelIds(state)).toEqual([['a']]);
+
+        dock.setLayoutState(state);
+        flush();
+
+        const open = AbstractWindow.getOpenWindows();
+        const host = openWindowHolding(frameOf(dock, 'a'));
+
+        expect(open).toContain(settings);
+        expect(open).not.toContain(float);
+        expect(host).not.toBeNull();
+        expect(host).not.toBe(float);
+        expect(dock.getLayoutState().windows).toHaveLength(1);
+    });
+
+    it('OW4: a strip-mode TabWindow tear-off is owned', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = twoPanelDock();
+        const torn = tearOff(dock, 'a', false);
+
+        expect(torn).toBeInstanceOf(TabWindow);
+
+        const state = dock.getLayoutState();
+
+        expect(windowPanelIds(state)).toEqual([['a']]);
+
+        dock.setLayoutState(state);
+        flush();
+
+        const host = openWindowHolding(frameOf(dock, 'a'));
+
+        expect(AbstractWindow.getOpenWindows()).not.toContain(torn);
+        expect(host).not.toBeNull();
+        expect(host).not.toBe(torn);
+    });
+
+    it("OW5: two docks leave each other's floats alone", () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const d1 = twoPanelDock(['xa', 'xb']);
+        const d2 = twoPanelDock(['ya', 'yb']);
+        const w1 = floatPanel(d1, 'xa');
+
+        tearOff(d2, 'ya', false);
+
+        const state2 = d2.getLayoutState();
+
+        expect(windowPanelIds(state2)).toEqual([['ya']]);
+
+        d2.setLayoutState(state2);
+        flush();
+
+        expect(AbstractWindow.getOpenWindows()).toContain(w1);
+        expect(openWindowHolding(frameOf(d1, 'xa'))).toBe(w1);
+
+        d1.setLayoutState(d1.getLayoutState());
+        flush();
+
+        expect(openWindowHolding(frameOf(d2, 'ya'))).not.toBeNull();
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it("OW6: an outer dock leaves the floats of a dock nested in one of its panels alone", () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const inner = twoPanelDock(['ia', 'ib']);
+        const outer = mountDock();
+
+        outer.addPanel({ id: 'outer', title: 'Outer', content: inner });
+        outer.addPanel({ id: 'o2', title: 'O2', content: new Component({}) });
+        outer.doLayout();
+        inner.doLayout();
+        flush();
+
+        const fw = tearOff(inner, 'ia', true);
+
+        expect(outer.getLayoutState().windows).toEqual([]);
+
+        outer.setLayoutState(outer.getLayoutState());
+        flush();
+
+        expect(AbstractWindow.getOpenWindows()).toContain(fw);
+        expect(openWindowHolding(frameOf(inner, 'ia'))).toBe(fw);
+        expect(windowPanelIds(inner.getLayoutState())).toEqual([['ia']]);
+    });
+
+    it('OW7: a legacy state naming foreign windows restores without a warning and opens or closes none of them', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const dock = twoPanelDock();
+        const { win: settings } = settingsWindow();
+        const state = dock.getLayoutState();
+
+        state.windows.push(
+            { kind: 'window', panelId: 'settings-form', header: 'Settings', ...WINDOW_GEOMETRY },
+            {
+                kind:    'window',
+                content: { kind: 'tab', children: [{ kind: 'panel', panelId: 'zz' }], activeIndex: 0 },
+                header:  'Float',
+                ...WINDOW_GEOMETRY,
+            },
+        );
+
+        dock.setLayoutState(state);
+        flush();
+
+        expect(warn).not.toHaveBeenCalled();
+        expect(AbstractWindow.getOpenWindows()).toEqual([settings]);
+        expect(state.windows).toHaveLength(2);
+    });
+
+    it('OW8: an own float naming a panel no longer registered still warns for that panel', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const dock = twoPanelDock();
+
+        const state: LayoutState = {
+            version: 1,
+            root:    { kind: 'tab', children: [{ kind: 'panel', panelId: 'b' }], activeIndex: 0 },
+            windows: [{
+                kind:    'window',
+                content: { kind: 'tab', children: [{ kind: 'panel', panelId: 'a' }, { kind: 'panel', panelId: 'gone' }], activeIndex: 0 },
+                header:  'Float',
+                ...WINDOW_GEOMETRY,
+            }],
+        };
+
+        dock.setLayoutState(state);
+        flush();
+
+        expect(warn).toHaveBeenCalledTimes(1);
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('"gone"'));
+        expect(openWindowHolding(frameOf(dock, 'a'))).not.toBeNull();
     });
 });
 

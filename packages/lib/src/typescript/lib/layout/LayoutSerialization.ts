@@ -166,6 +166,24 @@ export interface LayoutState {
 export type LayoutFactory = (panelId: string) => Component | null;
 
 /**
+ * Options for {@link serializeLayout} and {@link restoreLayout}.
+ *
+ * @category Layouts
+ */
+export interface LayoutSerializationOptions {
+    /**
+     * Decides which open windows belong to the layout's floating-window plane.
+     * Called once for each open window that does not host `root`, when the call
+     * starts and before anything is parked or closed. Return `true` to capture
+     * the window (`serializeLayout`), or to park its leaves and close it
+     * (`restoreLayout`). Default: every open
+     * [`AbstractWindow`](/api/overlay/classes/AbstractWindow) except a host of
+     * `root`.
+     */
+    includeWindow?: (win: AbstractWindow) => boolean;
+}
+
+/**
  * Returns a container's arrangement-manager kind with the callable alias's
  * leading underscore stripped (`_Split` → `"Split"`), or `""` when the
  * component has no layout manager. String discrimination avoids importing the
@@ -368,20 +386,21 @@ function windowNodeFor(win: AbstractWindow): WindowNode | null {
 
 /**
  * Captures the arrangement of `root` (and every open window except one that
- * hosts `root`) to a plain, serializable object. Only `Split`/`Tab`/`Window`
- * topology and geometry is recorded; each leaf is a bare panel-ID reference
- * whose content the caller rebuilds on restore.
+ * hosts `root` — or, with `includeWindow`, only the windows it accepts) to a
+ * plain, serializable object. Only `Split`/`Tab`/`Window` topology and geometry
+ * is recorded; each leaf is a bare panel-ID reference whose content the caller
+ * rebuilds on restore.
  *
  * @param root - The container whose arrangement to capture.
+ * @param options - Limits which open windows are captured.
  * @returns The captured {@link LayoutState}.
  *
  * @category Layouts
  */
-export function serializeLayout(root: Component): LayoutState {
+export function serializeLayout(root: Component, options?: LayoutSerializationOptions): LayoutState {
     // A window that hosts `root` is the layout's container, not one of its
     // floats: restoreLayout leaves it alone, so it is not recorded either.
-    const windows = Window.getOpenWindows()
-        .filter(win => !hostsComponent(win, root))
+    const windows = floatWindows(root, options)
         .map(windowNodeFor)
         .filter((node): node is WindowNode => node !== null);
 
@@ -503,6 +522,22 @@ function hostsComponent(win: AbstractWindow, node: Component): boolean {
     }
 
     return false;
+}
+
+/**
+ * The open windows that make up `root`'s floating-window plane: every open
+ * window except one that hosts `root`, narrowed by `options.includeWindow`
+ * when given. A host window is excluded before the predicate is asked.
+ *
+ * @param root - The layout root being serialized or restored.
+ * @param options - The caller's options, if any.
+ * @returns The float windows, in open order.
+ */
+function floatWindows(root: Component, options: LayoutSerializationOptions | undefined): AbstractWindow[] {
+    const includeWindow = options?.includeWindow;
+
+    return Window.getOpenWindows().filter(win =>
+        !hostsComponent(win, root) && (includeWindow === undefined || includeWindow(win)));
 }
 
 /**
@@ -704,10 +739,13 @@ function applyWindow(node: WindowNode, parked: Map<string, Component>, factory: 
  * `factory`. Safe to call repeatedly on a live, already-arranged tree to switch
  * between saved layouts at runtime.
  *
- * @remarks Single-pass park-and-rebuild: it parks every factory-known leaf and
- * detaches any transient chrome (so both survive undisposed), disposes
- * whatever scaffold remains under `root`, and closes every open window except
- * one that hosts `root`, rebuilds the container tree from `state`, re-homes the parked leaves via
+ * @remarks Single-pass park-and-rebuild: it parks every factory-known leaf
+ * under `root` and in the windows it is about to close, and detaches any
+ * transient chrome (so both survive undisposed), disposes whatever scaffold
+ * remains under `root`, and closes every open window except one that hosts
+ * `root` — or, with `includeWindow`, only the windows it accepts, so a leaf in
+ * an excluded window is not parked — rebuilds the container tree from `state`,
+ * re-homes the parked leaves via
  * [`moveComponent`](/api/core/classes/Component#movecomponent), then applies
  * geometry. Because the container tree is rebuilt from scratch each call,
  * switching A→B→A reproduces A exactly with no residue from B. A panel ID with
@@ -716,15 +754,16 @@ function applyWindow(node: WindowNode, parked: Map<string, Component>, factory: 
  * @param root - The container to restore the arrangement onto.
  * @param state - A {@link LayoutState} from {@link serializeLayout}.
  * @param factory - Resolves each panel ID to its (same-instance) content.
+ * @param options - Limits which open windows are parked and closed.
  *
  * @category Layouts
  */
-export function restoreLayout(root: Component, state: LayoutState, factory: LayoutFactory): void {
+export function restoreLayout(root: Component, state: LayoutState, factory: LayoutFactory, options?: LayoutSerializationOptions): void {
     // Float-plane windows only. A window that *hosts* `root` (the layout lives
     // inside it, e.g. a Dock in a Window) must be left alone — tearing it down
     // would close the very window the restored layout renders into. Only
     // torn-off floats are parked and rebuilt from `state.windows`.
-    const liveWindows = Window.getOpenWindows().filter(win => !hostsComponent(win, root));
+    const liveWindows = floatWindows(root, options);
 
     // 1. PARK every factory-known leaf (detach, never destroy).
     const parked = parkLeaves(root, liveWindows, factory);

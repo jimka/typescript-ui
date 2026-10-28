@@ -10,7 +10,7 @@ import { Tab, TabOptions, TabCloseController } from "~/layout/Tab.js";
 import { Split } from "~/layout/Split.js";
 import { DockRegion } from "~/layout/DockRegion.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
-import { serializeLayout, restoreLayout, LayoutState } from "~/layout/LayoutSerialization.js";
+import { serializeLayout, restoreLayout, LayoutState, LayoutNode, WindowNode, LayoutSerializationOptions } from "~/layout/LayoutSerialization.js";
 import { DragManager, DragEventDetail, tabDragRegistry } from "~/overlay/DragManager.js";
 import { DropZoneOverlay } from "~/overlay/DropZoneOverlay.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
@@ -735,19 +735,26 @@ class Dock extends Container<DockOptions> {
     }
 
     /**
-     * Captures the current arrangement (delegates to
-     * [`serializeLayout`](/api/layout/functions/serializeLayout)).
+     * Captures the current arrangement: the tiled tree and the floats that hold
+     * one of this dock's panels. Other open windows, including another dock's
+     * floats and the window this dock lives in, are not recorded. Delegates to
+     * [`serializeLayout`](/api/layout/functions/serializeLayout).
      *
      * @returns The captured layout state.
      */
     getLayoutState(): LayoutState {
-        return serializeLayout(this.getRootRegion());
+        return serializeLayout(this.getRootRegion(), this.ownWindowOptions());
     }
 
     /**
      * Restores a captured arrangement, sourcing leaves from the panel registry
      * (delegates to [`restoreLayout`](/api/layout/functions/restoreLayout)), then
      * schedules a sweep to wire the fresh regions restore created.
+     *
+     * Only this dock's own floats are closed and rebuilt; every other open
+     * window is left alone. A saved window that names none of this dock's
+     * registered panels — a state saved before the dock scoped its windows can
+     * hold one — is skipped without a warning.
      *
      * The region ledger is cleared first: `restoreLayout` tears the region tree
      * down and rebuilds it, so every surviving panel lands in a fresh region
@@ -762,7 +769,14 @@ class Dock extends Container<DockOptions> {
      */
     setLayoutState(state: LayoutState): this {
         this._frameRegion.clear();
-        restoreLayout(this.getRootRegion(), state, (id: string) => this.resolvePanel(id));
+
+        restoreLayout(
+            this.getRootRegion(),
+            this.withoutForeignWindows(state),
+            (id: string) => this.resolvePanel(id),
+            this.ownWindowOptions(),
+        );
+
         this.scheduleSweep();
 
         return this;
@@ -1346,6 +1360,66 @@ class Dock extends Container<DockOptions> {
         return AbstractWindow.getOpenWindows().filter(win =>
             !this.windowContains(win, this) &&
             frames.some(frame => this.windowContains(win, frame)));
+    }
+
+    /**
+     * The serialization options that scope a save or restore to this dock's
+     * own floats: `includeWindow` accepts only the windows
+     * {@link floatWindowsHoldingFrames} lists. The list is taken once, when
+     * this is called, so a restore asks about the windows as they were before
+     * it parked or closed anything.
+     *
+     * @returns Options accepting only this dock's floats.
+     */
+    private ownWindowOptions(): LayoutSerializationOptions {
+        const own = new Set<AbstractWindow>(this.floatWindowsHoldingFrames());
+
+        return { includeWindow: (win: AbstractWindow): boolean => own.has(win) };
+    }
+
+    /**
+     * A copy of `state` whose `windows` keeps only the nodes naming at least
+     * one panel registered in this dock. A state saved before the dock scoped
+     * its windows can record application windows and other docks' floats; a
+     * restore skips those silently. `state` itself is not mutated.
+     *
+     * @param state - The state about to be restored.
+     * @returns The state with foreign window nodes dropped.
+     */
+    private withoutForeignWindows(state: LayoutState): LayoutState {
+        return { ...state, windows: state.windows.filter(node => this.isOwnWindowNode(node)) };
+    }
+
+    /**
+     * Whether a saved window node names a panel registered in this dock. Its
+     * `content` tree decides when present, as it does on restore; otherwise the
+     * legacy `panelId`. Reads the registry only, never {@link resolvePanel},
+     * which would build frames and start lazy content.
+     *
+     * @param node - The saved window node.
+     * @returns `true` when the node names one of this dock's panels.
+     */
+    private isOwnWindowNode(node: WindowNode): boolean {
+        if (node.content) {
+            return this.holdsRegisteredPanel(node.content);
+        }
+
+        return node.panelId !== undefined && this._panels.has(node.panelId);
+    }
+
+    /**
+     * Whether a layout node, or any node beneath it, names a panel registered
+     * in this dock.
+     *
+     * @param node - The layout node to search.
+     * @returns `true` when a registered panel id is found.
+     */
+    private holdsRegisteredPanel(node: LayoutNode): boolean {
+        if (node.kind === "panel") {
+            return this._panels.has(node.panelId);
+        }
+
+        return node.children.some(child => this.holdsRegisteredPanel(child));
     }
 
     /**
