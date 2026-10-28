@@ -29,7 +29,7 @@ const state = serializeLayout(workspace);
 localStorage.setItem('workspace', JSON.stringify(state));
 ```
 
-`Split` sizes are captured as **ratios** (summing to ~1.0), not pixels, so a layout saved on one screen restores at the same proportions on a differently-sized one. `Window` rects stay absolute pixels and are clamped back into the viewport on restore. Open windows are gathered from [`Window.getOpenWindows()`](/api/overlay/classes/Window) into a `windows` array on the state, orthogonal to the in-root tree (windows mount on the document, not inside `root`).
+`Split` sizes are captured as **ratios** (summing to ~1.0), not pixels, so a layout saved on one screen restores at the same proportions on a differently-sized one. `Window` rects stay absolute pixels and are clamped back into the viewport on restore. Open windows are gathered from [`Window.getOpenWindows()`](/api/overlay/classes/Window) into a `windows` array on the state, orthogonal to the in-root tree (windows mount on the document, not inside `root`). A window that hosts `root` itself — a `Dock` placed in a `Window`, say — is the layout's container rather than one of its floats, so it is not recorded, and restore leaves it open.
 
 ## Restoring — runtime layout switching
 
@@ -59,7 +59,7 @@ The factory **must return the same `Component` instance** for a given `panelId` 
 `restoreLayout` performs one pass:
 
 1. **Park** every factory-known leaf — detach it from the live tree (and open windows) without destroying it, preserving its state, and detach any transient chrome (e.g. a Dock empty-state placeholder) the same way.
-2. **Dispose** all `Split`/`Tab` containers under `root` and close all open windows.
+2. **Dispose** all `Split`/`Tab` containers under `root` and close every open window except one that hosts `root`.
 3. **Rebuild** the container tree from the target state.
 4. **Re-home** the parked leaves into it via [`moveComponent`](/api/core/classes/Component).
 5. **Apply geometry** — pane ratios, active tab, window rects. A floating window rebuilt here takes no focus when the restore shows it, so a restore never takes focus from what the user is working in. After that it answers raises like a float torn off a tab strip (`autoFocus` on).

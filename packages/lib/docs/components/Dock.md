@@ -73,6 +73,7 @@ Once a panel is docked, the gestures come from the composed primitives:
 | Drop a tab on a region **edge** | Split the region, new pane gets the panel (or `splitPanel` from code) | [`DockRegion`](/api/layout/classes/DockRegion) |
 | Drop a tab on a region **centre** | Dock as a tab | [`DockRegion`](/api/layout/classes/DockRegion) |
 | Drop a tab into another window | Dock there, and that window is raised and activated | [`DockRegion`](/api/layout/classes/DockRegion) |
+| Drag the gutter between two panes, or double-click its chevron | Resize the panes, or collapse / expand one; fires `splitresize` | [`Split`](/api/layout/classes/Split) |
 | Hold a dragged tab over a backgrounded window | Spring-loads it to the front after a short dwell so you can aim, without moving keyboard focus | [`DockRegion`](/api/layout/classes/DockRegion) |
 | Drag a window's last tab back out | Re-dock, and the now-empty float closes itself | [`Tab`](/api/layout/classes/Tab) + `Dock` |
 
@@ -120,18 +121,35 @@ A few rules make the events predictable:
 - **A relocation within one host fires `move`, not `attach`/`detach`.** Dragging a panel to a *different region* in the same host — between `Split` panes, or onto another `Tab` region's bar — keeps its host, so it fires a single `move` whose `window` names that (unchanged) host. A host change fires `detach`+`attach` and **never** `move`; a first appearance fires `attach` alone. A pure **reorder within one strip** repositions a panel within the same place, not to a different one, so it fires **nothing**. `move` carries no region detail (regions are anonymous) — a listener reacting to a layout change re-reads `getLayoutState()`. A `setLayoutState` restore rebuilds the tree but is not a user relocation, so it stays silent for `move`.
 - **`focus` is one nullable event — there is no `blur`.** The previously-focused panel is whatever the last non-null `focus` named; the `null` payload covers "nothing focused now" (e.g. the last panel closed). Re-activating the already-focused panel is silent. A non-null `focus` payload's `window` names the focused panel's current host. When the focused panel closes, focus moves to the tab its region re-selects; if that region is empty, to the active panel of the same float, then of the tiled tree, then of the frontmost float. `null` means no panel is left anywhere.
 - **Re-dock and layout restore fire `focus` too.** A re-dock and a `setLayoutState` both genuinely change the active panel, so each fires a `focus` for the now-active panel in addition to the host-transition events.
-- **`Split` generates no events.** It is structural — it holds regions, never a panel directly.
+- **`Split` generates no per-panel events.** It is structural — it holds regions, never a panel directly. Resizing a split from its gutter fires the dock-wide [`splitresize`](#splitresize) instead.
 
-Alongside the per-panel events, one **dock-wide aggregate** event fires as the dock crosses between holding panels and holding none:
+Alongside the per-panel events, two **dock-wide** events report changes that are not about one panel:
 
 | Event | Fires when | Payload |
 | --- | --- | --- |
 | `emptychange` | the dock transitions between empty (no live panel anywhere) and populated | `{ empty }` |
+| `splitresize` | the user resized a split from its gutter — a drag ended — or one of its panes collapsed or expanded | `{ window, ratios, collapsed, panels }` |
 
 `emptychange` carries a [`DockEmptyEvent`](/api/overlay/interfaces/DockEmptyEvent) (`{ empty: boolean }`) and fires **once per real transition**, not once per panel — so a consumer can toggle a start page without re-deriving the aggregate on every panel event. It fires whether or not an `emptyContent` placeholder is supplied.
 
 ```typescript
 dock.on('emptychange', ({ empty }) => startPage.setVisible(empty));
+```
+
+### `splitresize`
+
+`splitresize` carries a [`DockSplitEvent`](/api/overlay/interfaces/DockSplitEvent) describing one split after the change: `window` (the host, as in the panel events), `ratios` (each pane's share, as `getLayoutState()` records it; a collapsed pane keeps the share it takes back when expanded), `collapsed` (one flag per pane), and `panels` (the ids of the open panels inside each pane, nested splits included). Regions are anonymous, so `panels` is how a listener tells which split changed; read each inner array as a set, since its order is not the tab strip's.
+
+It fires once when a gutter drag ends — not while the pointer is still moving, and not after an outline drag is cancelled with `Escape`. A press on a gutter that does not move it still fires, with the same ratios. It also fires once each time a pane collapses or expands, whatever caused it: the gutter's chevron, keyboard navigation that opens a collapsed pane to reach a control inside it, or code calling the region's `Split`. It covers splits in the main dock and in floats, nested or not, from the frame after the split was made.
+
+It does not fire when the dock or a float is resized, which rescales the panes and keeps their ratios (except a pane pinned with *Fix … pane width*, which keeps its pixels, so the ratios drift silently). Nor does it fire for changes to the region tree — an edge drop, `splitPanel` with or without `ratio`, a pane pruned when its last panel leaves, `setLayoutState` (the panes it restores collapsed included) — which fire the panel events instead.
+
+```typescript
+dock.on('splitresize', () => localStorage.setItem('layout', JSON.stringify(dock.getLayoutState())));
+dock.on('splitresize', ({ panels, ratios }) => {
+    const side = panels.findIndex(ids => ids.includes('explorer'));
+    if (side >= 0) prefs.explorerShare = ratios[side];
+});
 ```
 
 ### `exception`
@@ -214,6 +232,8 @@ dock.setLayoutState(JSON.parse(localStorage.getItem('layout')!));
 ```
 
 Transport (localStorage, a server, debounced auto-save) is the application's concern — `Dock` only returns and accepts the state object. A panel whose `id` is no longer registered is skipped on restore, so dropping a feature degrades gracefully.
+
+To save as the user works, listen to `splitresize`, `attach`, `detach`, `move`, `close` and `focus`. Some changes the state records have no event of their own — among them a tab reordered within its strip, a float window moved or resized, and the ratio drift of a pinned pane when its window is resized — so save on unload as well.
 
 ## See also
 

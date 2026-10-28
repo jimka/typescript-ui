@@ -131,11 +131,26 @@ page resets to empty.
   pane's share of a new split, or of one laid out since it last changed.
   See
   [Programmatic control](/components/Dock#programmatic-control).
+- **`Dock` emits `splitresize`** when the user resizes a split from its
+  gutter — once when a drag ends — and each time one of its panes collapses
+  or expands, in the main dock or a float. Its
+  [`DockSplitEvent`](/api/overlay/interfaces/DockSplitEvent) payload carries
+  the host window, the pane ratios and collapsed flags, and the panel ids in
+  each pane, so an application can save its layout without polling
+  `getLayoutState()`. Window resizes and changes to the region tree do not
+  fire it. See [Dock: `splitresize`](/components/Dock#splitresize).
 
 ## Fixed
 
 ### Layouts
 
+- **`serializeLayout` (and so `Dock.getLayoutState`) no longer records the
+  window that hosts the layout as a float.** For a `Dock` placed in a
+  `Window`, the state carried that window as a float whose content was the
+  dock itself, so a restore warned `no component for panelId`, or, when the
+  host's content was a split or tab group, opened a second copy of the window
+  and moved panels into it. `restoreLayout` already left the host window
+  alone; saving now matches it.
 - **The spring-loaded raise during a tab drag no longer moves keyboard focus**
   into the window it raises (`DockRegion`, and a `Tab` strip in a window).
   Since 0.11.0 it did, which left focus in a window the drag only passed over.
@@ -145,3 +160,20 @@ page resets to empty.
   the dropped tab, where the drop put it.
 - **`FocusReveal` opening a hidden tab no longer focuses the tab button**
   before it focuses its target.
+
+### Overlay
+
+- **A lazy `Dock` panel that is closed while loading and added again stays
+  open when the first load fails.** With `disposeOnClose: false`, the closed
+  panel's frame is kept, and its content factory goes on running. When that
+  factory rejected after the panel had been re-added, the dock closed the
+  re-added panel and emitted `close` and `exception` for it. Only the load
+  of the panel that is open now reports to the dock. No consumer action is
+  needed.
+- **Disposing a `Dock` while one of its floats stays open lets go of the
+  dock.** The float window, the tab groups and splits in it and its lazy
+  panels' frames kept the listeners the dock had given them, so the float
+  held the disposed dock for as long as it stayed open, and a lazy panel's
+  factory settling after the dispose called into the destroyed dock. The
+  dock now removes every listener it gave them when it is disposed. No
+  consumer action is needed.

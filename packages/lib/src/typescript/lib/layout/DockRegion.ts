@@ -43,6 +43,10 @@ export class DockRegion {
     private _overlay: DropZoneOverlay = new DropZoneOverlay();
     private _teardown: () => void;
     private _onStructureChanged: (() => void) | null;
+    // Each stack newStack created and has not pruned, with the "empty" listener
+    // it gave the stack's Tab; destroy() releases them. The Tab is kept, not
+    // read back off the stack, because a restore can replace a stack's manager.
+    private _stacks: Map<Component, { tab: Tab; onEmpty: () => void }> = new Map<Component, { tab: Tab; onEmpty: () => void }>();
     // Pending spring-loaded raise of the host window while a tab dwells over this
     // region; cleared the moment the cursor leaves, drops, or the region tears down.
     private _raiseTimer: ReturnType<typeof setTimeout> | null = null;
@@ -130,11 +134,25 @@ export class DockRegion {
      * its own and its highlight's stylesheet rules must be reclaimed too — the
      * `onDragLeave` / `onDrop` calls to `_overlay.detach()` above are mid-drag
      * hides of a still-live overlay and stay as they are.
+     *
+     * Also releases the `"empty"` listener on every stack this region created
+     * and has not pruned, and drops the `onStructureChanged` callback. A stack
+     * can outlive this region — it sits beside the split region, or in a float
+     * window that outlives a `Dock` — and the listener, through the callback,
+     * would otherwise keep the tree owner reachable. A stack left behind is
+     * still pruned by its owner's own `"empty"` handling, as `Dock` does.
      */
     destroy(): void {
         this._teardown();
         this._overlay.dispose();
         this.clearSpringRaise();
+
+        for (const { tab, onEmpty } of this._stacks.values()) {
+            tab.off("empty", onEmpty);
+        }
+
+        this._stacks.clear();
+        this._onStructureChanged = null;
     }
 
     /**
@@ -666,8 +684,8 @@ export class DockRegion {
      * Subscribes the stack's `empty` event to {@link pruneEmptyStack} so that
      * once its last tab leaves (torn off, re-docked, or closed) the now-empty
      * stack removes itself and any single-pane `Split` it leaves behind
-     * collapses. The closure captures only `stack`; both are dropped together
-     * when the stack is pruned, so no explicit `off` is needed.
+     * collapses. The listener is kept in `_stacks` so {@link destroy} can
+     * release it.
      *
      * @returns A `Container` carrying a reorderable `Tab` layout manager.
      */
@@ -675,7 +693,13 @@ export class DockRegion {
         const stack = new Container({ layoutManager: new Tab({ reorderable: true, compact: true }) });
         const tab   = stack.getLayoutManager() as Tab;
 
-        tab.on("empty", () => this.pruneEmptyStack(stack));
+        // Per-stack listener: the named const carries the stack the "empty"
+        // event's payload does not (ARCHITECTURE: a listener is a named
+        // reference, never an inline arrow).
+        const onEmpty: () => void = (): void => { this.pruneEmptyStack(stack); };
+
+        tab.on("empty", onEmpty);
+        this._stacks.set(stack, { tab, onEmpty });
 
         return stack;
     }
@@ -706,6 +730,10 @@ export class DockRegion {
         }
 
         parent.removeComponent(stack);
+        // Forgotten, not released: this runs inside the Tab's "empty" dispatch,
+        // which iterates its live listener list, so an `off` here would skip
+        // the next listener. The detached stack goes away with its listener.
+        this._stacks.delete(stack);
         this.collapseIfSinglePaneSplit(parent);
     }
 

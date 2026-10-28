@@ -1314,6 +1314,7 @@ class MiscPanel extends Panel {
             dock.on("close",  e => console.log(`[Dock] close: ${e.id}`));
             dock.on("emptychange", e => console.log(`[Dock] emptychange: empty=${e.empty}`));
             dock.on("exception", e => console.log(`[Dock] exception: ${e.id} — ${String(e.error)}`));
+            dock.on("splitresize", e => console.log(`[Dock] splitresize: ${e.panels.map(ids => ids.join("+")).join(" | ")} ratios=${e.ratios.map(r => r.toFixed(2)).join("/")} collapsed=${e.collapsed.join(",")} -> ${e.window ? (e.window.getTitle() || "(window)") : "(tiled)"}`));
 
             // The panel the split buttons below split beside.
             let focusedPanelId: string | null = null;
