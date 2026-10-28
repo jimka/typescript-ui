@@ -21,7 +21,7 @@ import { Split } from '~/layout/Split';
 import { Window } from '~/overlay/Window';
 import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { TabWindow } from '~/overlay/TabWindow';
-import type { LayoutNode, LayoutState } from '~/layout/LayoutSerialization';
+import type { LayoutNode, LayoutState, PanelNode, TabNode } from '~/layout/LayoutSerialization';
 import { Tooltip } from '~/overlay/Tooltip';
 import { DOM, type Handle } from '~/core/DOM';
 import { Button } from '~/component/button/Button';
@@ -2109,6 +2109,60 @@ describe('Dock layout state of a dock inside a window', () => {
     });
 });
 
+/**
+ * Tears panel `id` off its source strip the way the `TO1` test does — a
+ * `TabWindow` when `bare` is false, a bare `Window` mini-dock when true —
+ * then flushes the sweep.
+ *
+ * @returns The window the tear-off opened.
+ */
+function tearOff(dock: Dock, id: string, bare: boolean): AbstractWindow {
+    const frame = frameOf(dock, id);
+    const tab = priv(dock).regionForFrame(frame).getLayoutManager() as Tab;
+    const entryId = sourceTabEntryId(tab, frame);
+
+    (tab as unknown as {
+        detachTabToWindow(id: string, content: Component, clientX: number, clientY: number, forceBare: boolean): void;
+    }).detachTabToWindow(entryId, frame, 100, 100, bare);
+
+    flush();
+
+    return AbstractWindow.getOpenWindows().at(-1)!;
+}
+
+/** The open window `node` lies in, or `null` when it is in none. */
+function openWindowHolding(node: Component): AbstractWindow | null {
+    const open = AbstractWindow.getOpenWindows();
+
+    for (let n: Component | null = node; n; n = n.getParentComponent()) {
+        if (open.includes(n as AbstractWindow)) {
+            return n as AbstractWindow;
+        }
+    }
+
+    return null;
+}
+
+/** Every panel id a layout node names, in tree order. */
+function panelIdsOf(node: LayoutNode | undefined): string[] {
+    if (!node) {
+        return [];
+    }
+
+    if (node.kind === 'panel') {
+        return [node.panelId];
+    }
+
+    return node.children.flatMap(panelIdsOf);
+}
+
+/** The geometry fields of a hand-built window node, as in the `L1` restore test. */
+const WINDOW_GEOMETRY = {
+    rect:        { x: 10, y: 10, width: 300, height: 200 },
+    state:       'normal' as const,
+    restoreRect: null,
+};
+
 describe("Dock layout state covers only the dock's own windows", () => {
     /** A shown application window titled `Settings`, holding component `settings-form`. */
     function settingsWindow(): { win: Window; form: Component } {
@@ -2119,27 +2173,6 @@ describe("Dock layout state covers only the dock's own windows", () => {
         win.show();
 
         return { win, form };
-    }
-
-    /**
-     * Tears panel `id` off its source strip the way the `TO1` test does — a
-     * `TabWindow` when `bare` is false, a bare `Window` mini-dock when true —
-     * then flushes the sweep.
-     *
-     * @returns The window the tear-off opened.
-     */
-    function tearOff(dock: Dock, id: string, bare: boolean): AbstractWindow {
-        const frame = frameOf(dock, id);
-        const tab = priv(dock).regionForFrame(frame).getLayoutManager() as Tab;
-        const entryId = sourceTabEntryId(tab, frame);
-
-        (tab as unknown as {
-            detachTabToWindow(id: string, content: Component, clientX: number, clientY: number, forceBare: boolean): void;
-        }).detachTabToWindow(entryId, frame, 100, 100, bare);
-
-        flush();
-
-        return AbstractWindow.getOpenWindows().at(-1)!;
     }
 
     /** A `mountDock()` dock with tiled panels `a` and `b` (or the given ids), laid out and flushed. */
@@ -2153,43 +2186,10 @@ describe("Dock layout state covers only the dock's own windows", () => {
         return dock;
     }
 
-    /** The open window `node` lies in, or `null` when it is in none. */
-    function openWindowHolding(node: Component): AbstractWindow | null {
-        const open = AbstractWindow.getOpenWindows();
-
-        for (let n: Component | null = node; n; n = n.getParentComponent()) {
-            if (open.includes(n as AbstractWindow)) {
-                return n as AbstractWindow;
-            }
-        }
-
-        return null;
-    }
-
-    /** Every panel id a layout node names, in tree order. */
-    function panelIdsOf(node: LayoutNode | undefined): string[] {
-        if (!node) {
-            return [];
-        }
-
-        if (node.kind === 'panel') {
-            return [node.panelId];
-        }
-
-        return node.children.flatMap(panelIdsOf);
-    }
-
     /** The panel ids each window node of `state` names. */
     function windowPanelIds(state: LayoutState): string[][] {
         return state.windows.map(w => w.panelId !== undefined && !w.content ? [w.panelId] : panelIdsOf(w.content));
     }
-
-    /** The geometry fields of a hand-built window node, as in the `L1` restore test. */
-    const WINDOW_GEOMETRY = {
-        rect:        { x: 10, y: 10, width: 300, height: 200 },
-        state:       'normal' as const,
-        restoreRect: null,
-    };
 
     it('OW1: a save records no application window', () => {
         installTestDOM(CONFIG);
@@ -2369,6 +2369,385 @@ describe("Dock layout state covers only the dock's own windows", () => {
         expect(warn).toHaveBeenCalledTimes(1);
         expect(warn).toHaveBeenCalledWith(expect.stringContaining('"gone"'));
         expect(openWindowHolding(frameOf(dock, 'a'))).not.toBeNull();
+    });
+});
+
+describe('Dock layout state of a strip-mode tear-off', () => {
+    /**
+     * A `mountDock()` dock holding a panel for each id, laid out and flushed.
+     * An id listed in `lazy` is added with `addLazyPanel`, the rest with
+     * `addPanel`.
+     */
+    function panelDock(ids: string[], lazy: string[] = []): Dock {
+        const dock = mountDock();
+
+        ids.forEach(id => {
+            if (lazy.includes(id)) {
+                dock.addLazyPanel({ id, title: id.toUpperCase(), content: () => new Component({}) });
+            } else {
+                dock.addPanel({ id, title: id.toUpperCase(), content: new Component({}) });
+            }
+        });
+
+        dock.doLayout();
+        flush();
+
+        return dock;
+    }
+
+    /**
+     * Tears `ids[0]` off into a strip-mode `TabWindow`, moves each further id's
+     * frame into that window's strip, selects `activeId`, and flushes the sweep.
+     *
+     * @returns The strip window.
+     */
+    function stripWindow(dock: Dock, ids: string[], activeId: string): TabWindow {
+        const tw = tearOff(dock, ids[0], false) as TabWindow;
+
+        ids.slice(1).forEach(id => {
+            const frame = frameOf(dock, id);
+            const source = priv(dock).regionForFrame(frame).getLayoutManager() as Tab;
+
+            tw.createTab(frame);
+            source.removeMovedTab(frame);
+        });
+
+        (tw.getLayoutManager() as Tab).setActiveContent(frameOf(dock, activeId));
+        priv(dock).scheduleSweep();
+        flush();
+        tw.doLayout();
+
+        return tw;
+    }
+
+    /** The panel ids of a tab node's children, in order. */
+    function childIds(node: LayoutNode | undefined): string[] {
+        return (node as TabNode).children.map(child => (child as PanelNode).panelId);
+    }
+
+    /** Records every `close`, `attach` and `detach` the dock emits from now on. */
+    function recordEvents(dock: Dock): Array<{ type: string; id: string; window: AbstractWindow | null }> {
+        const log: Array<{ type: string; id: string; window: AbstractWindow | null }> = [];
+
+        (['close', 'attach', 'detach'] as const).forEach(type => {
+            dock.on(type, e => log.push({ type, id: e.id, window: e.window }));
+        });
+
+        return log;
+    }
+
+    /** The A–D dock with `a`, `b`, `c` in a strip window, `c` active, and `d` tiled. */
+    function abcStrip(): { dock: Dock; tw: TabWindow } {
+        const dock = panelDock(['a', 'b', 'c', 'd']);
+        const tw = stripWindow(dock, ['a', 'b', 'c'], 'c');
+
+        return { dock, tw };
+    }
+
+    it('DS1: a save records the strip window with every tab and the active one', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const { dock } = abcStrip();
+        const { windows } = dock.getLayoutState();
+
+        expect(windows).toHaveLength(1);
+        expect(windows[0].windowMode).toBe('strip');
+        expect(childIds(windows[0].content)).toEqual(['a', 'b', 'c']);
+        expect((windows[0].content as TabNode).activeIndex).toBe(2);
+    });
+
+    it('DS2: a restore rebuilds one strip window holding every tab, and closes no panel', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const { dock, tw } = abcStrip();
+        const frames = ['a', 'b', 'c', 'd'].map(id => frameOf(dock, id));
+        const events = recordEvents(dock);
+
+        dock.setLayoutState(dock.getLayoutState());
+        flush();
+
+        const restored = openWindowHolding(frames[0]);
+
+        expect(AbstractWindow.getOpenWindows()).not.toContain(tw);
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(restored).not.toBe(tw);
+        expect(openWindowHolding(frames[1])).toBe(restored);
+        expect(openWindowHolding(frames[2])).toBe(restored);
+        expect(restored!.getComponents()).toEqual(frames.slice(0, 3));
+        expect((restored!.getLayoutManager() as Tab).getActiveContent()).toBe(frames[2]);
+        expect(dock.getRootRegion().getComponents()).toContain(frames[3]);
+        expect(events.filter(e => e.type === 'close')).toEqual([]);
+
+        ['a', 'b', 'c'].forEach(id => {
+            expect(events).toContainEqual({ type: 'attach', id, window: restored });
+        });
+
+        ['a', 'b', 'c', 'd'].forEach((id, i) => {
+            expect(frameOf(dock, id)).toBe(frames[i]);
+            expect(frames[i].isDestroyed()).toBe(false);
+        });
+    });
+
+    it('DS3: the dock adopts the restored strip window', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const { dock } = abcStrip();
+
+        dock.setTabOptions({ maxWidth: 250 });
+        dock.setLayoutState(dock.getLayoutState());
+        flush();
+
+        const restored = openWindowHolding(frameOf(dock, 'a'))!;
+        const tab = restored.getLayoutManager() as Tab;
+
+        expect(priv(dock)._floatSubscribed.has(restored)).toBe(true);
+        expect(tab.getMaxWidth()).toBe(250);
+        expect(dock.focusPanel('b')).toBe(true);
+        expect(tab.getActiveContent()).toBe(frameOf(dock, 'b'));
+        expect(restored.isAutoFocus()).toBe(true);
+    });
+
+    it('DS4: a second save matches the first', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const { dock } = abcStrip();
+        const before = dock.getLayoutState().windows[0];
+
+        dock.setLayoutState(dock.getLayoutState());
+        flush();
+
+        const after = dock.getLayoutState().windows;
+
+        expect(after).toHaveLength(1);
+        expect(after[0].windowMode).toBe(before.windowMode);
+        expect(childIds(after[0].content)).toEqual(childIds(before.content));
+        expect((after[0].content as TabNode).activeIndex).toBe((before.content as TabNode).activeIndex);
+    });
+
+    it('DS5: a lazy panel in the strip window is saved as one panel and kept by a restore', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const dock = panelDock(['a', 'b', 'c', 'd'], ['b']);
+
+        stripWindow(dock, ['a', 'b', 'c'], 'c');
+
+        const frame = frameOf(dock, 'b');
+        const state = dock.getLayoutState();
+        const content = state.windows[0].content as TabNode;
+
+        expect(content.children.map(child => child.kind)).toEqual(['panel', 'panel', 'panel']);
+        expect(childIds(content)).toEqual(['a', 'b', 'c']);
+
+        dock.setLayoutState(state);
+        flush();
+
+        const restored = openWindowHolding(frame);
+
+        expect(frameOf(dock, 'b')).toBe(frame);
+        expect(frame.isDestroyed()).toBe(false);
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(frame.getParentComponent()).toBe(restored);
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('DS6: a one-tab strip window comes back as a strip window', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = panelDock(['a', 'b', 'c', 'd']);
+        const tw = stripWindow(dock, ['a'], 'a');
+
+        dock.setLayoutState(dock.getLayoutState());
+        flush();
+
+        const restored = openWindowHolding(frameOf(dock, 'a'));
+
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(restored).not.toBe(tw);
+    });
+
+    it('DS7: a tiled lazy panel survives a restore', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const dock = panelDock(['a', 'b'], ['b']);
+        const frame = frameOf(dock, 'b');
+        const state = dock.getLayoutState();
+
+        expect((state.root as TabNode).children.map(child => child.kind)).toEqual(['panel', 'panel']);
+        expect(childIds(state.root)).toEqual(['a', 'b']);
+
+        dock.setLayoutState(state);
+        flush();
+
+        expect(frame.isDestroyed()).toBe(false);
+        expect(frameOf(dock, 'b')).toBe(frame);
+        expect(rootTab(dock).indexOfContent(frame)).not.toBe(-1);
+        expect(warn).not.toHaveBeenCalled();
+    });
+
+    it('DS8: a bare float holding a split restores beside a strip window', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = panelDock(['a', 'b', 'c', 'd', 'e']);
+        const tabOf = (...ids: string[]): TabNode => ({
+            kind:        'tab',
+            children:    ids.map(panelId => ({ kind: 'panel', panelId })),
+            activeIndex: 0,
+        });
+
+        dock.setLayoutState({
+            version: 1,
+            root:    tabOf('e'),
+            windows: [{
+                kind:    'window',
+                content: {
+                    kind:        'split',
+                    orientation: 'horizontal',
+                    children:    [tabOf('a'), tabOf('b')],
+                    ratios:      [0.5, 0.5],
+                    collapsed:   [false, false],
+                },
+                header:  'Bare',
+                ...WINDOW_GEOMETRY,
+            }, {
+                kind:       'window',
+                windowMode: 'strip',
+                content:    { ...tabOf('c', 'd'), activeIndex: 1 },
+                header:     'Strip',
+                ...WINDOW_GEOMETRY,
+            }],
+        });
+
+        flush();
+
+        const bare = openWindowHolding(frameOf(dock, 'a'));
+        const strip = openWindowHolding(frameOf(dock, 'c'));
+
+        expect(bare).toBeInstanceOf(Window);
+        expect(bare).not.toBeInstanceOf(TabWindow);
+        expect(openWindowHolding(frameOf(dock, 'b'))).toBe(bare);
+        expect(strip).toBeInstanceOf(TabWindow);
+        expect(strip!.getComponents()).toEqual([frameOf(dock, 'c'), frameOf(dock, 'd')]);
+        expect((strip!.getLayoutManager() as Tab).getActiveContent()).toBe(frameOf(dock, 'd'));
+    });
+
+    it('DS9: a Shift-torn mini-dock is saved without windowMode and comes back as a header window', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const dock = panelDock(['a', 'b']);
+        const torn = tearOff(dock, 'a', true);
+
+        expect(torn).not.toBeInstanceOf(TabWindow);
+
+        const state = dock.getLayoutState();
+
+        expect(state.windows).toHaveLength(1);
+        expect('windowMode' in state.windows[0]).toBe(false);
+
+        dock.setLayoutState(state);
+        flush();
+
+        const restored = openWindowHolding(frameOf(dock, 'a'));
+
+        expect(restored).toBeInstanceOf(Window);
+        expect(restored).not.toBeInstanceOf(TabWindow);
+        expect(restored).not.toBe(torn);
+    });
+
+    /** A rect that differs from every default and from `WINDOW_GEOMETRY.rect`. */
+    const MOVED_RECT = { x: 123, y: 77, width: 410, height: 290 };
+
+    it('DS10: a restored strip window keeps its saved rect', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const { dock, tw } = abcStrip();
+
+        tw.applyRect(MOVED_RECT);
+        tw.doLayout();
+
+        const state = dock.getLayoutState();
+
+        expect(state.windows[0].rect).toEqual(MOVED_RECT);
+
+        dock.setLayoutState(state);
+        flush();
+
+        const restored = openWindowHolding(frameOf(dock, 'a'))!;
+
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(restored).not.toBe(tw);
+        expect(restored.getRect()).toEqual(MOVED_RECT);
+        expect(restored.getWindowState()).toBe('normal');
+        expect(restored.getRestoreRect()).toBeNull();
+    });
+
+    it('DS11: a maximized strip window comes back maximized with its saved restoreRect', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const { dock, tw } = abcStrip();
+
+        tw.applyRect(MOVED_RECT);
+        tw.doLayout();
+        tw.setWindowState('maximized');
+        flush();
+
+        const state = dock.getLayoutState();
+
+        expect(state.windows[0].state).toBe('maximized');
+        expect(state.windows[0].restoreRect).toEqual(MOVED_RECT);
+
+        dock.setLayoutState(state);
+        flush();
+
+        const restored = openWindowHolding(frameOf(dock, 'a'))!;
+
+        expect(restored).toBeInstanceOf(TabWindow);
+        expect(restored.getWindowState()).toBe('maximized');
+        expect(restored.getRestoreRect()).toEqual(MOVED_RECT);
+    });
+
+    it('DS12: an old state naming one tab of a live strip window leaves the other tabs registered and unplaced', () => {
+        installTestDOM(CONFIG);
+        captureRaf();
+
+        const { dock, tw } = abcStrip();
+        const root = dock.getLayoutState().root;
+        const events = recordEvents(dock);
+
+        // The shape a save wrote before strip windows were recorded: the
+        // first tab only, as a bare window.
+        dock.setLayoutState({
+            version: 1,
+            root,
+            windows: [{ kind: 'window', content: { kind: 'panel', panelId: 'a' }, header: 'C', ...WINDOW_GEOMETRY }],
+        });
+
+        flush();
+
+        expect(events.filter(e => e.type === 'close')).toEqual([]);
+
+        ['b', 'c'].forEach(id => {
+            const frame = frameOf(dock, id);
+
+            expect(frame.isDestroyed()).toBe(false);
+            expect(frame.getParentComponent()).toBeNull();
+            expect(events.filter(e => e.id === id)).toEqual([
+                { type: 'detach', id, window: tw },
+                { type: 'attach', id, window: null },
+            ]);
+        });
     });
 });
 

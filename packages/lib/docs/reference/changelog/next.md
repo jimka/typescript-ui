@@ -120,6 +120,11 @@ page resets to empty.
   it accepts. Without it both cover every open window except a host of the
   layout, as before. See
   [Limiting the windows](/layouts/LayoutSerialization#limiting-the-windows).
+- **`LayoutSerializationOptions.isPanel`** marks a component whose own layout
+  is a `Split` or `Tab` as one panel: `serializeLayout` records it as one
+  `panel` node, and `restoreLayout` parks and re-homes it whole instead of
+  descending into it. See
+  [Panels that use a Split or Tab layout](/layouts/LayoutSerialization#panels-that-use-a-split-or-tab-layout).
 
 ### Overlay
 
@@ -174,6 +179,15 @@ page resets to empty.
   could shrink to under a pixel. The ratios are now held until the split
   first has a size. A later `applyPaneRatios` also replaces a `paneSizes`
   option that has not been applied yet.
+- **`serializeLayout` records every tab of a `TabWindow`, and `restoreLayout`
+  rebuilds it as one.** A tab-strip window was saved with its first tab only,
+  as a plain window, and a restore left its other tabs inside the closed
+  window. It is now saved as a `WindowNode` with `windowMode: "strip"` and a
+  `tab` node of every tab, and restores as a `TabWindow` with the same active
+  tab. A state saved before this release has no `windowMode` and holds only
+  the first tab: it restores as a `Window` holding that tab, and the other
+  tabs cannot be recovered from it, so save the layout again. See
+  [Tab-strip windows](/layouts/LayoutSerialization#tab-strip-windows).
 
 ### Overlay
 
@@ -200,4 +214,17 @@ page resets to empty.
   open. A saved window that names none of the dock's registered panels, which
   a state saved before this release can contain, is skipped without a
   warning. No consumer action is needed. See
+  [Saving and restoring](/components/Dock#saving-and-restoring).
+- **`Dock.setLayoutState` keeps every panel of a tab-strip tear-off, and
+  every lazy panel.** A tear-off holding several tabs came back as a header
+  window with its first tab only; the dock emitted `close` for the others and
+  lost them. A panel added with `addLazyPanel` was destroyed by a restore,
+  which warned `restoreLayout: no component for panelId` for two unknown ids.
+  Both now come back where they were saved. A state saved before this release
+  still lacks those panels and cannot bring them back; save the layout again
+  to record them. Restoring such a state while a tab-strip window holds
+  several tabs no longer closes the tabs it does not name: they stay
+  registered but are not placed, and the dock emits `detach` and then
+  `attach` with `window: null` for each, as it already did for the panel of
+  a header window the state does not name. See
   [Saving and restoring](/components/Dock#saving-and-restoring).

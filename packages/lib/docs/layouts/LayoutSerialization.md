@@ -12,13 +12,13 @@ serializeLayout(root) ──► LayoutState ──► (persist / hold in memory)
 
 ## Panel identity
 
-A panel that participates in serialization is keyed by a **stable string ID** read from its layout-constraint `name` — the same channel `Tab` already uses for tab labels:
+A panel that participates in serialization is keyed by its component id — [`Component.getId()`](/api/core/classes/Component#getid) — and that id is the `panelId` the state records and the factory receives. Give every serialized panel a stable id, through the `id` option or `setId`:
 
 ```typescript
-container.addComponent(inspectorPanel, { name: 'inspector' });
+const inspectorPanel = new Component({ id: 'inspector' });
 ```
 
-`Component.getId()` is a per-instance UUID that changes every run, so a panel **without** a constraint `name` cannot round-trip; serialization falls back to the UUID with a one-time console warning. Always assign a stable `name` to serialized panels.
+A component given no id gets a per-instance UUID that changes every run, so its layout round-trips within a session but not across a reload. Serialization does not warn about it. A layout-constraint `name` plays no part in identity.
 
 ## Capturing a layout
 
@@ -60,7 +60,7 @@ The factory **must return the same `Component` instance** for a given `panelId` 
 
 1. **Park** every factory-known leaf — detach it from the live tree and from the open windows that are closed in step 2 (a leaf in a window `includeWindow` excludes is not parked) without destroying it, preserving its state, and detach any transient chrome (e.g. a Dock empty-state placeholder) the same way.
 2. **Dispose** all `Split`/`Tab` containers under `root` and close every open window except one that hosts `root` (only those `includeWindow` accepts, when given).
-3. **Rebuild** the container tree from the target state.
+3. **Rebuild** the container tree and the windows from the target state — a `"strip"` window as a [`TabWindow`](/api/overlay/classes/TabWindow).
 4. **Re-home** the parked leaves into it via [`moveComponent`](/api/core/classes/Component).
 5. **Apply geometry** — pane ratios, active tab, window rects. A floating window rebuilt here takes no focus when the restore shows it, so a restore never takes focus from what the user is working in. After that it answers raises like a float torn off a tab strip (`autoFocus` on).
 
@@ -79,6 +79,23 @@ restoreLayout(root, state, factory, { includeWindow: w => mine.has(w) });
 
 A leaf in an excluded window is not parked; when the state names it, the restore moves it into place through the factory, and otherwise it stays where it is. [`Dock`](/components/Dock) uses this to save and restore only its own floats.
 
+## Tab-strip windows
+
+A [`TabWindow`](/api/overlay/classes/TabWindow) — the window a tab tear-off opens by default — is saved with `windowMode: "strip"` and a `content` `tab` node holding every tab in strip order with the active one, and is restored as a `TabWindow`. Its title is its active tab's label, so the restore does not read the saved `header`. A window saved without `windowMode`, which includes every state saved before this release, restores as a header `Window`.
+
+## Panels that use a Split or Tab layout
+
+The walk descends into every `Split`- or `Tab`-managed component and records its children rather than the component. A panel whose own content is laid out by a `Split` or `Tab` needs `{ isPanel }` to be kept whole: return `true` for it, and the save records it as one `panel` node, and the restore parks and re-homes it like any other leaf. Pass the same options to both calls:
+
+```typescript
+const opts = { isPanel: (c: Component) => myPanels.has(c) };
+
+const state = serializeLayout(root, opts);
+restoreLayout(root, state, factory, opts);
+```
+
+`isPanel` is asked only about a `Split`- or `Tab`-managed component the walk reaches, never about `root` or a window. [`Dock`](/components/Dock) uses it for its panels, a lazy one of which carries a `Tab` of its own.
+
 ## The state schema
 
 ```typescript
@@ -94,9 +111,9 @@ interface LayoutState {
 | [`PanelNode`](/api/layout/interfaces/PanelNode) | A content leaf's `panelId`, plus its captured `glyph`, `tooltip`, `closeable`, `disposeOnClose`, `italic` and `modified` constraints (all optional; a pre-0.4.1 state carries only `glyph`, and one written before `italic`/`modified` existed carries neither). |
 | [`SplitNode`](/api/layout/interfaces/SplitNode) | `direction`, child nodes, per-pane `ratios` (sum ~1.0) and `collapsed` flags. |
 | [`TabNode`](/api/layout/interfaces/TabNode) | Child nodes in tab-strip order — the order the user sees, which a drag reorder makes differ from the container's own child order — plus the `activeIndex`. |
-| [`WindowNode`](/api/layout/interfaces/WindowNode) | A `content` region tree (the float's internal split/tab arrangement), title `header`, `rect`, `state`, and the normal-state `restoreRect`. The legacy single-panel `panelId` is still read on restore as a fallback. |
+| [`WindowNode`](/api/layout/interfaces/WindowNode) | A `content` region tree (the float's internal split/tab arrangement), title `header`, `rect`, `state`, the normal-state `restoreRect`, and `windowMode` — `"strip"` for a `TabWindow`, omitted for a header `Window`. The legacy single-panel `panelId` is still read on restore as a fallback. |
 
-Containers the serializer does not recognise (`Border`, `HBox`, `VBox`, `Accordion`, `Grid`, …) are treated as **opaque leaves**: the walk does not descend into them, and each is recorded as a single panel keyed by its own constraint `name`. Only `Split`/`Tab`/`Window` topologies are captured.
+Containers the serializer does not recognise (`Border`, `HBox`, `VBox`, `Accordion`, `Grid`, …) are treated as **opaque leaves**: the walk does not descend into them, and each is recorded as a single panel keyed by its own id. Only `Split`/`Tab`/`Window` topologies are captured. A `Split`- or `Tab`-managed component is descended into unless `isPanel` marks it as a panel.
 
 ## Notes
 

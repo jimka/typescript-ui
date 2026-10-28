@@ -737,13 +737,14 @@ class Dock extends Container<DockOptions> {
     /**
      * Captures the current arrangement: the tiled tree and the floats that hold
      * one of this dock's panels. Other open windows, including another dock's
-     * floats and the window this dock lives in, are not recorded. Delegates to
+     * floats and the window this dock lives in, are not recorded. A tab-strip
+     * tear-off is recorded with every tab. Delegates to
      * [`serializeLayout`](/api/layout/functions/serializeLayout).
      *
      * @returns The captured layout state.
      */
     getLayoutState(): LayoutState {
-        return serializeLayout(this.getRootRegion(), this.ownWindowOptions());
+        return serializeLayout(this.getRootRegion(), this.layoutOptions());
     }
 
     /**
@@ -754,7 +755,8 @@ class Dock extends Container<DockOptions> {
      * Only this dock's own floats are closed and rebuilt; every other open
      * window is left alone. A saved window that names none of this dock's
      * registered panels — a state saved before the dock scoped its windows can
-     * hold one — is skipped without a warning.
+     * hold one — is skipped without a warning. A tab-strip tear-off is rebuilt
+     * as a tab-strip window with all its tabs.
      *
      * The region ledger is cleared first: `restoreLayout` tears the region tree
      * down and rebuilds it, so every surviving panel lands in a fresh region
@@ -774,7 +776,7 @@ class Dock extends Container<DockOptions> {
             this.getRootRegion(),
             this.withoutForeignWindows(state),
             (id: string) => this.resolvePanel(id),
-            this.ownWindowOptions(),
+            this.layoutOptions(),
         );
 
         this.scheduleSweep();
@@ -1363,18 +1365,22 @@ class Dock extends Container<DockOptions> {
     }
 
     /**
-     * The serialization options that scope a save or restore to this dock's
-     * own floats: `includeWindow` accepts only the windows
-     * {@link floatWindowsHoldingFrames} lists. The list is taken once, when
-     * this is called, so a restore asks about the windows as they were before
-     * it parked or closed anything.
+     * The serialization options for a save or restore of this dock:
+     * `includeWindow` accepts only the windows {@link floatWindowsHoldingFrames}
+     * lists, taken once when this is called, so a restore asks about the
+     * windows as they were before it parked or closed anything; `isPanel` marks
+     * this dock's identity frames as panels, so a lazy panel's frame — which
+     * carries its own `Tab` — is saved and parked whole.
      *
-     * @returns Options accepting only this dock's floats.
+     * @returns Options scoped to this dock's floats and frames.
      */
-    private ownWindowOptions(): LayoutSerializationOptions {
+    private layoutOptions(): LayoutSerializationOptions {
         const own = new Set<AbstractWindow>(this.floatWindowsHoldingFrames());
 
-        return { includeWindow: (win: AbstractWindow): boolean => own.has(win) };
+        return {
+            includeWindow: (win: AbstractWindow): boolean => own.has(win),
+            isPanel:       (component: Component): boolean => this._frames.get(component.getId()) === component,
+        };
     }
 
     /**

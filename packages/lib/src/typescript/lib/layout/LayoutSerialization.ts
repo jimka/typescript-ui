@@ -3,8 +3,10 @@
 import { Component } from "~/core/Component.js";
 import { Window } from "~/overlay/Window.js";
 import { AbstractWindow } from "~/overlay/AbstractWindow.js";
+import { TabWindow } from "~/overlay/TabWindow.js";
 import { Split } from "~/layout/Split.js";
 import { Tab } from "~/layout/Tab.js";
+import type { TabDetachWindowMode } from "~/layout/Tab.js";
 import { LayoutConstraints } from "~/layout/LayoutConstraints.js";
 import { normalizeRatios } from "~/layout/LayoutSizes.js";
 import type { AxisOrientation } from "~/primitive/Axis.js";
@@ -109,9 +111,11 @@ export interface TabNode {
 }
 
 /**
- * A floating [`Window`](/api/overlay/classes/Window) and the arrangement it hosts.
+ * A floating window — a [`Window`](/api/overlay/classes/Window) or a
+ * [`TabWindow`](/api/overlay/classes/TabWindow) — and the arrangement it hosts.
  * A dockable float carries a full region {@link content} tree (splits, tab
  * order, active tab); a legacy single-panel float carried only {@link panelId}.
+ * A tab-strip window records `windowMode: "strip"`.
  *
  * @category Layouts
  */
@@ -128,7 +132,22 @@ export interface WindowNode {
      * newly-serialized state; a single-frame float records a one-tab `tab` node.
      */
     content?:    LayoutNode;
-    /** Title-bar text — captured so the restored window reproduces its title. */
+    /**
+     * The kind of window: `"strip"` for a
+     * [`TabWindow`](/api/overlay/classes/TabWindow), whose tab strip is the
+     * window, or `"bare"` for a header [`Window`](/api/overlay/classes/Window).
+     * Omitted means `"bare"`. A save writes `"strip"`, with a `content` `tab`
+     * node holding one child per tab, and omits the field for any other
+     * window. A restore opens any other `"strip"` `content`, or a legacy
+     * {@link panelId}, as the window's one tab. Uses the
+     * {@link TabDetachWindowMode} vocabulary.
+     */
+    windowMode?: TabDetachWindowMode;
+    /**
+     * Title-bar text — captured so a restored `"bare"` window reproduces its
+     * title. A `"strip"` window's title is its active tab's label, so a
+     * restore does not read this.
+     */
     header:      string;
     rect:        SerializedRect;
     state:       "normal" | "minimized" | "maximized";
@@ -181,6 +200,14 @@ export interface LayoutSerializationOptions {
      * `root`.
      */
     includeWindow?: (win: AbstractWindow) => boolean;
+    /**
+     * Marks a component whose layout manager is a `Split` or `Tab` as a single
+     * panel. Return `true` to record it as one `panel` node keyed by its id and
+     * to park and re-home it whole on restore. Asked before the walk descends
+     * into such a component; never asked about `root` or about a window.
+     * Default: every `Split`- or `Tab`-managed component is an arrangement.
+     */
+    isPanel?: (component: Component) => boolean;
 }
 
 /**
@@ -196,6 +223,33 @@ function managerKind(component: Component): string {
     const manager = component.getLayoutManager();
 
     return manager ? manager.getClassName().replace(/^_/, "") : "";
+}
+
+/**
+ * Whether the walk descends into a component as an arrangement: it carries a
+ * `Split` or `Tab` manager and the caller's `isPanel` does not mark it as a
+ * single panel. `isPanel` is asked only about such a component.
+ *
+ * @param component - A child the walk has reached.
+ * @param options - The caller's options, if any.
+ * @returns `true` to descend into it, `false` to treat it as a leaf.
+ */
+function isArrangement(component: Component, options: LayoutSerializationOptions | undefined): boolean {
+    const kind = managerKind(component);
+
+    return (kind === "Split" || kind === "Tab") && options?.isPanel?.(component) !== true;
+}
+
+/**
+ * Builds the node for a child the walk has reached: its arrangement node when
+ * it is one (see {@link isArrangement}), else a panel leaf.
+ *
+ * @param child - The child to capture.
+ * @param options - The caller's options, if any.
+ * @returns The child's node.
+ */
+function childNodeFor(child: Component, options: LayoutSerializationOptions | undefined): LayoutNode {
+    return isArrangement(child, options) ? nodeFor(child, options) : panelNodeFor(child);
 }
 
 /**
@@ -232,14 +286,6 @@ function serializableChildIndices(component: Component): number[] {
     return indices;
 }
 
-/**
- * Builds the arrangement node for a component, descending into recognised
- * `Split`/`Tab` containers and recording everything else as an opaque panel
- * leaf.
- *
- * @param component - The component to capture.
- * @returns The arrangement node.
- */
 /**
  * The children of a container that participate in serialization: every child
  * except those marked `transient` in their layout constraints. A transient child
@@ -292,7 +338,18 @@ function tabOrderedChildren(component: Component, manager: Tab): Component[] {
     return ranked.map(entry => entry.child);
 }
 
-function nodeFor(component: Component): LayoutNode {
+/**
+ * Builds the arrangement node for a component: a `Split`- or `Tab`-managed one
+ * is recorded with its children, each captured through {@link childNodeFor} so
+ * that a child the caller's `isPanel` marks is a panel leaf; any other
+ * component is an opaque panel leaf. `isPanel` is not asked about the
+ * component itself.
+ *
+ * @param component - The component to capture.
+ * @param options - The caller's options, if any.
+ * @returns The arrangement node.
+ */
+function nodeFor(component: Component, options: LayoutSerializationOptions | undefined): LayoutNode {
     const kind = managerKind(component);
 
     if (kind === "Split") {
@@ -308,7 +365,7 @@ function nodeFor(component: Component): LayoutNode {
         return {
             kind:        "split",
             orientation: manager.getOrientation() === "vertical" ? "vertical" : "horizontal",
-            children:    kept.map(index => nodeFor(live[index])),
+            children:    kept.map(index => childNodeFor(live[index], options)),
             ratios:      normalizeRatios(kept.map(index => ratios[index] ?? 0), kept.length),
             collapsed:   kept.map(index => manager.isPaneCollapsed(index)),
         };
@@ -328,11 +385,22 @@ function nodeFor(component: Component): LayoutNode {
 
         return {
             kind:        "tab",
-            children:    kept.map(nodeFor),
+            children:    kept.map(child => childNodeFor(child, options)),
             activeIndex: Math.max(0, index),
         };
     }
 
+    return panelNodeFor(component);
+}
+
+/**
+ * Builds the panel leaf for a component: its id plus the presentation and
+ * close constraints its parent holds for it.
+ *
+ * @param component - The leaf to capture.
+ * @returns The panel node.
+ */
+function panelNodeFor(component: Component): PanelNode {
     const constraints = component.getParentComponent()?.getLayoutConstraints(component);
     const glyph       = constraints?.glyph ?? null;
     const tooltip     = constraints?.tooltip ?? null;
@@ -362,21 +430,37 @@ function windowContentOf(win: AbstractWindow): Component | null {
 
 /**
  * Builds a {@link WindowNode} for an open window, or `null` when it has no
- * content panel to key on.
+ * content panel to key on. A `TabWindow` is captured whole, as a `"strip"`
+ * node whose `content` is a `tab` node of every tab.
  *
  * @param win - The open window to capture.
+ * @param options - The caller's options, if any.
  * @returns The window node, or `null`.
  */
-function windowNodeFor(win: AbstractWindow): WindowNode | null {
+function windowNodeFor(win: AbstractWindow, options: LayoutSerializationOptions | undefined): WindowNode | null {
     const content = windowContentOf(win);
 
     if (!content) {
         return null;
     }
 
+    // A TabWindow's own manager is a Tab whose children are its tabs, so the
+    // window itself goes through nodeFor's Tab branch.
+    if (win instanceof TabWindow) {
+        return {
+            kind:        "window",
+            windowMode:  "strip",
+            content:     nodeFor(win, options),
+            header:      win.getTitle(),
+            rect:        win.getRect(),
+            state:       win.getWindowState(),
+            restoreRect: win.getRestoreRect(),
+        };
+    }
+
     return {
         kind:        "window",
-        content:     nodeFor(content),
+        content:     childNodeFor(content, options),
         header:      win.getTitle(),
         rect:        win.getRect(),
         state:       win.getWindowState(),
@@ -392,7 +476,8 @@ function windowNodeFor(win: AbstractWindow): WindowNode | null {
  * rebuilds on restore.
  *
  * @param root - The container whose arrangement to capture.
- * @param options - Limits which open windows are captured.
+ * @param options - Limits which open windows are captured, and marks
+ *   `Split`- or `Tab`-managed panels.
  * @returns The captured {@link LayoutState}.
  *
  * @category Layouts
@@ -401,20 +486,21 @@ export function serializeLayout(root: Component, options?: LayoutSerializationOp
     // A window that hosts `root` is the layout's container, not one of its
     // floats: restoreLayout leaves it alone, so it is not recorded either.
     const windows = floatWindows(root, options)
-        .map(windowNodeFor)
+        .map(win => windowNodeFor(win, options))
         .filter((node): node is WindowNode => node !== null);
 
     return {
         version: 1,
-        root:    nodeFor(root),
+        root:    nodeFor(root, options),
         windows,
     };
 }
 
 /**
  * Collects the opaque leaf panels reachable from a component, descending
- * through recognised `Split`/`Tab` containers and treating everything else as a
- * leaf. The component itself is never added — only its descendants — because
+ * through every child that is an arrangement (see {@link isArrangement}: a
+ * `Split`/`Tab` container the caller's `isPanel` does not mark) and treating
+ * every other child as a leaf. The component itself is never added — only its descendants — because
  * the caller passes the rebuild-target container, which is never a parkable
  * leaf.
  *
@@ -424,8 +510,9 @@ export function serializeLayout(root: Component, options?: LayoutSerializationOp
  *
  * @param component - The container whose descendants to walk.
  * @param into - The accumulator the leaves are pushed onto.
+ * @param options - The caller's options, if any.
  */
-function collectLeaves(component: Component, into: Component[]): void {
+function collectLeaves(component: Component, into: Component[], options: LayoutSerializationOptions | undefined): void {
     // Snapshot before mutating: a transient child's own removeComponent below
     // splices the live array getComponents() returns, so walking it directly
     // would shift a later sibling into the removed slot and skip it (see
@@ -443,10 +530,8 @@ function collectLeaves(component: Component, into: Component[]): void {
             return;
         }
 
-        const kind = managerKind(child);
-
-        if (kind === "Split" || kind === "Tab") {
-            collectLeaves(child, into);
+        if (isArrangement(child, options)) {
+            collectLeaves(child, into, options);
         } else {
             into.push(child);
         }
@@ -460,19 +545,28 @@ function collectLeaves(component: Component, into: Component[]): void {
  * misbehaving factory degrades to "state not preserved" rather than re-homing a
  * stale orphan. Parked leaves are **not** destroyed — they carry panel state.
  * Transient children are also detached along the way (see collectLeaves) so
- * the caller's teardown sweep cannot reach them either.
+ * the caller's teardown sweep cannot reach them either. Every tab of a
+ * `TabWindow` is parked.
  *
  * @param root - The container subtree to park leaves from.
  * @param liveWindows - The open windows whose content to park.
  * @param factory - Resolves a panel ID to its owning component.
+ * @param options - The caller's options, if any.
  * @returns The parked leaves, keyed by panel ID.
  */
-function parkLeaves(root: Component, liveWindows: AbstractWindow[], factory: LayoutFactory): Map<string, Component> {
+function parkLeaves(root: Component, liveWindows: AbstractWindow[], factory: LayoutFactory, options: LayoutSerializationOptions | undefined): Map<string, Component> {
     const leaves: Component[] = [];
 
-    collectLeaves(root, leaves);
+    collectLeaves(root, leaves, options);
 
     liveWindows.forEach(win => {
+        // A TabWindow's children are its tabs.
+        if (win instanceof TabWindow) {
+            collectLeaves(win, leaves, options);
+
+            return;
+        }
+
         const content = windowContentOf(win);
 
         if (!content) {
@@ -482,10 +576,8 @@ function parkLeaves(root: Component, liveWindows: AbstractWindow[], factory: Lay
         // A dockable float's content is a region tree: park every leaf in it so
         // each frame's state survives the restore. A legacy single-frame float
         // has a bare content component — park it directly.
-        const kind = managerKind(content);
-
-        if (kind === "Split" || kind === "Tab") {
-            collectLeaves(content, leaves);
+        if (isArrangement(content, options)) {
+            collectLeaves(content, leaves, options);
         } else {
             leaves.push(content);
         }
@@ -648,50 +740,69 @@ function populateContainer(container: Component, node: SplitNode | TabNode, park
         const tab = new Tab({ reorderable: true, compact: true });
         container.setLayoutManager(tab);
 
-        // The saved index counts every saved child, but the strip holds only
-        // the children that were placed: each one skipped ahead of the active
-        // child moves it one slot left. This is the re-alignment the split
-        // branch gives its ratios through `placed`.
-        let activeIndex = node.activeIndex;
-
-        node.children.forEach((child, index) => {
-            const built = materializeNode(child, parked, factory);
-
-            if (built) {
-                container.moveComponent(built, undefined, constraintsFor(child));
-
-                // Register the tab entry eagerly. The eager-add path otherwise
-                // defers tab creation to the next `doLayout`, so `_tabs` would be
-                // empty when `setActiveTabIndex` clamps below; `createTab` is the
-                // public synchronous registration (doLayout's catch-up then skips
-                // the now-owned child).
-                tab.createTab(built);
-            } else if (index < node.activeIndex) {
-                activeIndex--;
-            }
-        });
-
-        tab.setActiveTabIndex(activeIndex);
+        fillTab(container, tab, node, parked, factory);
     }
 }
 
 /**
- * Rebuilds a floating window from a {@link WindowNode}: a fresh window with the
+ * Re-homes a tab node's resolvable children into `container` as tabs of
+ * `tab`, in order, then selects the saved active tab. Children whose factory
+ * yields nothing are dropped, and the active index is re-aligned to the tabs
+ * that actually landed.
+ *
+ * @param container - The component `tab` lays out: a rebuilt tab group, or a
+ *   `TabWindow` itself.
+ * @param tab - The `Tab` manager to register the tabs with.
+ * @param node - The tab node describing the tabs.
+ * @param parked - The parked leaves to re-home from.
+ * @param factory - Supplies any leaf not already parked.
+ * @returns How many tabs were placed.
+ */
+function fillTab(container: Component, tab: Tab, node: TabNode, parked: Map<string, Component>, factory: LayoutFactory): number {
+    // The saved index counts every saved child, but the strip holds only
+    // the children that were placed: each one skipped ahead of the active
+    // child moves it one slot left. This is the re-alignment the split
+    // branch of populateContainer gives its ratios through `placed`.
+    let activeIndex = node.activeIndex;
+    let placed = 0;
+
+    node.children.forEach((child, index) => {
+        const built = materializeNode(child, parked, factory);
+
+        if (built) {
+            container.moveComponent(built, undefined, constraintsFor(child));
+
+            // Register the tab entry eagerly. The eager-add path otherwise
+            // defers tab creation to the next `doLayout`, so `_tabs` would be
+            // empty when `setActiveTabIndex` clamps below; `createTab` is the
+            // public synchronous registration (doLayout's catch-up then skips
+            // the now-owned child).
+            tab.createTab(built);
+            placed++;
+        } else if (index < node.activeIndex) {
+            activeIndex--;
+        }
+    });
+
+    tab.setActiveTabIndex(activeIndex);
+
+    return placed;
+}
+
+/**
+ * Rebuilds a floating window from a {@link WindowNode}: a `"strip"` node
+ * rebuilds a `TabWindow` holding its tabs, any other node a `Window` with the
  * recorded title and its materialized content — a region tree for a dockable
- * float, or the single parked/factory panel for a legacy single-frame float. The
- * normal-state geometry is applied first (from `restoreRect` when the saved
- * state isn't normal), then `setWindowState` re-caches it and animates to the
- * saved state.
+ * float, or the single parked/factory panel for a legacy single-frame float.
+ * Then shows it at the saved geometry and state. Nothing opens when no
+ * content could be materialized.
  *
  * @param node - The window node to rebuild.
  * @param parked - The parked leaves to re-home from.
  * @param factory - Supplies any content panel not parked.
  */
 function applyWindow(node: WindowNode, parked: Map<string, Component>, factory: LayoutFactory): void {
-    // New states carry a `content` tree; a legacy state carries only `panelId`,
-    // restored as a single-panel node through the same materialize path.
-    const contentNode: LayoutNode | null = node.content
-        ?? (node.panelId ? { kind: "panel", panelId: node.panelId, glyph: null } : null);
+    const contentNode = windowContentNode(node);
 
     if (!contentNode) {
         console.warn("restoreLayout: window node has neither content nor panelId; skipping.");
@@ -699,21 +810,94 @@ function applyWindow(node: WindowNode, parked: Map<string, Component>, factory: 
         return;
     }
 
+    const win = node.windowMode === "strip"
+        ? buildStripWindow(contentNode, parked, factory)
+        : buildBareWindow(node.header, contentNode, parked, factory);
+
+    if (win) {
+        showRestoredWindow(win, node);
+    }
+}
+
+/**
+ * The node describing a saved window's content. New states carry a `content`
+ * tree; a legacy state carries only `panelId`, restored as a single-panel node
+ * through the same materialize path.
+ *
+ * @param node - The saved window node.
+ * @returns The content node, or `null` when the node has neither field.
+ */
+function windowContentNode(node: WindowNode): LayoutNode | null {
+    return node.content
+        ?? (node.panelId ? { kind: "panel", panelId: node.panelId, glyph: null } : null);
+}
+
+/**
+ * Builds a header `Window` titled `header` around the materialized content,
+ * not yet shown.
+ *
+ * @param header - The title to give the window.
+ * @param contentNode - The node describing the window's content.
+ * @param parked - The parked leaves to re-home from.
+ * @param factory - Supplies any content panel not parked.
+ * @returns The window, or `null` when the content could not be materialized.
+ */
+function buildBareWindow(header: string, contentNode: LayoutNode, parked: Map<string, Component>, factory: LayoutFactory): AbstractWindow | null {
     const content = materializeNode(contentNode, parked, factory);
 
     if (!content) {
-        return;
+        return null;
     }
 
     // A restored layout shows its windows from code, not from a gesture on any
     // one of them, so the show takes no focus.
-    const win = new Window(node.header, { autoFocus: false });
+    const win = new Window(header, { autoFocus: false });
 
     // Carry the leaf's glyph (single-panel content only) through the re-home, as
     // for any split/tab pane. The frame's id is its own identity channel, so a
     // later restore still discovers and parks it through the normal leaf path.
     win.moveComponent(content, undefined, constraintsFor(contentNode));
 
+    return win;
+}
+
+/**
+ * Builds a `TabWindow` holding the saved tabs, not yet shown. A `tab` content
+ * node gives one tab per child; any other node becomes the window's one tab.
+ *
+ * @param contentNode - The node describing the window's tabs.
+ * @param parked - The parked leaves to re-home from.
+ * @param factory - Supplies any content panel not parked.
+ * @returns The window, or `null` (after disposing it) when no tab was placed.
+ */
+function buildStripWindow(contentNode: LayoutNode, parked: Map<string, Component>, factory: LayoutFactory): AbstractWindow | null {
+    const tabs: TabNode = contentNode.kind === "tab"
+        ? contentNode
+        : { kind: "tab", children: [contentNode], activeIndex: 0 };
+
+    // A restored layout shows its windows from code, so the show takes no
+    // focus. Not shown yet, so filling it (and selecting its active tab)
+    // moves no focus either.
+    const win = new TabWindow({ autoFocus: false });
+
+    if (fillTab(win, win.getLayoutManager() as Tab, tabs, parked, factory) === 0) {
+        win.dispose();
+
+        return null;
+    }
+
+    return win;
+}
+
+/**
+ * Shows a rebuilt window at its saved geometry and state. The normal-state
+ * geometry is applied first (from `restoreRect` when the saved state isn't
+ * normal), then `setWindowState` re-caches it and animates to the saved state.
+ *
+ * @param win - The rebuilt, not yet shown window.
+ * @param node - The saved window node.
+ */
+function showRestoredWindow(win: AbstractWindow, node: WindowNode): void {
     // Apply the geometry BEFORE show(): show() runs the first doLayout, which
     // sizes the content to the window's body — so the rect must already be the
     // final one or the content lays out against the default size and only
@@ -754,7 +938,8 @@ function applyWindow(node: WindowNode, parked: Map<string, Component>, factory: 
  * @param root - The container to restore the arrangement onto.
  * @param state - A {@link LayoutState} from {@link serializeLayout}.
  * @param factory - Resolves each panel ID to its (same-instance) content.
- * @param options - Limits which open windows are parked and closed.
+ * @param options - Limits which open windows are parked and closed, and marks
+ *   `Split`- or `Tab`-managed panels.
  *
  * @category Layouts
  */
@@ -766,7 +951,7 @@ export function restoreLayout(root: Component, state: LayoutState, factory: Layo
     const liveWindows = floatWindows(root, options);
 
     // 1. PARK every factory-known leaf (detach, never destroy).
-    const parked = parkLeaves(root, liveWindows, factory);
+    const parked = parkLeaves(root, liveWindows, factory, options);
 
     // 2. TEAR DOWN the live arrangement: close the float windows (content already
     //    parked) and clear the root container subtree wholesale.
