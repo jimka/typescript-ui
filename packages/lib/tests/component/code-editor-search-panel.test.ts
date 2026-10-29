@@ -18,14 +18,8 @@ const CONFIG = {
 beforeEach(() => installTestDOM(CONFIG));
 afterEach(() => DOM.reset());
 
-// MUST be the first describe block in this file, and its one test the only
-// place a real dispatched DOM event (`.click()`) is used. `Event`'s
-// window-level base listener is installed once per event type for the
-// lifetime of this module and never re-armed on the fresh `DOM.sink` a later
-// `installTestDOM()` call swaps in (see tests/component/MenuButton.test.ts's
-// file-level comment, and tests/component/diagram/DiagramView.test.ts's
-// identical constraint). Every other test in this file drives the panel's
-// own registered handler fields directly instead.
+// The one test in this file that dispatches a real DOM event (`.click()`).
+// Every other test drives the panel's own registered handler fields directly.
 describe('CodeEditorSearchPanel — real DOM-dispatched button wiring', () => {
     it('each action button emits the matching "command", and each toggle emits "querychange" with its new flag', () => {
         const panel = new CodeEditorSearchPanel();

@@ -46,6 +46,7 @@ interface Rect {
 interface TableGeometry {
     columnWidths   : number[];
     availableWidth : number;
+    targetWidth    : number;
     header         : { band: Rect; columnHeight: number; parentRowHeight: number; filterRowHeight: number } | null;
     footer         : { band: Rect; columnHeight: number } | null;
     bodyVisible    : boolean;
@@ -74,6 +75,12 @@ interface TableGeometry {
  * so a column never squeezes below the floor its type or spec implies.
  */
 class Table extends LayoutManager {
+
+    // The width the columns were last laid out against — the larger of the
+    // available width and a drag-grown target — or `null` before the first
+    // committed pass. The proportional rescale runs only when this changes, so
+    // a pass that no resize precedes keeps the widths it finds.
+    private _fittedTargetWidth: number | null = null;
 
     /**
      * Constructs a Table layout manager.
@@ -107,6 +114,9 @@ class Table extends LayoutManager {
         if (name != "Table" && name != "TreeTable") {
             throw new Error("Container must be a Table or TreeTable.");
         }
+
+        // A new container's widths were never laid out by this manager.
+        this._fittedTargetWidth = null;
 
         super.attach(container);
 
@@ -175,10 +185,21 @@ class Table extends LayoutManager {
 
         let columnWidths = container.getColumnWidths();
 
+        // A browser lays the table out again after its first frame with nothing
+        // resized, so rescaling on every pass would squeeze declared or sampled
+        // widths the table cannot fit toward the available width one pass
+        // after they were set. Only a changed target rescales; otherwise the
+        // widths stand, and any space they leave — a column just hidden, a
+        // reset or a drag that left the total short — still goes to the
+        // unbounded flexible columns.
+        const targetChanged = this._fittedTargetWidth !== null && Math.abs(targetWidth - this._fittedTargetWidth) > 0.5;
+
         if (columnWidths.length !== columnCount) {
             columnWidths = this.initializeWidths(container, columns, availableWidth);
-        } else {
+        } else if (targetChanged) {
             columnWidths = this.rescaleWidths(container, columns, columnWidths, targetWidth);
+        } else {
+            columnWidths = this.absorbSlackIntoGreedy(columns, columnWidths, targetWidth);
         }
 
         const headerComponent = container.getHeader();
@@ -263,6 +284,7 @@ class Table extends LayoutManager {
         return {
             columnWidths,
             availableWidth,
+            targetWidth,
             header,
             footer,
             bodyVisible,
@@ -292,6 +314,7 @@ class Table extends LayoutManager {
         }
 
         container.setColumnWidths(geometry.columnWidths);
+        this._fittedTargetWidth = geometry.targetWidth;
 
         const header = container.getHeader();
         const footer = container.getFooter();

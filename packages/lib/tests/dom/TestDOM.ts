@@ -1703,6 +1703,17 @@ export class ModelledDOMSource implements DOMSource {
         return '';
     }
 
+    /**
+     * Resolves any handle the table indexed under `id`, attached or not.
+     *
+     * @remarks Diverges from production, where `document.getElementById` finds
+     * only elements in the document. Mid-render, `Component.getElement()`
+     * falls back to this lookup before the new element is cached, so offline
+     * it resolves the detached element and a style-rule write committed from
+     * inside `render()` lands — where in a browser it stays queued. A test
+     * pinning such a write mocks this method to return `null` (see the
+     * `Markdown` max-measure cases).
+     */
     getElementById(id: string): Handle | null {
         return _table.byId(id);
     }
@@ -1882,6 +1893,14 @@ function makeRect(x: number, y: number, width: number, height: number): Rect {
  * Installs a fresh {@link RecordingDOMSink} and a {@link ModelledDOMSource} for
  * the given config, returning the sink so a test can assert recorded writes.
  * Pair with `DOM.reset()` in teardown.
+ *
+ * Installing replaces the sink, so every module tied to the previous DOM
+ * environment forgets it: queued layouts and post-layout callbacks, event
+ * listener registrations, theme subscriptions not made `persistent`,
+ * registered revealers and layers, the focus services' enabled state, and
+ * Tooltip's and Menu's class-wide state. Build the components a test uses
+ * after this call: one built before it silently loses those registrations,
+ * so a "was not called" assertion about it can pass without proving anything.
  *
  * @param config - The modelled-source configuration.
  * @returns The installed recording sink.

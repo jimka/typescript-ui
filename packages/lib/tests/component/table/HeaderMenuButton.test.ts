@@ -41,11 +41,9 @@ function layOut<T extends Component>(component: T): T {
     return component;
 }
 
-// MUST be the first describe block in this file, and its one test the only
-// place a real dispatched click DOM event is used. `Event`'s window-level
-// base listener is armed once per event TYPE for the lifetime of this
-// module and is not re-armed by a later `installTestDOM()` call — see
-// CollapseButton.test.ts, which documents the same constraint.
+// The one test in this file that dispatches a real click DOM event; the
+// window-level base listener arms against its own sink (Event forgets its
+// registrations on every sink swap).
 describe('TableHeader menu button activation (real DOM dispatch)', () => {
     afterEach(() => DOM.reset());
 

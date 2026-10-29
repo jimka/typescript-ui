@@ -2,12 +2,7 @@
 
 // Coverage for DiagnosticsOverlay's "Show style audit" button
 // (plans/in-progress/diagnostics-overlay-style-audit-window.md, Expected
-// Behaviour row 19). Kept in its own file, and this its only test, so a real
-// `.click()` stays reliable: `Event`'s window-level base listener is
-// installed once per event type and never re-armed on a later
-// `installTestDOM()` swap — see MenuButton.test.ts's header comment and
-// DiagnosticsOverlay.rowTooltips.test.ts's own single-purpose-file shape for
-// the same constraint. A native click here — rather than reaching in for the
+// Behaviour row 19). A native click here — rather than reaching in for the
 // bound handler field — is what actually proves the button's `on("action",
 // …)` wiring fires `StyleAuditOverlay.open()`, not just that the handler
 // works when called directly.

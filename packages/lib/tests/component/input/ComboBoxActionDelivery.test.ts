@@ -7,17 +7,11 @@
 // `change` the combo box fires from `onRowSelected`, so its listener receives
 // a `CustomEvent` rather than the new value.
 //
-// Kept in its own file rather than folded into ComboBox.test.ts: every
-// ComboBox wires a DOM-routed "change" listener on its dropdown's inner list
-// at construction (`ComboBoxDropdown`'s `_list.on("action", ...)`), and none
-// of ComboBox.test.ts's many undisposed `combo`s ever release it. `Event`'s
-// `installedListenerTypes` bookkeeping (see Event.ts) outlives `DOM.reset()`,
-// so once that file's first ComboBox registers the type, every later test in
-// that same file silently loses real "change" dispatch — the same gotcha
-// ComboBoxDropdownClose.test.ts's header documents. That would make every
-// "zero actions" assertion below pass for the wrong reason, so this file
-// disposes each combo in `afterEach` and case 8 is a positive control that
-// must read 1.
+// Every ComboBox wires a DOM-routed "change" listener on its dropdown's inner
+// list at construction (`ComboBoxDropdown`'s `_list.on("action", ...)`), so a
+// "zero actions" assertion is only meaningful alongside a case that shows
+// dispatch arriving: case 8 is a positive control that must read 1. This file
+// disposes each combo in `afterEach`.
 import { describe, it, expect, afterEach } from 'vitest';
 import { ComboBox } from '~/component/input/ComboBox';
 import { DOM } from '~/core/DOM';

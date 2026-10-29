@@ -96,7 +96,6 @@ function frameOf(dock: Dock, id: string): Component {
 // restoreLayout iterates getOpenWindows() and would touch a dead handle. The
 // listeners die with the reset DOM, so only the registry bookkeeping is cleared.
 afterEach(() => {
-    (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
     vi.restoreAllMocks();
     DOM.reset();
 });

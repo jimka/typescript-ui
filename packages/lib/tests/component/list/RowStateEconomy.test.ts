@@ -253,13 +253,7 @@ function countEvents(list: TestList | TestMultiSelectList): { change: number; ac
 
 let sink: RecordingDOMSink;
 
-// Every list this file mounts, disposed in `afterEach`. `"action"` is
-// DOM-routed, and `Event`'s window-level base-listener bookkeeping is module
-// state that survives `DOM.reset()` — see `ComboBoxDropdownClose.test.ts`'s
-// file header for the same gotcha. A list left undisposed keeps `"change"`
-// marked installed against the previous case's window handle, so every later
-// case in this file would silently lose its dispatch; `Component.destructor`
-// purges the registrations and uninstalls the base listener with them.
+// Every list this file mounts, disposed in `afterEach`.
 let lists: Array<{ dispose(): void }> = [];
 
 /**

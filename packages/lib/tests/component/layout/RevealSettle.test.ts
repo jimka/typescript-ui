@@ -41,8 +41,6 @@ import { FocusReveal } from '~/core/FocusReveal';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { _Tree } from '~/component/tree/Tree';
-import { Menu } from '~/overlay/Menu';
-import { Tooltip } from '~/overlay/Tooltip';
 import { installTestDOM, makeEvent, setConnected, setScrollExtent, type RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -105,9 +103,6 @@ afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
 
-    // A `Tree` starts `Menu`'s input watch when it is built.
-    Menu._stopInputWatch();
-    Tooltip._stopPointerWatch();
     DOM.reset();
 });
 

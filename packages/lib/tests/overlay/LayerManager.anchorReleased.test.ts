@@ -113,11 +113,6 @@ describe('LayerManager: an anchor released while its layer is open', () => {
     afterEach(() => {
         drainLayers();
         vi.restoreAllMocks();
-        // A menu starts a viewport input watch that outlives it; left in
-        // place, it keeps the window's pointerdown routing bound to the DOM
-        // this case is about to discard, and the next case's press reaches
-        // nothing.
-        Menu._stopInputWatch();
         DOM.reset();
     });
 

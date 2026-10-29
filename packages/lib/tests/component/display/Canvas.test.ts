@@ -128,10 +128,16 @@ describe('Canvas animation loop (U5, U6)', () => {
 
         canvas.getElement(true);
         withStubContext(canvas);
+
+        // Baseline after construction, whose own layout schedule also requests a
+        // (framework-internal) animation frame — isolate the assertion to the
+        // frames the animation loop requests.
+        const rafBefore = rafCount(recorder);
+
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(true);
-        expect(rafCount(recorder)).toBe(1);
+        expect(rafCount(recorder) - rafBefore).toBe(1);
     });
 
     it('does not stack a second frame on a repeated start (U5)', () => {
@@ -140,10 +146,16 @@ describe('Canvas animation loop (U5, U6)', () => {
 
         canvas.getElement(true);
         withStubContext(canvas);
+
+        // Baseline after construction, whose own layout schedule also requests a
+        // (framework-internal) animation frame — isolate the assertion to the
+        // frames the animation loop requests.
+        const rafBefore = rafCount(recorder);
+
         canvas.startAnimation();
         canvas.startAnimation();
 
-        expect(rafCount(recorder)).toBe(1);
+        expect(rafCount(recorder) - rafBefore).toBe(1);
     });
 
     it('cancels the frame and clears the flag on stop (U5)', () => {
@@ -373,12 +385,18 @@ describe('Canvas pause-when-hidden (P1, P3-P8)', () => {
 
         canvas.getElement(true);
         withStubContext(canvas);
+
+        // Baseline after construction, whose own layout schedule also requests a
+        // (framework-internal) animation frame — isolate the assertion to the
+        // frames the animation loop requests.
+        const rafBefore = rafCount(recorder);
+
         canvas.startAnimation();
         canvas.stopAnimation();
         canvas.doLayout();
 
         expect(canvas.isAnimating()).toBe(false);
-        expect(rafCount(recorder)).toBe(1);
+        expect(rafCount(recorder) - rafBefore).toBe(1);
     });
 
     it('stays static across doLayout when never started (P8)', () => {
@@ -709,6 +727,10 @@ describe('Canvas class-level defaults', () => {
 
         canvas.getElement(true);
         withStubContext(canvas);
+
+        // Runs the layout frame construction scheduled first, so the frames
+        // below are the animation loop's alone — that layout pass redraws too.
+        runFrame(0);
 
         const redraw = vi.spyOn(canvas, 'redraw');
 

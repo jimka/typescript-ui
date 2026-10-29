@@ -49,7 +49,6 @@ import { Insets } from '~/primitive/Insets';
 import { Placement } from '~/primitive/Placement';
 import { DOM } from '~/core/DOM';
 import { ThemeManager, ModernTheme } from '~/core/Theme';
-import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
 
@@ -371,7 +370,6 @@ afterEach(() => {
     }
 
     roots = [];
-    (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
     // Theme state is module-level; restore it even if an assertion above threw
     // — and before `DOM.reset()`, because the restore itself goes through the
     // sink the modelled DOM installed.

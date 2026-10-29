@@ -69,7 +69,6 @@ describe('AbstractWindow — body replaced while the window lives', () => {
     });
 
     afterEach(() => {
-        (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
         vi.restoreAllMocks();
         vi.useRealTimers();
         DOM.reset();

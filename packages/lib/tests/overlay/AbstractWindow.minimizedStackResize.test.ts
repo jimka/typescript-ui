@@ -46,12 +46,6 @@ function config() {
 
 describe('AbstractWindow — one dispatched resize re-anchors the dock once', () => {
     afterEach(() => {
-        // The static open-window set outlives the DOM, and the dock writes
-        // setX/setY to each minimized entry — drain it, then relayout once so
-        // the dock releases its listener before the sink is replaced.
-        (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
-        (AbstractWindow as unknown as { relayoutMinimizedStack(): void }).relayoutMinimizedStack();
-
         vi.restoreAllMocks();
         DOM.reset();
     });

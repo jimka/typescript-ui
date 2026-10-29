@@ -172,16 +172,7 @@ describe('VideoPlayer scrubber action', () => {
     let sink: RecordingDOMSink;
 
     beforeEach(() => {
-        // The file-level beforeEach installs the DOM but does not purge, so
-        // the window-level listeners earlier cases' players registered stay
-        // pinned to a torn-down window. Purging re-installs them against this
-        // one — without it the ArrowRight below would reach nothing.
-        // Ritual copied from tests/component/input/Slider.test.ts.
         sink = installTestDOM(CONFIG);
-
-        for (const id of Event._registeredComponentIds()) {
-            Event.purgeComponent(id);
-        }
     });
 
     /** Realises `component`'s element and every descendant's. */

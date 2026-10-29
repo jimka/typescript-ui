@@ -49,7 +49,6 @@ describe('AbstractWindow — normal-state window refits the viewport on resize',
     });
 
     afterEach(() => {
-        (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
         vi.restoreAllMocks();
         DOM.reset();
     });

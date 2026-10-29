@@ -6,15 +6,12 @@
 // plans/implemented/table-tree-keyboard-context-menu.md.
 //
 // "Last input" is `Menu`'s input watch, so every case dispatches real events
-// through `Event`'s window-level handlers. `Event` keeps its registrations in
-// module-level state that outlives `DOM.reset()`, so the teardown removes
-// every one: the components and the menu are disposed, and the two static
-// watches are stopped (see the header of
+// through `Event`'s window-level handlers. The teardown disposes the
+// components and the menu (see the header of
 // `tests/overlay/Menu.keyboardSession.test.ts`).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resolveContextMenuTarget, watchContextMenuInput } from '~/component/shared/resolveContextMenuTarget';
 import { Menu } from '~/overlay/Menu';
-import { Tooltip } from '~/overlay/Tooltip';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
@@ -108,9 +105,6 @@ afterEach(() => {
 
     menu?.dispose();
     owner.dispose();
-
-    Menu._stopInputWatch();
-    Tooltip._stopPointerWatch();
 
     DOM.reset();
 });

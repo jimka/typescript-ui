@@ -11,9 +11,7 @@
 // one and an enter of the inner one — the opposite of the covering rule, which
 // treats every element inside its host as the host.
 //
-// `root` is disposed after every test: `Event`'s `installedListenerTypes`
-// bookkeeping outlives `DOM.reset()`, so a listener type left registered would
-// make the next test's dispatches silently vanish.
+// `root` is disposed after every test.
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { Component } from '~/core/Component';
 import { DOM, type Handle } from '~/core/DOM';
@@ -188,19 +186,6 @@ afterEach(() => {
 
     vi.useRealTimers();
     vi.restoreAllMocks();
-
-    (Tooltip as any).showTimer = null;
-    (Tooltip as any).instance = null;
-    (Tooltip as any).watching = false;
-    (Tooltip as any).activeElement = null;
-    (Tooltip as any).pendingId = null;
-    (Tooltip as any).dismissing = false;
-    (Tooltip as any).attachments.clear();
-
-    // The pointer watch is installed with the first attachment and never
-    // removed during a session, so its viewport registration would outlive the
-    // DOM it was made against and silently swallow the next test's moves.
-    Tooltip._stopPointerWatch();
 
     DOM.reset();
 });

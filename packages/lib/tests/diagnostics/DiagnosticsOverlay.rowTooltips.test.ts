@@ -59,17 +59,6 @@ beforeEach(() => {
 afterEach(() => {
     currentInstance()?.dispose();
     DOM.reset();
-
-    const timer = (Tooltip as any).showTimer;
-
-    if (timer !== null) {
-        clearTimeout(timer);
-        (Tooltip as any).showTimer = null;
-    }
-
-    (Tooltip as any).instance = null;
-    (Tooltip as any).watching = false;
-    (Tooltip as any).activeElement = null;
 });
 
 describe('DiagnosticsOverlay row description tooltips', () => {

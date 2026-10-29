@@ -109,4 +109,6 @@ export function _borderWidthCacheSize(): number {
 // component can exist before `core/Component.ts` has imported this module —
 // so no component can observe a stale shared entry while a theme change is
 // still being delivered (see plans/implemented/table-scroll-forced-reflow.md).
-ThemeManager.onThemeChange(clearBorderWidths);
+// Persistent: the shared cache outlives every DOM environment, so a seam swap
+// must not drop the subscription that keeps it fresh.
+ThemeManager.onThemeChange(clearBorderWidths, { persistent: true });

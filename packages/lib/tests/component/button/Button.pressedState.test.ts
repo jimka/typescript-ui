@@ -10,14 +10,6 @@
 // cancel regression a `setPointerCapture`-based tracking mechanism caused
 // (see the plan at plans/in-progress/primary-button-interaction-filtering.md
 // / plans/implemented/ once landed).
-//
-// Event.ts keeps module-level listener state that DOM.reset() does not
-// clear (see Button.test.ts's "Button action listener registration"
-// comment): `installBaseListener` only attaches its native window listener
-// on a type's first registration, and that installation is not undone
-// between tests. Every scenario below therefore lives in ONE test sharing
-// ONE installTestDOM() window — a second test creating a fresh window would
-// silently receive nothing for a type Event.ts already believes installed.
 import { describe, it, expect, afterEach } from 'vitest';
 import { Button } from '~/component/button/Button';
 import { SplitButton } from '~/component/button/SplitButton';

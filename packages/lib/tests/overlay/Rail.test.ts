@@ -24,9 +24,7 @@ const CONFIG = {
     themeVars:       {},
 };
 
-// Every rail a case mounts. A mounted rail is known to the layer manager, so
-// one left mounted across the DOM reset would be told to go inert, through a
-// released handle, by a later case's modal layer.
+// Every rail a case mounts, disposed after the case.
 const mounted: Rail[] = [];
 
 afterEach(() => {

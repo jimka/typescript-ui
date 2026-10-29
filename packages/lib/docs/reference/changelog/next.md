@@ -100,6 +100,16 @@ page resets to empty.
   made with `defineTheme` from a built-in theme inherits it, and a theme
   that leaves it out writes its `text.color` to the variable. See
   [Theming](/concepts/theming#theme-keys).
+- **`ThemeManager.onThemeChange(listener, { persistent: true })`.** A
+  theme-change listener now belongs to the DOM environment it subscribed
+  in: replacing the DOM seam (`DOM.install` with a new sink, or
+  `DOM.reset`, which only test setup does) drops it, so a component left
+  undisposed by a test no longer stays reachable through the listener list.
+  Pass `persistent: true` for a subscriber that must outlive every
+  environment, such as a module-level cache. The cleanup function returned
+  now removes only its own subscription: a function subscribed twice stays
+  subscribed once after one cleanup, where both used to be removed. See
+  [Theming](/concepts/theming#theme-change-listeners).
 
 ### Layouts
 
@@ -151,6 +161,24 @@ page resets to empty.
   fire it. See [Dock: `splitresize`](/components/Dock#splitresize).
 
 ## Fixed
+
+### Components
+
+- **A `Markdown` (and so `MarkdownViewer`) shows its whole document the
+  first time it is shown.** Its first measure read the content height
+  before the prose column's max-measure reached the stylesheet, so it
+  measured at the full pane width, came out too short, and cut the
+  document off — most visibly for a viewer built lazily as a keyed `Card`
+  page. Nothing measured again until the next `setMarkdown`, width or theme
+  change.
+- **A `Table` column's declared or sampled width survives the next layout
+  pass.** When the widths did not fit the table, the pass after the first —
+  which a browser always runs — rescaled `string` and `auto` columns
+  toward the available width with nothing resized, so `width` and
+  `autoSizeColumns` widths were squeezed instead of the table scrolling
+  horizontally. Columns now rescale only when the table's width changes;
+  space a hidden column frees still goes to the unbounded flexible
+  columns.
 
 ### Layouts
 

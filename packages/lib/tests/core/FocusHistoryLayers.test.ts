@@ -20,7 +20,6 @@ import { LayerManager } from '~/core/LayerManager';
 import { Container } from '~/core/Container';
 import { Button } from '~/component/button/Button';
 import { Menu } from '~/overlay/Menu';
-import { Tooltip } from '~/overlay/Tooltip';
 import { _Dialog as Dialog } from '~/overlay/Dialog';
 import { PopupPanel } from '~/overlay/PopupPanel';
 import { Popover } from '~/overlay/Popover';
@@ -149,9 +148,11 @@ afterEach(() => {
     }
 
     popovers.length = 0;
-    Menu._stopInputWatch();
-    Tooltip._stopPointerWatch();
     document.body.innerHTML = '';
+    // The jsdom environment never swaps the DOM between cases, so reset it:
+    // every module forgets this case's state, Menu's and Tooltip's watches
+    // among them.
+    DOM.reset();
 });
 
 describe('FocusHistory with a real menu and a real dialog', () => {

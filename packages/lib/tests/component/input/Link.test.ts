@@ -3,14 +3,9 @@
 // `interactive: false` makes it presentational — no role, no tabindex, and an
 // inert keydown handler — which is the mode LinkCellRenderer composes.
 //
-// Every Link registers a "keydown" listener in its constructor, so EVERY link a
-// test creates must be disposed before the test ends. `Event`'s
-// `installedListenerTypes` is module state that survives `DOM.reset()`, while
-// `installTestDOM` mints a fresh sink with no window handler — so a type left
-// registered makes the NEXT test's events silently vanish. Driving each type's
-// listener count to zero triggers `uninstallBaseListener`, which re-arms the
-// next test. Hence `makeLink`/`wire` and the `made` teardown registry: use them
-// rather than constructing links directly.
+// Every Link a test creates goes through `makeLink`/`wire`, whose `made`
+// registry disposes it after the test: use them rather than constructing
+// links directly.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Link } from '~/component/input/Link';
 import type { LinkOptions } from '~/component/input/Link';

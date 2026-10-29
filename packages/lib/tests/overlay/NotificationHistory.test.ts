@@ -20,12 +20,10 @@ const CONFIG = {
     themeVars:       {},
 };
 
-// History and the live-toast queue are private static state that persist across
-// tests; clear both so each case starts clean (a stale toast left in the queue
-// from a prior test's DOM instance would break restack() under the fresh sink).
+// History is private static state that persists across tests (the live toasts
+// are dropped on each DOM swap); clear it so each case starts clean.
 function clearStatics(): void {
-    (Notification as unknown as { history: unknown[]; activeNotifications: unknown[] }).history = [];
-    (Notification as unknown as { history: unknown[]; activeNotifications: unknown[] }).activeNotifications = [];
+    (Notification as unknown as { history: unknown[] }).history = [];
 }
 
 /** Disposes every toast still live, which also takes it off the layer manager's list. */

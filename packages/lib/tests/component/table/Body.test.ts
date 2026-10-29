@@ -3131,11 +3131,7 @@ describe('Column window — keyboard cell-editor navigation', () => {
         // `dblclick` listener on the renderer, captured via a spy on
         // Event.addListener (matching editor.test.ts's "Tab suppresses
         // native focus-shift" precedent) and invoked directly, rather than
-        // `cell.startEdit()` called by hand or a full DOM.sink.dispatchEvent
-        // (whose window-level base listener is a process-wide singleton per
-        // event type — see Event.ts's installBaseListener — so it only
-        // reliably reaches a fresh test's own modelled sink for the FIRST
-        // dispatch of a given event type in this file).
+        // `cell.startEdit()` called by hand or a full DOM.sink.dispatchEvent.
         const spy     = vi.spyOn(Event, 'addListener');
         const b       = await wideBody(4, 400, 0); // 4x100 fits 400px — every column renders
         const row     = (b as any).getRowPool()[0];

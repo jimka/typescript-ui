@@ -661,9 +661,6 @@ class CodeEditor extends Component<CodeEditorOptions> {
     /** Right-click Cut/Copy/Paste menu; rebuilt on every `show()` call. */
     private readonly _contextMenu: Menu = new Menu();
 
-    /** Handle to detach the {@link ThemeManager.onThemeChange} listener on {@link CodeEditor.dispose}. */
-    private readonly _unsubscribeTheme: () => void;
-
     /**
      * Handle for CodeMirror's own scrolling viewport, resolved once the view
      * mounts; `null` until then (or forever, offline). Backs
@@ -837,7 +834,7 @@ class CodeEditor extends Component<CodeEditorOptions> {
         this._searchPanel.on("command", this.handleSearchCommand);
         this.addComponent(this._searchPanel, this._searchPanel.getAnchorConstraints());
 
-        this._unsubscribeTheme = ThemeManager.onThemeChange(() => this.onThemeChange());
+        this.subscribeTheme(() => this.onThemeChange());
 
         this.applyListeners(options?.listeners);
 
@@ -2045,8 +2042,8 @@ class CodeEditor extends Component<CodeEditorOptions> {
     }
 
     /**
-     * Detaches the theme-change listener and destroys the live CodeMirror
-     * view, then defers to the base class for the rest of teardown. Call
+     * Destroys the live CodeMirror view, then defers to the base class for the
+     * rest of teardown — which also releases the theme-change subscription. Call
      * before discarding a dynamically-built `CodeEditor`, mirroring
      * `Markdown.destructor`.
      */
@@ -2057,8 +2054,6 @@ class CodeEditor extends Component<CodeEditorOptions> {
         // a direct `replaceRange`, `cut`, `paste` or `format`) would otherwise
         // flash on.
         this._flash.dispose();
-
-        this._unsubscribeTheme();
 
         // `Menu` is never registered via `addComponent` (see its own class comment),
         // so the base class's child-recursion teardown cannot reach it.

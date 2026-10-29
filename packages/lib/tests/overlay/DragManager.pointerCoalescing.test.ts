@@ -59,16 +59,6 @@ let tearDownSource: (() => void) | null = null;
 // Event's viewportListenerMap) — several cases below deliberately end a test
 // mid-drag (an un-drained buffered move), so a stray committed session would
 // otherwise block the next test's own onSourceMouseDown from starting one.
-//
-// tearDownSource matters for a second, file-wide reason: Event.ts's
-// installBaseListener caches "already installed" per event type for the life
-// of the module, but installTestDOM() swaps in a brand-new sink every test —
-// so unless the *last* mousedown subtree registration is actually removed
-// (Event.removeSubtreeListener, reached through makeDragSource's own teardown
-// closure below), that cache never clears and the second test's fresh sink
-// never gets the window-level listener re-attached, so its press silently
-// goes nowhere. makeDropTarget needs no such teardown: drop targets are plain
-// hit-tested data, not wired through Event's listener maps.
 afterEach(() => {
     DragManager.cancel();
     tearDownSource?.();

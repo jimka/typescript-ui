@@ -6395,12 +6395,12 @@ describe('CodeEditor context menu', () => {
         return items.map(({ action, ...rest }) => rest);
     }
 
-    // Notification's history and live-toast queue are private static state that
-    // persist across tests; clear both so each case starts clean, matching
-    // markdown-editor.test.ts's 'MarkdownEditor context-menu paste target' setup.
+    // Notification's history is private static state that persists across
+    // tests (the live toasts are dropped on each DOM swap); clear it so each
+    // case starts clean, matching markdown-editor.test.ts's 'MarkdownEditor
+    // context-menu paste target' setup.
     function clearNotificationStatics(): void {
-        (Notification as unknown as { history: unknown[]; activeNotifications: unknown[] }).history = [];
-        (Notification as unknown as { history: unknown[]; activeNotifications: unknown[] }).activeNotifications = [];
+        (Notification as unknown as { history: unknown[] }).history = [];
     }
 
     beforeEach(clearNotificationStatics);

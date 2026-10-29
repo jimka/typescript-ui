@@ -181,10 +181,8 @@ describe('ComboEditor commit path (selection / blur)', () => {
     // through the cell's commit-request hook, the same hook a selection uses.
     // Both the `"action"` and `blur` listeners call the private
     // `commitFromCombo`; we invoke it directly (white-box, as the
-    // `Cell.onKeyDown` tests invoke their handler directly) because the
-    // window-delivered blur path is not isolation-safe across tests — the
-    // `Event` base listener installs once per type and outlives a test's DOM.
-    // The blur/action WIRING itself is a one-line `Event.addListener` /
+    // `Cell.onKeyDown` tests invoke their handler directly). The blur/action
+    // WIRING itself is a one-line `Event.addListener` /
     // `combo.on("action")` verified in the live app, not here.
     it('asks the active cell to commit', () => {
         const editor = new ComboEditor(COUNTRIES);

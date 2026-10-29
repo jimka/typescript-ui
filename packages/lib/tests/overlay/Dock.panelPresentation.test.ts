@@ -84,7 +84,6 @@ function barEntries(tab: Tab): Array<{ id: string; button: TabButton; name: stri
 }
 
 afterEach(() => {
-    (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
     vi.restoreAllMocks();
     DOM.reset();
 });

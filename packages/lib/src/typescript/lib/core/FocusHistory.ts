@@ -475,6 +475,25 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
  *
  * @category Core
  */
+/**
+ * Forgets the service's state in the DOM environment a sink swap replaces:
+ * it reports itself disabled, because `Event` drops its viewport listeners on
+ * the same swap (and `LayerManager` its layer watch), and the trail is
+ * emptied, because every entry is a handle the outgoing sink minted. The
+ * configuration and the `"change"` listeners stay. Registered with
+ * `DOM.onSinkChange` below and called from nowhere else.
+ */
+function forgetEnvironment(): void {
+    _enabled      = false;
+    _navigating   = false;
+    _entries      = [];
+    _index        = -1;
+    _modalWasOpen = false;
+    _lastChange   = { canGoBack: false, canGoForward: false };
+}
+
+DOM.onSinkChange(forgetEnvironment);
+
 export namespace FocusHistory {
     /**
      * Installs the `focusin`, `focusout` and `keydown` listeners, seeds the

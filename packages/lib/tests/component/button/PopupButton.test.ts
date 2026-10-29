@@ -43,12 +43,8 @@ function panel(): PopupPanel {
     return p;
 }
 
-// MUST be the first describe block in this file, and its one test the only
-// place `.click()` is used — see tests/component/MenuButton.test.ts's
-// file-level comment for why (Event's window-level base listener is
-// installed once per event type for the module's lifetime and never re-armed
-// by a later installTestDOM()). Every other test below drives the toggle
-// through the private togglePopup() path directly.
+// The one test in this file that uses `.click()`; every other test below
+// drives the toggle through the private togglePopup() path directly.
 describe('PopupButton listeners bag (native click dispatch)', () => {
     afterEach(() => DOM.reset());
 

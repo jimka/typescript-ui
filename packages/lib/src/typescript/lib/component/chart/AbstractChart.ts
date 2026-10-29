@@ -6,7 +6,6 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle, ElementPatch } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { Tooltip } from "~/overlay/Tooltip.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { ListenerBag } from "~/core/ListenerBag.js";
 import { AbstractStore, StoreEvent } from "~/data/AbstractStore.js";
 import { drawAxis, measureAxisMargin, DEFAULT_TICK_COUNT } from "~/component/chart/ChartAxis.js";
@@ -157,7 +156,6 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
     private readonly _onStoreRefresh: () => void = () => this.rebuildFromStore();
 
     private readonly _legend: ChartLegend = new ChartLegend();
-    private _themeCleanup: (() => void) | null = null;
 
     // The raw SVG surface and its mark groups (created at first render, so null
     // until then). Groups paint back-to-front in creation order: axis/grid,
@@ -211,7 +209,7 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
         Event.addSubtreeListener(this, "click", this.handlePointerClick);
 
         // Re-measure axis margins when the font changes (the label widths shift).
-        this._themeCleanup = ThemeManager.onThemeChange(() => this.scheduleLayout());
+        this.subscribeTheme(() => this.scheduleLayout());
 
         this.dispatchChartOptions(options);
     }
@@ -1146,8 +1144,9 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
     // ── Lifecycle ──────────────────────────────────────────────────────────────
 
     /**
-     * Unbinds the store, removes the theme subscription, and hides any open
-     * tooltip. Call when the chart is permanently removed.
+     * Unbinds the store and hides any open tooltip, then defers to the base
+     * class for the rest of teardown — which also releases the theme-change
+     * subscription. Call when the chart is permanently removed.
      */
     protected destructor(): void {
         if (this._boundStore) {
@@ -1156,11 +1155,6 @@ export abstract class AbstractChart<O extends AbstractChartOptions = AbstractCha
             }
 
             this._boundStore = null;
-        }
-
-        if (this._themeCleanup) {
-            this._themeCleanup();
-            this._themeCleanup = null;
         }
 
         // Release the last repaint's marks. They deliberately bypass

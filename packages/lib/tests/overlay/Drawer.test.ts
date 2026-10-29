@@ -4,7 +4,6 @@ import { Placement } from '~/primitive/Placement';
 import { LayerManager } from '~/core/LayerManager';
 import { Component } from '~/core/Component';
 import { _Button as Button } from '~/component/button/Button';
-import { Tooltip } from '~/overlay/Tooltip';
 import { FOCUSABLE_SELECTOR } from '~/core/Focusable';
 import { DOM, type Handle } from '~/core/DOM';
 import { installTestDOM, setConnected, setQuerySelectorAllResult } from '../dom/TestDOM';
@@ -108,9 +107,6 @@ describe('Drawer — modal focus', () => {
 
         pages.length = 0;
 
-        // A Button attaches a tooltip, whose static pointer watch pins a
-        // viewport listener across the DOM reset.
-        Tooltip._stopPointerWatch();
         vi.restoreAllMocks();
         DOM.reset();
     });

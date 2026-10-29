@@ -1322,6 +1322,20 @@ function onKeyDown(e: KeyboardEvent): Event.ListenerResult {
  *
  * @category Core
  */
+/**
+ * Forgets the service's state in the DOM environment a sink swap replaces: it
+ * reports itself disabled, because `Event` drops its viewport listeners on the
+ * same swap, and the focus memory is emptied, because it maps handles the
+ * outgoing sink minted. The modifier configuration stays. Registered with
+ * `DOM.onSinkChange` below and called from nowhere else.
+ */
+function forgetEnvironment(): void {
+    _enabled = false;
+    _lastFocus.clear();
+}
+
+DOM.onSinkChange(forgetEnvironment);
+
 export namespace SpatialNavigation {
     /**
      * Starts the service. Idempotent — calling it again while already

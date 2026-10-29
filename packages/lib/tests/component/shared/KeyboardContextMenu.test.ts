@@ -11,12 +11,8 @@
 // B = table body, TB = Table and TreeBody.
 //
 // Every case dispatches real events through `Event`'s window-level handlers
-// (`DOM.sink.dispatchEvent`). `Event` keeps its registrations in module-level
-// state that outlives `DOM.reset()`, and attaches a window listener only when
-// a type is first registered, so a registration left behind by one test would
-// make the next test's dispatches silently vanish. The teardown therefore
-// disposes every component a test built and stops the two static watches (see
-// the header of `tests/overlay/Menu.keyboardSession.test.ts`).
+// (`DOM.sink.dispatchEvent`). The teardown disposes every component a test
+// built (see the header of `tests/overlay/Menu.keyboardSession.test.ts`).
 //
 // The modelled DOM computes `getViewportRect(component)` from component
 // positions and leaves out the virtual scroller's row offset, so the widget
@@ -25,7 +21,6 @@
 // pinned by R3 and R4 in `resolveContextMenuTarget.test.ts`.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Menu } from '~/overlay/Menu';
-import { Tooltip } from '~/overlay/Tooltip';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
@@ -166,9 +161,6 @@ afterEach(() => {
     for (const component of built) {
         component.dispose();
     }
-
-    Menu._stopInputWatch();
-    Tooltip._stopPointerWatch();
 
     DOM.reset();
 });

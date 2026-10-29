@@ -3437,6 +3437,22 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         AbstractWindow.stackResizeListenerInstalled = true;
     }
 
+    /**
+     * Forgets the open windows and the dock's listener record of the DOM
+     * environment a sink swap replaces. Every window in the set belongs to the
+     * outgoing environment, which the set would otherwise pin — subtree and
+     * all — for as long as this module is loaded; the dock's viewport
+     * listener is dropped by `Event` on the same swap, so the flag is cleared
+     * and the next minimize installs it anew. Registered with
+     * `DOM.onSinkChange` below this class and called from nowhere else.
+     *
+     * @internal
+     */
+    static _forgetEnvironment(): void {
+        AbstractWindow.openWindows.clear();
+        AbstractWindow.stackResizeListenerInstalled = false;
+    }
+
     /** Removes the dock's viewport `resize` listener, if it is installed. */
     private static uninstallStackResizeListener(): void {
         if (!AbstractWindow.stackResizeListenerInstalled) {
@@ -4071,3 +4087,7 @@ export abstract class AbstractWindow extends Container<WindowOptions> implements
         return true;
     }
 }
+
+// Registered at import: a seam swap drops the window state of the environment
+// it replaces, as every module holding state tied to that environment does.
+DOM.onSinkChange(() => AbstractWindow._forgetEnvironment());

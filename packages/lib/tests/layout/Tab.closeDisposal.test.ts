@@ -11,7 +11,6 @@ import { Component } from '~/core/Component';
 import { Tab } from '~/layout/Tab';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { TabBar } from '~/component/container/TabBar';
-import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -71,7 +70,6 @@ function keepAlive(): LayoutConstraints {
 }
 
 afterEach(() => {
-    (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
     vi.restoreAllMocks();
     DOM.reset();
 });

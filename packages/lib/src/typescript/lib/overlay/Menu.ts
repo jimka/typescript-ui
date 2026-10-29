@@ -151,7 +151,7 @@ class Menu extends Component implements DismissableLayer {
     // binds a listener to a `Component` while these handlers are static —
     // one pair for the whole class — so a single stable sentinel owns them,
     // as `Tooltip`'s pointer watch does. Installed with the first `Menu` and
-    // kept for the rest of the session.
+    // kept until the DOM environment is replaced (see `_forgetEnvironment`).
     private static readonly inputWatchOwner: Component = new Component();
     private static inputWatching: boolean = false;
     private static lastInputWasKey: boolean = false;
@@ -1438,7 +1438,8 @@ class Menu extends Component implements DismissableLayer {
      * Installs the viewport listeners that record whether the user's last
      * input was a key press or a pointer press, unless they are already
      * installed. Called as each menu is constructed, and nothing removes them
-     * afterwards: the answer has to be on record before the `show()` it
+     * afterwards short of a DOM environment swap (see `_forgetEnvironment`):
+     * the answer has to be on record before the `show()` it
      * decides. Also called by the widgets that open a menu for their current
      * row or cell, so the watch is running before a consumer builds its menu.
      *
@@ -1456,27 +1457,20 @@ class Menu extends Component implements DismissableLayer {
     }
 
     /**
-     * Removes the input watch and resets the recorded input to "pointer".
-     * Nothing removes the watch during a session — see `_startInputWatch` —
-     * so this exists for a test suite that replaces the DOM the registrations
-     * were made against, which would otherwise leave them pointing at a
-     * discarded window; for tests only. The next menu constructed starts the
-     * watch again.
+     * Forgets the input watch and every keyboard session of the DOM
+     * environment a sink swap replaces. The watch's viewport listeners are
+     * dropped by `Event` on the same swap, so the flag is cleared and the next
+     * menu constructed starts the watch anew; each session is a menu of the
+     * outgoing environment, which the set would otherwise pin for as long as
+     * this module is loaded. Registered with `DOM.onSinkChange` below this
+     * class and called from nowhere else.
      *
      * @internal
      */
-    static _stopInputWatch(): void {
-        // Nothing to remove when the watch was never started, or was already
-        // stopped: the removal reads the window, which a caller that has
-        // already reset the DOM no longer has.
-        if (Menu.inputWatching) {
-            Event.removeViewportListener(Menu.inputWatchOwner, "keydown",     Menu._recordKeyInput);
-            Event.removeViewportListener(Menu.inputWatchOwner, "pointerdown", Menu._recordPointerInput);
-
-            Menu.inputWatching = false;
-        }
-
+    static _forgetEnvironment(): void {
+        Menu.inputWatching   = false;
         Menu.lastInputWasKey = false;
+        Menu.keyboardSessions.clear();
     }
 
     /**
@@ -2019,6 +2013,10 @@ class Menu extends Component implements DismissableLayer {
         }
     }
 }
+
+// Registered at import: a seam swap drops the menu state of the environment it
+// replaces, as every module holding state tied to that environment does.
+DOM.onSinkChange(() => Menu._forgetEnvironment());
 
 const MenuCallable = callable(Menu);
 type MenuCallable = Menu;

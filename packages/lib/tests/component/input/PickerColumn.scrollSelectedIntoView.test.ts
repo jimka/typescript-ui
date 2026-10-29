@@ -26,8 +26,6 @@ import { PickerCell, PickerColumn, PICKER_CELL_HEIGHT } from '~/component/input/
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
-import { Menu } from '~/overlay/Menu';
-import { Tooltip } from '~/overlay/Tooltip';
 import { installTestDOM, setConnected, setScrollExtent, type RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -170,9 +168,8 @@ beforeEach(() => {
     frames = [];
     built  = [];
 
-    // A scrolling panel schedules a follow-up layout frame. Capture it, so the
-    // teardown can drain it: an undrained registration leaves `Component`'s
-    // module-level frame handle set and swallows the next test's own.
+    // A scrolling panel schedules a follow-up layout frame. Capture it, so a
+    // case can run it by hand and the teardown can drain what is left.
     vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
         frames.push(callback);
 
@@ -188,9 +185,6 @@ afterEach(() => {
     for (const component of built) {
         component.dispose();
     }
-
-    Menu._stopInputWatch();
-    Tooltip._stopPointerWatch();
 
     DOM.reset();
 });

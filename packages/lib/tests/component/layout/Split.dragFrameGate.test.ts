@@ -19,7 +19,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Component } from '~/core/Component';
 import { Container } from '~/core/Container';
 import { DOM } from '~/core/DOM';
-import { Tooltip } from '~/overlay/Tooltip';
 import { setAppResizeMode } from '~/core/ResizeDrag';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { LayoutManager } from '~/layout/LayoutManager';
@@ -235,20 +234,14 @@ describe('Split drag-frame gate', () => {
     });
 
     afterEach(() => {
-        // A drag left mid-flight keeps its session's viewport listeners
-        // registered, and `Event`'s registration maps are module state
-        // DOM.reset() does not clear — a surviving type map stops the next
-        // `addViewportListener` re-registering against the fresh sink.
-        // Disposing the host runs `Split.detach`, which cancels the session
-        // exactly as a real teardown does. Split.resizeMode.test.ts's teardown,
-        // for the same reason.
+        // Disposing the host runs `Split.detach`, which cancels a drag left
+        // mid-flight exactly as a real teardown does.
         for (const host of hosts) {
             host.dispose();
         }
 
         vi.restoreAllMocks();
         setAppResizeMode('live');
-        Tooltip._stopPointerWatch();
         DOM.reset();
     });
 

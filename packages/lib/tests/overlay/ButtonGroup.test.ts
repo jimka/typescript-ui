@@ -24,31 +24,6 @@ function selectVia(group: ButtonGroup, button: ToggleButton): void {
 }
 
 /**
- * `installBaseListener` (core/Event.ts) attaches its native "keydown"
- * window listener only on the type's first-ever registration in this
- * file, and every Button constructed by an earlier test (every `Button`
- * registers its own "keydown" listener — see Button.ts's `_onSpaceDown`)
- * already left one behind, pinned to that test's now-torn-down window
- * (see Button.pressedState.test.ts's file header for the same landmine)
- * — so a plain `installTestDOM` here would silently receive no "keydown"
- * delivery at all. Purging every currently-registered component via the
- * sanctioned test-only escape hatch (`Event._registeredComponentIds` /
- * `Event.purgeComponent`) drops "keydown" back to uninstalled, so the
- * container wired right after re-attaches it to THIS window.
- *
- * The same pinning applies to every other type the cases below dispatch —
- * "click", and the "change" a toggle fires from it — which is why the purge
- * sweeps the whole registry rather than one type.
- */
-function freshEventWindow(): void {
-    installTestDOM(CONFIG);
-
-    for (const id of Event._registeredComponentIds()) {
-        Event.purgeComponent(id);
-    }
-}
-
-/**
  * Drives a member the way a user does: a real "click" dispatch, which reaches
  * `ToggleButton.onAction`, toggles the button, and fires its `"change"` — the
  * DOM event the group's own `"action"` registration listens on. `selectVia`
@@ -294,7 +269,7 @@ describe('ButtonGroup releases the registrations it made', () => {
     afterEach(() => DOM.reset());
 
     it('a removed member stops deselecting its former siblings', () => {
-        freshEventWindow();
+        installTestDOM(CONFIG);
 
         const a = new ToggleButton('A');
         const b = new ToggleButton('B');
@@ -310,7 +285,7 @@ describe('ButtonGroup releases the registrations it made', () => {
     });
 
     it('a disposed group stops reconciling its former members', () => {
-        freshEventWindow();
+        installTestDOM(CONFIG);
 
         const a = new ToggleButton('A');
         const b = new ToggleButton('B');
@@ -329,7 +304,7 @@ describe('ButtonGroup releases the registrations it made', () => {
     // strand the first, re-opening the leak the map exists to close — so the
     // second call does nothing at all.
     it('adding a button already in the group is a no-op', () => {
-        freshEventWindow();
+        installTestDOM(CONFIG);
 
         const a = new ToggleButton('A');
         const group = new ButtonGroup({ buttons: [a] });
@@ -348,7 +323,7 @@ describe('ButtonGroup releases the registrations it made', () => {
     // presence in the registry is an exact signal for the group's own subtree
     // `"keydown"` listener and nothing else.
     it('setContainer unwires the container it wired last', () => {
-        freshEventWindow();
+        installTestDOM(CONFIG);
 
         const group = new ButtonGroup({ buttons: [new ToggleButton('A')] });
         const first  = new Component();
@@ -367,7 +342,7 @@ describe('ButtonGroup releases the registrations it made', () => {
     });
 
     it('dispose unwires the container it was given', () => {
-        freshEventWindow();
+        installTestDOM(CONFIG);
 
         const group = new ButtonGroup({ buttons: [new ToggleButton('A')] });
         const container = new Component();
@@ -402,7 +377,7 @@ describe('ButtonGroup keydown — stands down while SpatialNavigation claims the
     }
 
     it('ArrowRight moves the roving tab index forward when the key is unclaimed', () => {
-        freshEventWindow();
+        installTestDOM(CONFIG);
 
         const a = new ToggleButton('A');
         const b = new ToggleButton('B');
@@ -415,7 +390,7 @@ describe('ButtonGroup keydown — stands down while SpatialNavigation claims the
     });
 
     it('a claimed ArrowRight does not move the roving tab index', () => {
-        freshEventWindow();
+        installTestDOM(CONFIG);
 
         const a = new ToggleButton('A');
         const b = new ToggleButton('B');

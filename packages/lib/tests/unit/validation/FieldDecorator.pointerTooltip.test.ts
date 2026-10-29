@@ -12,11 +12,7 @@
 //   `Tooltip.test.ts` calls: only a real event exercises `Event`'s exact-target
 //   phase followed by its subtree walk, which is what the decorator's covering
 //   tooltip relies on.
-// - It disposes `root` after every test. `Event`'s `installedListenerTypes`
-//   bookkeeping is module state that outlives `DOM.reset()`, so a listener type
-//   left registered would make the next test's dispatches silently vanish —
-//   the gotcha documented in `Link.test.ts`'s file header. Disposing `root`
-//   drops every registration below it, which uninstalls those types.
+// - It disposes `root` after every test.
 // - The modelled hit test (`DOM.source.elementsFromPoint`) ignores
 //   `pointer-events`, so it would report a pointer-transparent glyph where a
 //   real pointer hits the element beneath it. Every target is therefore taken
@@ -27,7 +23,6 @@ import { Component } from '~/core/Component';
 import { DOM, type Handle } from '~/core/DOM';
 import { Event } from '~/core/Event';
 import { Tooltip } from '~/overlay/Tooltip';
-import { Menu } from '~/overlay/Menu';
 import { TextField } from '~/component/input/TextField';
 import { DateField } from '~/component/input/DateField';
 import { FieldDecorator } from '~/validation/FieldDecorator';
@@ -280,24 +275,6 @@ afterEach(() => {
 
     vi.useRealTimers();
     vi.restoreAllMocks();
-
-    (Tooltip as any).showTimer = null;
-    (Tooltip as any).instance = null;
-    (Tooltip as any).watching = false;
-    (Tooltip as any).activeElement = null;
-    (Tooltip as any).pendingId = null;
-    (Tooltip as any).dismissing = false;
-    (Tooltip as any).attachments.clear();
-
-    // The pointer watch is installed with the first attachment and never
-    // removed during a session, so its viewport registration would outlive the
-    // DOM it was made against and silently swallow the next test's moves.
-    Tooltip._stopPointerWatch();
-
-    // A text field builds a context `Menu`, which installs `Menu`'s own
-    // session-long input watch — it listens for `keydown` too, so it would
-    // swallow the next test's key presses the same way.
-    Menu._stopInputWatch();
 
     DOM.reset();
 });

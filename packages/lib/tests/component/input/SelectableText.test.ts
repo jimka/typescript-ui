@@ -4,12 +4,8 @@
 // call to the private handleContextMenu. Follows
 // plans/text-input-context-menu-clipboard.md's Step 2 idiom.
 //
-// Event's window-level base listener is armed once per event TYPE for the
-// lifetime of this module and is not re-armed by a later installTestDOM()
-// call unless the component holding it is disposed first (see the file-level
-// note in tests/component/container/CollapseButton.test.ts, which documents
-// the same constraint) — every component that fires or listens for a real
-// `contextmenu` below is disposed before its test ends.
+// Every component that fires or listens for a real `contextmenu` below is
+// disposed before its test ends.
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { SelectableText } from '~/component/input/SelectableText';
 import { Panel } from '~/core/Panel';

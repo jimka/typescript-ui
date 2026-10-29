@@ -11,10 +11,7 @@
 // covering tooltip relies on `Event`'s subtree walk.
 //
 // Every component a case creates is disposed in `afterEach` — `root`'s
-// children with `root`, and anything unparented through `strays`. `Event`'s
-// installed-listener bookkeeping is module state that outlives `DOM.reset()`,
-// so one component left registered makes every later real-event case's
-// dispatch silently vanish.
+// children with `root`, and anything unparented through `strays`.
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { Component } from '~/core/Component';
 import { DOM, type Handle } from '~/core/DOM';
@@ -200,19 +197,6 @@ afterEach(() => {
 
     vi.useRealTimers();
     vi.restoreAllMocks();
-
-    (Tooltip as any).showTimer = null;
-    (Tooltip as any).instance = null;
-    (Tooltip as any).watching = false;
-    (Tooltip as any).activeElement = null;
-    (Tooltip as any).pendingId = null;
-    (Tooltip as any).dismissing = false;
-    (Tooltip as any).attachments.clear();
-
-    // The pointer watch is installed with the first attachment and never
-    // removed during a session, so its viewport registration would outlive the
-    // DOM it was made against and silently swallow the next test's moves.
-    Tooltip._stopPointerWatch();
 
     DOM.reset();
 });

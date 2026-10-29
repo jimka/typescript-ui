@@ -49,9 +49,7 @@ function liveToast(): Notification {
 
 /**
  * Disposes every toast still live and whatever layer is topmost (the detail
- * dialog a case opened). Either one left behind stays known to the layer
- * manager across the DOM reset, and the next modal layer would tell it to go
- * inert through a released handle.
+ * dialog a case opened).
  */
 function disposeLeftovers(): void {
     const live = (Notification as unknown as { activeNotifications: Notification[] }).activeNotifications;

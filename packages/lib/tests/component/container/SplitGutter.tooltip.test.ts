@@ -27,18 +27,6 @@ function tooltipText(id: string): string | undefined {
 
 describe('SplitGutter collapse tooltip gating', () => {
     afterEach(() => {
-        const timer = (Tooltip as any).showTimer;
-
-        if (timer !== null) {
-            clearTimeout(timer);
-            (Tooltip as any).showTimer = null;
-        }
-
-        (Tooltip as any).instance = null;
-        (Tooltip as any).watching = false;
-        (Tooltip as any).activeElement = null;
-        (Tooltip as any).pendingId = null;
-
         DOM.reset();
     });
 
@@ -90,18 +78,6 @@ describe('SplitGutter collapse tooltip gating', () => {
 
 describe('SplitGutter collapse tooltip text', () => {
     afterEach(() => {
-        const timer = (Tooltip as any).showTimer;
-
-        if (timer !== null) {
-            clearTimeout(timer);
-            (Tooltip as any).showTimer = null;
-        }
-
-        (Tooltip as any).instance = null;
-        (Tooltip as any).watching = false;
-        (Tooltip as any).activeElement = null;
-        (Tooltip as any).pendingId = null;
-
         DOM.reset();
     });
 

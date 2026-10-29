@@ -44,7 +44,6 @@ describe('AbstractWindow — restoring from maximized clamps the stale restore r
     });
 
     afterEach(() => {
-        (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
         vi.restoreAllMocks();
         DOM.reset();
     });

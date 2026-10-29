@@ -13,7 +13,6 @@ import { Component } from '~/core/Component';
 import { Tab, TabOptions } from '~/layout/Tab';
 import { TabBar } from '~/component/container/TabBar';
 import { ScrollStrip } from '~/component/container/ScrollStrip';
-import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -90,7 +89,6 @@ function hostedStrip(tab: Tab): ScrollStrip {
 }
 
 afterEach(() => {
-    (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
     DOM.reset();
 });
 

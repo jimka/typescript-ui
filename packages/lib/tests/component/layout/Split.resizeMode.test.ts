@@ -8,7 +8,6 @@ import { Component } from '~/core/Component';
 import { Container } from '~/core/Container';
 import { DOM } from '~/core/DOM';
 import { Event } from '~/core/Event';
-import { Tooltip } from '~/overlay/Tooltip';
 import { setAppResizeMode } from '~/core/ResizeDrag';
 import type { ResizeMode } from '~/core/ResizeDrag';
 import { Fit } from '~/layout/Fit';
@@ -79,13 +78,8 @@ describe('Split resize mode', () => {
     });
 
     afterEach(() => {
-        // A drag left mid-flight keeps its outline on screen, and with it the
-        // two viewport listeners the outline registers. `Event`'s registration
-        // maps are module state DOM.reset() does not clear, so a surviving
-        // type map stops the next `addViewportListener` re-registering the
-        // base listener against the fresh sink — and the case after this one
-        // would hear no keydown at all. Disposing the host runs `Split.detach`,
-        // which cancels the session exactly as a real teardown does.
+        // Disposing the host runs `Split.detach`, which cancels a drag left
+        // mid-flight, outline and all, exactly as a real teardown does.
         for (const host of hosts) {
             host.dispose();
         }
@@ -94,10 +88,6 @@ describe('Split resize mode', () => {
         // core/ResizeDrag.ts's app-wide default is module state DOM.reset()
         // does not touch; S7 sets it.
         setAppResizeMode('live');
-        // A gutter or header attaches a tooltip, which installs `Tooltip`'s own
-        // session-long viewport watch — a surviving `keydown` type map of
-        // exactly the kind described above.
-        Tooltip._stopPointerWatch();
         DOM.reset();
     });
 

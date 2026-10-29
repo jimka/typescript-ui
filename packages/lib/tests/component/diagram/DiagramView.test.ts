@@ -180,21 +180,12 @@ afterEach(() => {
     DOM.reset();
 });
 
-// MUST be the first describe block in this file, and its one test the only
-// place a real dispatched DOM event (`.click()` / `Event.fireEvent`) is used
-// for click/contextmenu. `Event`'s window-level base listener is installed
-// once per event TYPE for the lifetime of this module and never re-armed on
-// the fresh `DOM.sink` a later `installTestDOM()` call swaps in (see
-// tests/component/MenuButton.test.ts's file-level comment, which documents
-// the same constraint for `.click()`). `DiagramView.init()` registers all
-// seven of its subtree listener types (including "contextmenu") in one call,
-// the first time any view's element is forced in this file — so both the
-// control-cluster click dispatch AND the contextmenu dispatch below must
-// live in this same first test, on the same view, or a later test's fresh
-// `DOM.sink` would silently get no listener at all. Every other test in this
-// file drives the control buttons' registered handler fields, and
-// `_handleContextMenu` directly, instead — unaffected by this constraint and
-// how the rest of the codebase tests this kind of wiring.
+// The one test in this file that dispatches real DOM events (`.click()` /
+// `Event.fireEvent`) for click/contextmenu; the window-level base listeners
+// arm against its own sink (Event forgets its registrations on every sink
+// swap). Every other test drives the control buttons' registered handler
+// fields, and `_handleContextMenu`, directly — how the rest of the codebase
+// tests this kind of wiring.
 describe('DiagramView — real DOM-dispatched wiring (behaviours 10, 19)', () => {
     it('a real click reaches each control button\'s viewport-motion method, and a real contextmenu reaches the node handler', async () => {
         stubEngine = new StubEngine(fixedResult());

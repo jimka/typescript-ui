@@ -15,7 +15,6 @@ import { FocusHistory } from '~/core/FocusHistory';
 import { Container } from '~/core/Container';
 import { Button } from '~/component/button/Button';
 import { Menu } from '~/overlay/Menu';
-import { Tooltip } from '~/overlay/Tooltip';
 import { _Dialog as Dialog } from '~/overlay/Dialog';
 import { Window } from '~/overlay/Window';
 import type { AbstractWindow } from '~/overlay/AbstractWindow';
@@ -78,11 +77,13 @@ afterEach(() => {
     dialog = null;
     menu?.dispose();
     menu = null;
-    Menu._stopInputWatch();
-    Tooltip._stopPointerWatch();
     vi.useRealTimers();
     vi.restoreAllMocks();
     document.body.innerHTML = '';
+    // The jsdom environment never swaps the DOM between cases, so reset it:
+    // every module forgets this case's state, Menu's and Tooltip's watches
+    // among them.
+    DOM.reset();
 });
 
 describe('A window taking focus with real layers', () => {

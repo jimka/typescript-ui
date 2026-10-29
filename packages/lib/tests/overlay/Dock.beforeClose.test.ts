@@ -94,7 +94,6 @@ function vetoB(event: DockPanelEvent, controller: DockCloseController): void {
 }
 
 afterEach(() => {
-    (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
     vi.restoreAllMocks();
     DOM.reset();
 });

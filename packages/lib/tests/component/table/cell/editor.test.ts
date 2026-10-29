@@ -166,10 +166,7 @@ describe('Tab suppresses native focus-shift at the real keydown target', () => {
     // ColumnFilterRow.test.ts's "a popover clause row carries the same
     // gate" precedent) and calls it directly with a plain keyCode payload,
     // asserting its returned disposition — rather than driving a full
-    // DOM.sink.dispatchEvent, whose window-level base listener is a
-    // process-wide singleton per event type (see Event.ts's
-    // installBaseListener) and so only reliably reaches a fresh test's own
-    // modelled sink for the FIRST "keydown" dispatch in a given file.
+    // DOM.sink.dispatchEvent.
     // `.filter(...).pop()` rather than `.find(...)`: ComboBox registers its
     // own internal "keydown" listener on itself at construction (dropdown
     // keyboard nav) BEFORE ComboEditor adds its Tab-prevention listener on

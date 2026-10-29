@@ -12,19 +12,13 @@
 // count the `preventDefault` calls a press made and show that an ancestor
 // still hears the key. E9's tree is never rendered, and the Shift-click
 // cases hand a click event to the tree's click handler, as `Tree.test.ts`
-// does. `Event` keeps its registrations in module-level state that
-// outlives `DOM.reset()`, and attaches a window listener only when a type is
-// first registered, so a registration left behind by one test would make the
-// next test's dispatches silently vanish. The teardown therefore disposes
-// every component a test built and stops the two static watches (see the
-// header of `KeyboardContextMenu.test.ts`, whose harness this file copies).
+// does. The teardown disposes every component a test built (the harness is
+// `KeyboardContextMenu.test.ts`'s).
 //
 // The modelled DOM has no layout engine. A widget's viewport height comes from
 // its committed size, and the row height is the widget's own fixed default,
 // so every expected scroll position below is arithmetic on those two numbers.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Menu } from '~/overlay/Menu';
-import { Tooltip } from '~/overlay/Tooltip';
 import { Component } from '~/core/Component';
 import { Container } from '~/core/Container';
 import { Event } from '~/core/Event';
@@ -113,9 +107,6 @@ afterEach(() => {
     for (const component of built) {
         component.dispose();
     }
-
-    Menu._stopInputWatch();
-    Tooltip._stopPointerWatch();
 
     DOM.reset();
 });

@@ -15,8 +15,6 @@ import { _List } from '~/component/list/List';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
-import { Menu } from '~/overlay/Menu';
-import { Tooltip } from '~/overlay/Tooltip';
 import { installTestDOM, makeEvent, setConnected, setScrollExtent } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -141,9 +139,6 @@ afterEach(() => {
     for (const component of built) {
         component.dispose();
     }
-
-    Menu._stopInputWatch();
-    Tooltip._stopPointerWatch();
 
     DOM.reset();
 });

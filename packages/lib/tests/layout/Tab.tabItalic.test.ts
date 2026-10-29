@@ -8,7 +8,6 @@ import { Component } from '~/core/Component';
 import { Tab, TabOptions } from '~/layout/Tab';
 import { TabBar } from '~/component/container/TabBar';
 import { TabButton } from '~/component/button/TabButton';
-import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -42,7 +41,6 @@ function barEntries(tab: Tab): Array<{ id: string; button: TabButton; name: stri
 }
 
 afterEach(() => {
-    (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
     DOM.reset();
 });
 

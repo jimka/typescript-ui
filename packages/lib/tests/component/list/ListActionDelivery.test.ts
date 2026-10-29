@@ -8,15 +8,9 @@
 // `"action"`; `setSelectedIndex(idx, false)`, `setValue` and `setValues` stay
 // silent on all three.
 //
-// Kept in its own file rather than folded into `List.test.ts`: `"action"` is
-// DOM-routed, and `Event` installs one window-level base listener per DOM
-// event type in module state that survives `DOM.reset()`. A file whose
-// earlier cases leave instances undisposed keeps `"change"` marked installed
-// against a dead window, so every later case dispatches into nothing and each
-// "zero actions" assertion passes vacuously — see the same gotcha documented
-// in `ComboBoxDropdownClose.test.ts`'s header and `RowStateEconomy.test.ts`'s
-// disposal list. Every list here is disposed in `afterEach`, and cases 1 and
-// 5 are positive controls that must read 1.
+// `"action"` is DOM-routed, so a "zero actions" assertion is only meaningful
+// alongside a case that shows dispatch arriving: cases 1 and 5 are positive
+// controls that must read 1. Every list here is disposed in `afterEach`.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../../dom/TestDOM';

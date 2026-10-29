@@ -13,7 +13,6 @@ import { DOM, type Handle } from '~/core/DOM';
 import { SpatialNavigation } from '~/core/SpatialNavigation';
 import { Container } from '~/core/Container';
 import { Tab } from '~/layout/Tab';
-import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { installTestDOM, setConnected } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -1081,7 +1080,6 @@ describe('TabBar Home and End — an already active edge tab is revealed', () =>
     }
 
     afterEach(() => {
-        (AbstractWindow as any).openWindows.clear();
         DOM.reset();
         vi.restoreAllMocks();
     });

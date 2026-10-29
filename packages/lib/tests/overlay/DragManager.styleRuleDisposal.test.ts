@@ -48,11 +48,9 @@ function dragSource(): Component {
  * Drives one complete gesture: press, move past the 4 px commit threshold
  * (which is what builds the ghost, feedback and indicator), then release.
  *
- * Asserts the gesture actually committed. `Event`'s viewport listener map
- * outlives `DOM.reset()`, so a second registration of the same event type in
- * one file can silently fail to re-attach — which would leave the gesture
- * inert, build no drag chrome, and let a leak assertion pass against nothing.
- * Checking commitment here makes that failure loud instead of vacuous.
+ * Asserts the gesture actually committed: an inert gesture would build no drag
+ * chrome and let a leak assertion pass against nothing, so checking commitment
+ * here makes that failure loud instead of vacuous.
  */
 function dragOnce(source: Component): void {
     const element = source.getElement()!;
