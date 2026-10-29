@@ -1145,6 +1145,19 @@ describe('Markdown setMaxMeasure / getMaxMeasure', () => {
         expect(md.getMaxMeasure()).toBeNull();
         expect(lastRuleStyle('maxWidth')).toBe('var(--ts-ui-md-max-measure, 70ch)');
     });
+
+    // A real `getElementById` cannot find a detached element, so mid-render
+    // `getElement()` reads `null` and any rule write that commits through it
+    // stays queued — the modelled id index finds detached handles, hiding
+    // that. The first measure then read `scrollHeight` with no `max-width`
+    // applied, at the full assigned width.
+    it('commits the maxWidth declaration during render, when the detached element is not findable by id', () => {
+        vi.spyOn(DOM.source, 'getElementById').mockReturnValue(null);
+
+        new Markdown('x').getElement(true);
+
+        expect(lastRuleStyle('maxWidth')).toBe('var(--ts-ui-md-max-measure, 70ch)');
+    });
 });
 
 describe('Markdown setFontScale / getFontScale', () => {

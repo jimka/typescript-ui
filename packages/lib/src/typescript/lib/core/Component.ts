@@ -7449,10 +7449,11 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * needed by a subclass whose extra declaration can itself resolve to a
      * class-tier-matching removal (see
      * plans/implemented/applystyle-flush-order-empty-rule-fix.md's Architecture
-     * Decisions) — a subclass that only ever writes a real, always-present
-     * value (`Markdown`'s `maxWidth`) has no need of
-     * this hook and can keep overriding `applyStyle` directly, calling
-     * `super.applyStyle()` first.
+     * Decisions), or by one re-asserting a key an earlier phase also queues
+     * (`Markdown`'s `maxWidth`). Overriding `applyStyle` and writing after
+     * `super.applyStyle()` instead misses that flush: mid-render
+     * `getElement()` cannot find the detached element yet, so the write
+     * stays queued until some later, unrelated rule commit.
      */
     protected applySubclassStyles(): void {
         // No-op by default.

@@ -916,28 +916,29 @@ class Markdown extends Component<MarkdownOptions> {
     }
 
     /**
-     * Re-applies all styles, then re-asserts the prose column's max-measure
-     * override.
-     *
-     * @param element - The element handle to apply styles to.
-     * @returns This component, for method chaining.
+     * Re-asserts the prose column's max-measure override on every render.
      *
      * @remarks `Component.applyStyle`'s size-constraint phase also targets the
      * `maxWidth` CSS property (every component resolves `getMaxSizeConstraint()`
      * to a real, if unbounded, `{width,height}` pair, never `null` — see
      * `Component.getMaxSizeConstraint`), and Markdown defaults no `maxSize` of
      * its own, so that phase's value matches the class/framework baseline in
-     * the common case. Since that match now queues a removal (rather than
-     * being skipped) onto the very same key {@link setMaxMeasure} already
-     * queued a real value for, in the same render pass, this override
-     * re-asserts {@link setMaxMeasure}'s value last so it always wins.
+     * the common case. Since that match queues a removal onto the very same
+     * key {@link setMaxMeasure} already queued a real value for, in the same
+     * render pass, this hook re-asserts {@link setMaxMeasure}'s value after
+     * it so it always wins.
+     *
+     * Runs from this hook rather than after `super.applyStyle()`, so the value
+     * rides `applyStyle`'s one materialising flush. Mid-render `getElement()`
+     * cannot yet find the detached element, so a write queued after that flush
+     * stays pending until the next unrelated rule commit — the end of the
+     * first `commitBounds`, after `setWidth` and the first-layout callback have
+     * already measured the content height without any max-width applied.
      */
-    applyStyle(element: Handle): this {
-        super.applyStyle(element);
+    protected applySubclassStyles(): void {
+        super.applySubclassStyles();
 
         this.setElementCSSRule("maxWidth", this._maxMeasure ?? "var(--ts-ui-md-max-measure, 70ch)");
-
-        return this;
     }
 
     /**

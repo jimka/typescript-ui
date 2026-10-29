@@ -2,6 +2,10 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { MarkdownViewer } from '~/component/display/MarkdownViewer';
 import { headingSelector } from '~/component/display/Markdown';
 import { DOM } from '~/core/DOM';
+import type { Handle } from '~/core/DOM';
+import { Container } from '~/core/Container';
+import { Card } from '~/layout/Card';
+import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import type { TreeNode } from '~/component/tree/TreeNode';
 import { installTestDOM, setQuerySelectorResult } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
@@ -24,7 +28,7 @@ function stageHeading(id: string, top: number): void {
     setQuerySelectorResult(headingSelector(id), handle);
 }
 
-afterEach(() => DOM.reset());
+afterEach(() => { vi.restoreAllMocks(); DOM.reset(); });
 
 describe('MarkdownViewer minimap/controls visibility', () => {
     it('defaults to both visible', () => {
@@ -464,5 +468,62 @@ describe('MarkdownViewer scroll tracking', () => {
         viewer.handleNativeScroll();
 
         expect(listener).toHaveBeenCalledWith(headings[0].id);
+    });
+});
+
+describe('MarkdownViewer first measure as a lazily-built Card page', () => {
+    // Loom's usage: the viewer is a keyed Card page whose factory runs on the
+    // key's first selection, so the whole subtree renders and takes its first
+    // measure inside one layout pass. A real `getElementById` cannot find a
+    // detached element (the modelled id index can), so the mock restores
+    // production's mid-render `getElement()` miss. The flowed height itself is
+    // not modelled offline; what the measure depends on is that the prose
+    // column's max-width has reached the stylesheet before `scrollHeight` is
+    // read, or it measures at the full pane width.
+    //
+    // Manual-verify (the flowed height itself): verified live in-browser with
+    // the repo's CLAUDE.md as a lazily-built keyed Card page in a ~2540px pane.
+    // Before the fix the first two measures read computed `max-width: none`
+    // with `maxWidth` still queued on the rule and reported 1832px; after it
+    // the first measure read `max-width: 683px` (70ch) and reported 2160px,
+    // equal to a fresh re-measure.
+    it('reads its content height with the max-measure declaration already committed', () => {
+        const sink = installTestDOM(CONFIG);
+        vi.spyOn(DOM.source, 'getElementById').mockReturnValue(null);
+        vi.spyOn(DOM.source, 'isConnected').mockReturnValue(true);
+
+        const card = new Card();
+        const host = new Container({ layoutManager: card });
+        host.getElement(true);
+        host.setWidth(1200);
+        host.setHeight(600);
+        host.clearInsets();
+
+        let viewer: MarkdownViewer | null = null;
+        host.addComponent(() => (viewer = new MarkdownViewer({ markdown: SOURCE })), Object.assign(new LayoutConstraints(), { key: 'preview' }));
+
+        // The max-width each content-height read saw on the prose's own rule.
+        const maxWidthAtRead: Array<string | null | undefined> = [];
+        const realScrollMetrics = DOM.source.getScrollMetrics.bind(DOM.source);
+
+        vi.spyOn(DOM.source, 'getScrollMetrics').mockImplementation((handle: Handle) => {
+            const markdown = viewer?.getMarkdown();
+
+            if (markdown && handle === markdown.getElement()) {
+                const selector = '#' + DOM.source.escapeSelector(markdown.getId());
+                const ruleWrites = sink.writes.filter((w) => w.op === 'setRuleStyles' && w.args[0] === selector
+                    && 'maxWidth' in (w.args[1] as Record<string, string | null>));
+
+                maxWidthAtRead.push((ruleWrites.at(-1)?.args[1] as Record<string, string | null> | undefined)?.maxWidth);
+            }
+
+            return realScrollMetrics(handle);
+        });
+
+        card.setVisibleKey('preview');
+        host.doLayout();
+
+        expect(maxWidthAtRead.length).toBeGreaterThan(0);
+        expect(maxWidthAtRead.every((value) => value === 'var(--ts-ui-md-max-measure, 70ch)')).toBe(true);
     });
 });
