@@ -50,21 +50,11 @@ const MAKERS: readonly [string, (opts?: any) => Field][] = [
     ['PasswordField', (opts?: any): Field => new PasswordField(opts)],
 ];
 
-// MUST be the first two describe blocks in this file (see
-// tests/component/input/SelectableText.test.ts's file-level note, which
-// documents the same constraint): `TextInput`'s constructor now registers a
-// "contextmenu" listener unconditionally, and its cut()/paste() re-fire a
-// real "input" event — Event's window-level base listener for a type is
-// armed once per event type for the lifetime of this module and is not
-// re-armed by a later installTestDOM() call unless every component holding
-// it is disposed first. Every field constructed below is tracked in `field`
-// and disposed in `afterEach` (not a manual end-of-test call), so cleanup
-// still runs when an assertion throws mid-test — a manual call skipped by a
-// thrown exception would leak the listener registration and silently break
-// every later real-dispatch test in this file. Every field constructed by
-// the describe blocks further down this file is never disposed, but nothing
-// later fires a real "input"/"contextmenu" event, so it is unaffected by
-// whichever sink last owned the registration.
+// The describe blocks that dispatch real events: `TextInput`'s constructor
+// registers a "contextmenu" listener, and its cut()/paste() re-fire a real
+// "input" event. Every field constructed below is tracked in `field` and
+// disposed in `afterEach` (not a manual end-of-test call), so cleanup still
+// runs when an assertion throws mid-test.
 describe('TextInput copy/cut/paste', () => {
     for (const [name, make] of MAKERS) {
         describe(name, () => {

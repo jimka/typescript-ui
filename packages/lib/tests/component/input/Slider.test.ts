@@ -29,14 +29,11 @@ const CONFIG = {
 };
 
 /**
- * Quiesces a realized Slider so it leaves no pending layout behind. The
- * module-level pending-layout set outlives a single test file, so a Slider (or
- * its private track/thumb children) left queued flushes on a LATER file's real
- * rAF after this file's DOM was reset — surfacing as a stray "DOM handle not
- * registered" unhandled error. The sequence is: pause the slider AND its
- * private children first, then flushLayout the host subtree and the slider to
- * delete their already-queued entries from the global set. fireEvent only needs
- * the element to exist, not a live frame.
+ * Quiesces a realized Slider so the dispatches that follow run against a
+ * settled tree with nothing left queued: pause the slider AND its private
+ * children first, then flushLayout the host subtree and the slider to run
+ * their already-queued passes. fireEvent only needs the element to exist, not
+ * a live frame.
  */
 function quiesce(host: { flushLayout(): unknown; pauseLayout(): unknown }, slider: any): void {
     slider.pauseLayout();
@@ -229,11 +226,9 @@ describe('Slider setValue round-trip (mounted)', () => {
         host.addComponent(slider);
         host.getElement(true);
         slider.getElement(true);
-        // Construction + realization queued the host subtree into the
-        // module-level pending-layout set; drain it synchronously now (while the
-        // elements are valid) and pause both so setValue's further
-        // scheduleLayout calls never re-queue a frame that another file's real
-        // rAF would flush against a reset DOM after teardown.
+        // Construction + realization queued the host subtree for layout; drain
+        // it synchronously now and pause both, so setValue's further
+        // scheduleLayout calls queue nothing behind the assertions.
         quiesce(host, slider);
 
         let changes = 0;
@@ -287,28 +282,8 @@ describe('Slider keydown — stands down while SpatialNavigation claims the key'
         vi.restoreAllMocks();
     });
 
-    /**
-     * `installBaseListener` (core/Event.ts) attaches its native "keydown"
-     * window listener only on the type's first-ever registration in this
-     * file, and every Slider constructed by an earlier test already left one
-     * behind, pinned to that test's now-torn-down window (see
-     * Button.pressedState.test.ts's file header for the same landmine) — so a
-     * plain `installTestDOM` here would silently receive no "keydown"
-     * delivery at all. Purging every currently-registered component via the
-     * sanctioned test-only escape hatch (`Event._registeredComponentIds` /
-     * `Event.purgeComponent`) drops "keydown" back to uninstalled, so the
-     * Slider constructed right after re-attaches it to THIS window.
-     */
-    function freshKeydownWindow(): void {
-        installTestDOM(CONFIG);
-
-        for (const id of Event._registeredComponentIds()) {
-            Event.purgeComponent(id);
-        }
-    }
-
     it('ArrowRight steps the value up when the key is unclaimed', () => {
-        freshKeydownWindow();
+        installTestDOM(CONFIG);
 
         const host   = new Container({});
         const slider: Slider = new Slider({ min: 0, max: 100, step: 10 });
@@ -323,7 +298,7 @@ describe('Slider keydown — stands down while SpatialNavigation claims the key'
     });
 
     it('a claimed ArrowRight does not change the value', () => {
-        freshKeydownWindow();
+        installTestDOM(CONFIG);
 
         const host   = new Container({});
         const slider: Slider = new Slider({ min: 0, max: 100, step: 10 });
@@ -346,31 +321,12 @@ describe('Slider action delivery (mounted)', () => {
     afterEach(() => DOM.reset());
 
     /**
-     * Installs a fresh TestDOM and purges every component registered with
-     * `Event`, so the window-level listeners this file's earlier Sliders left
-     * pinned to a torn-down window are re-installed against this one. Without
-     * it every "zero actions" assertion here would pass vacuously. Ritual
-     * copied from `freshKeydownWindow` above.
-     *
-     * @returns The recording sink the fresh TestDOM writes to.
-     */
-    function freshEventWindow(): RecordingDOMSink {
-        const sink = installTestDOM(CONFIG);
-
-        for (const id of Event._registeredComponentIds()) {
-            Event.purgeComponent(id);
-        }
-
-        return sink;
-    }
-
-    /**
      * A mounted, quiesced Slider at (0, 0), 200 × 16 — the geometry the
      * `valueAtPointer` block's `mapper` gives it, so a pointer at `clientX`
      * maps to `clientX / 2`.
      */
     function mountedSlider(options: SliderOptions): { sink: RecordingDOMSink; slider: any; actions: () => number } {
-        const sink   = freshEventWindow();
+        const sink   = installTestDOM(CONFIG);
         const host   = new Container({});
         const slider = new Slider(options) as any;
 

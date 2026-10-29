@@ -112,13 +112,9 @@ function findPopupButton(panel: MarkdownDocumentPanel, text: string): PopupButto
     return button;
 }
 
-// MUST be the first test in this file, and the only place `.click()` runs.
-// Event's window-level base listener for "click" (and, for the trailing
-// toggle, "change") installs lazily on its first registration and is never
-// re-armed by a later installTestDOM() call within this module's lifetime
-// (see MenuButton.test.ts's file-level comment for the same landmine) — so
-// every other test below drives its assertions through the MenuButton
-// menuItems configs directly (plain function calls, no DOM dispatch) instead.
+// The one test in this file that runs `.click()`. Every other test below
+// drives its assertions through the MenuButton menuItems configs directly
+// (plain function calls, no DOM dispatch).
 describe('MarkdownDocumentPanel toolbar action wiring (native click dispatch)', () => {
     it('the five format-toggle buttons and the Edit Markdown source toggle fire their wired MarkdownEditor commands', async () => {
         const cases: Array<[string, string]> = [

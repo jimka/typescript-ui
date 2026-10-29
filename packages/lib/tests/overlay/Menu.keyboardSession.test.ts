@@ -11,18 +11,13 @@
 // `## Implementation Notes`.
 //
 // Every case dispatches real events through `Event`'s window-level handlers
-// (`DOM.sink.dispatchEvent`). `Event` keeps its registrations in module-level
-// state that outlives `DOM.reset()`, and attaches a window listener only when
-// a type is first registered, so a registration left behind by one test would
-// make the next test's dispatches silently vanish. The teardown below
-// therefore removes every one: each menu and the opener are disposed, the
-// timers are run so a closed submenu's fade disposes it, and
-// `Menu._stopInputWatch()` removes the static input watch. A `Button` attaches
-// a tooltip, which starts `Tooltip`'s own static watch — it listens for
-// `keydown` too — so `Tooltip._stopPointerWatch()` removes that one.
+// (`DOM.sink.dispatchEvent`). Each case gets a fresh DOM environment, and a
+// sink swap makes every module forget the previous one — `Event`'s
+// registrations, `Menu`'s input watch and `Tooltip`'s pointer watch among
+// them — so the teardown below only disposes what the case built and runs the
+// timers, so a closed submenu's fade disposes it.
 import { describe, it, expect, beforeEach, afterEach, vi, type MockInstance } from 'vitest';
 import { Menu } from '~/overlay/Menu';
-import { Tooltip } from '~/overlay/Tooltip';
 import type { MenuItemConfig } from '~/component/container/MenuItem';
 import { CheckboxMenuRow } from '~/component/container/CheckboxMenuRow';
 import { RadioMenuRow } from '~/component/container/RadioMenuRow';
@@ -208,8 +203,6 @@ afterEach(() => {
     }
 
     opener.dispose();
-    Menu._stopInputWatch();
-    Tooltip._stopPointerWatch();
 
     vi.useRealTimers();
     DOM.reset();
@@ -310,10 +303,11 @@ describe('Menu keyboard session — input watch', () => {
     });
 
     it('W7b: known limit: the same call opens as a pointer menu when element listeners run first', () => {
-        // Start from no keydown registration at all, so the order below decides.
+        // Start from no keydown registration at all, so the order below decides:
+        // a fresh DOM environment, which every module's registrations are
+        // forgotten on.
         opener.dispose();
-        Menu._stopInputWatch();
-        Tooltip._stopPointerWatch();
+        installTestDOM(CONFIG);
 
         const host     = new Component();
         const hostEl   = connect(host);
@@ -370,28 +364,15 @@ describe('Menu keyboard session — input watch', () => {
         expect(Menu.hasKeyboardSessionFrom(openerEl)).toBe(false);
     });
 
-    it('W6b: _stopInputWatch() is safe to call again, and when no menu ever started the watch', () => {
-        Menu._stopInputWatch();
-
-        expect(() => Menu._stopInputWatch()).not.toThrow();
-
-        const menu = makeMenu();
-
-        // The next menu started the watch again.
+    it('W6: a DOM environment swap forgets a recorded key press', () => {
+        Menu._startInputWatch();
         keyInput();
-        menu.show(AT, AT, ITEMS);
 
-        expect(active()).toBe(menu.getElement());
-    });
+        expect(Menu.lastInputWasKeyPress()).toBe(true);
 
-    it('W6: _stopInputWatch() forgets a recorded key press', () => {
-        const menu = makeMenu();
+        installTestDOM(CONFIG);
 
-        keyInput();
-        Menu._stopInputWatch();
-        menu.show(AT, AT, ITEMS);
-
-        expect(active()).toBe(openerEl);
+        expect(Menu.lastInputWasKeyPress()).toBe(false);
     });
 
     // M1 and M2 follow plans/implemented/table-tree-keyboard-context-menu.md:
@@ -409,31 +390,16 @@ describe('Menu keyboard session — input watch', () => {
         pointerInput();
 
         expect(Menu.lastInputWasKeyPress()).toBe(false);
-
-        Menu._stopInputWatch();
-
-        expect(Menu.lastInputWasKeyPress()).toBe(false);
     });
 
-    it('M1b: _stopInputWatch() resets a recorded key press for the widgets\' read too', () => {
+    it('M2: a second _startInputWatch() registers nothing', () => {
         Menu._startInputWatch();
-        keyInput();
 
-        expect(Menu.lastInputWasKeyPress()).toBe(true);
+        const before = Event.listenerCounts().viewport;
 
-        Menu._stopInputWatch();
-
-        expect(Menu.lastInputWasKeyPress()).toBe(false);
-    });
-
-    it('M2: a second _startInputWatch() registers nothing, so one stop removes the watch', () => {
         Menu._startInputWatch();
-        Menu._startInputWatch();
-        Menu._stopInputWatch();
 
-        keyInput();
-
-        expect(Menu.lastInputWasKeyPress()).toBe(false);
+        expect(Event.listenerCounts().viewport).toBe(before);
     });
 });
 
@@ -1565,10 +1531,11 @@ describe('Menu keyboard session — inside a modal dialog', () => {
      * @param order - Which of the two listeners is installed first.
      */
     function installKeydownListeners(order: typeof ORDERS[number]): void {
-        // Whatever the shared setup registered would decide the order instead.
+        // Whatever the shared setup registered would decide the order instead,
+        // so start from a fresh DOM environment, which every module's
+        // registrations are forgotten on.
         opener.dispose();
-        Menu._stopInputWatch();
-        Tooltip._stopPointerWatch();
+        installTestDOM(CONFIG);
 
         const probe   = new Component();
         const probeEl = connect(probe);

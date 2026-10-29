@@ -82,14 +82,7 @@ describe('AbstractWindow — the minimized dock answers a viewport resize throug
         vi.spyOn(DOM.source, 'matchMedia').mockReturnValue({ matches: true, addChangeListener: () => {} });
     });
 
-    // Drop any window left registered before the DOM resets, so a later
-    // test's own relayoutMinimizedStack() sweep doesn't touch a dead handle,
-    // then relayout once against the emptied set so the dock releases its
-    // listener — it outlives DOM.reset() otherwise.
     afterEach(() => {
-        (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
-        relayoutStack();
-
         vi.restoreAllMocks();
         DOM.reset();
     });

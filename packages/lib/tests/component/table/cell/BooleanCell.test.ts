@@ -28,15 +28,6 @@ let sink: RecordingDOMSink;
 
 beforeEach(() => {
     sink = installTestDOM(CONFIG);
-
-    // `Event` installs one window-level base listener per event type and
-    // remembers it across DOM installs, so a listener installed against a
-    // previous case's window would leave the checkbox's DOM `change`
-    // undelivered — and every commit assertion passing for the wrong reason.
-    // Ritual copied from tests/component/input/Slider.test.ts.
-    for (const id of Event._registeredComponentIds()) {
-        Event.purgeComponent(id);
-    }
 });
 afterEach(() => DOM.reset());
 

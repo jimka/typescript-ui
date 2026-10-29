@@ -26,23 +26,8 @@ function tooltipText(id: string): string | undefined {
     return (Tooltip as any).attachments.get(id)?.text;
 }
 
-function resetTooltipSingleton(): void {
-    const timer = (Tooltip as any).showTimer;
-
-    if (timer !== null) {
-        clearTimeout(timer);
-        (Tooltip as any).showTimer = null;
-    }
-
-    (Tooltip as any).instance = null;
-    (Tooltip as any).watching = false;
-    (Tooltip as any).activeElement = null;
-    (Tooltip as any).pendingId = null;
-}
-
 describe('LabeledGrid.addField description tooltip', () => {
     afterEach(() => {
-        resetTooltipSingleton();
         DOM.reset();
     });
 

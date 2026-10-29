@@ -161,10 +161,8 @@ describe('Checkbox programmatic writes (mounted)', () => {
      * A mounted, layout-paused checkbox under a host container. Its element is
      * realised, so a write that dispatched anything would reach the sink rather
      * than be skipped for want of an element. Construction-time pending
-     * layouts on the host subtree are drained while the elements are valid,
-     * then both are paused: the module-level pending-layout set outlives this
-     * file, so an undrained component would flush on a later file's real rAF
-     * after this DOM was reset — a stray "DOM handle not registered" error.
+     * layouts on the host subtree are drained, then both are paused, so
+     * nothing is left queued behind the assertions.
      */
     function mountedCheckbox(options?: CheckboxOptions): { sink: RecordingDOMSink; cb: Checkbox } {
         const sink = installTestDOM(CONFIG);
@@ -241,29 +239,14 @@ describe('Checkbox action delivery (mounted)', () => {
     afterEach(() => DOM.reset());
 
     /**
-     * Installs a fresh TestDOM and clears `Event`'s component registry, so the
-     * window-level base listener that this file's earlier, DOM-less Checkboxes
-     * installed is re-installed against the window handle the dispatches below
-     * actually route through. Without it every "zero actions" assertion here
-     * would pass vacuously. Ritual copied from RadioButton.test.ts.
-     */
-    function freshEventWindow(): void {
-        installTestDOM(CONFIG);
-
-        for (const id of Event._registeredComponentIds()) {
-            Event.purgeComponent(id);
-        }
-    }
-
-    /**
-     * A mounted, quiesced Checkbox and its realized box graphic. Pausing the
-     * checkbox and its private children before flushing the host keeps the
-     * module-level pending-layout set from flushing against a reset DOM in a
-     * later file (see Slider.test.ts's `quiesce` for the full reasoning).
+     * A mounted, quiesced Checkbox and its realized box graphic. The checkbox
+     * and its private children are paused before the host is flushed, so
+     * nothing is left queued behind the assertions (see Slider.test.ts's
+     * `quiesce`).
      * Modelled on RadioButton.test.ts's `mountedRadio`.
      */
     function mountedCheckbox(options?: CheckboxOptions): { cb: any; box: Handle } {
-        freshEventWindow();
+        installTestDOM(CONFIG);
 
         const host = new Container({});
         const cb   = new Checkbox(options) as any;

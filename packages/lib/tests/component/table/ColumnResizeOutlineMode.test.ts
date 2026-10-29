@@ -26,8 +26,6 @@ import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
 import { Event } from '~/core/Event';
-import { Tooltip } from '~/overlay/Tooltip';
-import { Menu } from '~/overlay/Menu';
 import { setAppResizeMode } from '~/core/ResizeDrag';
 import type { ResizeMode } from '~/core/ResizeDrag';
 import { Insets } from '~/primitive/Insets';
@@ -123,13 +121,8 @@ describe('Table column resize — outline mode', () => {
     });
 
     afterEach(() => {
-        // A drag left mid-flight keeps its bar on screen, and with it the two
-        // viewport listeners the bar registers. `Event`'s registration maps are
-        // module state DOM.reset() does not clear, so a surviving type map stops
-        // the next `addViewportListener` re-registering the base listener
-        // against the fresh sink, and the case after this one would hear no
-        // keydown at all. Disposing the table runs its destructor, which cancels
-        // the session exactly as a real teardown does.
+        // Disposing the table runs its destructor, which cancels a drag left
+        // mid-flight, bar and all, exactly as a real teardown does.
         for (const table of tables) {
             table.dispose();
         }
@@ -138,13 +131,6 @@ describe('Table column resize — outline mode', () => {
         // core/ResizeDrag.ts's app-wide default is module state DOM.reset()
         // does not touch; T1 sets it.
         setAppResizeMode('live');
-        // A header cell attaches a tooltip, which installs `Tooltip`'s own
-        // session-long viewport watch — a surviving `keydown` type map of
-        // exactly the kind described above.
-        Tooltip._stopPointerWatch();
-        // A table builds a context `Menu`, which installs `Menu`'s own
-        // session-long input watch: another surviving `keydown` type map.
-        Menu._stopInputWatch();
         DOM.reset();
     });
 
@@ -847,6 +833,13 @@ describe('Table column resize — outline mode', () => {
         // An ordinary store mutation. `maybeResampleColumnWidths` clears the
         // widths for the next pass, so the snapshot no longer describes them.
         store.add({ a: 'later', b: 'later', c: 'later', d: 'later' });
+
+        // The mutation abandons the drag at once, not on the pass it schedules.
+        expect(barOf(table)).toBeNull();
+
+        // Runs that next pass, so the widths `expectAbandoned` snapshots are the
+        // re-sampled ones rather than the cleared, not-yet-rebuilt list.
+        flushFrame();
 
         expectAbandoned(table, priv);
     });

@@ -1278,4 +1278,26 @@ export namespace LayerManager {
 
         _listenersInstalled = false;
     }
+
+    /**
+     * Forgets every layer and background surface of the DOM environment a sink
+     * swap replaces, and the record that the document-level listeners are
+     * installed — `Event` drops them on the same swap, so the next layer
+     * registered installs them anew. Registered with `DOM.onSinkChange` below
+     * and called from nowhere else.
+     *
+     * Every layer and surface belongs to the outgoing environment; kept, the
+     * stack would pin each one — subtree and all — for as long as this module
+     * is loaded, and a modal left open in it would keep the next environment's
+     * page inert.
+     */
+    function forgetEnvironment(): void {
+        _stack.length = 0;
+        _counterByBand.clear();
+        _activeLayer        = null;
+        _listenersInstalled = false;
+        _backgroundSurfaces.clear();
+    }
+
+    DOM.onSinkChange(forgetEnvironment);
 }

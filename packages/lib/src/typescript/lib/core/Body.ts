@@ -118,8 +118,10 @@ export class Body extends Component<BodyOptions> implements BackgroundSurface {
      * awaited startup bootstrap: `const body = await Body.init({ layoutManager:
      * Fit() })`. Only the supplied fields are dispatched (it delegates to
      * `Component.applyOptions`), so the body's viewport-size tracking and
-     * theme set up at construction are preserved. Build and add the component
-     * tree only after the returned promise resolves — see the class doc.
+     * theme set up at construction are preserved — re-registered with the
+     * installed DOM seam if it was swapped since (a test harness). Build and
+     * add the component tree only after the returned promise resolves — see
+     * the class doc.
      *
      * Also installs the browser-tab icon, unless the page already declares a
      * `<link rel="icon">` of its own or `options.favicon` is `false`, and
@@ -148,6 +150,7 @@ export class Body extends Component<BodyOptions> implements BackgroundSurface {
         const instance = Body.getInstance();
 
         instance.reattachElementBuffers();
+        instance.rebindEnvironmentListeners();
         instance.applyOptions(options);
 
         // The built-in default is dispatched here rather than from
@@ -465,9 +468,30 @@ export class Body extends Component<BodyOptions> implements BackgroundSurface {
         this.clearInsets();
 
         Event.addViewportListener(this, "resize", this._onViewportResize);
-        this.subscribeTheme(this._onThemeReflow);
+
+        // Persistent: the singleton outlives every DOM environment, so a seam
+        // swap must not drop the subscription that keeps its size current.
+        this.subscribeTheme(this._onThemeReflow, { persistent: true });
 
         return this;
+    }
+
+    /**
+     * Re-registers what a DOM seam swap drops for the singleton, which, unlike
+     * every other component, lives on into the next environment: the viewport
+     * `resize` listener, the page-wide `contextmenu` listener while the
+     * native menu is suppressed, and the background-surface entry that makes
+     * the page inert behind a modal layer. Each registration is idempotent,
+     * so without a swap this changes nothing.
+     */
+    private rebindEnvironmentListeners(): void {
+        Event.addViewportListener(this, "resize", this._onViewportResize);
+
+        if (this._options.nativeContextMenu === false) {
+            Event.addViewportListener(this, "contextmenu", this.onContextMenu);
+        }
+
+        LayerManager.addBackgroundSurface(this);
     }
 
     /**

@@ -1363,6 +1363,32 @@ function ensureFontLoaded(): void {
     });
 }
 
+/** One theme-change subscription: the listener, and whether a seam swap keeps it. */
+type ThemeSubscription = {
+    readonly listener:   () => void;
+    readonly persistent: boolean;
+};
+
+// Every live theme-change subscription, in subscription order. One entry per
+// `onThemeChange` call, so subscribing the same function twice — once
+// persistent and once not — keeps the two apart.
+let themeSubscriptions: ThemeSubscription[] = [];
+
+/**
+ * Drops every subscription not made with `persistent: true`. Registered with
+ * `DOM.onSinkChange` below the `ThemeManager` class and called from nowhere
+ * else.
+ *
+ * The subscription list is module state, so each dropped subscription would
+ * otherwise keep whatever its listener closes over — a component and its
+ * subtree, a layout manager and its container — reachable for as long as this
+ * module is loaded (in a test run, the rest of the file), though nothing it
+ * updates can be reached through the installed seam.
+ */
+function forgetEnvironmentSubscriptions(): void {
+    themeSubscriptions = themeSubscriptions.filter(subscription => subscription.persistent);
+}
+
 /**
  * Singleton manager that applies a theme by writing CSS custom properties and
  * inline styles onto the document root and body elements.
@@ -1383,24 +1409,37 @@ export class ThemeManager {
     // ever chose a theme. This flag can: `setTheme` is its only writer.
     private static themeApplied: boolean = false;
     private static resolvedScale: ResolvedScale = resolveScale(ModernTheme);
-    private static themeListeners: Array<() => void> = [];
 
     /**
      * Subscribes a listener that is called whenever the active theme changes.
      *
      * @param listener - Called after CSS variables have been updated, so `getComputedStyle` returns new values.
-     * @returns A cleanup function that removes the listener when called.
+     * @param options - Optional subscription settings.
+     * @param options.persistent - Keep the listener when the DOM seam is
+     *   swapped. Defaults to `false`.
+     * @returns A cleanup function that removes this subscription when called —
+     *   only this one, even if the same function was subscribed again.
+     *
+     * @remarks A listener belongs to the DOM environment it was subscribed in:
+     * replacing the DOM seam (`DOM.install` with a new sink, or `DOM.reset`,
+     * which only test setup does) drops it, since whatever it would update was
+     * rendered through the outgoing seam. Pass `persistent: true` for a
+     * subscriber that outlives every environment, such as a module-level cache
+     * that must be cleared on each theme change.
      */
-    static onThemeChange(listener: () => void): () => void {
-        ThemeManager.themeListeners.push(listener);
+    static onThemeChange(listener: () => void, options?: { persistent?: boolean }): () => void {
+        const subscription: ThemeSubscription = { listener, persistent: options?.persistent ?? false };
+
+        themeSubscriptions.push(subscription);
+
         return () => {
-            ThemeManager.themeListeners = ThemeManager.themeListeners.filter(l => l !== listener);
+            themeSubscriptions = themeSubscriptions.filter(s => s !== subscription);
         };
     }
 
     /** Number of currently-registered theme-change listeners; for tests only. @internal */
     static _themeListenerCount(): number {
-        return ThemeManager.themeListeners.length;
+        return themeSubscriptions.length;
     }
 
     /**
@@ -1508,7 +1547,7 @@ export class ThemeManager {
     private static reflowText(): void {
         Util.invalidateTextMetricsCache();
 
-        ThemeManager.themeListeners.forEach(l => l());
+        themeSubscriptions.forEach(s => s.listener());
     }
 
     /**
@@ -1532,3 +1571,7 @@ export class ThemeManager {
         return ThemeManager.resolvedScale;
     }
 }
+
+// Registered at import: a seam swap drops the subscriptions of the environment
+// it replaces, as every module holding state tied to that environment does.
+DOM.onSinkChange(forgetEnvironmentSubscriptions);

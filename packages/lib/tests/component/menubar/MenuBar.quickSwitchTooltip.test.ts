@@ -81,15 +81,6 @@ afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
 
-    (Tooltip as any).showTimer = null;
-    (Tooltip as any).instance = null;
-    (Tooltip as any).watching = false;
-    (Tooltip as any).activeElement = null;
-    (Tooltip as any).pendingId = null;
-    (Tooltip as any).dismissing = false;
-    (Tooltip as any).attachments.clear();
-    Tooltip._stopPointerWatch();
-
     DOM.reset();
 });
 

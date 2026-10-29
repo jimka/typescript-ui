@@ -82,10 +82,8 @@ describe('AbstractWindow resize mode', () => {
     });
 
     afterEach(() => {
-        // An outline left on screen keeps its two viewport listeners, and
-        // `Event`'s registration maps are module state DOM.reset() does not
-        // clear: a surviving type map stops the next `addViewportListener`
-        // re-registering the base listener against the fresh sink.
+        // Disposing each window cancels a drag left mid-flight, outline and
+        // all, as a real teardown does.
         for (const win of windows) {
             win.dispose();
         }

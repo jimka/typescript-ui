@@ -10,7 +10,6 @@ import { Component } from '~/core/Component';
 import { Tab, TabCloseController, TabOptions } from '~/layout/Tab';
 import { TabBar } from '~/component/container/TabBar';
 import { TabButton } from '~/component/button/TabButton';
-import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -49,7 +48,6 @@ function driveBarClose(tab: Tab, id: string): void {
 }
 
 afterEach(() => {
-    (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
     vi.restoreAllMocks();
     DOM.reset();
 });

@@ -12,7 +12,6 @@ import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { Glyph } from '~/component/display/Glyph';
 import { file } from '~/glyphs/solid/file';
 import { file_lines } from '~/glyphs/solid/file_lines';
-import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -55,7 +54,6 @@ function glyphed(name: string): LayoutConstraints {
 }
 
 afterEach(() => {
-    (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
     // 'file' / 'file-lines' are SVG-kind glyphs, so (per Glyph.test.ts's
     // convention) each case registers them and this cleans up afterward to
     // avoid leaking into the global registry. Unregister before DOM.reset()

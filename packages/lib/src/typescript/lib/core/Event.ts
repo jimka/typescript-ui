@@ -251,6 +251,30 @@ export namespace Event {
     }
 
     /**
+     * Drops every exact-target, subtree and viewport registration, and the
+     * record of which window-level base listeners are installed, so the next
+     * registration arms a base listener on the installed sink's window.
+     * Registered with `DOM.onSinkChange` below and called from nowhere else.
+     *
+     * Every registration belongs to a component rendered through the outgoing
+     * sink, whose handles are dead, and every recorded base listener sits on
+     * that sink's window. Kept, the maps would pin each such component —
+     * subtree and all — for as long as this module is loaded (in a test run,
+     * the rest of the file), and a type armed under one sink would never be
+     * re-armed under the next. The outgoing listeners are not removed: the
+     * sink that installed them is no longer installed.
+     */
+    function forgetRegistrations(): void {
+        listenerMap.clear();
+        subtreeListenerMap.clear();
+        viewportListenerMap.clear();
+        installedListenerTypes.clear();
+        installedListenerOpts.clear();
+    }
+
+    DOM.onSinkChange(forgetRegistrations);
+
+    /**
      * Runs the subtree listeners registered for `evnt`'s type on the event
      * target and its ancestors, nearest first. Each step asks the seam for the
      * next element whose id holds a registration, so an ancestor with none

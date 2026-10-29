@@ -19,7 +19,6 @@ import { Panel } from '~/core/Panel';
 import { VBox } from '~/layout/VBox';
 import { TextField } from '~/component/input/TextField';
 import { Window } from '~/overlay/Window';
-import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { DOM } from '~/core/DOM';
 import { ThemeManager, ModernTheme } from '~/core/Theme';
 import { Util } from '~/core/Util';
@@ -68,11 +67,6 @@ describe('Theme-variable cache', () => {
     });
 
     afterEach(() => {
-        // The window cases leave entries in the static open-window set, which
-        // outlives the DOM — drop them before it resets, as the other window
-        // suites do.
-        (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
-
         vi.restoreAllMocks();
         ThemeManager.setTheme(ModernTheme);
         DOM.reset();

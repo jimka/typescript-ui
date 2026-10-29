@@ -11,7 +11,6 @@ import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { LayerManager } from '~/core/LayerManager';
 import { Component } from '~/core/Component';
 import { _Button as Button } from '~/component/button/Button';
-import { Tooltip } from '~/overlay/Tooltip';
 import { DOM, type Handle } from '~/core/DOM';
 import { installTestDOM, setConnected } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -101,7 +100,6 @@ describe('AbstractWindow focus on show', () => {
 
         windows.length = 0;
 
-        Tooltip._stopPointerWatch();
         vi.restoreAllMocks();
         DOM.reset();
     });

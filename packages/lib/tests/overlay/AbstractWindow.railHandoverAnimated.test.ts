@@ -90,9 +90,6 @@ describe('AbstractWindow — changing a window\'s rail mid-collapse', () => {
     });
 
     afterEach(() => {
-        (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
-        (AbstractWindow as unknown as { relayoutMinimizedStack(): void }).relayoutMinimizedStack();
-
         vi.restoreAllMocks();
         vi.useRealTimers();
         DOM.reset();

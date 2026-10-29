@@ -25,12 +25,9 @@ function exitButton(win: Window): Button {
     return (win.getHeader() as unknown as { _exitButton: Button })._exitButton;
 }
 
-// MUST be the first describe block in this file, and its one test the only
-// place a real dispatched click DOM event is used — see the file-level note in
-// CollapseButton.test.ts / Link.test.ts: Event's window-level base listener is
-// armed once per event TYPE for the lifetime of this module and is not
-// re-armed by a later installTestDOM() call unless the component holding it is
-// disposed first.
+// The one test in this file that dispatches a real click DOM event; the
+// window-level base listener arms against its own sink (Event forgets its
+// registrations on every sink swap).
 describe('AbstractWindow beforeclose (real DOM dispatch)', () => {
     afterEach(() => DOM.reset());
 

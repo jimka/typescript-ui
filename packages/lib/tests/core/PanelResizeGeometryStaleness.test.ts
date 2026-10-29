@@ -61,7 +61,6 @@ import { Fit } from '~/layout/Fit';
 import { LayoutConstraints } from '~/layout/LayoutConstraints';
 import { Split } from '~/layout/Split';
 import { setAppResizeMode } from '~/core/ResizeDrag';
-import { Tooltip } from '~/overlay/Tooltip';
 import { Scrollbar } from '~/component/container/Scrollbar';
 import { installTestDOM, setScrollExtent } from '../dom/TestDOM';
 import type { RecordingDOMSink } from '../dom/TestDOM';
@@ -234,25 +233,13 @@ beforeEach(() => {
 
 afterEach(() => {
     // Disposing the host runs `Split.detach`, which cancels a drag left
-    // mid-flight; without it the session's viewport listeners survive in
-    // `Event`'s module-level registration maps, which DOM.reset() does not
-    // clear. Split.dragFrameGate.test.ts's teardown, for the same reason.
+    // mid-flight exactly as a real teardown does.
     for (const host of hosts) {
         host.dispose();
     }
 
-    // Then drain to quiescence while the captured `requestAnimationFrame` is
-    // still installed. `Component.afterNextLayout`'s `cancel()` only sets a
-    // flag — it does not deregister the frame — so a case ending with frames
-    // still queued otherwise leaves `Component`'s module-level flush handle
-    // non-null, and the next case's own layout scheduling finds a flush already
-    // pending and registers no fresh frame. Every case below then drives a drag
-    // whose frames never run, and each fails on its very first assertion.
-    drainFrames();
-
     vi.restoreAllMocks();
     setAppResizeMode('live');
-    Tooltip._stopPointerWatch();
     DOM.reset();
 });
 

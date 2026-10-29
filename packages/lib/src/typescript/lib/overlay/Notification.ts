@@ -138,6 +138,25 @@ export class Notification extends Component implements BackgroundSurface {
     private static hoverCount: number = 0;
     private static modalCount: number = 0;
 
+    /**
+     * Forgets the live toasts, the resize listener record and the pause
+     * counters of the DOM environment a sink swap replaces. Every live toast
+     * belongs to the outgoing environment, which the list would otherwise pin
+     * for as long as this module is loaded, and so do the hovers and holds the
+     * counters record; the resize listener is dropped by `Event` on the same
+     * swap, so the flag is cleared and the next toast installs it anew. The
+     * history stays: it records messages, not anything rendered. Registered
+     * with `DOM.onSinkChange` below this class and called from nowhere else.
+     *
+     * @internal
+     */
+    static _forgetEnvironment(): void {
+        Notification.activeNotifications = [];
+        Notification.resizeListenerInstalled = false;
+        Notification.hoverCount = 0;
+        Notification.modalCount = 0;
+    }
+
     private readonly _type: NotificationType;
     private readonly _fullMessage: string;
     private readonly _badge: Glyph;
@@ -762,3 +781,7 @@ export class Notification extends Component implements BackgroundSurface {
         super.destructor();
     }
 }
+
+// Registered at import: a seam swap drops the toast state of the environment
+// it replaces, as every module holding state tied to that environment does.
+DOM.onSinkChange(() => Notification._forgetEnvironment());

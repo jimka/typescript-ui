@@ -285,9 +285,7 @@ beforeEach(() => {
 
     // A reveal waits for a queued layout pass, and the modelled DOM never runs
     // an animation frame. Capture each one, so a case can run a flush by hand
-    // and the teardown can drain what is left: an undrained registration
-    // leaves `Component`'s module-level frame handle set and swallows the next
-    // test's own.
+    // and the teardown can drain what is left.
     vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
         frames.push(callback);
 

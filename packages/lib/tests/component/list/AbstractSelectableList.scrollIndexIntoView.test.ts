@@ -29,17 +29,15 @@
 //     reserves the band. A layout pass that commits nothing new does not
 //     re-measure, so a later seed has no effect.
 //
-// Every case dispatches real events through `Event`'s window-level handlers,
-// so the teardown disposes every component a test built and stops the two
-// static watches (see the header of `tests/overlay/Menu.keyboardSession.test.ts`).
+// Every case dispatches real events through `Event`'s window-level handlers;
+// the teardown disposes every component a test built (see the header of
+// `tests/overlay/Menu.keyboardSession.test.ts`).
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { _List } from '~/component/list/List';
 import { _MultiSelectList } from '~/component/list/MultiSelectList';
 import { Component } from '~/core/Component';
 import { DOM } from '~/core/DOM';
 import type { Handle } from '~/core/DOM';
-import { Menu } from '~/overlay/Menu';
-import { Tooltip } from '~/overlay/Tooltip';
 import { installTestDOM, makeEvent, setConnected, setScrollExtent, type RecordingDOMSink } from '../../dom/TestDOM';
 import fontMetrics from '../../dom/font-metrics.test-font.json';
 
@@ -203,9 +201,8 @@ beforeEach(() => {
     frames = [];
     built  = [];
 
-    // A scrolling panel schedules a follow-up layout frame. Capture it, so the
-    // teardown can drain it: an undrained registration leaves `Component`'s
-    // module-level frame handle set and swallows the next test's own.
+    // A scrolling panel schedules a follow-up layout frame. Capture it, so a
+    // case can run it by hand and the teardown can drain what is left.
     vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
         frames.push(callback);
 
@@ -221,9 +218,6 @@ afterEach(() => {
     for (const component of built) {
         component.dispose();
     }
-
-    Menu._stopInputWatch();
-    Tooltip._stopPointerWatch();
 
     DOM.reset();
 });

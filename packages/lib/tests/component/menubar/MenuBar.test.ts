@@ -157,12 +157,8 @@ describe('MenuBar key yielding', () => {
     // sentinel, mirroring Tree.test.ts's `_handleClick(makeEvent(...))` and
     // DiagramView.test.ts's identical pattern for testing a private
     // DOM-event handler offline. `_onKeyDown` is registered as a viewport
-    // listener (Event.addViewportListener), whose window-level registration
-    // is gated on module state that outlives DOM.reset() and this file's own
-    // earlier tests (several open a menu without closing it) — so a real
-    // window dispatch is not reliably routed here; calling the handler
-    // directly exercises the same guard logic without depending on that
-    // shared, cross-test registration state.
+    // listener (Event.addViewportListener); calling the handler directly
+    // exercises the same guard logic as a real window dispatch.
     //
     // Because the call is direct, the dispatcher's disposition-translation
     // layer (`applyDisposition`, which turns a returned `{ prevent: true }`

@@ -142,6 +142,29 @@ let _waiting: ScrollPass | null = null;
 let _watchingInput: boolean = false;
 
 /**
+ * Drops every registered revealer and the waiting scroll pass, and forgets
+ * the input watch, so a reveal after a sink swap considers only containers
+ * rendered through the installed sink. Registered with `DOM.onSinkChange`
+ * below and called from nowhere else.
+ *
+ * Every revealer belongs to a component rendered through the outgoing sink,
+ * and the waiting pass names a handle that sink minted; kept, the registry
+ * pins each such component — subtree and all — for as long as this module is
+ * loaded (in a test run, the rest of the file).
+ * The input watch's viewport listeners are dropped by `Event` on the same
+ * swap, so the flag is cleared to let the next pass install them again. The
+ * pass's `afterReveal` callbacks are not run: they belong to the outgoing
+ * environment, as the layout flush's own queued callbacks do.
+ */
+function forgetRevealers(): void {
+    _revealers.clear();
+    _waiting       = null;
+    _watchingInput = false;
+}
+
+DOM.onSinkChange(forgetRevealers);
+
+/**
  * The registered revealers whose element contains `target`, outermost first.
  * One whose element is still `null` (not yet rendered) is skipped. One whose
  * element has rendered and is not connected is skipped too, and with `prune`

@@ -97,7 +97,6 @@ describe('AbstractWindow — large-resize fade path', () => {
     });
 
     afterEach(() => {
-        (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
         vi.restoreAllMocks();
         vi.useRealTimers();
         DOM.reset();

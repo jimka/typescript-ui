@@ -151,10 +151,16 @@ describe('WebGLCanvas animation loop (U5, U6)', () => {
 
         canvas.getElement(true);
         withStubContext(canvas);
+
+        // Baseline after construction, whose own layout schedule also requests a
+        // (framework-internal) animation frame — isolate the assertion to the
+        // frames the animation loop requests.
+        const rafBefore = rafCount(recorder);
+
         canvas.startAnimation();
 
         expect(canvas.isAnimating()).toBe(true);
-        expect(rafCount(recorder)).toBe(1);
+        expect(rafCount(recorder) - rafBefore).toBe(1);
     });
 
     it('does not stack a second frame on a repeated start (U5)', () => {
@@ -163,10 +169,16 @@ describe('WebGLCanvas animation loop (U5, U6)', () => {
 
         canvas.getElement(true);
         withStubContext(canvas);
+
+        // Baseline after construction, whose own layout schedule also requests a
+        // (framework-internal) animation frame — isolate the assertion to the
+        // frames the animation loop requests.
+        const rafBefore = rafCount(recorder);
+
         canvas.startAnimation();
         canvas.startAnimation();
 
-        expect(rafCount(recorder)).toBe(1);
+        expect(rafCount(recorder) - rafBefore).toBe(1);
     });
 
     it('cancels the frame and clears the flag on stop (U5)', () => {
@@ -381,12 +393,18 @@ describe('WebGLCanvas pause-when-hidden (P1, P3-P8)', () => {
 
         canvas.getElement(true);
         withStubContext(canvas);
+
+        // Baseline after construction, whose own layout schedule also requests a
+        // (framework-internal) animation frame — isolate the assertion to the
+        // frames the animation loop requests.
+        const rafBefore = rafCount(recorder);
+
         canvas.startAnimation();
         canvas.stopAnimation();
         canvas.doLayout();
 
         expect(canvas.isAnimating()).toBe(false);
-        expect(rafCount(recorder)).toBe(1);
+        expect(rafCount(recorder) - rafBefore).toBe(1);
     });
 
     it('stays static across doLayout when never started (P8)', () => {

@@ -8,7 +8,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { Component } from '~/core/Component';
 import { Dock, DockPanelEvent } from '~/overlay/Dock';
-import { AbstractWindow } from '~/overlay/AbstractWindow';
 import { DOM } from '~/core/DOM';
 import { installTestDOM } from '../dom/TestDOM';
 import fontMetrics from '../dom/font-metrics.test-font.json';
@@ -76,7 +75,6 @@ function priv(dock: Dock): Record<string, any> {
 }
 
 afterEach(() => {
-    (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
     vi.restoreAllMocks();
     DOM.reset();
 });

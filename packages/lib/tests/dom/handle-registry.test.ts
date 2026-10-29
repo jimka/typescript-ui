@@ -13,6 +13,7 @@ import {
     _handleRegistrySize,
 } from '~/core/DOM';
 import { Component } from '~/core/Component';
+import { collectUntil } from '../helpers/collectedAfter';
 
 const sink   = (): ProductionDOMSink   => DOM.sink   as ProductionDOMSink;
 const source = (): ProductionDOMSource => DOM.source as ProductionDOMSource;
@@ -143,17 +144,9 @@ describe('component dispose releases every retained handle', () => {
 
     // The discard path: a component removed via removeComponent detaches but
     // cannot release (releasing there would break moveComponent), so release is
-    // keyed on the Component being garbage-collected. Gated on --expose-gc; the
-    // normal suite can't force GC, so it self-skips. Run:
-    //   node --expose-gc ./node_modules/vitest/vitest.mjs run \
-    //     --no-file-parallelism tests/dom/handle-registry.test.ts
+    // keyed on the Component being garbage-collected, which `collectUntil`
+    // drives directly.
     it('releases a discarded component root once it is garbage-collected', async () => {
-        const gc = (globalThis as { gc?: () => void }).gc;
-
-        if (!gc) {
-            return;   // --expose-gc absent; covered by the eager-destructor test above
-        }
-
         const before = _handleRegistrySize();
 
         let c: Component | null = new Component({});
@@ -163,10 +156,7 @@ describe('component dispose releases every retained handle', () => {
 
         c = null;             // discard: drop the only reference, no destructor
 
-        for (let pass = 0; pass < 10; pass += 1) {
-            gc();
-            await new Promise((resolve) => setTimeout(resolve, 0));
-        }
+        await collectUntil(() => _handleRegistrySize() === before);
 
         expect(_handleRegistrySize()).toBe(before);
     });

@@ -24,10 +24,7 @@ const CONFIG = {
 // scheduled layout pass can only be counted by holding the callbacks. Same
 // Map-keyed capture as tests/component/tree/ResizeLayoutEconomy.test.ts, so a
 // specific generation's registrations can be told apart from the next one's.
-// Installed for the whole file, and drained after every test: Component's
-// layout-flush handle is module-level, so a test that ends with a frame still
-// armed would leave the next one's scheduleLayout believing a flush is
-// already pending and silently arming nothing.
+// Installed for the whole file, and drained after every test.
 let sink: RecordingDOMSink;
 let nextFrameHandle = 1;
 let frames: Map<number, FrameRequestCallback> = new Map();

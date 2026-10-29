@@ -14,16 +14,11 @@ const CONFIG = {
     themeVars:       {},
 };
 
-// MUST be the first describe block in this file, and its one test the only
-// place `.click()` is used. `Event`'s window-level base listener is installed
-// once per event type for the lifetime of this module and never re-armed on
-// the fresh `DOM.sink` a later `installTestDOM()` call swaps in (no test file
-// in this codebase drives behaviour through `.click()` for the same reason —
-// see tests/overlay/Menu.test.ts and tests/component/button/SplitButton.test.ts,
-// which both bracket-access private methods instead). Every other test below
-// drives the toggle through the private `toggleMenu()` path directly, which the
-// plan's Expected Behaviour explicitly sanctions ("drive via the button's
-// action path or click()").
+// The one test in this file that uses `.click()`; the window-level base
+// listener arms against its own sink (Event forgets its registrations on every
+// sink swap). Every other test below drives the toggle through the private
+// `toggleMenu()` path directly, which the plan's Expected Behaviour sanctions
+// ("drive via the button's action path or click()").
 describe('MenuButton listeners bag (native click dispatch)', () => {
     afterEach(() => DOM.reset());
 

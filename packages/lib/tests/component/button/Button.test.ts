@@ -217,35 +217,23 @@ describe('Button description', () => {
 describe('Button action listener registration', () => {
     // The modelled source exposes no live event tree, so a dispatched click is
     // never *delivered* to the registered callback offline (see
-    // tests/unit/core/Event.test.ts). The Event namespace also keeps
-    // module-level listener state that DOM.reset() does not clear, so the
-    // "click" base listener may already be installed from a sibling test.
-    // We therefore assert the BOOKKEEPING contract a single self-contained test
-    // can own: on("action") routes to the DOM "click" event and is chainable;
-    // the FIRST on()/last off() pair toggles exactly one base install/uninstall
-    // for a brand-new event type unique to this test.
+    // tests/unit/core/Event.test.ts). We therefore assert the BOOKKEEPING
+    // contract instead: on("action") routes to the DOM "click" event and is
+    // chainable, and installs the window base listener once per sink.
     it('routes the first on("action") to a "click" base-listener install', () => {
         // Event installs the window base listener for a type lazily on its first
-        // registration. Use a brand-new Button and assert the install write only
-        // when "click" is not already live in Event's module state — guarded by
-        // the in-test delta so a sibling test's prior "click" install can't make
-        // this flaky.
+        // registration against the installed sink, and forgets it on every
+        // sink swap, so a test's first "click" registration installs it.
         const before = countWrites('addListener', 'click');
         const btn = new Button('Save');
 
         expect(btn.on('action', () => {})).toBe(btn);
 
-        // Either the base listener was freshly installed in this sink (delta 1)
-        // or it was already live from a sibling test (delta 0) — both satisfy
-        // the routing contract; the chainable return above is the load-bearing
-        // assertion that on("action") ran.
-        expect(countWrites('addListener', 'click') - before).toBeLessThanOrEqual(1);
+        expect(countWrites('addListener', 'click') - before).toBe(1);
     });
     it('adds no further base install once "click" is already live (dedup contract)', () => {
         // Event installs ONE window base listener per type; further
         // registrations of the same already-live type add no new base install.
-        // Asserted as an in-test delta so sibling tests' shared "click" state
-        // doesn't skew the absolute count.
         const a = new Button('A');
         const b = new Button('B');
         const fa = (): void => {};
@@ -269,10 +257,9 @@ describe('Button action listener registration', () => {
 describe('Button listeners option', () => {
     it('wires { listeners: { action } } through the on("action") path without throwing', () => {
         // The listeners bag dispatches through `on('action')` →
-        // Event.addListener(this, "click"). Real delivery and absolute base-
-        // listener write counts are not reliably observable offline (no live
-        // event tree; Event keeps module state across DOM.reset). The observable
-        // contract is that constructing with the bag routes through on() cleanly.
+        // Event.addListener(this, "click"). Real delivery is not observable
+        // offline (no live event tree). The observable contract is that
+        // constructing with the bag routes through on() cleanly.
         expect(() => new Button('Save', { listeners: { action: () => {} } })).not.toThrow();
     });
 });

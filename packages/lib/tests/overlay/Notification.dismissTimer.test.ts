@@ -134,15 +134,9 @@ function timerOps(recording: RecordingDOMSink, from: number): Array<[string, unk
 beforeEach(() => {
     sink = installTestDOM(CONFIG);
 
-    // The static stack, the history ring and the two hold counters all outlive
-    // DOM.reset(), so a case that ends with a live toast would otherwise leak
-    // into the next one. A leaked hold matters most: a toast shown while a hold
-    // is open clears its own timer immediately, which would make E1 fail for a
-    // reason that has nothing to do with the seam.
-    statics().activeNotifications = [];
-    statics().history             = [];
-    statics().modalCount          = 0;
-    statics().hoverCount          = 0;
+    // The history ring outlives a DOM swap (the live stack and the two hold
+    // counters are dropped on it), so clear it for each case.
+    statics().history = [];
 
     vi.useFakeTimers();
 });

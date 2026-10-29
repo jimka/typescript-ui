@@ -116,16 +116,9 @@ function lastRuleStyle(prop: string): string | null | undefined {
     return undefined;
 }
 
-// MUST be the first describe block in this file, and its tests the only place
-// a real dispatched `contextmenu` event is used. Event's window-level base
-// listener is armed once per event TYPE for the lifetime of this module and
-// is not re-armed by a later installTestDOM() call unless the component
-// holding it is disposed first (see the file-level note in
-// tests/component/container/CollapseButton.test.ts, which documents the same
-// constraint) — every other Markdown constructed later in this file never
-// dispatches a real event, so it's unaffected by whichever sink last owned
-// the registration; both Markdowns below are disposed immediately after use
-// so the type is cleanly released regardless.
+// The only describe block that dispatches a real `contextmenu` event. Event
+// forgets its registrations on every sink swap, so the base listener arms
+// against each test's own sink; both Markdowns below are disposed after use.
 describe('Markdown copy menu', () => {
     /** The handle of the first appended element with the given (case-insensitive) tag. */
     function firstChildHandleOfTag(tag: string): Handle {
@@ -823,15 +816,12 @@ describe('Markdown character references', () => {
 
 describe('Markdown fenced code block — CodeEditor upgrade wiring', () => {
     // `onFirstLayout` (Component's per-instance "mounted and sized" hook, with
-    // its own dedicated coverage in OnFirstLayout.test.ts) drains through a
-    // module-level, rAF-coalesced flush queue shared across every component in
-    // the process — a queue this shared test file's *other* describe blocks
-    // already prime via ordinary construction, so a locally-mocked
-    // `requestAnimationFrame` can no longer observe it being (re-)scheduled.
-    // These tests sidestep that entirely: they assert Markdown registers the
-    // deferred hook (not a synchronous call), then invoke the captured
-    // callback directly — the same effect a real layout flush would have,
-    // without depending on that shared, hard-to-isolate queue.
+    // its own dedicated coverage in OnFirstLayout.test.ts) drains through the
+    // module-level, rAF-coalesced layout flush, which the offline sink never
+    // runs by itself. These tests assert Markdown registers the deferred hook
+    // (not a synchronous call), then invoke the captured callback directly —
+    // the same effect a real layout flush would have, without driving the
+    // whole flush.
 
     it('defers the CodeEditor swap via onFirstLayout rather than calling the loader synchronously', () => {
         const onFirstLayoutSpy = vi.spyOn(Markdown.prototype as any, 'onFirstLayout');

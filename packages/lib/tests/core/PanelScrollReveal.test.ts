@@ -183,9 +183,8 @@ beforeEach(() => {
     frames = [];
     built  = [];
 
-    // A scrolling panel schedules a follow-up layout frame. Capture it, so the
-    // teardown can drain it: an undrained registration leaves `Component`'s
-    // module-level frame handle set and swallows the next test's own.
+    // A scrolling panel schedules a follow-up layout frame. Capture it, so a
+    // case can run it by hand and the teardown can drain what is left.
     vi.spyOn(DOM.sink, 'requestAnimationFrame').mockImplementation((callback: FrameRequestCallback) => {
         frames.push(callback);
 

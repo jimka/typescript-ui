@@ -79,7 +79,6 @@ function frameOf(dock: Dock, id: string): Component {
 }
 
 afterEach(() => {
-    (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
     vi.restoreAllMocks();
     DOM.reset();
 });

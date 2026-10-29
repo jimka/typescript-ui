@@ -418,6 +418,48 @@ function flushPendingVisibility(): void {
 }
 
 /**
+ * Drops the layout and effective-visibility queues and forgets both armed
+ * frames, so the next `scheduleLayout` / visibility reconcile asks the
+ * installed sink for a fresh frame. Registered with `DOM.onSinkChange` below
+ * and called from nowhere else.
+ *
+ * A frame handle names a request the outgoing sink owns, and every queued
+ * component belongs to the environment that sink rendered into — none of it
+ * can run against its replacement. The offline sink drops frame callbacks
+ * while returning `0` rather than `null`, so without this the first swallowed
+ * frame of a test file left the queues armed for good, and every component
+ * that scheduled a layout afterwards stayed queued — subtree and all — until
+ * the worker exited.
+ */
+function dropQueuedFrames(): void {
+    pendingLayouts.clear();
+    afterLayoutCallbacks = [];
+    rafHandle = null;
+
+    pendingVisibility.clear();
+    visibilityRafHandle = null;
+}
+
+DOM.onSinkChange(dropQueuedFrames);
+
+// How many times the DOM sink has been replaced. A handle is a number its
+// sink's registry assigned, so a component records the count at which it
+// minted its handles, and both release paths — the eager destructor and the
+// GC finalizer — skip handles minted under an earlier sink: after a swap the
+// same number names an element of the installed sink, and releasing it would
+// free a live element of an unrelated component. A count rather than the sink
+// itself, so a component kept alive does not keep its sink (and, offline, the
+// sink's whole write log) alive too.
+let sinkGeneration: number = 0;
+
+/** Counts a sink swap. Registered with `DOM.onSinkChange` below and called from nowhere else. */
+function noteSinkSwap(): void {
+    sinkGeneration++;
+}
+
+DOM.onSinkChange(noteSinkSwap);
+
+/**
  * Serialises one size term for a debug `data-*` size attribute: `"inf"` when the
  * extent is unbounded, else its rounded pixel string.
  *
@@ -501,19 +543,29 @@ function borderSidesKey(spec: BorderOptions | string | null | undefined): string
  * handle there — releasing would break a move, which re-inserts the same
  * instance. Reachability is the move-vs-discard signal: a moved component stays
  * referenced; a discarded one becomes unreachable. So the release is keyed on GC
- * of the `Component`. The held value is the owned-handle array (numbers only,
- * with no back-reference to the `Component`, so the `Component` stays
- * collectable). `release` is idempotent, so a handle already freed by the eager
- * `destructor` or an explicit dispose is a harmless no-op here.
+ * of the `Component`. The held value is the owned-handle and owned-selector
+ * arrays plus the sink generation the handles were minted under — numbers and
+ * strings only, with no back-reference to the `Component`, so the `Component`
+ * stays collectable. `release` is idempotent, so a handle already freed by the
+ * eager `destructor` or an explicit dispose is a harmless no-op here.
+ *
+ * The handles are released only while the sink that minted them is still
+ * installed (see `sinkGeneration`). The selectors are disposed regardless: a
+ * selector names this component's own unique id, so it cannot collide with
+ * another component's rule, and disposing it keeps the module's rule cache
+ * from holding entries for components long gone.
  */
 type OwnedResources = {
-    readonly handles:   readonly Handle[];
-    readonly selectors: readonly string[];
+    readonly handles:    readonly Handle[];
+    readonly selectors:  readonly string[];
+    readonly generation: number;
 };
 
-const _componentFinalizer = new FinalizationRegistry<OwnedResources>(({ handles, selectors }) => {
-    for (const handle of handles) {
-        DOM.sink.release(handle);
+const _componentFinalizer = new FinalizationRegistry<OwnedResources>(({ handles, selectors, generation }) => {
+    if (generation === sinkGeneration) {
+        for (const handle of handles) {
+            DOM.sink.release(handle);
+        }
     }
 
     for (const selector of selectors) {
@@ -629,6 +681,9 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
     // base-class field, set before the constructor body runs applyOptions, so no
     // cascade-dispatched render can clobber it.
     private readonly _ownedHandles : Handle[]               = [];
+    // The `sinkGeneration` the owned handles were minted under, recorded with
+    // the first one; the destructor releases them only while it still holds.
+    private _ownedHandlesGeneration : number                = 0;
     // Component-scope selectors (#<uuid>[<suffix>]) this component allocated,
     // for teardown deletion. Strings only (no back-reference to Component) so
     // the GC finalizer can hold it without pinning the instance. Mirror of
@@ -1158,9 +1213,13 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      * of the process.
      *
      * @param listener - Called after CSS variables have been updated, so `getComputedStyle` returns new values.
+     * @param options - Optional subscription settings.
+     * @param options.persistent - Keep the subscription when the DOM seam is
+     *   swapped, for a component that outlives every DOM environment (the
+     *   `Body` singleton); see `ThemeManager.onThemeChange`. Defaults to `false`.
      */
-    protected subscribeTheme(listener: () => void): void {
-        this._themeCleanups.push(ThemeManager.onThemeChange(listener));
+    protected subscribeTheme(listener: () => void, options?: { persistent?: boolean }): void {
+        this._themeCleanups.push(ThemeManager.onThemeChange(listener, options));
     }
 
     /**
@@ -1389,12 +1448,17 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
         // `transition: null` reset its completion performs — would otherwise resolve a
         // released handle and throw, exactly the stale-deferred-work hazard
         // `pendingLayouts.delete(this)` drops at the top of this method.
-        for (const handle of this._ownedHandles) {
-            cancelTransitions(handle);
-        }
+        //
+        // Both only while the sink that minted the handles is installed: after
+        // a swap the same numbers name another component's elements.
+        if (this._ownedHandlesGeneration === sinkGeneration) {
+            for (const handle of this._ownedHandles) {
+                cancelTransitions(handle);
+            }
 
-        for (const handle of this._ownedHandles) {
-            DOM.sink.release(handle);
+            for (const handle of this._ownedHandles) {
+                DOM.sink.release(handle);
+            }
         }
 
         this._ownedHandles.length = 0;
@@ -1420,7 +1484,8 @@ class Component<TOptions extends ComponentOptions = ComponentOptions> extends Ba
      */
     protected trackHandle(handle: Handle): Handle {
         if (this._ownedHandles.length === 0) {
-            _componentFinalizer.register(this, { handles: this._ownedHandles, selectors: this._ownedSelectors }, this);
+            this._ownedHandlesGeneration = sinkGeneration;
+            _componentFinalizer.register(this, { handles: this._ownedHandles, selectors: this._ownedSelectors, generation: sinkGeneration }, this);
         }
 
         this._ownedHandles.push(handle);

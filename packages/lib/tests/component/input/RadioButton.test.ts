@@ -115,28 +115,13 @@ describe('RadioButton action fan-out (mounted)', () => {
     afterEach(() => DOM.reset());
 
     /**
-     * Installs a fresh TestDOM and clears `Event`'s component registry, so the
-     * window-level base listener that this file's earlier, DOM-less
-     * RadioButtons installed is re-installed against the window handle the
-     * dispatches below actually route through. Ritual copied from
-     * tests/component/input/Slider.test.ts's `freshKeydownWindow`.
-     */
-    function freshEventWindow(): void {
-        installTestDOM(CONFIG);
-
-        for (const id of Event._registeredComponentIds()) {
-            Event.purgeComponent(id);
-        }
-    }
-
-    /**
-     * A mounted, quiesced RadioButton and its realized ring graphic. Pausing
-     * the radio and its private children before flushing the host keeps the
-     * module-level pending-layout set from flushing against a reset DOM in a
-     * later file (see Slider.test.ts's `quiesce` for the full reasoning).
+     * A mounted, quiesced RadioButton and its realized ring graphic. The radio
+     * and its private children are paused before the host is flushed, so
+     * nothing is left queued behind the assertions (see Slider.test.ts's
+     * `quiesce`).
      */
     function mountedRadio(): { rb: any; ring: Handle } {
-        freshEventWindow();
+        installTestDOM(CONFIG);
 
         const host = new Container({});
         const rb   = new RadioButton() as any;

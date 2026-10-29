@@ -5,7 +5,6 @@ import { DOM } from "~/core/DOM.js";
 import type { Handle } from "~/core/DOM.js";
 import { Event } from "~/core/Event.js";
 import { StyleRule } from "~/core/StyleTarget.js";
-import { ThemeManager } from "~/core/Theme.js";
 import { callable } from "~/core/Callable.js";
 import { Size } from "~/primitive/Size.js";
 import { Menu } from "~/overlay/Menu.js";
@@ -700,9 +699,6 @@ class Markdown extends Component<MarkdownOptions> {
      */
     private _measuredHeight: number | null = null;
 
-    /** Handle to detach the {@link ThemeManager.onThemeChange} listener on {@link dispose}. */
-    private readonly _unsubscribeTheme: () => void;
-
     /** Live `CodeEditor` upgrades, raw-DOM-appended per fenced block; see {@link applyCodeEditorUpgrade}. */
     private _codeEditors: Array<{ editor: CodeEditor; wrapper: Handle }> = [];
 
@@ -813,7 +809,7 @@ class Markdown extends Component<MarkdownOptions> {
         // change the rendered height, and `--ts-ui-md-max-measure`'s `ch` unit
         // means it can change a code block's width too — react to both when
         // it fires (mirrors Text).
-        this._unsubscribeTheme = ThemeManager.onThemeChange(() => this.onThemeChanged());
+        this.subscribeTheme(() => this.onThemeChanged());
 
         // First measurement rides the first connected layout: only then is the
         // element attached and width-assigned, so the `scrollHeight` read is
@@ -1090,10 +1086,11 @@ class Markdown extends Component<MarkdownOptions> {
     }
 
     /**
-     * Disposes the Copy menu (if one was ever opened) and detaches the
-     * theme-change listener, then defers to the base class for the rest of
-     * teardown. Call when a dynamically-built Markdown is permanently removed
-     * from the page, mirroring `CodeEditor.destructor`.
+     * Disposes the Copy menu (if one was ever opened) and every live code
+     * editor, then defers to the base class for the rest of teardown — which
+     * also releases the theme-change subscription. Call when a dynamically-built
+     * Markdown is permanently removed from the page, mirroring
+     * `CodeEditor.destructor`.
      */
     protected destructor(): void {
         this._contextMenu?.dispose();
@@ -1103,7 +1100,6 @@ class Markdown extends Component<MarkdownOptions> {
         // addComponent), so the base class's own child-recursion below never
         // reaches them — Markdown must dispose them explicitly.
         this.clearContent();
-        this._unsubscribeTheme();
         super.destructor();
     }
 

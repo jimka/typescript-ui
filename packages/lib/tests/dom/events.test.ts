@@ -549,14 +549,6 @@ describe('Modelled event delivery — ListenerOptions.button filter', () => {
 // allowlist itself. These dispatch real type strings so the allowlist's
 // membership test is driven through the real dispatcher, not just asserted
 // by reading the code.
-//
-// Every literal-type case lives in ONE test per type (not `uniqueType()`-
-// able, since the point is the literal type string): `installBaseListener`
-// only installs the native window listener on a type's FIRST registration,
-// and that installation isn't undone by `DOM.reset()` between tests — a
-// second test separately registering the same literal type would install
-// nothing against its own fresh sink and silently never see its events
-// dispatched.
 describe('Modelled event delivery — PRIMARY_BUTTON_TYPES per-type default', () => {
     afterEach(() => DOM.reset());
 

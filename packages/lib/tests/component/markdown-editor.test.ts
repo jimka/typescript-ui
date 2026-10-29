@@ -7497,10 +7497,6 @@ describe('MarkdownEditor context menu — caret and availability', () => {
 
         /** The user presses a key: a real `keydown`, which the menu's input watch records. */
         function pressKey(): void {
-            // The watch's window registrations belong to the DOM of the test that first started it: start it afresh on this one.
-            Menu._stopInputWatch();
-            Menu._startInputWatch();
-
             const target = DOM.sink.createElement('div');
 
             DOM.sink.dispatchEvent(target, makeEvent(target, 'keydown', { key: 'F10' }));
@@ -7512,8 +7508,6 @@ describe('MarkdownEditor context menu — caret and availability', () => {
 
             DOM.sink.dispatchEvent(target, makeEvent(target, 'pointerdown', { button: 2 }));
         }
-
-        afterEach(() => Menu._stopInputWatch());
 
         it('a word is kept clear, grown by the Large size preset\'s extra height', () => {
             const editor = editorOf('hello');
@@ -7892,13 +7886,11 @@ describe('$keptClearPoints', () => {
 });
 
 describe('MarkdownEditor context-menu paste target', () => {
-    // Notification's history and live-toast queue are private static state that
-    // persist across tests; clear both so each case starts clean (a stale toast
-    // left in the queue from a prior test would break restack() under the fresh
-    // sink), matching NotificationHistory.test.ts:25-28.
+    // Notification's history is private static state that persists across
+    // tests (the live toasts are dropped on each DOM swap); clear it so each
+    // case starts clean, matching NotificationHistory.test.ts's `clearStatics`.
     function clearNotificationStatics(): void {
-        (Notification as unknown as { history: unknown[]; activeNotifications: unknown[] }).history = [];
-        (Notification as unknown as { history: unknown[]; activeNotifications: unknown[] }).activeNotifications = [];
+        (Notification as unknown as { history: unknown[] }).history = [];
     }
 
     beforeEach(clearNotificationStatics);

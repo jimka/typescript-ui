@@ -90,11 +90,7 @@ beforeEach(() => {
 
 afterEach(() => {
     // Drain to quiescence while the captured requestAnimationFrame is still
-    // installed. Component.afterNextLayout's cancel() only sets a flag — it does
-    // not deregister the frame — so a case ending with frames still queued
-    // leaves Component's module-level flush handle non-null, and the next case's
-    // own layout scheduling then finds a flush already pending and registers no
-    // fresh frame.
+    // installed, so no frame a case left queued runs after it.
     drainFrames();
     vi.restoreAllMocks();
     DOM.reset();

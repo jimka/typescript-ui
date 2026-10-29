@@ -16,7 +16,6 @@ import { _Menu as Menu } from '~/overlay/Menu';
 import { _Window as Window } from '~/overlay/Window';
 import { Popover } from '~/overlay/Popover';
 import { PopupPanel } from '~/overlay/PopupPanel';
-import { Tooltip } from '~/overlay/Tooltip';
 import { makeEvent, setQuerySelectorAllResult, setRenderedVisible, type RecordingDOMSink } from '../dom/TestDOM';
 
 interface FakeLayer extends DismissableLayer {
@@ -141,10 +140,6 @@ afterEach(() => {
 
     surfaces.length = 0;
 
-    // A Window attaches a tooltip, whose static pointer watch pins a viewport
-    // listener across the DOM reset.
-    Tooltip._stopPointerWatch();
-    Menu._stopInputWatch();
     vi.restoreAllMocks();
 });
 

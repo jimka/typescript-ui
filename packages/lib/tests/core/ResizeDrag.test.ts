@@ -87,11 +87,7 @@ describe('ResizeDrag', () => {
     });
 
     afterEach(() => {
-        // An outline left on screen keeps its two viewport listeners, and
-        // `Event`'s own registration maps are module state DOM.reset() does not
-        // clear: a type map that survives with entries in it stops the next
-        // `addViewportListener` re-registering the base listener against the
-        // fresh sink, and the case after this one would hear no keydown at all.
+        // Cancels any session a case left mid-drag, outline and all.
         for (const session of sessions) {
             session.cancel();
         }

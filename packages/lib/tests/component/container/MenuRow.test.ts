@@ -69,15 +69,7 @@ describe('MenuRow base defaults', () => {
 
 describe('CheckboxMenuRow', () => {
     // Every row wires `Event.addListener` (click/mouseover/mouseout) in its
-    // constructor. The window-level capture handler for a type is installed
-    // once ever (`Event`'s `installedListenerTypes` is module state, not
-    // reset by `DOM.reset()`), so an undisposed row from an earlier test
-    // leaves that type marked installed while pointing at a DOM.sink instance
-    // a later test's `DOM.reset()` has already discarded — the next test's
-    // dispatch then silently finds no handlers. Disposing every row drives
-    // the registration back to zero (`Event.purgeComponent`, via
-    // `Component.destructor`), which un-installs the type so the next test's
-    // construction re-installs it against the current sink.
+    // constructor; each case disposes the rows it builds.
     afterEach(() => DOM.reset());
 
     it('reflects the constructed checked state, defaulting to false when omitted', () => {
@@ -326,10 +318,7 @@ describe('CheckboxMenuRow', () => {
 });
 
 describe('RadioMenuRow', () => {
-    // Same undisposed-row leak as CheckboxMenuRow above: every row wires
-    // click/mouseover/mouseout in its constructor, and Event's
-    // installedListenerTypes bookkeeping outlives DOM.reset(), so every row
-    // built below must be disposed.
+    // As for CheckboxMenuRow above, every row built below is disposed.
     afterEach(() => DOM.reset());
 
     it('R1. reflects the constructed checked state, defaulting to false when omitted', () => {
@@ -584,7 +573,7 @@ describe('RadioMenuRow', () => {
 });
 
 describe('boolean menu rows are the menu items assistive technology reads', () => {
-    // Same undisposed-row leak as the two blocks above: every row built here is disposed.
+    // As in the two blocks above, every row built here is disposed.
     afterEach(() => DOM.reset());
 
     /** The inner checkbox or radio button a boolean menu row hosts, through its protected `getControl()`. */

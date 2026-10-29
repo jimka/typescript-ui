@@ -4,12 +4,8 @@
 // the shared stylesheet grew by one rule for every drag the user performed and
 // never shrank.
 //
-// This case lives in its own file deliberately. `Event`'s viewportListenerMap
-// outlives `DOM.reset()`, so a second same-event-type registration inside one
-// file does not re-attach: the gesture goes inert, no drag chrome is built, and
-// a rule-count assertion then passes against nothing. `dragOnce` asserts
-// commitment so that failure can never be silent, but the isolation is what
-// lets this case run at all.
+// `dragOnce` asserts the gesture committed: an inert gesture builds no drag
+// chrome, and a rule-count assertion would then pass against nothing.
 import { describe, it, expect, afterEach } from 'vitest';
 import { DragManager } from '~/overlay/DragManager';
 import { Component } from '~/core/Component';

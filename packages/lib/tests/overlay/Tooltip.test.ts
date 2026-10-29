@@ -99,23 +99,6 @@ function countProbeCalls(): () => number {
 
 describe('Tooltip.show', () => {
     afterEach(() => {
-        // The singleton instance + showTimer survive DOM.reset(); clear the timer
-        // so a pending show can't leak into the next test, and drop the cached
-        // instance so the next show() rebuilds its element handles against the
-        // fresh handle table installTestDOM mints (the old handles point into the
-        // discarded table and would throw "handle not registered").
-        const timer = (Tooltip as any).showTimer;
-
-        if (timer !== null) {
-            clearTimeout(timer);
-            (Tooltip as any).showTimer = null;
-        }
-
-        (Tooltip as any).instance = null;
-        (Tooltip as any).watching = false;
-        (Tooltip as any).activeElement = null;
-        (Tooltip as any).pendingId = null;
-
         DOM.reset();
     });
 
@@ -317,17 +300,6 @@ describe('Tooltip.show', () => {
 
 describe('Tooltip.attach — teardown', () => {
     afterEach(() => {
-        (Tooltip as any).instance = null;
-        (Tooltip as any).watching = false;
-        (Tooltip as any).activeElement = null;
-        (Tooltip as any).pendingId = null;
-
-        // The pointer watch is installed with the first attachment and never
-        // removed during a session, so its viewport registration would outlive
-        // the DOM it was made against and silently swallow the next test's
-        // moves.
-        Tooltip._stopPointerWatch();
-
         DOM.reset();
     });
 
@@ -420,20 +392,6 @@ describe('Tooltip.detach — ownership', () => {
     afterEach(() => {
         vi.useRealTimers();
 
-        (Tooltip as any).showTimer = null;
-        (Tooltip as any).instance = null;
-        (Tooltip as any).watching = false;
-        (Tooltip as any).activeElement = null;
-        (Tooltip as any).pendingId = null;
-        (Tooltip as any).dismissing = false;
-        (Tooltip as any).attachments.clear();
-
-        // The pointer watch is installed with the first attachment and never
-        // removed during a session, so its viewport registration would outlive
-        // the DOM it was made against and silently swallow the next test's
-        // moves.
-        Tooltip._stopPointerWatch();
-
         DOM.reset();
     });
 
@@ -525,8 +483,6 @@ describe('Tooltip.detach — ownership', () => {
 
     it('7. detaching a component that was never attached is a no-op', () => {
         const { b } = twoAttached();
-
-        installTestDOM(CONFIG);
 
         const never = new Component({});
         never.getElement(true);

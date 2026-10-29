@@ -168,8 +168,9 @@ export class Tooltip extends Component {
 
     // Owner of the four viewport listeners that keep the state above honest,
     // and whether they are installed. Installed with the first attachment and
-    // kept for the rest of the session. Distinct from `watching`, the anchor
-    // watch installed only while a tooltip is on screen.
+    // kept until the DOM environment is replaced (see `_forgetEnvironment`).
+    // Distinct from `watching`, the anchor watch installed only while a
+    // tooltip is on screen.
     // `Event.addViewportListener` binds a listener to a `Component` while these
     // handlers are static — one pair for the whole class, not one per
     // attachment — so a single stable sentinel owns them, as `Notification`'s
@@ -760,8 +761,9 @@ export class Tooltip extends Component {
      * a `mousemove` and a `pointerover` that record where the pointer is (see
      * `_recordPointer` for why both), a `mouseout` that forgets it when the
      * pointer leaves the window, and a `keydown` that lifts a press's arming
-     * suppression — unless they are already installed. Called as
-     * an attachment is recorded, and nothing removes them afterwards: a position
+     * suppression — unless they are already installed. Called as an
+     * attachment is recorded, and nothing removes them afterwards short of a
+     * DOM environment swap (see `_forgetEnvironment`): a position
      * recorded before a gap with no attachments and trusted after it would arm a
      * tooltip over a component the pointer had since left, and re-installing the
      * watch under a pointer that then never moves would leave the position
@@ -781,27 +783,33 @@ export class Tooltip extends Component {
     }
 
     /**
-     * Removes the viewport pointer watch and forgets the position it recorded.
-     * Nothing removes the watch during a session — see `_startPointerWatch` —
-     * so this exists for a test suite that replaces the DOM the registrations
-     * were made against, which would otherwise leave them pointing at a
-     * discarded window; for tests only.
+     * Forgets everything tied to the DOM environment a sink swap replaces: the
+     * singleton tooltip and its anchor, every attachment, the pending hover
+     * delay, and the pointer state. The anchor and pointer watches' viewport
+     * listeners are dropped by `Event` on the same swap, so their flags are
+     * cleared too, and the next attachment installs them anew. Registered
+     * with `DOM.onSinkChange` below this class and called from nowhere else.
+     *
+     * The singleton was rendered through the outgoing sink and every
+     * attachment closes over a component of the outgoing environment; kept,
+     * they would pin those components for as long as this module is loaded.
+     * The hover delay runs on the host's own timer, which the swap does not
+     * clear, so it is cancelled rather than forgotten.
      *
      * @internal
      */
-    static _stopPointerWatch(): void {
-        if (!Tooltip.pointerWatching) {
-            return;
-        }
+    static _forgetEnvironment(): void {
+        Tooltip._cancelPendingShow();
 
-        Event.removeViewportListener(Tooltip.pointerWatchOwner, "mousemove",   Tooltip._recordPointer);
-        Event.removeViewportListener(Tooltip.pointerWatchOwner, "pointerover", Tooltip._recordPointer);
-        Event.removeViewportListener(Tooltip.pointerWatchOwner, "mouseout",    Tooltip._forgetPointerOnLeave);
-        Event.removeViewportListener(Tooltip.pointerWatchOwner, "keydown",     Tooltip._clearPressSuppression);
-
-        Tooltip.pointerWatching   = false;
-        Tooltip.pointerTarget     = null;
-        Tooltip.pressSuppressedId = null;
+        Tooltip.instance           = null;
+        Tooltip.attachments        = new Map();
+        Tooltip.elementAttachments = new Map();
+        Tooltip.activeElement      = null;
+        Tooltip.watching           = false;
+        Tooltip.dismissing         = false;
+        Tooltip.pointerWatching    = false;
+        Tooltip.pointerTarget      = null;
+        Tooltip.pressSuppressedId  = null;
     }
 
     /**
@@ -1175,3 +1183,7 @@ export class Tooltip extends Component {
         super.destructor();
     }
 }
+
+// Registered at import: a seam swap drops the tooltip state of the environment
+// it replaces, as every module holding state tied to that environment does.
+DOM.onSinkChange(() => Tooltip._forgetEnvironment());

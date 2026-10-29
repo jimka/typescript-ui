@@ -1,13 +1,5 @@
-// Kept in its own file rather than folded into ComboBox.test.ts: every
-// ComboBox wires a DOM-routed "change" listener on its dropdown's inner list
-// at construction (`ComboBoxDropdown`'s `_list.on("action", ...)`), and none
-// of ComboBox.test.ts's many undisposed `combo`s ever release it. `Event`'s
-// `installedListenerTypes` bookkeeping (see Event.ts) outlives `DOM.reset()`,
-// so once that file's first ComboBox registers the type, every later test in
-// that same file silently loses real "change" dispatch — see the identical,
-// already-documented gotcha in Link.test.ts's file header. A fresh file gets
-// its own module registry, so this test's dispatch isn't at the mercy of
-// that file's undisposed instances.
+// Every ComboBox wires a DOM-routed "change" listener on its dropdown's inner
+// list at construction (`ComboBoxDropdown`'s `_list.on("action", ...)`).
 import { describe, it, expect, afterEach } from 'vitest';
 import { ComboBox } from '~/component/input/ComboBox';
 import { DOM } from '~/core/DOM';
@@ -26,14 +18,7 @@ function key(name: string): KeyboardEvent {
     return { key: name, preventDefault() {}, stopPropagation() {} } as unknown as KeyboardEvent;
 }
 
-// Every combo this file mounts, disposed before the reset below. Its dropdown's
-// inner list wires a DOM-routed "change" listener, and `Event`'s window-level
-// base-listener bookkeeping is module state that survives `DOM.reset()` (the
-// file header above) — so a combo left alive would keep "change" marked
-// installed against the previous case's window handle and silently kill the
-// next case's dispatch, exactly the way this file exists to avoid.
-// `Component.destructor` purges the registrations and uninstalls the base
-// listener with them.
+// Every combo this file mounts, disposed before the reset below.
 const combos: ComboBox[] = [];
 
 afterEach(() => {

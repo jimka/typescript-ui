@@ -70,7 +70,6 @@ describe('AbstractWindow resize-strip placement', () => {
     });
 
     afterEach(() => {
-        (AbstractWindow as unknown as { openWindows: Set<AbstractWindow> }).openWindows.clear();
         vi.restoreAllMocks();
         DOM.reset();
     });

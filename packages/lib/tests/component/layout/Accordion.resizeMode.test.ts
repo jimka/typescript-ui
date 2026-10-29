@@ -16,7 +16,6 @@ import { Container } from '~/core/Container';
 import { DOM } from '~/core/DOM';
 import { setAppResizeMode } from '~/core/ResizeDrag';
 import type { ResizeMode } from '~/core/ResizeDrag';
-import { Tooltip } from '~/overlay/Tooltip';
 import { Accordion } from '~/layout/Accordion';
 import { AccordionConstraints } from '~/layout/AccordionConstraints';
 import { Fit } from '~/layout/Fit';
@@ -83,22 +82,14 @@ describe('Accordion resize mode', () => {
     });
 
     afterEach(() => {
-        // A drag left mid-flight keeps its outline on screen, and with it the
-        // two viewport listeners the outline registers. `Event`'s registration
-        // maps are module state DOM.reset() does not clear, so a surviving type
-        // map stops the next `addViewportListener` re-registering the base
-        // listener against the fresh sink. Disposing the host runs
-        // `Accordion.detach`, which cancels the session as a real teardown does.
+        // Disposing the host runs `Accordion.detach`, which cancels a drag
+        // left mid-flight, outline and all, as a real teardown does.
         for (const host of hosts) {
             host.dispose();
         }
 
         vi.restoreAllMocks();
         setAppResizeMode('live');
-        // A header's own tooltip installs `Tooltip`'s session-long viewport
-        // watch — a surviving `keydown` type map of exactly the kind described
-        // above.
-        Tooltip._stopPointerWatch();
         DOM.reset();
     });
 
