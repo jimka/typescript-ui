@@ -528,6 +528,83 @@ describe('Laid-out widths', () => {
         expect(table.getColumnWidths()[0]).toBe(measured);
     });
 
+    // `ColumnConfig.width` is the column's starting width, and a flexible
+    // column rescales "whenever the table's container resizes" — not on every
+    // pass. A browser always runs a second layout pass after the first frame,
+    // so declared widths the table cannot fit must survive one that no resize
+    // precedes, and the table scrolls horizontally instead.
+    it('26b. declared widths that overflow survive a later pass with no resize', async () => {
+        const model = new Model([
+            { name: 'a', type: 'string', order: 0 },
+            { name: 'b', type: 'string', order: 1 },
+            { name: 'c', type: 'string', order: 2 },
+            { name: 'd', type: 'string', order: 3 },
+        ]);
+        const spec: ColumnSpec = { columns: ['a', 'b', 'c', 'd'].map(field => ({ field, width: 150 })) };
+        const store = await makeStore(model, []);
+        const table = makeTable(store, spec);
+
+        table.setWidth(300);
+        table.setHeight(300);
+        table.doLayout();
+
+        expect(table.getColumnWidths()).toEqual([150, 150, 150, 150]);
+
+        table.doLayout();
+
+        expect(table.getColumnWidths()).toEqual([150, 150, 150, 150]);
+    });
+
+    it('26c. a container resize still rescales the flexible columns toward the new width', async () => {
+        const model = new Model([
+            { name: 'a', type: 'string', order: 0 },
+            { name: 'b', type: 'string', order: 1 },
+        ]);
+        const store = await makeStore(model, []);
+        const table = makeTable(store);
+
+        table.setWidth(300);
+        table.setHeight(300);
+        table.doLayout();
+        table.doLayout();
+
+        const before = table.getColumnWidths().reduce((s, w) => s + w, 0);
+
+        table.setWidth(600);
+        table.doLayout();
+
+        const after = table.getColumnWidths().reduce((s, w) => s + w, 0);
+
+        expect(after).toBeGreaterThan(before);
+        expect(after).toBeCloseTo(table.getAvailableColumnWidth(), 0);
+    });
+
+    // The pass after a column is hidden sees no resize, so it does not rescale;
+    // the width the hidden column freed must still reach the flexible columns
+    // rather than leave dead space at the right edge.
+    it('26d. a pass with no resize still hands freed width to the flexible columns', async () => {
+        const model = new Model([
+            { name: 'a', type: 'string', order: 0 },
+            { name: 'b', type: 'string', order: 1 },
+            { name: 'c', type: 'string', order: 2 },
+        ]);
+        const store = await makeStore(model, []);
+        const table = makeTable(store);
+
+        table.setWidth(300);
+        table.setHeight(300);
+        table.doLayout();
+        table.doLayout();
+
+        table.setColumnVisible('c', false);
+        table.doLayout();
+
+        const total = table.getColumnWidths().reduce((s, w) => s + w, 0);
+
+        expect(table.getColumnWidths()).toHaveLength(2);
+        expect(total).toBeCloseTo(table.getAvailableColumnWidth(), 0);
+    });
+
     it('27. show/hide reuses saved widths', async () => {
         const model = new Model([
             { name: 'a', type: 'string', order: 0 },
