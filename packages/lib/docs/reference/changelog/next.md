@@ -152,6 +152,17 @@ page resets to empty.
 
 ## Fixed
 
+### Components
+
+- **A `Table` column's declared or sampled width survives the next layout
+  pass.** When the widths did not fit the table, the pass after the first —
+  which a browser always runs — rescaled `string` and `auto` columns
+  toward the available width with nothing resized, so `width` and
+  `autoSizeColumns` widths were squeezed instead of the table scrolling
+  horizontally. Columns now rescale only when the table's width changes;
+  space a hidden column frees still goes to the unbounded flexible
+  columns.
+
 ### Layouts
 
 - **`serializeLayout` (and so `Dock.getLayoutState`) no longer records the
