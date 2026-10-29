@@ -253,6 +253,8 @@ const unsubscribe = ThemeManager.onThemeChange(() => {
 unsubscribe();
 ```
 
+A listener belongs to the DOM environment it subscribed in, so replacing the DOM seam — which only test setup does, through `DOM.install` or `DOM.reset` — drops it. A subscriber that must outlive every environment, such as a module-level cache cleared on each theme change, passes `{ persistent: true }` as the second argument.
+
 ::: warning Memory leaks
 Custom components that create [`Text`](/api/component/input/classes/Text) instances and are removed from the page should call `text.dispose()` — the general teardown call every component supports, not a `Text`-specific one — to detach the listener and avoid memory leaks. The framework does this automatically for built-in components, but a `Text` you create yourself is your responsibility.
 :::

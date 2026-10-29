@@ -100,6 +100,16 @@ page resets to empty.
   made with `defineTheme` from a built-in theme inherits it, and a theme
   that leaves it out writes its `text.color` to the variable. See
   [Theming](/concepts/theming#theme-keys).
+- **`ThemeManager.onThemeChange(listener, { persistent: true })`.** A
+  theme-change listener now belongs to the DOM environment it subscribed
+  in: replacing the DOM seam (`DOM.install` with a new sink, or
+  `DOM.reset`, which only test setup does) drops it, so a component left
+  undisposed by a test no longer stays reachable through the listener list.
+  Pass `persistent: true` for a subscriber that must outlive every
+  environment, such as a module-level cache. The cleanup function returned
+  now removes only its own subscription: a function subscribed twice stays
+  subscribed once after one cleanup, where both used to be removed. See
+  [Theming](/concepts/theming#theme-change-listeners).
 
 ### Layouts
 
