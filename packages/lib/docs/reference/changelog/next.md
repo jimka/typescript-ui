@@ -154,6 +154,13 @@ page resets to empty.
 
 ### Components
 
+- **A `Markdown` (and so `MarkdownViewer`) shows its whole document the
+  first time it is shown.** Its first measure read the content height
+  before the prose column's max-measure reached the stylesheet, so it
+  measured at the full pane width, came out too short, and cut the
+  document off — most visibly for a viewer built lazily as a keyed `Card`
+  page. Nothing measured again until the next `setMarkdown`, width or theme
+  change.
 - **A `Table` column's declared or sampled width survives the next layout
   pass.** When the widths did not fit the table, the pass after the first —
   which a browser always runs — rescaled `string` and `auto` columns
